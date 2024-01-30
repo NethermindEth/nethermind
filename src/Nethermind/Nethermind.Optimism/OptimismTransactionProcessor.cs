@@ -144,19 +144,20 @@ public class OptimismTransactionProcessor : TransactionProcessor
     protected override TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts) =>
         tx.IsDeposit() ? TransactionResult.Ok : base.ValidateSender(tx, header, spec, tracer, opts);
 
-    protected override TransactionResult PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
+    protected override void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer,
         in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
     {
-        if (!tx.IsDeposit()
-            && base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode)
-            && _opConfigHelper.IsBedrock(header))
+        if (!tx.IsDeposit())
         {
-            UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
-            WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
-        }
+            // Skip coinbase payments for deposit tx in Regolith
+            base.PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
-        // Skip coinbase payments for deposit tx in Regolith
-        return TransactionResult.Ok;
+            if (_opConfigHelper.IsBedrock(header))
+            {
+                UInt256 l1Cost = _currentTxL1Cost ??= _l1CostHelper.ComputeL1Cost(tx, header, WorldState);
+                WorldState.AddToBalanceAndCreateIfNotExists(_opConfigHelper.L1FeeReceiver, l1Cost, spec);
+            }
+        }
     }
 
     protected override long Refund(Transaction tx, BlockHeader header, IReleaseSpec spec, ExecutionOptions opts,
