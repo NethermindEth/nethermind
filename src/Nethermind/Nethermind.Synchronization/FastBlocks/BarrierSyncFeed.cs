@@ -57,7 +57,7 @@ public abstract class BarrierSyncFeed<T> : ActivatedSyncFeed<T>
         }
         else if (_specProvider.ChainId == BlockchainIds.Mainnet)
         {
-            // Assume the  barrier was the previous defualt (deposit contract barrier) only for mainnet
+            // Assume the  barrier was the previous default (deposit contract barrier) only for mainnet
             _barrierWhenStarted = DepositContractBarrier;
             _metadataDb.Set(BarrierWhenStartedMetadataDbKey, _barrierWhenStarted.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         }

@@ -962,7 +962,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         InnerFlush();
     }
 
-    public void Compact()
+    public virtual void Compact()
     {
         _db.CompactRange(Keccak.Zero.BytesToArray(), Keccak.MaxValue.BytesToArray());
     }
