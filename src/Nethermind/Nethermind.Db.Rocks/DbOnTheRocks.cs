@@ -1186,7 +1186,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             { "level0_file_num_compaction_trigger", 4.ToString() },
             { "level0_slowdown_writes_trigger", 20.ToString() },
-            { "level0_stop_writes_trigger", 36.ToString() },
+
+            // Very high, so that after moving from HeavyWrite, we don't immediately hang.
+            // This does means that under very rare case, the l0 file can accumulate, which slow down the db
+            // until they get compacted.
+            { "level0_stop_writes_trigger", 1024.ToString() },
 
             { "max_bytes_for_level_base", _perTableDbConfig.MaxBytesForLevelBase.ToString() },
             { "target_file_size_base", _perTableDbConfig.TargetFileSizeBase.ToString() },
