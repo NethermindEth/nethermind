@@ -86,7 +86,7 @@ public class MultipleUnsignedOperations
             codeInfo: new CodeInfo(_bytecode.Concat(_bytecode).Concat(_bytecode).Concat(_bytecode).ToArray()),
             value: 0,
             transferValue: 0,
-            txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
+            txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null, []),
             inputData: default
         );
 
