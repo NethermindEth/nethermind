@@ -67,13 +67,9 @@ public class TransactionProcessorTests
     public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tx, block, tracer);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Success, Is.True);
     }
 
     [TestCase(true, true)]
@@ -90,7 +86,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tx, block, tracer);
+        TransactionResult result = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
@@ -232,7 +228,7 @@ public class TransactionProcessorTests
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
         TransactionResult result = CallAndRestore(tx, block);
-        Assert.That(result.Fail, Is.True);
+        Assert.That(result.Success, Is.True);
     }
 
     [TestCase]
@@ -692,11 +688,11 @@ public class TransactionProcessorTests
         return tracer;
     }
 
-    private TransactionResult Execute(Transaction tx, Block block, IBlockTracer? tracer = null)
+    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
-        ITxTracer txTracer = tracer?.StartNewTxTrace(tx) ?? NullTxTracer.Instance;
-        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, txTracer);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, tracer ?? NullTxTracer.Instance);
         if (result)
         {
             tracer?.EndTxTrace();
@@ -706,11 +702,11 @@ public class TransactionProcessorTests
         return result;
     }
 
-    private TransactionResult CallAndRestore(Transaction tx, Block block, IBlockTracer? tracer = null)
+    private TransactionResult CallAndRestore(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
         tracer?.StartNewBlockTrace(block);
-        ITxTracer txTracer = tracer?.StartNewTxTrace(tx) ?? NullTxTracer.Instance;
-        TransactionResult result = _transactionProcessor.CallAndRestore(tx, block.Header, txTracer);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, block.Header, tracer ?? NullTxTracer.Instance);
         if (result)
         {
             tracer?.EndTxTrace();
