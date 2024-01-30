@@ -28,6 +28,14 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         }
     }
 
+    public override void Compact()
+    {
+        foreach (T key in ColumnKeys)
+        {
+            _columnDbs[key].Compact();
+        }
+    }
+
     private static IReadOnlyList<T> GetEnumKeys(IReadOnlyList<T> keys)
     {
         if (typeof(T).IsEnum && keys.Count == 0)
