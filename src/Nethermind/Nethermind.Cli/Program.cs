@@ -36,7 +36,7 @@ namespace Nethermind.Cli
             app.OnExecute(() =>
             {
                 ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) != null
+                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) is not null
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 

@@ -67,7 +67,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                if (_blockTree == null)
+                if (_blockTree is null)
                 {
                     if (!_noHead)
                     {
@@ -96,7 +96,7 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            if (TestObjectInternal == null)
+            if (TestObjectInternal is null)
             {
                 TestObjectInternal = BlockTree;
             }
@@ -287,7 +287,9 @@ namespace Nethermind.Core.Test.Builders
 
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts);
+                currentBlock.Header.ReceiptsRoot =
+                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts,
+                        ReceiptMessageDecoder.Instance);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

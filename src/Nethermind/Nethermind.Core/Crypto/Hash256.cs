@@ -15,6 +15,7 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
+    [JsonConverter(typeof(ValueHash256Converter))]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
         private readonly Vector256<byte> _bytes;
@@ -268,7 +269,7 @@ namespace Nethermind.Core.Crypto
 
         public byte[] ThreadStaticBytes()
         {
-            if (_threadStaticBuffer == null) _threadStaticBuffer = new byte[Size];
+            if (_threadStaticBuffer is null) _threadStaticBuffer = new byte[Size];
             Bytes.CopyTo(_threadStaticBuffer);
             return _threadStaticBuffer;
         }
@@ -282,9 +283,9 @@ namespace Nethermind.Core.Crypto
 
         public static int MemorySize => MemorySizes.ArrayOverhead + Size;
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
-        public Hash256StructRef(Span<byte> bytes)
+        public Hash256StructRef(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {

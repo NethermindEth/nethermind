@@ -19,7 +19,7 @@ internal static partial class SectionsHelper
     {
         var values = new Dictionary<string, string>();
         var list = content?.Split(separator, StringSplitOptions.RemoveEmptyEntries);
-        if (list != null)
+        if (list is not null)
             foreach (string line in list)
                 if (line.Contains(separator))
                 {

@@ -457,7 +457,7 @@ namespace Nethermind.Network.Test
 
             Assert.That(
                 () => ctx.PeerManager.CandidatePeers.All(p => p.OutSession is null),
-                Is.True.After(1000, 10));
+                Is.True.After(2000, 10));
         }
 
         [Test]

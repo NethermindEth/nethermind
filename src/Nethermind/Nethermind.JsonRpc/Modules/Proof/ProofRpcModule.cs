@@ -205,7 +205,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return ReceiptTrie.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index);
+            return ReceiptTrie<TxReceipt>.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index, ReceiptMessageDecoder.Instance);
         }
     }
 }
