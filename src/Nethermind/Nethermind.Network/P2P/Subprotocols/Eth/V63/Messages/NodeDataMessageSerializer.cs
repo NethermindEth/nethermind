@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public void Serialize(IByteBuffer byteBuffer, NodeDataMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);

@@ -23,10 +23,11 @@ namespace Nethermind.Network.Rlpx
         {
             byte packetType = input.ReadByte();
 
-            output.EnsureWritable(1, true);
+            output.EnsureWritable(1);
             output.WriteByte(packetType);
 
-            output.EnsureWritable(SnappyCodec.GetMaxCompressedLength(input.ReadableBytes), true);
+            output.EnsureWritable(SnappyCodec.GetMaxCompressedLength(input.ReadableBytes));
+
             if (_logger.IsTrace) _logger.Trace($"Compressing with Snappy a message of length {input.ReadableBytes}");
             int length = SnappyCodec.Compress(
                 input.Array,
