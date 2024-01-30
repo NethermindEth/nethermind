@@ -8,6 +8,7 @@
 
     <ItemGroup>
       <ProjectReference Include="..\Nethermind.State\Nethermind.State.csproj" />
+      <ProjectReference Include="..\..\Paprika\src\Paprika\Paprika.csproj" />
     </ItemGroup>
 
 </Project>
