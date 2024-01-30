@@ -30,14 +30,14 @@ namespace Nethermind.Mev.Execution
             IBlockTree blockTree,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
-            ILogManager logManager,  ProcessingOptions processingOptions = ProcessingOptions.Trace)
+            ILogManager logManager, ProcessingOptions processingOptions = ProcessingOptions.Trace)
         {
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _dbProvider = dbProvider?? throw new ArgumentNullException(nameof(dbProvider));
-            _stateFactory = stateFactory?? throw new ArgumentNullException(nameof(stateFactory));
+            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _stateFactory = stateFactory ?? throw new ArgumentNullException(nameof(stateFactory));
             _blockTree = blockTree.AsReadOnly();
         }
 
