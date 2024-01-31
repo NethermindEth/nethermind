@@ -121,7 +121,10 @@ public class ColumnDb : IDb
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
     }
 
-    public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;
+    public bool KeyExists(ReadOnlySpan<byte> key)
+    {
+        return _mainDb.KeyExistsWithColumn(key, _columnFamily);
+    }
 
     public void Flush()
     {
