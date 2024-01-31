@@ -175,7 +175,7 @@ public class BodiesSyncFeedTests
         _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
         _syncConfig.PivotNumber = (AncientBarrierInConfig + 1_000_000).ToString();
         _syncingToBlockTree.LowestInsertedBodyNumber = JustStarted ? null : _pivotBlock.Number;
-        if (previousBarrierInDb != null)
+        if (previousBarrierInDb is not null)
             _metadataDb.Set(MetadataDbKeys.BodiesBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
         _feed.InitializeFeed();
         _syncingToBlockTree.LowestInsertedBodyNumber = lowestInsertedBlockNumber;

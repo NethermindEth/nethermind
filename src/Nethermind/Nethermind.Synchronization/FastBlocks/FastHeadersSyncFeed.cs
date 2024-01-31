@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted != null && lowestInserted!.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted!.Number < _pivotNumber)
             {
                 SetExpectedNextHeaderToParent(lowestInserted);
                 _lowestRequestedHeaderNumber = lowestInserted.Number;
@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.FastBlocks
             get
             {
                 long? lowest = LowestInsertedBlockHeader?.Number;
-                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
+                return lowest is not null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
 

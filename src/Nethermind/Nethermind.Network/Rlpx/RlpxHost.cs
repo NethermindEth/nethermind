@@ -181,6 +181,15 @@ namespace Nethermind.Network.Rlpx
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+
+                _ = connectTask.ContinueWith(async c =>
+                {
+                    if (connectTask.IsCompletedSuccessfully)
+                    {
+                        await c.Result.DisconnectAsync();
+                    }
+                });
+
                 throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 

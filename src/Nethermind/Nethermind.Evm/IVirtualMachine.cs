@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -18,6 +19,6 @@ namespace Nethermind.Evm
             where TTracingActions : struct, IIsTracing;
 
         CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec);
-        void InsertCode(byte[] code, Address codeOwner, IReleaseSpec spec);
+        void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec);
     }
 }

@@ -123,7 +123,7 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
             }
 
-            Span<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
+            ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
             rlpStream.Encode(dataZeroPrefix);
             rlpStream.Encode(withoutLeadingZero);
@@ -152,7 +152,7 @@ namespace Nethermind.Serialization.Rlp
             int topicsLength = GetTopicsLength(item);
             contentLength += Rlp.LengthOfSequence(topicsLength);
 
-            Span<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
+            ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();
             int dataZeroPrefix = item.Data.Length - withoutLeadingZero.Length;
             contentLength += Rlp.LengthOf(dataZeroPrefix);
             contentLength += Rlp.LengthOf(withoutLeadingZero);

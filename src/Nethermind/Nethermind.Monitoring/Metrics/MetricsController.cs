@@ -103,7 +103,7 @@ namespace Nethermind.Monitoring.Metrics
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
-            if (member.GetCustomAttribute<CounterMetricAttribute>() != null)
+            if (member.GetCustomAttribute<CounterMetricAttribute>() is not null)
             {
                 return meter.CreateObservableCounter(name, observer, description: description);
             }
