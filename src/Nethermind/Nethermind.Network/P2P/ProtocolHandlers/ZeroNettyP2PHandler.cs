@@ -119,11 +119,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
             else if (_session?.Node?.IsStatic != true)
             {
-                context.DisconnectAsync().ContinueWith(x =>
-                {
-                    if (x.IsFaulted && _logger.IsTrace)
-                        _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
-                });
+                _session.InitiateDisconnect(DisconnectReason.Exception, $"Exception in connection: {exception.GetType().Name} with message: {exception.Message}");
             }
             else
             {

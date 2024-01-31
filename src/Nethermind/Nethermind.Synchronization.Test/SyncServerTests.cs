@@ -77,7 +77,7 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             ctx.SyncServer.Find(TestItem.KeccakA);
-            ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
         }
 
         [TestCase(true, true, true)]
