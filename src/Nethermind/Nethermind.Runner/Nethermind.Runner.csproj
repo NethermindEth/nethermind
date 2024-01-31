@@ -119,8 +119,4 @@
     </ItemGroup>
   </Target>
 
-  <PropertyGroup>
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
-  </PropertyGroup>
-
 </Project>

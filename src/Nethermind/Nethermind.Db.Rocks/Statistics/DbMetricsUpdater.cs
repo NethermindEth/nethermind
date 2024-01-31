@@ -72,7 +72,7 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
     {
         foreach ((string Name, IDictionary<string, double> SubMetric) value in ExtractStatsFromStatisticString(dbStatsString))
         {
-            // The metric can be of several time, usually just a counter, but sometime its a histogram,
+            // The metric can be of several type, usually just a counter, but sometime its a histogram,
             // in which case we take both the sum and count.
             if (value.SubMetric.TryGetValue("SUM", out var valueSum))
             {

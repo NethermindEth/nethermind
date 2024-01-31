@@ -29,9 +29,6 @@ namespace Nethermind.Db.Test
             string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_AllData.txt");
             new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
 
-            var theStas = Metrics.DbStats;
-            Console.Out.WriteLine($"The stats {theStas}");
-
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(11));
             Assert.That(Metrics.DbStats[("TestDb", "Level0Files")], Is.EqualTo(2));
             Assert.That(Metrics.DbStats[("TestDb", "Level0FilesCompacted")], Is.EqualTo(0));

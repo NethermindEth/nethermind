@@ -85,12 +85,6 @@ namespace Nethermind.Db
             return _cache.ContainsKey(key);
         }
 
-        public long GetSize() => 0;
-        public long GetCacheSize(bool includeSharedCache) => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
-
-        public IDb Innermost => this;
         public void Flush() { }
         public void Clear()
         {
