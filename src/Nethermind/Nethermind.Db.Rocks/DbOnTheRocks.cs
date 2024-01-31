@@ -427,7 +427,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             // So the bottommost level is about 80-90% of the database. So it may make sense to only compress that
             // part, which make the top level faster, and/or mmap-able.
             options.SetCompression(Compression.No);
-            _rocksDbNative.rocksdb_options_get_bottommost_compression(0x1); // 0x1 is snappy.
+            _rocksDbNative.rocksdb_options_set_bottommost_compression(options.Handle, 0x1); // 0x1 is snappy.
         }
 
         // Target size of each SST file. Increase to reduce number of file. Default is 64MB.
