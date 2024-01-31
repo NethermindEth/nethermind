@@ -24,7 +24,7 @@ namespace Nethermind.Db.Rocks;
 
 public class DbOnTheRocks : IDb, ITunableDb
 {
-    private ILogger _logger;
+    protected ILogger _logger;
 
     private string? _fullPath;
 
@@ -237,16 +237,21 @@ public class DbOnTheRocks : IDb, ITunableDb
             Metrics.OtherDbWrites++;
     }
 
+    protected virtual long FetchTotalPropertyValue(string propertyName)
+    {
+        long value = long.TryParse(_db.GetProperty(propertyName), out long parsedValue)
+            ? parsedValue
+            : 0;
+
+        return value;
+    }
+
     public long GetSize()
     {
         try
         {
-            long sstSize = long.TryParse(_db.GetProperty("rocksdb.total-sst-files-size"), out long totalSstFilesSize)
-                ? totalSstFilesSize
-                : 0;
-            long blobSize = long.TryParse(_db.GetProperty("rocksdb.total-blob-file-size"), out long totalBlobFileSize)
-                ? totalBlobFileSize
-                : 0;
+            long sstSize = FetchTotalPropertyValue("rocksdb.total-sst-files-size");
+            long blobSize = FetchTotalPropertyValue("rocksdb.total-blob-file-size");
             return sstSize + blobSize;
         }
         catch (RocksDbSharpException e)
@@ -258,11 +263,16 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
-    public long GetCacheSize()
+    public long GetCacheSize(bool includeSharedCache = false)
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.block-cache-usage"), out long size) ? size : 0;
+            if (_cache == null && !includeSharedCache)
+            {
+                // returning 0 as we are using shared cache.
+                return 0;
+            }
+            return FetchTotalPropertyValue("rocksdb.block-cache-usage");
         }
         catch (RocksDbSharpException e)
         {
@@ -277,7 +287,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.estimate-table-readers-mem"), out long size) ? size : 0;
+            return FetchTotalPropertyValue("rocksdb.estimate-table-readers-mem");
         }
         catch (RocksDbSharpException e)
         {
@@ -292,7 +302,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            return long.TryParse(_db.GetProperty("rocksdb.cur-size-all-mem-tables"), out long size) ? size : 0;
+            return FetchTotalPropertyValue("rocksdb.cur-size-all-mem-tables");
         }
         catch (RocksDbSharpException e)
         {

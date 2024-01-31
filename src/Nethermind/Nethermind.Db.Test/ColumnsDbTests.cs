@@ -68,6 +68,18 @@ public class ColumnsDbTests
     }
 
     [Test]
+    public void SmokeTestMemtableSize()
+    {
+        IDb colA = _db.GetColumnDb(TestColumns.ColumnA);
+        IDb colB = _db.GetColumnDb(TestColumns.ColumnB);
+
+        colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
+        colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
+
+        _db.GetMemtableSize().Should().Be(22544);
+    }
+
+    [Test]
     public void SmokeTestDefaultColumn()
     {
         IDb defaultCol = _db.GetColumnDb(TestColumns.Default);

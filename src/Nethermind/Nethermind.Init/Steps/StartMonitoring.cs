@@ -102,17 +102,16 @@ public class StartMonitoring : IStep
                 Db.Metrics.MetadataDbSize = dbProvider.MetadataDb.GetSize();
                 Db.Metrics.WitnessDbSize = dbProvider.WitnessDb.GetSize();
 
-                Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize()
-                                                    + dbProvider.BlockInfosDb.GetCacheSize()
-                                                    + dbProvider.HeadersDb.GetCacheSize()
-                                                    + dbProvider.BlocksDb.GetCacheSize()
-                                                    + dbProvider.ReceiptsDb.GetCacheSize();
-                // Share same cache with StateDb
-                // + dbProvider.ChtDb.GetCacheSize()
-                // + dbProvider.MetadataDb.GetCacheSize()
-                // + dbProvider.WitnessDb.GetCacheSize()
-                // + dbProvider.CodeDb.GetCacheSize()
-                // + dbProvider.BloomDb.GetCacheSize()
+                Db.Metrics.DbBlockCacheMemorySize = dbProvider.StateDb.GetCacheSize(includeSharedCache: true)
+                                                    + dbProvider.ReceiptsDb.GetIndexSize()
+                                                    + dbProvider.HeadersDb.GetIndexSize()
+                                                    + dbProvider.BlocksDb.GetIndexSize()
+                                                    + dbProvider.BloomDb.GetIndexSize()
+                                                    + dbProvider.CodeDb.GetIndexSize()
+                                                    + dbProvider.BlockInfosDb.GetIndexSize()
+                                                    + dbProvider.ChtDb.GetIndexSize()
+                                                    + dbProvider.MetadataDb.GetIndexSize()
+                                                    + dbProvider.WitnessDb.GetIndexSize();
 
                 Db.Metrics.DbIndexFilterMemorySize = dbProvider.StateDb.GetIndexSize()
                                                     + dbProvider.ReceiptsDb.GetIndexSize()

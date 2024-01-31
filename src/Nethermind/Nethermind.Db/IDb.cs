@@ -22,7 +22,7 @@ namespace Nethermind.Db
     public interface IDbMeta
     {
         long GetSize() => 0;
-        long GetCacheSize() => 0;
+        long GetCacheSize(bool includeSharedCache = false) => 0;
         long GetIndexSize() => 0;
         long GetMemtableSize() => 0;
 
