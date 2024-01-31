@@ -178,9 +178,8 @@ jobs:
         run: |
           image=nethermind/nethermind
 
-          for suffix in "" ".chiseled"
-          do
-            if [[ $suffix = ".chiseled" ]]; then tag_suffix="-chiseled"; else tag_suffix=""; fi
+          for suffix in "" ".chiseled"; do
+            if [[ $suffix == ".chiseled" ]]; then tag_suffix="-chiseled"; else tag_suffix=""; fi
 
             docker buildx build --platform=linux/amd64,linux/arm64 -f Dockerfile$suffix \
               ${{ needs.build.outputs.prerelease == 'false' && '-t $image:latest$tag_suffix' || '' }} \
