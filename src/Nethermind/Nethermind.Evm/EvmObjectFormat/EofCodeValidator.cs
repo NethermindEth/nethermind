@@ -682,47 +682,6 @@ internal static class EvmObjectFormat
                 ArrayPool<byte>.Shared.Return(jumpdests, true);
             }
         }
-        public bool ValidateReachableCode(in ReadOnlySpan<byte> code, short[] reachedOpcode)
-        {
-            for (int pos = 0; pos < code.Length;)
-            {
-                var opcode = (Instruction)code[pos];
-
-                if (reachedOpcode[pos] == 0)
-                {
-                    return false;
-                }
-
-                pos++;
-                switch(opcode)
-                {
-                    case Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF:
-                        pos += TWO_BYTE_LENGTH; break;
-                    case Instruction.JUMPF:
-                        pos += TWO_BYTE_LENGTH; break; // maybe should break looping and consider leftover code unreachable?
-                    case Instruction.RJUMPV:
-                        byte maxIndex = code[pos];
-                        pos += ONE_BYTE_LENGTH + (maxIndex + 1) * TWO_BYTE_LENGTH;
-                        break;
-                    case Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE:
-                        pos += ONE_BYTE_LENGTH; break;
-                    case Instruction.CREATE3:
-                        pos += ONE_BYTE_LENGTH; break;
-                    case Instruction.DATALOADN:
-                        pos += TWO_BYTE_LENGTH; break;
-                    case Instruction.RETURNCONTRACT:
-                        pos += ONE_BYTE_LENGTH; break;
-                    default:
-                        if(opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
-                        {
-                            int len = opcode - Instruction.PUSH0;
-                            pos += len;
-                        }
-                        break;
-                }
-            }
-            return true;
-        }
         public bool ValidateStackState(int sectionId, in ReadOnlySpan<byte> code, in ReadOnlySpan<byte> typesection, ushort worksetCount)
         {
             static Worklet PopWorklet(Worklet[] workset, ref ushort worksetPointer) => workset[worksetPointer++];
@@ -894,7 +853,7 @@ internal static class EvmObjectFormat
                     }
                 }
 
-                if (!ValidateReachableCode(code, recordedStackHeight))
+                if (unreachedBytes > 0)
                 {
                     if (Logger.IsTrace) Logger.Trace($"EIP-5450 : bytecode has unreachable segments");
                     return false;
