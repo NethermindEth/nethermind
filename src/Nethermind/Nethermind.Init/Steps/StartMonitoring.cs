@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
@@ -134,7 +135,15 @@ public class StartMonitoring : IStep
                 IDbMeta.DbMetric chtDbMetric = dbProvider.ChtDb.GatherMetric();
                 IDbMeta.DbMetric metadataDbMetric = dbProvider.MetadataDb.GatherMetric();
                 IDbMeta.DbMetric witnessDbMetric = dbProvider.WitnessDb.GatherMetric();
-                IDbMeta.DbMetric blobTransactionDbMetric = dbProvider.BlobTransactionsDb.GatherMetric();
+                IDbMeta.DbMetric blobTransactionDbMetric = new IDbMeta.DbMetric();
+                try
+                {
+                    blobTransactionDbMetric = dbProvider.BlobTransactionsDb.GatherMetric();
+                }
+                catch (ArgumentException)
+                {
+                    // Sometime its not registered.
+                }
 
                 Db.Metrics.StateDbSize = stateDbMetric.Size;
                 Db.Metrics.StateDbReads = stateDbMetric.TotalReads;
