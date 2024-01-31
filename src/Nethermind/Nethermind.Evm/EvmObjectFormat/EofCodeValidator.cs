@@ -704,9 +704,8 @@ internal static class EvmObjectFormat
                 while (worksetPointer < worksetTop)
                 {
                     Worklet worklet = PopWorklet(workset, ref worksetPointer);
-                    bool stop = false;
 
-                    while (!stop)
+                    while (worklet.Position < code.Length)
                     {
                         Instruction opcode = (Instruction)code[worklet.Position];
                         (ushort? inputs, ushort? outputs, ushort? immediates) = opcode.StackRequirements();
@@ -795,7 +794,6 @@ internal static class EvmObjectFormat
                                     short offset = code.Slice(posPostInstruction, immediates.Value).ReadEthInt16();
                                     int jumpDestination = posPostInstruction + immediates.Value + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
-                                    stop = true;
                                     unreachedBytes -= immediates.Value;
                                     break;
                                 }
@@ -832,7 +830,6 @@ internal static class EvmObjectFormat
                         }
 
                         worklet.Position = posPostInstruction;
-                        if (stop) break;
 
                         if (opcode.IsTerminating())
                         {
