@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers;
+using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -20,10 +22,12 @@ public class BlockStore : IBlockStore
 
     private readonly LruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
+    private long? _maxSize;
 
-    public BlockStore(IDb blockDb)
+    public BlockStore(IDb blockDb, long? maxSize = null)
     {
         _blockDb = blockDb;
+        _maxSize = maxSize;
     }
 
     public void SetMetadata(byte[] key, byte[] value)
@@ -34,6 +38,18 @@ public class BlockStore : IBlockStore
     public byte[]? GetMetadata(byte[] key)
     {
         return _blockDb.Get(key);
+    }
+
+    private void TruncateToMaxSize()
+    {
+        int toDelete = (int)(_blockDb.GetSize() - _maxSize!);
+        if (toDelete > 0)
+        {
+            foreach (var blockToDelete in GetAll().Take(toDelete))
+            {
+                Delete(blockToDelete.Number, blockToDelete.Hash);
+            }
+        }
     }
 
     public void Insert(Block block, WriteFlags writeFlags = WriteFlags.None)
@@ -48,6 +64,11 @@ public class BlockStore : IBlockStore
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);
+
+        if (_maxSize is not null)
+        {
+            TruncateToMaxSize();
+        }
     }
 
     private static void GetBlockNumPrefixedKey(long blockNumber, Hash256 blockHash, Span<byte> output)
@@ -63,11 +84,11 @@ public class BlockStore : IBlockStore
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, bool shouldCache = false)
+    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
-        if (b != null) return b;
-        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        if (b is not null) return b;
+        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -76,7 +97,7 @@ public class BlockStore : IBlockStore
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        if (memoryOwner == null)
+        if (memoryOwner is null)
         {
             memoryOwner = _blockDb.GetOwnedMemory(blockHash.Bytes);
         }
@@ -87,5 +108,10 @@ public class BlockStore : IBlockStore
     public void Cache(Block block)
     {
         _blockCache.Set(block.Hash, block);
+    }
+
+    public IEnumerable<Block> GetAll()
+    {
+        return _blockDb.GetAllValues(true).Select(bytes => _blockDecoder.Decode(bytes.AsRlpStream()));
     }
 }

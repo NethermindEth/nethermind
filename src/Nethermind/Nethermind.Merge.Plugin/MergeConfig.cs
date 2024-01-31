@@ -29,7 +29,7 @@ namespace Nethermind.Merge.Plugin
 
         public GcCompaction CompactMemory { get; set; } = GcCompaction.Yes;
 
-        public int CollectionsPerDecommit { get; set; } = 75;
+        public int CollectionsPerDecommit { get; set; } = 25;
 
         public int NewPayloadTimeout { get; set; } = 7;
     }

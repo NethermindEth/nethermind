@@ -115,22 +115,28 @@ namespace Nethermind.Serialization.Rlp
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     rlpStream.Check(positionAfterNetworkWrapper);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+                {
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
             }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHashNoLock(transactionSequence);
-            }
-            else
-            {
-                // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+                else
+                {
+                    // Just calculate the Hash as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
+                }
             }
 
             return transaction;
@@ -480,33 +486,39 @@ namespace Nethermind.Serialization.Rlp
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     decoderContext.Check(networkWrapperCheck);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
-            }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
                 {
-                    // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
+            }
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+            {
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    if (decoderContext.ShouldSliceMemory)
+                    {
+                        // Do not copy the memory in this case.
+                        int currentPosition = decoderContext.Position;
+                        decoderContext.Position = txSequenceStart;
+                        transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                        decoderContext.Position = currentPosition;
+                    }
+                    else
+                    {
+                        transaction.SetPreHashNoLock(transactionSequence);
+                    }
                 }
                 else
                 {
-                    transaction.SetPreHashNoLock(transactionSequence);
+                    // Just calculate the Hash immediately as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
                 }
-            }
-            else
-            {
-                // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
 
