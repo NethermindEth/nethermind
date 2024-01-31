@@ -206,8 +206,28 @@ namespace Nethermind.Db
         [Description("Size of total unmanaged memory for DB in bytes")]
         public static long DbTotalMemorySize { get; set; }
 
+        [GaugeMetric]
+        [Description("Database size per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, double> DbSize { get; set; } = new ConcurrentDictionary<string, double>();
+
+        [GaugeMetric]
+        [Description("Database memtable per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, double> MemtableSize { get; set; } = new ConcurrentDictionary<string, double>();
+
+        [GaugeMetric]
+        [Description("Database block cache size per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, double> BlockCacheSize { get; set; } = new ConcurrentDictionary<string, double>();
+
+        [GaugeMetric]
+        [Description("Database index and filter size per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, double> IndexFilterSize { get; set; } = new ConcurrentDictionary<string, double>();
+
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
-        [KeyIsLabel("dbName", "metric")]
+        [KeyIsLabel("db", "metric")]
         public static IDictionary<(string, string), double> DbStats { get; set; } = new ConcurrentDictionary<(string, string), double>();
     }
 }

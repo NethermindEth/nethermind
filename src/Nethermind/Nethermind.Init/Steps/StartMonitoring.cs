@@ -91,6 +91,15 @@ public class StartMonitoring : IStep
                     return;
                 }
 
+                foreach (KeyValuePair<string,IDbMeta> kv in dbProvider.GetAllDbMeta())
+                {
+                    Db.Metrics.DbSize[kv.Key] = kv.Value.GetSize();
+                    Db.Metrics.BlockCacheSize[kv.Key] = kv.Value.GetCacheSize(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
+                    Db.Metrics.MemtableSize[kv.Key] = kv.Value.GetMemtableSize();
+                    Db.Metrics.IndexFilterSize[kv.Key] = kv.Value.GetIndexSize();
+                }
+
+                // Please don't use these anymore. Just use label...
                 Db.Metrics.StateDbSize = dbProvider.StateDb.GetSize();
                 Db.Metrics.ReceiptsDbSize = dbProvider.ReceiptsDb.GetSize();
                 Db.Metrics.HeadersDbSize = dbProvider.HeadersDb.GetSize();
@@ -138,6 +147,7 @@ public class StartMonitoring : IStep
                 Db.Metrics.DbTotalMemorySize = Db.Metrics.DbBlockCacheMemorySize
                                                 + Db.Metrics.DbIndexFilterMemorySize
                                                 + Db.Metrics.DbMemtableMemorySize;
+
             });
         }
 
