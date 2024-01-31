@@ -8,7 +8,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Synchronization.LesSync
 {
-    public class ChtDecoder : IRlpStreamDecoder<(Hash256?, UInt256)>
+    public class ChtDecoder : IRlpStreamDecoder<(Hash256?, UInt256)>, IRlpValueDecoder<(Hash256?, UInt256)>
     {
         public (Hash256?, UInt256) Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -52,6 +52,20 @@ namespace Nethermind.Synchronization.LesSync
         {
             (Hash256? hash, UInt256 totalDifficulty) = item;
             return Rlp.LengthOf(hash) + Rlp.LengthOf(totalDifficulty);
+        }
+
+        public (Hash256?, UInt256) Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return (null, 0);
+            }
+
+            decoderContext.ReadSequenceLength();
+            Hash256 hash = decoderContext.DecodeKeccak();
+            UInt256 totalDifficulty = decoderContext.DecodeUInt256();
+            return (hash, totalDifficulty);
         }
     }
 }

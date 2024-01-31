@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Messages
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
             (int totalLength, int innerLength) length = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), force: true);
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(length.totalLength);
             stream.Encode(msg.P2PVersion);

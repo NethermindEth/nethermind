@@ -7,6 +7,7 @@ using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -89,7 +90,7 @@ namespace Nethermind.State.Proofs
                 _accountProof.StorageProofs[i] = new StorageProof();
                 // we don't know the key (index)
                 //_accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = new byte[] { 0 };
+                _accountProof.StorageProofs[i].Value = Bytes.ZeroByte;
             }
         }
 
@@ -117,7 +118,7 @@ namespace Nethermind.State.Proofs
 
                 _accountProof.StorageProofs[i] = new StorageProof();
                 _accountProof.StorageProofs[i].Key = storageKeys[i];
-                _accountProof.StorageProofs[i].Value = new byte[] { 0 };
+                _accountProof.StorageProofs[i].Value = Bytes.ZeroByte;
             }
         }
 
@@ -271,7 +272,7 @@ namespace Nethermind.State.Proofs
             }
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             AddProofItem(node, trieVisitContext);
             _nodeToVisitFilter.Remove(node.Keccak);

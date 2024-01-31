@@ -307,7 +307,7 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(Hash256 codeHash)
+        public void TouchCode(in ValueHash256 codeHash)
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
@@ -324,12 +324,13 @@ namespace Nethermind.State
         public byte[] GetCode(Hash256 codeHash)
         {
             byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
-            if (code is null)
-            {
-                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-            }
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+        }
 
-            return code;
+        public byte[] GetCode(ValueHash256 codeHash)
+        {
+            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         public byte[] GetCode(Address address)

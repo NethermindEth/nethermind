@@ -15,7 +15,7 @@ namespace Nethermind.AccountAbstraction.Network
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             nettyRlpStream.StartSequence(contentLength);

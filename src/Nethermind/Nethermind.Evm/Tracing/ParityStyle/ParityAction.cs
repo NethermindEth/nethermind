@@ -22,6 +22,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         public long Gas { get; set; }
         public UInt256 Value { get; set; }
         public byte[]? Input { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public ParityTraceResult? Result { get; set; } = new();
         public List<ParityTraceAction> Subtraces { get; set; } = new();
         public Address? Author { get; set; }

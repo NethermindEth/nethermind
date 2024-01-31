@@ -122,11 +122,8 @@ public class ZeroNettyP2PHandler : SimpleChannelInboundHandler<ZeroPacket>
         }
         else if (_session?.Node?.IsStatic != true)
         {
-            context.DisconnectAsync().ContinueWith(x =>
-            {
-                if (x.IsFaulted && _logger.IsTrace)
-                    _logger.Trace($"Error while disconnecting on context on {this} : {x.Exception}");
-            });
+            _session.InitiateDisconnect(DisconnectReason.Exception,
+                $"Error in communication with {clientId} ({exception.GetType().Name}): {exception.Message}");
         }
         else
         {

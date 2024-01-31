@@ -823,9 +823,9 @@ public class TraceRpcModuleTests
             .WithGasLimit(50000)
             .WithGasPrice(10).SignedAndResolved(TestItem.PrivateKeyA).TestObject;
 
-        Account accountA = blockchain.State.GetAccount(TestItem.AddressA);
-        Account accountD = blockchain.State.GetAccount(TestItem.AddressD);
-        Account accountF = blockchain.State.GetAccount(TestItem.AddressF);
+        AccountStruct accountA = blockchain.State.GetAccount(TestItem.AddressA);
+        AccountStruct accountD = blockchain.State.GetAccount(TestItem.AddressD);
+        AccountStruct accountF = blockchain.State.GetAccount(TestItem.AddressF);
 
         string[] traceTypes = { "stateDiff" };
 

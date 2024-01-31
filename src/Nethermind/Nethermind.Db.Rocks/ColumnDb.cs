@@ -143,7 +143,7 @@ public class ColumnDb : IDb
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
-    public void DangerousReleaseMemory(in Span<byte> span)
+    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         _mainDb.DangerousReleaseMemory(span);
     }
