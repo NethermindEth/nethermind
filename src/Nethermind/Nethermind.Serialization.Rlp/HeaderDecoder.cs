@@ -85,9 +85,14 @@ namespace Nethermind.Serialization.Rlp
                     blockHeader.ExcessBlobGas = decoderContext.DecodeULong();
                 }
 
-                if (itemsRemaining == 4 && decoderContext.Position != headerCheck)
+                if (itemsRemaining >= 4 && decoderContext.Position != headerCheck)
                 {
                     blockHeader.ParentBeaconBlockRoot = decoderContext.DecodeKeccak();
+                }
+
+                if (itemsRemaining == 5 && decoderContext.Position != headerCheck)
+                {
+                    blockHeader.ValidatorExitsRoot = decoderContext.DecodeKeccak();
                 }
             }
 
@@ -172,9 +177,14 @@ namespace Nethermind.Serialization.Rlp
                     blockHeader.ExcessBlobGas = rlpStream.DecodeUlong();
                 }
 
-                if (itemsRemaining == 4 && rlpStream.Position != headerCheck)
+                if (itemsRemaining >= 4 && rlpStream.Position != headerCheck)
                 {
                     blockHeader.ParentBeaconBlockRoot = rlpStream.DecodeKeccak();
+                }
+
+                if (itemsRemaining == 5 && rlpStream.Position != headerCheck)
+                {
+                    blockHeader.ValidatorExitsRoot = rlpStream.DecodeKeccak();
                 }
             }
 
@@ -245,6 +255,11 @@ namespace Nethermind.Serialization.Rlp
             {
                 rlpStream.Encode(header.ParentBeaconBlockRoot);
             }
+
+            if (header.ValidatorExitsRoot is not null)
+            {
+                rlpStream.Encode(header.ValidatorExitsRoot);
+            }
         }
 
         public Rlp Encode(BlockHeader? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -286,7 +301,8 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.WithdrawalsRoot is null && item.BlobGasUsed is null && item.ExcessBlobGas is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
-                                + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value));
+                                + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
+                                + (item.ValidatorExitsRoot is null ? 0 : Rlp.LengthOf(item.ValidatorExitsRoot));
 
             if (notForSealing)
             {

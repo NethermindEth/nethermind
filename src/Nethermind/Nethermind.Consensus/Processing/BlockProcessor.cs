@@ -250,13 +250,7 @@ public partial class BlockProcessor : IBlockProcessor
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        if (spec.IsEip7002Enabled)
-        {
-            ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
-            // TODO: make function
-            Hash256 root = new ValidatorExitsTrie(validatorExits, true).RootHash;
-            block.Header.ValidatorExitsRoot = root;
-        }
+        ProcessValidatorExits(block, spec);
 
         ReceiptsTracer.EndBlockTrace();
 
@@ -271,6 +265,19 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
+    }
+
+    private void ProcessValidatorExits(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7002Enabled)
+        {
+            return;
+        }
+
+        ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
+        Hash256 root = new ValidatorExitsTrie(validatorExits, true).RootHash;
+        block.Body.ValidatorExits = validatorExits;
+        block.Header.ValidatorExitsRoot = root;
     }
 
     // TODO: block processor pipeline

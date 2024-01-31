@@ -4,6 +4,7 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -13,6 +14,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly TxDecoder _txDecoder = new();
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
+        private readonly ValidatorExitsDecoder _validatorExitsDecoder = new();
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -52,8 +54,53 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.Check(unclesCheck);
 
-            List<Withdrawal> withdrawals = null;
+            List<Withdrawal>? withdrawals = DecodeWithdrawals(rlpStream, blockCheck);
+            List<ValidatorExit>? validatorExits = DecodeValidatorExits(rlpStream, blockCheck);
 
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                rlpStream.Check(blockCheck);
+            }
+
+            return new(header, transactions, uncleHeaders, withdrawals, validatorExits);
+        }
+
+        private List<ValidatorExit>? DecodeValidatorExits(RlpStream rlpStream, int blockCheck)
+        {
+            List<ValidatorExit>? validatorExits = null;
+            if (rlpStream.Position != blockCheck)
+            {
+                bool lengthWasRead = true;
+                try
+                {
+                    rlpStream.PeekNextRlpLength();
+                }
+                catch
+                {
+                    lengthWasRead = false;
+                }
+
+                if (lengthWasRead)
+                {
+                    int validatorExistsLength = rlpStream.ReadSequenceLength();
+                    int validatorExistsCheck = rlpStream.Position + validatorExistsLength;
+                    validatorExits = new();
+
+                    while (rlpStream.Position < validatorExistsCheck)
+                    {
+                        validatorExits.Add(_validatorExitsDecoder.Decode(rlpStream));
+                    }
+
+                    rlpStream.Check(validatorExistsCheck);
+                }
+            }
+
+            return validatorExits;
+        }
+
+        private List<Withdrawal>? DecodeWithdrawals(RlpStream rlpStream, int blockCheck)
+        {
+            List<Withdrawal>? withdrawals = null;
             if (rlpStream.Position != blockCheck)
             {
                 bool lengthWasRead = true;
@@ -81,15 +128,10 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
-            {
-                rlpStream.Check(blockCheck);
-            }
-
-            return new(header, transactions, uncleHeaders, withdrawals);
+            return withdrawals;
         }
 
-        private (int Total, int Txs, int Uncles, int? Withdrawals) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Txs, int Uncles, int? Withdrawals, int? ValidatorExits) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
@@ -108,7 +150,25 @@ namespace Nethermind.Serialization.Rlp
                     contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
             }
 
-            return (contentLength, txLength, unclesLength, withdrawalsLength);
+            int? validatorExitsLength = GetValidatorExitsLength(item, rlpBehaviors);
+            contentLength += validatorExitsLength ?? 0;
+
+            return (contentLength, txLength, unclesLength, withdrawalsLength, validatorExitsLength);
+        }
+
+        private int? GetValidatorExitsLength(Block item, RlpBehaviors rlpBehaviors)
+        {
+            if (item.ValidatorExits is null)
+                return null;
+
+            int validatorExistsLength = 0;
+
+            for (int i = 0, count = item.ValidatorExits.Length; i < count; i++)
+            {
+                validatorExistsLength += _validatorExitsDecoder.GetLength(item.ValidatorExits[i], rlpBehaviors);
+            }
+
+            return validatorExistsLength;
         }
 
         private int GetUnclesLength(Block item, RlpBehaviors rlpBehaviors)
@@ -191,7 +251,20 @@ namespace Nethermind.Serialization.Rlp
 
             decoderContext.Check(unclesCheck);
 
-            List<Withdrawal> withdrawals = null;
+            List<Withdrawal>? withdrawals = DecodeWithdrawals(ref decoderContext, blockCheck);
+            List<ValidatorExit>? validatorExits = DecodeValidatorExits(ref decoderContext, blockCheck);
+
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                decoderContext.Check(blockCheck);
+            }
+
+            return new(header, transactions, uncleHeaders, withdrawals, validatorExits);
+        }
+
+        private List<Withdrawal>? DecodeWithdrawals(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
+        {
+            List<Withdrawal>? withdrawals = null;
 
             if (decoderContext.Position != blockCheck)
             {
@@ -207,12 +280,28 @@ namespace Nethermind.Serialization.Rlp
                 decoderContext.Check(withdrawalsCheck);
             }
 
-            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            return withdrawals;
+        }
+
+        private List<ValidatorExit>? DecodeValidatorExits(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
+        {
+            List<ValidatorExit>? validatorExits = null;
+
+            if (decoderContext.Position != blockCheck)
             {
-                decoderContext.Check(blockCheck);
+                int validatorExitLength = decoderContext.ReadSequenceLength();
+                int validatorExitsCheck = decoderContext.Position + validatorExitLength;
+                validatorExits = new();
+
+                while (decoderContext.Position < validatorExitsCheck)
+                {
+                    validatorExits.Add(_validatorExitsDecoder.Decode(ref decoderContext));
+                }
+
+                decoderContext.Check(validatorExitsCheck);
             }
 
-            return new(header, transactions, uncleHeaders, withdrawals);
+            return validatorExits;
         }
 
         public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -235,7 +324,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? validatorExitsLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.Header);
             stream.StartSequence(txsLength);
@@ -257,6 +346,16 @@ namespace Nethermind.Serialization.Rlp
                 for (int i = 0; i < item.Withdrawals.Length; i++)
                 {
                     stream.Encode(item.Withdrawals[i]);
+                }
+            }
+
+            if (validatorExitsLength.HasValue)
+            {
+                stream.StartSequence(validatorExitsLength.Value);
+
+                for (int i = 0; i < item.ValidatorExits!.Length; i++)
+                {
+                    _validatorExitsDecoder.Encode(stream, item.ValidatorExits[i]);
                 }
             }
         }

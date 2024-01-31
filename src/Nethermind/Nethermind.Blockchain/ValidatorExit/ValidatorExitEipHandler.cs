@@ -13,38 +13,13 @@ namespace Nethermind.Blockchain.ValidatorExit;
 public class ValidatorExitEipHandler : IValidatorExitEipHandler
 {
     // private static readonly UInt256 ExcessExitsStorageSlot = 0;
-    private static readonly UInt256 ExitCountStorageSlot = 1;
+    // private static readonly UInt256 ExitCountStorageSlot = 1;
     private static readonly UInt256 ExitMessageQueueHeadStorageSlot = 2;
     private static readonly UInt256 ExitMessageQueueTailStorageSlot = 3;
     private static readonly UInt256 ExitMessageQueueStorageOffset = 4;
     private static readonly UInt256 MaxExitsPerBlock = 16;
 
-
-    // Updates storage of the precompile after block processing
-    public void UpdateExitPrecompile(IReleaseSpec spec, IWorldState state)
-    {
-        UpdateExitQueue(spec, state);
-        UpdateExcessExits(spec, state);
-        ResetExitCount(spec, state);
-    }
-
-    private static void UpdateExitQueue(IReleaseSpec spec, IWorldState state)
-    {
-
-    }
-
-    private static void UpdateExcessExits(IReleaseSpec spec, IWorldState state)
-    {
-
-    }
-
-    private static void ResetExitCount(IReleaseSpec spec, IWorldState state)
-    {
-        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, ExitCountStorageSlot);
-        state.Set(exitCountCell, UInt256.Zero.ToBigEndian());
-    }
-
-    // Writes withdrawals information from the precompile to the block
+    // Reads validator exit information from the precompile
     public ValidatorExit[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state)
     {
         StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, ExitMessageQueueHeadStorageSlot);
@@ -63,9 +38,10 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
             StorageCell sourceAddressCell = new(spec.Eip7002ContractAddress, queueStorageSlot);
             StorageCell validatorAddressFirstCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 1);
             StorageCell validatorAddressSecondCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 2);
-            Address sourceAddress = new(state.Get(sourceAddressCell)[..32]);
+            Address sourceAddress = new(state.Get(sourceAddressCell)[..20].ToArray());
             byte[] validatorPubkey =
-                state.Get(validatorAddressFirstCell)[..32].Concat(state.Get(validatorAddressSecondCell)[..16])
+                state.Get(validatorAddressFirstCell)[..32].ToArray()
+                    .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
             validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey };
         }
