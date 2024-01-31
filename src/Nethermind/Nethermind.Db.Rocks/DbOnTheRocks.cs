@@ -1124,19 +1124,19 @@ public class DbOnTheRocks : IDb, ITunableDb
                 // l0 the same size as l1, but keep the LSM the same. This improve flush parallelization, and
                 // write amplification due to mismatch of l0 and l1 size, but does not reduce compaction from other
                 // levels.
-                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase / (ulong)8.MiB()));
+                ApplyOptions(GetHeavyWriteOptions(_perTableDbConfig.MaxBytesForLevelBase));
                 break;
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions(256));
+                ApplyOptions(GetHeavyWriteOptions((ulong) 4.GiB()));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when, you are desperate, but don't wanna disable compaction completely, because you don't want
                 // peers to drop. Tend to be faster than disabling compaction completely, except if your ratelimit
                 // is a bit low and your compaction is lagging behind, which will trigger slowdown, so sync will hang
                 // intermittently, but at least peer count is stable.
-                ApplyOptions(GetHeavyWriteOptions(1024));
+                ApplyOptions(GetHeavyWriteOptions((ulong) 16.GiB()));
                 break;
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 10800.
@@ -1214,7 +1214,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     ///  This caps the maximum allowed number of l0 files, which is also the read response time amplification.
     /// </param>
     /// <returns></returns>
-    private static IDictionary<string, string> GetHeavyWriteOptions(ulong l0FileNumTarget)
+    private static IDictionary<string, string> GetHeavyWriteOptions(ulong l0SizeTarget)
     {
         // Make buffer (probably) smaller so that it does not take too much memory to have many of them.
         // More buffer means more parallel flush, but each read have to go through all buffer one by one much like l0
@@ -1227,6 +1227,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // Guide recommend to have l0 and l1 to be the same size. They have to be compacted together so if l1 is larger,
         // the extra size in l1 is basically extra rewrites. If l0 is larger... then I don't know why not. Even so, it seems to
         // always get triggered when l0 size exceed max_bytes_for_level_base even if file num is less than l0FileNumTarget.
+        ulong l0FileNumTarget = l0SizeTarget / l0SizeTarget;
         ulong l1SizeTarget = l0FileNumTarget * bufferSize;
 
         return new Dictionary<string, string>()
@@ -1250,7 +1251,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private static IDictionary<string, string> GetDisableCompactionOptions()
     {
-        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions(2048);
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions((ulong) 32.GiB());
 
         heavyWriteOption["disable_auto_compactions"] = "true";
         // Increase the size of the write buffer, which reduces the number of l0 file by 4x. This does slows down
