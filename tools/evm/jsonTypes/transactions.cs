@@ -1,4 +1,5 @@
 using Nethermind.Core;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
@@ -10,6 +11,7 @@ namespace JsonTypes
         //TODO: Figure out which are optional and which fields are missing
         public string? Input { get; set; }
         public string Gas { get; set; }
+        public string Hash { get; set; }
         public string? Nonce { get; set; }
         public Address To { get; set; } = Address.Zero;
         public string Value { get; set; } = "0x0";
@@ -22,7 +24,7 @@ namespace JsonTypes
         public string? MaxFeePerGas { get; set; }
         public string? GasPrice { get; set; }
         public string? MaxPriorityFeePerGas { get; set; }
-        public object[]? AccessList { get; set; }
+        public AccessList? AccessList { get; set; }
         public bool? Protected { get; set; }
 
         //public void convert(Transaction t)

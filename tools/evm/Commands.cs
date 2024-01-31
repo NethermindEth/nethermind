@@ -177,21 +177,10 @@ public class T8N
         }
 
 
-
-        HashSet<Address> accounts = new();
-
         //NOTE: This is not working correctly
         foreach (JsonTypes.Transaction jsonTx in txsJson)
         {
-            //TODO: Support other than legacy tx and make this a function
-            Transaction tx = new Transaction();
-            tx.Value = Bytes.FromHexString(jsonTx.Value).ToUInt256();
-            tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
-            tx.Data = Bytes.FromHexString(jsonTx.Input);
-            tx.To = jsonTx.To;
-            tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
-            tx.GasPrice = Bytes.FromHexString(jsonTx.GasPrice).ToUInt256();
-
+            Transaction tx = convertToTx(jsonTx);
             bool isValid = txValidator.IsWellFormed(tx, spec);
             Console.WriteLine("Tx.IsWellFromed: {0}", isValid);
             if (isValid)
@@ -206,8 +195,9 @@ public class T8N
             stateProvider.CreateAccount(envJson.CurrentCoinbase, 0);
         }
         stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
+
         stateProvider.RecalculateStateRoot();
-        Console.WriteLine(stateProvider.StateRoot);
+        Console.WriteLine("StateRoot: {0}", stateProvider.StateRoot);
 
         //Print out the state of knows addresses from alloc
         foreach (KeyValuePair<Address, JsonTypes.AccountState> accountState in allocJson)
@@ -218,9 +208,10 @@ public class T8N
                 byte[] storageValue = Bytes.FromHexString(storageItem.Key);
                 Console.WriteLine(stateProvider.Get(new StorageCell(accountState.Key, storageKey)));
             }
+            Console.WriteLine("\nAccount {0}", accountState.Key);
             Console.WriteLine("Balance {0}", stateProvider.GetAccount(accountState.Key).Balance);
             Console.WriteLine("Nonce {0}", stateProvider.GetAccount(accountState.Key).Nonce);
-            Console.WriteLine("Storage {0}", stateProvider.GetAccount(accountState.Key).HasStorage);
+            Console.WriteLine("Has Storage {0}", stateProvider.GetAccount(accountState.Key).HasStorage);
             Console.WriteLine(stateProvider.GetCode(accountState.Key));
         }
 
@@ -229,7 +220,45 @@ public class T8N
         return Task.CompletedTask;
     }
 
-    private static void convertToTx(){}
+    private static Transaction convertToTx(JsonTypes.Transaction jsonTx)
+    {
+        Transaction tx = new Transaction();
+        tx.Value = Bytes.FromHexString(jsonTx.Value).ToUInt256();
+        tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
+        tx.Data = Bytes.FromHexString(jsonTx.Input);
+        tx.To = jsonTx.To;
+        tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
+        tx.GasLimit = Bytes.FromHexString(jsonTx.Gas).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
+        tx.Hash = new Hash256(Bytes.FromHexString(jsonTx.Hash));
+
+        //Legacy doesn't need type
+        if (jsonTx.Type is null || jsonTx.Type == "0x0")
+        {
+            tx.Type = TxType.Legacy;
+            tx.GasPrice = Bytes.FromHexString(jsonTx.GasPrice).ToUInt256();
+        }
+        else if (jsonTx.Type == "0x1")
+        {
+            tx.Type = TxType.AccessList;
+            tx.AccessList = jsonTx.AccessList;
+        }
+        else if (jsonTx.Type == "0x2")
+        {
+            tx.Type = TxType.EIP1559;
+            tx.DecodedMaxFeePerGas = Bytes.FromHexString(jsonTx.MaxFeePerGas).ToUInt256();
+            tx.GasPrice = Bytes.FromHexString(jsonTx.MaxPriorityFeePerGas).ToUInt256();
+        }
+        else if (jsonTx.Type == "0x3")
+        {
+            tx.Type = TxType.Blob;
+        }
+        else
+        {
+            throw new Exception("Unsupported tx type");
+        }
+        return tx;
+
+    }
 
 
     //Setup up the initial state
