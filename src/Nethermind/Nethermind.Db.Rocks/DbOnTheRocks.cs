@@ -69,7 +69,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private string CorruptMarkerPath => Path.Join(_fullPath, "corrupt.marker");
 
-    private readonly List<DbMetricsUpdater> _metricsUpdaters = new();
+    private readonly List<IDisposable> _metricsUpdaters = new();
 
     private readonly ManagedIterators _readaheadIterators = new();
 
@@ -156,21 +156,24 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             if (dbConfig.EnableMetricsUpdater)
             {
-                _metricsUpdaters.Add(new DbMetricsUpdater(Name, DbOptions, db, null, dbConfig, _logger));
                 if (columnFamilies is not null)
                 {
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
-                            _metricsUpdaters.Add(new DbMetricsUpdater(Name + "_" + columnFamily.Name, DbOptions, db, handle, dbConfig, _logger));
+                            DbMetricsUpdater<ColumnFamilyOptions> metricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
+                                Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
+                            metricUpdater.StartUpdating();
+                            _metricsUpdaters.Add(metricUpdater);
                         }
                     }
                 }
-
-                foreach (DbMetricsUpdater metricsUpdater in _metricsUpdaters)
+                else
                 {
-                    metricsUpdater.StartUpdating();
+                    DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
+                    metricUpdater.StartUpdating();
+                    _metricsUpdaters.Add(metricUpdater);
                 }
             }
 
@@ -1226,7 +1229,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         if (_logger.IsInfo) _logger.Info($"Disposing DB {Name}");
 
-        foreach (DbMetricsUpdater dbMetricsUpdater in _metricsUpdaters)
+        foreach (IDisposable dbMetricsUpdater in _metricsUpdaters)
         {
             dbMetricsUpdater.Dispose();
         }

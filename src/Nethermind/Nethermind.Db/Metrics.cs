@@ -207,6 +207,7 @@ namespace Nethermind.Db
         public static long DbTotalMemorySize { get; set; }
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
-        public static IDictionary<string, long> DbStats { get; set; } = new ConcurrentDictionary<string, long>();
+        [KeyIsLabel("dbName", "metric")]
+        public static IDictionary<(string, string), double> DbStats { get; set; } = new ConcurrentDictionary<(string, string), double>();
     }
 }
