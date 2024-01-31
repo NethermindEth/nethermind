@@ -115,10 +115,10 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public long GetSize() => _currentDb.GetSize() + (_pruningContext?.CloningDb.GetSize() ?? 0);
-        public long GetCacheSize(bool includeSharedCache) => _currentDb.GetCacheSize(includeSharedCache) + (_pruningContext?.CloningDb.GetCacheSize() ?? 0);
-        public long GetIndexSize() => _currentDb.GetIndexSize() + (_pruningContext?.CloningDb.GetIndexSize() ?? 0);
-        public long GetMemtableSize() => _currentDb.GetMemtableSize() + (_pruningContext?.CloningDb.GetMemtableSize() ?? 0);
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        {
+            return _currentDb.GatherMetric(includeSharedCache);
+        }
 
         public string Name => _settings.DbName;
 

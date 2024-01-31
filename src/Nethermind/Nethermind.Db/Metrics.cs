@@ -11,71 +11,71 @@ namespace Nethermind.Db
     public static class Metrics
     {
         [CounterMetric]
-        [Description("Number of Bloom DB reads.")]
+        [Description("[DEPRECATED] Number of Bloom DB reads.")]
         public static long BloomDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Bloom DB writes.")]
+        [Description("[DEPRECATED] Number of Bloom DB writes.")]
         public static long BloomDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of CHT DB reads.")]
+        [Description("[DEPRECATED] Number of CHT DB reads.")]
         public static long CHTDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of CHT DB writes.")]
+        [Description("[DEPRECATED] Number of CHT DB writes.")]
         public static long CHTDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Blocks DB reads.")]
+        [Description("[DEPRECATED] Number of Blocks DB reads.")]
         public static long BlocksDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Blocks DB writes.")]
+        [Description("[DEPRECATED] Number of Blocks DB writes.")]
         public static long BlocksDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Code DB cache reads.")]
+        [Description("[DEPRECATED] Number of Code DB cache reads.")]
         public static long CodeDbCache { get; set; }
 
         [CounterMetric]
-        [Description("Number of Code DB reads.")]
+        [Description("[DEPRECATED] Number of Code DB reads.")]
         public static long CodeDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Code DB writes.")]
+        [Description("[DEPRECATED] Number of Code DB writes.")]
         public static long CodeDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Receipts DB reads.")]
+        [Description("[DEPRECATED] Number of Receipts DB reads.")]
         public static long ReceiptsDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Receipts DB writes.")]
+        [Description("[DEPRECATED] Number of Receipts DB writes.")]
         public static long ReceiptsDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Block Infos DB reads.")]
+        [Description("[DEPRECATED] Number of Block Infos DB reads.")]
         public static long BlockInfosDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Block Infos DB writes.")]
+        [Description("[DEPRECATED] Number of Block Infos DB writes.")]
         public static long BlockInfosDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of State Trie reads.")]
+        [Description("[DEPRECATED] Number of State Trie reads.")]
         public static long StateTreeReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Blocks Trie writes.")]
+        [Description("[DEPRECATED] Number of Blocks Trie writes.")]
         public static long StateTreeWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of State DB reads.")]
+        [Description("[DEPRECATED] Number of State DB reads.")]
         public static long StateDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of State DB writes.")]
+        [Description("[DEPRECATED] Number of State DB writes.")]
         public static long StateDbWrites { get; set; }
 
         [CounterMetric]
@@ -83,148 +83,158 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
-        [Description("Number of storage trie reads.")]
+        [Description("[DEPRECATED] Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of storage trie writes.")]
+        [Description("[DEPRECATED] Number of storage trie writes.")]
         public static long StorageTreeWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of other DB reads.")]
+        [Description("[DEPRECATED] Number of other DB reads.")]
         public static long OtherDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of other DB writes.")]
+        [Description("[DEPRECATED] Number of other DB writes.")]
         public static long OtherDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Headers DB reads.")]
+        [Description("[DEPRECATED] Number of Headers DB reads.")]
         public static long HeaderDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Headers DB writes.")]
+        [Description("[DEPRECATED] Number of Headers DB writes.")]
         public static long HeaderDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlockNumbers DB reads.")]
+        [Description("[DEPRECATED] Number of BlockNumbers DB reads.")]
         public static long BlockNumberDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlockNumbers DB writes.")]
+        [Description("[DEPRECATED] Number of BlockNumbers DB writes.")]
         public static long BlockNumberDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Witness DB reads.")]
+        [Description("[DEPRECATED] Number of Witness DB reads.")]
         public static long WitnessDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Witness DB writes.")]
+        [Description("[DEPRECATED] Number of Witness DB writes.")]
         public static long WitnessDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of Metadata DB reads.")]
+        [Description("[DEPRECATED] Number of Metadata DB reads.")]
         public static long MetadataDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of Metadata DB writes.")]
+        [Description("[DEPRECATED] Number of Metadata DB writes.")]
         public static long MetadataDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of BadBlocks DB writes.")]
+        [Description("[DEPRECATED] Number of BadBlocks DB writes.")]
         public static long BadBlocksDbWrites { get; set; }
 
         [CounterMetric]
-        [Description("Number of BadBlocks DB reads.")]
+        [Description("[DEPRECATED] Number of BadBlocks DB reads.")]
         public static long BadBlocksDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlobTransactions DB reads.")]
+        [Description("[DEPRECATED] Number of BlobTransactions DB reads.")]
         public static long BlobTransactionsDbReads { get; set; }
 
         [CounterMetric]
-        [Description("Number of BlobTransactions DB writes.")]
+        [Description("[DEPRECATED] Number of BlobTransactions DB writes.")]
         public static long BlobTransactionsDbWrites { get; set; }
 
         [GaugeMetric]
-        [Description("Indicator if StadeDb is being pruned.")]
+        [Description("[DEPRECATED] Indicator if StadeDb is being pruned.")]
         public static int StateDbPruning { get; set; }
 
         [GaugeMetric]
-        [Description("Size of state DB in bytes")]
+        [Description("[DEPRECATED] Size of state DB in bytes")]
         public static long StateDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of receipts DB in bytes")]
+        [Description("[DEPRECATED] Size of receipts DB in bytes")]
         public static long ReceiptsDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of headers DB in bytes")]
+        [Description("[DEPRECATED] Size of headers DB in bytes")]
         public static long HeadersDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of blocks DB in bytes")]
+        [Description("[DEPRECATED] Size of blocks DB in bytes")]
         public static long BlocksDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of bloom DB in bytes")]
+        [Description("[DEPRECATED] Size of bloom DB in bytes")]
         public static long BloomDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of code DB in bytes")]
+        [Description("[DEPRECATED] Size of code DB in bytes")]
         public static long CodeDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of blockInfos DB in bytes")]
+        [Description("[DEPRECATED] Size of blockInfos DB in bytes")]
         public static long BlockInfosDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of cht DB in bytes")]
+        [Description("[DEPRECATED] Size of cht DB in bytes")]
         public static long ChtDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of metadata DB in bytes")]
+        [Description("[DEPRECATED] Size of metadata DB in bytes")]
         public static long MetadataDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of witness DB in bytes")]
+        [Description("[DEPRECATED] Size of witness DB in bytes")]
         public static long WitnessDbSize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of unmanaged memory for DB block caches in bytes")]
+        [Description("[DEPRECATED] Size of unmanaged memory for DB block caches in bytes")]
         public static long DbBlockCacheMemorySize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of unmanaged memory for DB indexes and filters in bytes")]
+        [Description("[DEPRECATED] Size of unmanaged memory for DB indexes and filters in bytes")]
         public static long DbIndexFilterMemorySize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of unmanaged memory for DB memtables in bytes")]
+        [Description("[DEPRECATED] Size of unmanaged memory for DB memtables in bytes")]
         public static long DbMemtableMemorySize { get; set; }
 
         [GaugeMetric]
-        [Description("Size of total unmanaged memory for DB in bytes")]
+        [Description("[DEPRECATED] Size of total unmanaged memory for DB in bytes")]
         public static long DbTotalMemorySize { get; set; }
+
+        [GaugeMetric]
+        [Description("Database reads per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, long> DbReads { get; set; } = new ConcurrentDictionary<string, long>();
+
+        [GaugeMetric]
+        [Description("Database writes per database")]
+        [KeyIsLabel("db")]
+        public static IDictionary<string, long> DbWrites { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, double> DbSize { get; set; } = new ConcurrentDictionary<string, double>();
+        public static IDictionary<string, long> DbSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database memtable per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, double> MemtableSize { get; set; } = new ConcurrentDictionary<string, double>();
+        public static IDictionary<string, long> MemtableSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database block cache size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, double> BlockCacheSize { get; set; } = new ConcurrentDictionary<string, double>();
+        public static IDictionary<string, long> BlockCacheSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database index and filter size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, double> IndexFilterSize { get; set; } = new ConcurrentDictionary<string, double>();
+        public static IDictionary<string, long> IndexFilterSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         [KeyIsLabel("db", "metric")]

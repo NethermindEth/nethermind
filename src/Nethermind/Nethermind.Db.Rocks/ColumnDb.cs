@@ -141,10 +141,9 @@ public class ColumnDb : IDb
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-    public long GetSize() => _mainDb.GetSize();
-    public long GetCacheSize(bool includeSharedCache) => _mainDb.GetCacheSize(includeSharedCache);
-    public long GetIndexSize() => _mainDb.GetIndexSize();
-    public long GetMemtableSize() => _mainDb.GetMemtableSize();
+
+    // Maybe it should be column specific metric?
+    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric();
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {

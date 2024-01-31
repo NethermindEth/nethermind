@@ -74,6 +74,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private readonly ManagedIterators _readaheadIterators = new();
 
     internal long _allocatedSpan = 0;
+    private long _totalReads;
+    private long _totalWrites;
 
     public DbOnTheRocks(
         string basePath,
@@ -226,18 +228,12 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     protected internal void UpdateReadMetrics()
     {
-        if (_settings.UpdateReadMetrics is not null)
-            _settings.UpdateReadMetrics?.Invoke();
-        else
-            Metrics.OtherDbReads++;
+        Interlocked.Increment(ref _totalReads);
     }
 
     protected internal void UpdateWriteMetrics()
     {
-        if (_settings.UpdateWriteMetrics is not null)
-            _settings.UpdateWriteMetrics?.Invoke();
-        else
-            Metrics.OtherDbWrites++;
+        Interlocked.Increment(ref _totalWrites);
     }
 
     protected virtual long FetchTotalPropertyValue(string propertyName)
@@ -249,7 +245,20 @@ public class DbOnTheRocks : IDb, ITunableDb
         return value;
     }
 
-    public long GetSize()
+    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+    {
+        return new IDbMeta.DbMetric()
+        {
+            Size = GetSize(),
+            CacheSize = GetCacheSize(includeSharedCache),
+            IndexSize = GetIndexSize(),
+            MemtableSize = GetMemtableSize(),
+            TotalReads = _totalReads,
+            TotalWrites = _totalWrites,
+        };
+    }
+
+    private long GetSize()
     {
         try
         {
@@ -266,7 +275,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
-    public long GetCacheSize(bool includeSharedCache = false)
+    private long GetCacheSize(bool includeSharedCache = false)
     {
         try
         {
@@ -286,7 +295,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
-    public long GetIndexSize()
+    private long GetIndexSize()
     {
         try
         {
@@ -301,7 +310,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         return 0;
     }
 
-    public long GetMemtableSize()
+    private long GetMemtableSize()
     {
         try
         {

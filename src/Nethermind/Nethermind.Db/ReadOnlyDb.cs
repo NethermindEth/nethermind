@@ -72,10 +72,7 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public long GetSize() => _wrappedDb.GetSize();
-        public long GetCacheSize(bool includeSharedCache) => _wrappedDb.GetCacheSize(includeSharedCache);
-        public long GetIndexSize() => _wrappedDb.GetIndexSize();
-        public long GetMemtableSize() => _wrappedDb.GetMemtableSize();
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _wrappedDb.GatherMetric(includeSharedCache);
 
         public void Remove(ReadOnlySpan<byte> key) { }
 
