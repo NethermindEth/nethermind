@@ -11,7 +11,7 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater<T>: IDisposable where T : Options<T>
+public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
 {
     private readonly string _dbName;
     private readonly Options<T> _dbOptions;

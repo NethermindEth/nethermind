@@ -95,7 +95,7 @@ public class StartMonitoring : IStep
                 long totalIndexAndFilterMemorySize = 0;
                 long totalMemtableMemorySize = 0;
 
-                foreach (KeyValuePair<string,IDbMeta> kv in dbProvider.GetAllDbMeta())
+                foreach (KeyValuePair<string, IDbMeta> kv in dbProvider.GetAllDbMeta())
                 {
                     // Note: At the moment, the metric for a columns db is combined across column.
                     IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db

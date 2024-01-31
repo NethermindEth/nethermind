@@ -1303,14 +1303,14 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.HeavyWrite:
                 // Compaction spikes are clear at this point. Will definitely affect attestation performance.
                 // Its unclear if it improve or slow down sync time. Seems to be the sweet spot.
-                ApplyOptions(GetHeavyWriteOptions((ulong) 4.GiB()));
+                ApplyOptions(GetHeavyWriteOptions((ulong)4.GiB()));
                 break;
             case ITunableDb.TuneType.AggressiveHeavyWrite:
                 // For when, you are desperate, but don't wanna disable compaction completely, because you don't want
                 // peers to drop. Tend to be faster than disabling compaction completely, except if your ratelimit
                 // is a bit low and your compaction is lagging behind, which will trigger slowdown, so sync will hang
                 // intermittently, but at least peer count is stable.
-                ApplyOptions(GetHeavyWriteOptions((ulong) 16.GiB()));
+                ApplyOptions(GetHeavyWriteOptions((ulong)16.GiB()));
                 break;
             case ITunableDb.TuneType.DisableCompaction:
                 // Completely disable compaction. On mainnet, max num of l0 files for state seems to be about 10800.
@@ -1426,7 +1426,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private IDictionary<string, string> GetDisableCompactionOptions()
     {
-        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions((ulong) 32.GiB());
+        IDictionary<string, string> heavyWriteOption = GetHeavyWriteOptions((ulong)32.GiB());
 
         heavyWriteOption["disable_auto_compactions"] = "true";
         // Increase the size of the write buffer, which reduces the number of l0 file by 4x. This does slows down
