@@ -143,7 +143,7 @@ public class ColumnDb : IDb
     public void Clear() { throw new NotSupportedException(); }
 
     // Maybe it should be column specific metric?
-    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric();
+    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric(includeSharedCache);
 
     public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {

@@ -147,7 +147,12 @@ public class DbOnTheRocks : IDb, ITunableDb
                     if (columnFamily == "Default") columnFamily = "default";
 
                     ColumnFamilyOptions options = new();
-                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, sharedCache);
+                    IntPtr? cacheForColumn = sharedCache;
+                    if (_cache != null)
+                    {
+                        cacheForColumn = _cache;
+                    }
+                    BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, cacheForColumn);
                     columnFamilies.Add(columnFamily, options);
                 }
             }
