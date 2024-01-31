@@ -694,35 +694,31 @@ internal static class EvmObjectFormat
                 }
 
                 pos++;
-                if (opcode is Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF or Instruction.JUMPF)
+                switch(opcode)
                 {
-                    pos += TWO_BYTE_LENGTH;
-                }
-                else if (opcode is Instruction.RJUMPV)
-                {
-                    byte maxIndex = code[pos];
-                    pos += ONE_BYTE_LENGTH + (maxIndex + 1) * TWO_BYTE_LENGTH;
-                }
-                else if (opcode is Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE)
-                {
-                    pos += ONE_BYTE_LENGTH;
-                }
-                else if (opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
-                {
-                    int len = opcode - Instruction.PUSH0;
-                    pos += len;
-                }
-                else if (opcode is Instruction.CREATE3)
-                {
-                    pos += ONE_BYTE_LENGTH;
-                }
-                else if (opcode is Instruction.DATALOADN)
-                {
-                    pos += TWO_BYTE_LENGTH;
-                }
-                else if (opcode is Instruction.RETURNCONTRACT)
-                {
-                    pos += ONE_BYTE_LENGTH;
+                    case Instruction.RJUMP or Instruction.RJUMPI or Instruction.CALLF:
+                        pos += TWO_BYTE_LENGTH; break;
+                    case Instruction.JUMPF:
+                        pos += TWO_BYTE_LENGTH; break; // maybe should break looping and consider leftover code unreachable?
+                    case Instruction.RJUMPV:
+                        byte maxIndex = code[pos];
+                        pos += ONE_BYTE_LENGTH + (maxIndex + 1) * TWO_BYTE_LENGTH;
+                        break;
+                    case Instruction.SWAPN or Instruction.DUPN or Instruction.EXCHANGE:
+                        pos += ONE_BYTE_LENGTH; break;
+                    case Instruction.CREATE3:
+                        pos += ONE_BYTE_LENGTH; break;
+                    case Instruction.DATALOADN:
+                        pos += TWO_BYTE_LENGTH; break;
+                    case Instruction.RETURNCONTRACT:
+                        pos += ONE_BYTE_LENGTH; break;
+                    default:
+                        if(opcode is >= Instruction.PUSH1 and <= Instruction.PUSH32)
+                        {
+                            int len = opcode - Instruction.PUSH0;
+                            pos += len;
+                        }
+                        break;
                 }
             }
             return true;
@@ -740,6 +736,8 @@ internal static class EvmObjectFormat
 
             ushort worksetTop = 0; ushort worksetPointer = 0;
             Worklet[] workset = ArrayPool<Worklet>.Shared.Rent(worksetCount + 1);
+
+            int unreachedBytes = code.Length;
 
             try
             {
@@ -766,18 +764,20 @@ internal static class EvmObjectFormat
                         else
                         {
                             recordedStackHeight[worklet.Position] = (short)(worklet.StackHeight + 1);
+                            unreachedBytes -= ONE_BYTE_LENGTH;
                         }
 
                         switch (opcode)
                         {
                             case Instruction.CALLF or Instruction.JUMPF:
-                                ushort sectionIndex = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthUInt16();
+                                ushort sectionIndex = code.Slice(posPostInstruction, immediates.Value).ReadEthUInt16();
                                 inputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
                                 outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                                 outputs = (ushort)(outputs == 0x80 ? 0 : outputs);
 
                                 ushort maxStackHeigh = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+                                unreachedBytes -= immediates.Value;
 
                                 if (worklet.StackHeight + maxStackHeigh > MAX_STACK_HEIGHT)
                                 {
@@ -789,15 +789,18 @@ internal static class EvmObjectFormat
                                 byte imm = code[posPostInstruction];
                                 inputs = (ushort)(imm + 1);
                                 outputs = (ushort)(inputs + 1);
+                                unreachedBytes -= immediates.Value;
                                 break;
                             case Instruction.SWAPN:
                                 imm = code[posPostInstruction];
                                 outputs = inputs = (ushort)(1 + imm);
+                                unreachedBytes -= immediates.Value;
                                 break;
                             case Instruction.EXCHANGE:
                                 byte imm_n = (byte)((code[posPostInstruction] >> 4) + 1);
                                 byte imm_m = (byte)((code[posPostInstruction] & 0x0F) + 1);
                                 outputs = inputs = (ushort)(imm_n + imm_m);
+                                unreachedBytes -= immediates.Value;
                                 break;
                         }
 
@@ -830,18 +833,20 @@ internal static class EvmObjectFormat
                                 }
                             case Instruction.RJUMP:
                                 {
-                                    short offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    short offset = code.Slice(posPostInstruction, immediates.Value).ReadEthInt16();
                                     int jumpDestination = posPostInstruction + immediates.Value + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     stop = true;
+                                    unreachedBytes -= immediates.Value;
                                     break;
                                 }
                             case Instruction.RJUMPI:
                                 {
-                                    var offset = code.Slice(posPostInstruction, TWO_BYTE_LENGTH).ReadEthInt16();
+                                    var offset = code.Slice(posPostInstruction, immediates.Value).ReadEthInt16();
                                     var jumpDestination = posPostInstruction + immediates + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     posPostInstruction += immediates.Value;
+                                    unreachedBytes -= immediates.Value;
                                     break;
                                 }
                             case Instruction.RJUMPV:
@@ -856,10 +861,12 @@ internal static class EvmObjectFormat
                                         PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     }
                                     posPostInstruction += immediates.Value;
+                                    unreachedBytes -= immediates.Value;
                                     break;
                                 }
                             default:
                                 {
+                                    unreachedBytes -= immediates.Value;
                                     posPostInstruction += immediates.Value;
                                     break;
                                 }
