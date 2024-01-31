@@ -57,6 +57,10 @@ namespace Nethermind.Runner.JsonRpc
             {
                 options.Limits.MaxRequestBodySize = jsonRpcConfig.MaxRequestBodySize;
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
+                options.ConfigureEndpointDefaults(listenOptions =>
+                {
+                    listenOptions.Protocols = HttpProtocols.Http1AndHttp2AndHttp3;
+                });
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
 
@@ -144,7 +148,7 @@ namespace Nethermind.Runner.JsonRpc
             {
                 if (ctx.Request.Method == "GET")
                 {
-                    await ctx.Response.WriteAsync("Nethermind JSON RPC");
+                    await ctx.Response.WriteAsync("Nethermind JSON RPC " + ctx.Request.Protocol);
                 }
 
                 if (ctx.Request.Method == "POST" &&
