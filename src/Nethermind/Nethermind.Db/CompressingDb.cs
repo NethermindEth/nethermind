@@ -143,7 +143,7 @@ namespace Nethermind.Db
 
             public long GetSize() => _wrapped.GetSize();
 
-            public long GetCacheSize() => _wrapped.GetCacheSize();
+            public long GetCacheSize(bool includeCacheSize) => _wrapped.GetCacheSize(includeCacheSize);
 
             public long GetIndexSize() => _wrapped.GetIndexSize();
 

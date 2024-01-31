@@ -142,7 +142,7 @@ public class ColumnDb : IDb
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
     public long GetSize() => _mainDb.GetSize();
-    public long GetCacheSize() => _mainDb.GetCacheSize();
+    public long GetCacheSize(bool includeSharedCache) => _mainDb.GetCacheSize(includeSharedCache);
     public long GetIndexSize() => _mainDb.GetIndexSize();
     public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
