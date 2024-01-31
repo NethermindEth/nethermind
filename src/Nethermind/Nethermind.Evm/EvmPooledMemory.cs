@@ -194,7 +194,7 @@ public class EvmPooledMemory : IEvmMemory
         {
             int lengthToClear = (int)(Math.Min(size, (ulong)_memory.Length) - _lastZeroedSize);
             Array.Clear(_memory, (int)_lastZeroedSize, lengthToClear);
-            _lastZeroedSize = size;
+            _lastZeroedSize += (uint)lengthToClear;
         }
     }
 
@@ -306,6 +306,10 @@ public class EvmPooledMemory : IEvmMemory
                 else if (Size > _lastZeroedSize)
                 {
                     Array.Clear(_memory, lastZeroedSize, (int)(Size - _lastZeroedSize));
+                }
+                else
+                {
+                    return;
                 }
             }
 

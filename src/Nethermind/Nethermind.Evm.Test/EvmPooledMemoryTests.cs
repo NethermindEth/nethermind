@@ -128,6 +128,15 @@ namespace Nethermind.Evm.Test
             Assert.That(b, Is.EqualTo(a));
         }
 
+        [Test]
+        public void GetTrace_memory_should_not_overflow()
+        {
+            var input = new byte[] {
+                0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
+                0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
+            run(input);
+        }
+
         private static PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
         private static Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
 
