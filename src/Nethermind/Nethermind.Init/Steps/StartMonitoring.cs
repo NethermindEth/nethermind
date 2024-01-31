@@ -101,9 +101,9 @@ public class StartMonitoring : IStep
                     // Note: At the moment, the metric for a columns db is combined across column.
                     IDbMeta.DbMetric dbMetric = kv.Value.GatherMetric(includeSharedCache: kv.Key == DbNames.State); // Only include shared cache if state db
                     Db.Metrics.DbSize[kv.Key] = dbMetric.Size;
-                    Db.Metrics.BlockCacheSize[kv.Key] = dbMetric.CacheSize;
-                    Db.Metrics.MemtableSize[kv.Key] = dbMetric.MemtableSize;
-                    Db.Metrics.IndexFilterSize[kv.Key] = dbMetric.IndexSize;
+                    Db.Metrics.DbBlockCacheSize[kv.Key] = dbMetric.CacheSize;
+                    Db.Metrics.DbMemtableSize[kv.Key] = dbMetric.MemtableSize;
+                    Db.Metrics.DbIndexFilterSize[kv.Key] = dbMetric.IndexSize;
                     Db.Metrics.DbReads[kv.Key] = dbMetric.TotalReads;
                     Db.Metrics.DbWrites[kv.Key] = dbMetric.TotalWrites;
 

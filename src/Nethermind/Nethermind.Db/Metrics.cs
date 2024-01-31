@@ -224,17 +224,17 @@ namespace Nethermind.Db
         [GaugeMetric]
         [Description("Database memtable per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> MemtableSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static IDictionary<string, long> DbMemtableSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database block cache size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> BlockCacheSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static IDictionary<string, long> DbBlockCacheSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [GaugeMetric]
         [Description("Database index and filter size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> IndexFilterSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static IDictionary<string, long> DbIndexFilterSize { get; set; } = new ConcurrentDictionary<string, long>();
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         [KeyIsLabel("db", "metric")]
