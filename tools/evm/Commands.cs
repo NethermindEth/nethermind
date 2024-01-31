@@ -1,13 +1,9 @@
-using System;
-using System.IO;
 using Ethereum.Test.Base;
-using Ethereum.Test.Base.Interfaces;
 namespace Nethermind.Tools.t8n;
 using Newtonsoft.Json;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Logging;
-using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -21,6 +17,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Int256;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Serialization.Rlp;
 
 
 
@@ -44,15 +41,15 @@ public class T8nOutput
 public class T8N
 {
     public static async Task<int> HandleAsync(
-        string? inputAlloc,
-        string? inputEnv,
-        string? inputTxs,
-        string? outputAlloc,
+        string inputAlloc,
+        string inputEnv,
+        string inputTxs,
+        string outputAlloc,
         string? outputBaseDir,
         string? outputBody,
-        string? outputResult,
+        string outputResult,
         int stateChainId,
-        string? stateFork,
+        string stateFork,
         int stateReward,
         TraceOptions traceOpts
         )
@@ -79,15 +76,15 @@ public class T8N
     }
 
     public Task RunAsync(
-        string? inputAlloc,
-        string? inputEnv,
-        string? inputTxs,
-        string? outputAlloc,
+        string inputAlloc,
+        string inputEnv,
+        string inputTxs,
+        string outputAlloc,
         string? outputBaseDir,
         string? outputBody,
-        string? outputResult,
+        string outputResult,
         int stateChainId,
-        string? stateFork,
+        string stateFork,
         int stateReward,
         bool traceMemory,
         bool traceNoMemory,
@@ -100,6 +97,7 @@ public class T8N
         JsonTypes.Env envJson = JsonConvert.DeserializeObject<JsonTypes.Env>(File.ReadAllText(inputEnv));
 
         JsonTypes.Transaction[] txsJson = new JsonTypes.Transaction[0];
+
         //Txs can be passed as json or rlp encoded
         if (inputTxs.EndsWith(".json"))
         {
@@ -107,38 +105,22 @@ public class T8N
         }
         else
         {
-            String rlp = File.ReadAllText(inputTxs);
-
+            //TODO: Finish rlp parsing
+            String rlpRaw = File.ReadAllText(inputTxs);
+            RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
+            //TODO: Finish rlp to tx
         }
-
-        Console.WriteLine(envJson.CurrentCoinbase);
-
-
 
         //Setup similar to Nethermind.Test.Runner runTest
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        //        TrieStore trieStore = new(stateDb, _logManager);
-        //        WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        //        IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-        //        IVirtualMachine virtualMachine = new VirtualMachine(
-        //            blockhashProvider,
-        //            specProvider,
-        //            _logManager);
-        //
-
-
-
         ILogManager _logManager = LimboLogs.Instance;
         ILogger _logger = _logManager.GetClassLogger();
 
-
-        //TODO: Refactor ParesSpec
         ISpecProvider specProvider = new CustomSpecProvider(
     ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-    ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork))); //state.Fork
-
+    ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork)));
 
         TrieStore trieStore = new(stateDb, _logManager);
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
@@ -153,8 +135,6 @@ public class T8N
             stateProvider,
             virtualMachine,
             _logManager);
-
-
 
         InitializeFromAlloc(allocJson, stateProvider, specProvider);
 
@@ -198,6 +178,7 @@ public class T8N
 
 
 
+        HashSet<Address> accounts = new();
 
         //NOTE: This is not working correctly
         foreach (JsonTypes.Transaction jsonTx in txsJson)
@@ -210,7 +191,6 @@ public class T8N
             tx.To = jsonTx.To;
             tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
             tx.GasPrice = Bytes.FromHexString(jsonTx.GasPrice).ToUInt256();
-            tx.GasLimit = Bytes.FromHexString(jsonTx.Gas).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
 
             bool isValid = txValidator.IsWellFormed(tx, spec);
             Console.WriteLine("Tx.IsWellFromed: {0}", isValid);
@@ -229,12 +209,30 @@ public class T8N
         stateProvider.RecalculateStateRoot();
         Console.WriteLine(stateProvider.StateRoot);
 
+        //Print out the state of knows addresses from alloc
+        foreach (KeyValuePair<Address, JsonTypes.AccountState> accountState in allocJson)
+        {
+            foreach (KeyValuePair<string, string> storageItem in accountState.Value.Storage)
+            {
+                UInt256 storageKey = Bytes.FromHexString(storageItem.Key).ToUInt256();
+                byte[] storageValue = Bytes.FromHexString(storageItem.Key);
+                Console.WriteLine(stateProvider.Get(new StorageCell(accountState.Key, storageKey)));
+            }
+            Console.WriteLine("Balance {0}", stateProvider.GetAccount(accountState.Key).Balance);
+            Console.WriteLine("Nonce {0}", stateProvider.GetAccount(accountState.Key).Nonce);
+            Console.WriteLine("Storage {0}", stateProvider.GetAccount(accountState.Key).HasStorage);
+            Console.WriteLine(stateProvider.GetCode(accountState.Key));
+        }
+
 
 
         return Task.CompletedTask;
     }
 
+    private static void convertToTx(){}
 
+
+    //Setup up the initial state
     private static void InitializeFromAlloc(Dictionary<Address, JsonTypes.AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
     {
         foreach (KeyValuePair<Address, JsonTypes.AccountState> accountState in alloc)

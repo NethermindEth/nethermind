@@ -11,8 +11,8 @@ namespace JsonTypes
         public string? Input { get; set; }
         public string Gas { get; set; }
         public string? Nonce { get; set; }
-        public Address? To { get; set; }
-        public string? Value { get; set; }
+        public Address To { get; set; } = Address.Zero;
+        public string Value { get; set; } = "0x0";
         public string? V { get; set; }
         public string? R { get; set; }
         public string? S { get; set; }

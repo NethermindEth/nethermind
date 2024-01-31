@@ -17,7 +17,7 @@ namespace Nethermind.Tools.t8n
         {
              var inputAllocOpt = new Option<string>("--input.alloc", description: "Input allocations", getDefaultValue: () => "alloc.json");
              var inputEnvOpt = new Option<string>("--input.env", description: "Input environment", getDefaultValue: () => "env.json");
-             var inputTxsOpt = new Option<string>("--input.txs", description: "Input transactions", getDefaultValue: () => "txs.rlp");
+             var inputTxsOpt = new Option<string>("--input.txs", description: "Input transactions", getDefaultValue: () => "txs.json");
              var outputAllocOpt = new Option<string>("--output.alloc", description: "Output allocations", getDefaultValue: () => "alloc.json");
              var outputBaseDirOpt = new Option<string>("--output.baseDir", description: "Output base directory");
              var outputBodyOpt = new Option<string>("--output.body", description: "Output body");
