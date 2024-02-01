@@ -52,7 +52,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            UInt256 balanceAfter = _stateReader.TryGetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct accountAfter)? accountAfter.Balance : UInt256.Zero;
+            UInt256 balanceAfter = _stateReader.TryGetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct accountAfter) ? accountAfter.Balance : UInt256.Zero;
             await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
         }
 
