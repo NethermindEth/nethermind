@@ -113,7 +113,7 @@ namespace Nethermind.Evm.Test
             ).ToArray();
 
         private static readonly Instruction[] PragueInstructions =
-            ShanghaiInstructions.Union(
+            CancunInstructions.Union(
                 new Instruction[]
                 {
                     Instruction.RJUMP,

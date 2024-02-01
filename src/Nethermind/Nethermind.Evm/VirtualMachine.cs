@@ -2075,9 +2075,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.CREATE3:
                 case Instruction.CREATE4:
                     {
-                        Metrics.Creates++;
-                        if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) goto InvalidInstruction;
+                        if (!spec.IsEofEnabled || !(env.CodeInfo.Version > 0))
+                        {
+                            goto InvalidInstruction;
+                        }
 
+                        Metrics.Creates++;
                         if (vmState.IsStatic) goto StaticCallViolation;
 
                         (exceptionType, returnData) = InstructionEofCreate(vmState, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
