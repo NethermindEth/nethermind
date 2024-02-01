@@ -689,9 +689,9 @@ internal static class EvmObjectFormat
 
             short[] recordedStackHeight = ArrayPool<short>.Shared.Rent(code.Length);
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
-        
-            int curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
-            int peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
+
+            ushort curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+            ushort peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
             ushort worksetTop = 0; ushort worksetPointer = 0;
             Worklet[] workset = ArrayPool<Worklet>.Shared.Rent(worksetCount + 1);
@@ -700,7 +700,7 @@ internal static class EvmObjectFormat
 
             try
             {
-                PushWorklet(workset, ref worksetTop, new Worklet(0, (ushort)peakStackHeight));
+                PushWorklet(workset, ref worksetTop, new Worklet(0, peakStackHeight));
                 while (worksetPointer < worksetTop)
                 {
                     Worklet worklet = PopWorklet(workset, ref worksetPointer);
@@ -789,18 +789,10 @@ internal static class EvmObjectFormat
 
                                     break;
                                 }
-                            case Instruction.RJUMP:
+                            case Instruction.RJUMP or Instruction.RJUMPI:
                                 {
                                     short offset = code.Slice(posPostInstruction, immediates.Value).ReadEthInt16();
                                     int jumpDestination = posPostInstruction + immediates.Value + offset;
-                                    PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
-                                    unreachedBytes -= immediates.Value;
-                                    break;
-                                }
-                            case Instruction.RJUMPI:
-                                {
-                                    var offset = code.Slice(posPostInstruction, immediates.Value).ReadEthInt16();
-                                    var jumpDestination = posPostInstruction + immediates + offset;
                                     PushWorklet(workset, ref worksetTop, new Worklet((ushort)jumpDestination, worklet.StackHeight));
                                     posPostInstruction += immediates.Value;
                                     unreachedBytes -= immediates.Value;
@@ -833,6 +825,11 @@ internal static class EvmObjectFormat
 
                         if (opcode.IsTerminating())
                         {
+                            if(opcode is Instruction.RJUMP)
+                            {
+                                break;
+                            }
+
                             var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
                             if (expectedHeight != worklet.StackHeight)
                             {

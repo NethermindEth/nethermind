@@ -112,6 +112,32 @@ namespace Nethermind.Evm.Test
                 }
             ).ToArray();
 
+        private static readonly Instruction[] PragueInstructions =
+            ShanghaiInstructions.Union(
+                new Instruction[]
+                {
+                    Instruction.RJUMP,
+                    Instruction.RJUMPI,
+                    Instruction.RJUMPV,
+                    Instruction.CALLF,
+                    Instruction.RETF,
+                    Instruction.JUMPF,
+                    Instruction.CREATE3,
+                    Instruction.CREATE4,
+                    Instruction.RETURNCONTRACT,
+                    Instruction.DATASIZE,
+                    Instruction.DATACOPY,
+                    Instruction.DATALOAD,
+                    Instruction.DATALOADN,
+                    Instruction.SWAPN,
+                    Instruction.DUPN,
+                    Instruction.EXCHANGE,
+                    Instruction.CALL2,
+                    Instruction.DELEGATECALL2,
+                    Instruction.STATICCALL2,
+                }
+            ).ToArray();
+
         private readonly Dictionary<ForkActivation, Instruction[]> _validOpcodes
             = new()
             {
@@ -127,7 +153,8 @@ namespace Nethermind.Evm.Test
                 {(ForkActivation)MainnetSpecProvider.LondonBlockNumber, LondonInstructions},
                 {MainnetSpecProvider.ShanghaiActivation, ShanghaiInstructions},
                 {MainnetSpecProvider.CancunActivation, CancunInstructions},
-                {(long.MaxValue, ulong.MaxValue), CancunInstructions}
+                {MainnetSpecProvider.PragueActivation, PragueInstructions},
+                {(long.MaxValue, ulong.MaxValue), PragueInstructions}
             };
 
         private const string InvalidOpCodeErrorMessage = "BadInstruction";
