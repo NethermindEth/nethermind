@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P
 
         public int Enqueue<T>(T message) where T : P2PMessage
         {
-            if (!_context.Channel.Active)
+            if (!_context.Channel.IsWritable || !_context.Channel.Active)
             {
                 return 0;
             }

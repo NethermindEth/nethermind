@@ -414,7 +414,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
         public Hash256? FindHash(long number)
         {

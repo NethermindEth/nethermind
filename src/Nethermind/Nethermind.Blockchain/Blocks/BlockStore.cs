@@ -84,11 +84,11 @@ public class BlockStore : IBlockStore
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, bool shouldCache = false)
+    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
         if (b is not null) return b;
-        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
+        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
