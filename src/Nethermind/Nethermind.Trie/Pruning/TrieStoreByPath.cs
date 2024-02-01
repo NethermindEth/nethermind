@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -34,6 +35,7 @@ namespace Nethermind.Trie.Pruning
         private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
+        private SpanConcurrentDictionary<byte, byte[]> _readCache;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -48,6 +50,7 @@ namespace Nethermind.Trie.Pruning
             _pathStateDb = stateDb as IByPathStateDb;
             _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);
+            _readCache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanNibbleEqualityComparer);
         }
 
         public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
@@ -180,6 +183,21 @@ namespace Nethermind.Trie.Pruning
                                 Persist(persist.Value.blockNumber, persist.Value.stateRoot);
                                 AnnounceReorgBoundaries();
                             }
+                            else
+                            {
+                                //we are catching up with head and not receiving FCU? Try to persist to avoid indefinite memory growth
+                                int minCached = 128;
+                                int maxNoPersisted = 3 * minCached;
+                                if (_commitSetQueue.Count > maxNoPersisted)
+                                {
+                                    BlockCommitSet commitSet = null;
+                                    while (_commitSetQueue.Count > minCached)
+                                        _commitSetQueue.TryDequeue(out commitSet);
+
+                                    Persist(commitSet.BlockNumber, commitSet.Root?.Keccak);
+                                    AnnounceReorgBoundaries();
+                                }
+                            }
                         }
                     }
 
@@ -205,13 +223,13 @@ namespace Nethermind.Trie.Pruning
             if (rlp is null || rlp[0] != PathMarker)
             {
                 if (rlp is not null && _useCommittedCache)
-                    _committedNodes.AddDataToReadCache(path, rlp);
+                    _readCache.TryAdd(path, rlp);
                 return rlp;
             }
 
             rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
             if (rlp is not null && _useCommittedCache)
-                _committedNodes.AddDataToReadCache(path, rlp);
+                _readCache.TryAdd(path, rlp);
             return rlp;
         }
 
@@ -286,8 +304,7 @@ namespace Nethermind.Trie.Pruning
             NodeData? nodeData = _committedNodes.GetNodeData(targetPath, keccak);
             if (nodeData is null)
             {
-                byte[]? rawRlp = _committedNodes.GetDataFromReadCache(targetPath);
-                if (rawRlp is not null)
+                if (_readCache.TryGetValue(targetPath, out byte[] rawRlp))
                 {
                     Hash256 checkKeccak = Keccak.Compute(rawRlp);
                     if (keccak == checkKeccak)
@@ -324,8 +341,7 @@ namespace Nethermind.Trie.Pruning
 
             if (nodeData is null)
             {
-                byte[]? rawRlp = _committedNodes.GetDataFromReadCache(targetPath);
-                if (rawRlp is not null)
+                if (_readCache.TryGetValue(targetPath, out byte[] rawRlp))
                     nodeData = new NodeData(rawRlp, null);
 
                 if (nodeData is null)
@@ -893,6 +909,8 @@ namespace Nethermind.Trie.Pruning
             if (_columnsBatch is not null)
             {
                 _columnsBatch.Dispose();
+                //clear the read cache as soon as data is flushed
+                _readCache.Clear();
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                     _currentWriteBatches[column] = null;
                 _columnsBatch = null;

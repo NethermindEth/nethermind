@@ -717,7 +717,6 @@ public class PathDataCache : IPathDataCache
         PrefixLength = prefixLength;
         _logger = logManager?.GetClassLogger<PathDataCache>() ?? throw new ArgumentNullException(nameof(logManager));
         _main = new PathDataCacheInstance(trieStore, _logger, PrefixLength);
-        _readCache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanNibbleEqualityComparer);
     }
 
     private readonly ILogger _logger;
@@ -728,8 +727,6 @@ public class PathDataCache : IPathDataCache
     private PathDataCacheInstance? _openedInstance;
 
     public int PrefixLength { get; internal set; }
-
-    private SpanConcurrentDictionary<byte, byte[]> _readCache;
 
     public void OpenContext(long blockNumber, Hash256 parentStateRoot)
     {
@@ -749,9 +746,9 @@ public class PathDataCache : IPathDataCache
             if (_openedInstance is not null)
                 throw new ArgumentException($"Cannot open instance for {parentStateRoot} - already opened for {_openedInstance.LatestParentStateRootHash}");
 
-            if (_logger.IsTrace) _logger.Trace($"Opening context for {parentStateRoot} at block {blockNumber}");
-
             _openedInstance = _main.GetCacheInstanceForParent(parentStateRoot, blockNumber);
+
+            if (_logger.IsTrace) _logger.Trace($"Opened context for {parentStateRoot} at block {blockNumber} - {_openedInstance?.LatestParentStateRootHash}");
         }
         finally
         {
@@ -842,7 +839,6 @@ public class PathDataCache : IPathDataCache
             _lock.EnterWriteLock();
 
             _main.PersistUntilBlock(blockNumber, rootHash, batch);
-            _readCache.Clear();
 
             LogCache($"After persisting block {blockNumber} / {rootHash}");
             return true;
@@ -862,18 +858,6 @@ public class PathDataCache : IPathDataCache
             _openedInstance.AddRemovedPrefix(blockNumber, keyPrefix);
         }
         finally { _lock.ExitWriteLock(); }
-    }
-
-    public void AddDataToReadCache(Span<byte> key, byte[] data)
-    {
-        _readCache.TryAdd(key, data);
-    }
-
-    public byte[]? GetDataFromReadCache(Span<byte> key)
-    {
-        if (_readCache.TryGetValue(key, out byte[] data))
-            return data;
-        return null;
     }
 
     public void LogCache(string msg)

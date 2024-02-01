@@ -20,6 +20,4 @@ public interface IPathDataCache
     NodeData? GetNodeData(Span<byte> path, Hash256? hash);
     bool PersistUntilBlock(long blockNumber, Hash256 rootHash, IColumnsWriteBatch<StateColumns>? batch = null);
     void AddRemovedPrefix(long blockNumber, ReadOnlySpan<byte> keyPrefix);
-    void AddDataToReadCache(Span<byte> key, byte[] data);
-    byte[]? GetDataFromReadCache(Span<byte> key);
 }
