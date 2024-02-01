@@ -22,37 +22,13 @@ namespace Nethermind.Blockchain
 
         public virtual Hash256 StateRoot { get; }
 
-        public AccountStruct GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? default;
+        public bool TryGetAccount(Address address, out AccountStruct account) => _stateReader.TryGetAccount(StateRoot, address, out account);
 
-        public bool IsContract(Address address) => GetAccount(address).IsContract;
+        public bool HasStateForRoot(Hash256 stateRoot) => _stateReader.HasStateForRoot(stateRoot);
+        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions) => _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
 
-        public UInt256 GetNonce(Address address) => GetAccount(address).Nonce;
-
-        public UInt256 GetBalance(Address address) => GetAccount(address).Balance;
-
-        public ValueHash256 GetStorageRoot(Address address) => GetAccount(address).StorageRoot;
-
-        public byte[]? GetCode(Address address)
-        {
-            AccountStruct account = GetAccount(address);
-            return !account.HasCode ? Array.Empty<byte>() : _stateReader.GetCode(account.CodeHash);
-        }
-
+        public byte[]? GetCode(Address address) => TryGetAccount(address, out AccountStruct account) && account.HasCode ? _stateReader.GetCode(account.CodeHash) : Array.Empty<byte>();
         public byte[]? GetCode(Hash256 codeHash) => _stateReader.GetCode(codeHash);
         public byte[]? GetCode(ValueHash256 codeHash) => _stateReader.GetCode(codeHash);
-
-        public ValueHash256 GetCodeHash(Address address) => GetAccount(address).CodeHash;
-
-        public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions)
-        {
-            _stateReader.RunTreeVisitor(visitor, stateRoot, visitingOptions);
-        }
-
-        public bool AccountExists(Address address) => _stateReader.GetAccount(StateRoot, address) is not null;
-
-        public bool IsEmptyAccount(Address address) => GetAccount(address).IsEmpty;
-        public bool HasStateForRoot(Hash256 stateRoot) => _stateReader.HasStateForRoot(stateRoot);
-
-        public bool IsDeadAccount(Address address) => GetAccount(address).IsEmpty;
     }
 }

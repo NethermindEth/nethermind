@@ -29,7 +29,7 @@ namespace Nethermind.TxPool
             foreach (KeyValuePair<Address, Transaction[]> group in groupedTransactions)
             {
                 Address address = group.Key;
-                var accountNonce = _stateReader.GetAccount(address).Nonce;
+                var accountNonce = _stateReader.GetNonce(address);
                 var expectedNonce = accountNonce;
                 var pending = new Dictionary<ulong, Transaction>();
                 var queued = new Dictionary<ulong, Transaction>();

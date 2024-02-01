@@ -57,9 +57,10 @@ namespace Nethermind.State
             return _stateProvider.GetAccount(address);
         }
 
-        AccountStruct IAccountStateProvider.GetAccount(Address address)
+        bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            return _stateProvider.GetAccount(address).ToStruct();
+            account = _stateProvider.GetAccount(address).ToStruct();
+            return true;
         }
 
         public bool IsContract(Address address)
@@ -185,7 +186,7 @@ namespace Nethermind.State
             return _stateProvider.GetCodeHash(address);
         }
 
-        ValueHash256 IReadOnlyStateProvider.GetCodeHash(Address address)
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
         {
             return _stateProvider.GetCodeHash(address);
         }

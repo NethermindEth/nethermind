@@ -11,34 +11,22 @@ namespace Nethermind.State
 {
     public static class StateReaderExtensions
     {
-        public static UInt256 GetNonce(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetAccount(stateRoot, address)?.Nonce ?? UInt256.Zero;
-        }
+        public static UInt256 GetNonce(this IStateReader stateReader, Hash256 stateRoot, Address address) =>
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account) ? account.Nonce : UInt256.Zero;
 
-        public static UInt256 GetBalance(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetAccount(stateRoot, address)?.Balance ?? UInt256.Zero;
-        }
+        public static UInt256 GetBalance(this IStateReader stateReader, Hash256 stateRoot, Address address) =>
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account) ? account.Balance : UInt256.Zero;
 
-        public static ValueHash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetAccount(stateRoot, address)?.StorageRoot ?? Keccak.EmptyTreeHash;
-        }
+        public static ValueHash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address) =>
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account) ? account.StorageRoot : Keccak.EmptyTreeHash.ValueHash256;
 
-        public static byte[] GetCode(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? Array.Empty<byte>();
-        }
+        public static byte[] GetCode(this IStateReader stateReader, Hash256 stateRoot, Address address) =>
+            stateReader.GetCode(GetCodeHash(stateReader, stateRoot, address)) ?? Array.Empty<byte>();
 
-        public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)
-        {
-            return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
-        }
+        public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address) =>
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account) ? account.CodeHash : Keccak.OfAnEmptyString.ValueHash256;
 
-        public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
-        {
-            return stateReader.HasStateForRoot(header.StateRoot!);
-        }
+        public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header) =>
+            stateReader.HasStateForRoot(header.StateRoot!);
     }
 }

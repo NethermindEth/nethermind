@@ -33,7 +33,11 @@ namespace Nethermind.TxPool.Test
         public void should_return_valid_pending_and_queued_transactions()
         {
             uint nonce = 3;
-            _stateReader.GetAccount(_address).Returns(new AccountStruct(nonce, UInt256.Zero));
+            _stateReader.TryGetAccount(_address, out Arg.Any<AccountStruct>()).Returns(x =>
+            {
+                x[1] = new AccountStruct(nonce, UInt256.Zero);
+                return true;
+            });
             var transactions = GetTransactions();
 
             _txPool.GetPendingTransactionsBySender()

@@ -80,7 +80,7 @@ namespace Nethermind.TxPool.Collections
             {
                 Debug.Assert(bucket.Count > 0);
 
-                AccountStruct account = accounts.GetAccount(address);
+                accounts.TryGetAccount(address, out AccountStruct account);
                 UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }

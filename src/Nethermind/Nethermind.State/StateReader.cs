@@ -29,30 +29,24 @@ namespace Nethermind.State
             _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
 
-        public AccountStruct? GetAccount(Hash256 stateRoot, Address address)
-        {
-            return GetState(stateRoot, address);
-        }
+        public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
         public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
-            AccountStruct? account = GetAccount(stateRoot, address);
-            if (account is null) return null;
-
-            ValueHash256 storageRoot = account.Value.StorageRoot;
-            if (storageRoot == Keccak.EmptyTreeHash)
+            if (TryGetAccount(stateRoot, address, out AccountStruct account))
             {
-                return Bytes.ZeroByte.Span;
+                ValueHash256 storageRoot = account.StorageRoot;
+                if (storageRoot == Keccak.EmptyTreeHash)
+                {
+                    return Bytes.ZeroByte.Span;
+                }
+
+                Metrics.StorageTreeReads++;
+
+                return _storage.Get(index, new Hash256(storageRoot));
             }
 
-            Metrics.StorageTreeReads++;
-
-            return _storage.Get(index, new Hash256(storageRoot));
-        }
-
-        public UInt256 GetBalance(Hash256 stateRoot, Address address)
-        {
-            return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
+            return ReadOnlySpan<byte>.Empty;
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
@@ -69,24 +63,21 @@ namespace Nethermind.State
             return visitor.HasRoot;
         }
 
-        public byte[]? GetCode(Hash256 stateRoot, Address address)
-        {
-            AccountStruct? account = GetState(stateRoot, address);
-            return account is null ? Array.Empty<byte>() : GetCode(account.Value.CodeHash);
-        }
+        public byte[]? GetCode(Hash256 stateRoot, Address address) =>
+            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
-        private AccountStruct? GetState(Hash256 stateRoot, Address address)
+        private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
-                return null;
+                account = default;
+                return false;
             }
 
             Metrics.StateTreeReads++;
-            AccountStruct? account = _state.GetStruct(address, stateRoot);
-            return account;
+            return _state.TryGetStruct(address, out account, stateRoot);
         }
     }
 }

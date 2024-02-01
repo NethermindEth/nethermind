@@ -42,11 +42,17 @@ namespace Nethermind.State
         }
 
         [DebuggerStepThrough]
-        public AccountStruct? GetStruct(Address address, Hash256? rootHash = null)
+        public bool TryGetStruct(Address address, out AccountStruct account, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> bytes = Get(ValueKeccak.Compute(address.Bytes).BytesAsSpan, rootHash);
             Rlp.ValueDecoderContext valueDecoderContext = new Rlp.ValueDecoderContext(bytes);
-            return bytes.IsEmpty ? null : _decoder.DecodeStruct(ref valueDecoderContext);
+            if (bytes.IsEmpty)
+            {
+                account = default;
+                return false;
+            }
+
+            return _decoder.TryDecodeStruct(ref valueDecoderContext, out account);
         }
 
         [DebuggerStepThrough]

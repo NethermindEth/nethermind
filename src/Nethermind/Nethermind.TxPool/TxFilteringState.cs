@@ -18,5 +18,17 @@ public class TxFilteringState
     }
 
     private AccountStruct? _senderAccount = null;
-    public AccountStruct SenderAccount { get { return _senderAccount ??= _accounts.GetAccount(_tx.SenderAddress!); } }
+
+    public AccountStruct SenderAccount
+    {
+        get
+        {
+            if (_accounts.TryGetAccount(_tx.SenderAddress!, out AccountStruct account))
+            {
+                _senderAccount = account;
+            }
+
+            return _senderAccount ?? default;
+        }
+    }
 }
