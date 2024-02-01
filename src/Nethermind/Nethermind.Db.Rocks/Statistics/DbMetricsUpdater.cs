@@ -76,12 +76,12 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
             // in which case we take both the sum and count.
             if (value.SubMetric.TryGetValue("SUM", out var valueSum))
             {
-                Metrics.DbStats[(_dbName + "Db", value.Name + ".sum")] = valueSum;
-                Metrics.DbStats[(_dbName + "Db", value.Name + ".count")] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{_dbName}Db", $"{value.Name}.sum")] = valueSum;
+                Metrics.DbStats[($"{_dbName}Db", $"{value.Name}.count")] = value.SubMetric["COUNT"];
             }
             else
             {
-                Metrics.DbStats[(_dbName + "Db", value.Name)] = value.SubMetric["COUNT"];
+                Metrics.DbStats[($"{_dbName}Db", value.Name)] = value.SubMetric["COUNT"];
             }
         }
     }
@@ -126,7 +126,7 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
         {
             foreach (var stat in stats)
             {
-                Metrics.DbStats[(_dbName + "Db", stat.Name)] = stat.Value;
+                Metrics.DbStats[($"{_dbName}Db", stat.Name)] = stat.Value;
             }
         }
     }
