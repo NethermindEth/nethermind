@@ -188,8 +188,8 @@ public interface IDbConfig : IConfig
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
-    bool StateDbEnableTwoLevelIndex { get; set; }
-    bool StateDbEnableHashIndex { get; set; }
+    bool StateDbUseTwoLevelIndex { get; set; }
+    bool StateDbUseHashIndex { get; set; }
     ulong? StateDbPrefixExtractorLength { get; set; }
     bool StateDbAllowMmapReads { get; set; }
     bool StateDbVerifyChecksum { get; set; }

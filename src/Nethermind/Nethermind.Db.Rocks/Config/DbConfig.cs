@@ -188,8 +188,8 @@ public class DbConfig : IDbConfig
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
-    public bool StateDbEnableTwoLevelIndex { get; set; } = true;
-    public bool StateDbEnableHashIndex { get; set; } = false;
+    public bool StateDbUseTwoLevelIndex { get; set; } = true;
+    public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool StateDbAllowMmapReads { get; set; } = false;
     public bool StateDbVerifyChecksum { get; set; } = true;
