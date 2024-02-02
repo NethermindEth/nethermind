@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
@@ -21,6 +22,7 @@ using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.SnapSync;
 using NSubstitute;
 using NUnit.Framework;
@@ -84,6 +86,47 @@ public partial class EngineModuleTests
         pointers.LowestInsertedHeader = block.Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
         AssertExecutionStatusNotChangedV1(chain.BlockFinder, block.Hash!, startingHead, startingHead);
+    }
+
+    [Test]
+    public async Task forkChoiceUpdatedV1_unknown_block_without_newpayload_initiates_syncing()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256? startingHead = chain.BlockTree.HeadHash;
+        BlockHeader parent = Build.A.BlockHeader
+            .WithNumber(1)
+            .WithHash(TestItem.KeccakA)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .TestObject;
+        Block block = Build.A.Block
+            .WithNumber(2)
+            .WithParent(parent)
+            .WithNonce(0)
+            .WithDifficulty(0)
+            .WithAuthor(Address.Zero)
+            .WithPostMergeFlag(true)
+            .TestObject;
+        // sync has not started yet
+        chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
+        chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
+
+        chain.SyncPeerPool
+            .AllocateAndRun(
+                Arg.Any<Func<ISyncPeer, Task<BlockHeader[]>>>(),
+                Arg.Any<IPeerAllocationStrategy>(),
+                Arg.Any<AllocationContexts>(),
+                Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new BlockHeader[1] { block.Header }));
+
+        ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
+        ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
+            await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
+        forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
+            .Be(nameof(PayloadStatusV1.Syncing).ToUpper());
+
+        chain.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
     }
 
     [Test]
