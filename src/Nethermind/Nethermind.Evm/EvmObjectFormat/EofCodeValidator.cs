@@ -96,7 +96,6 @@ internal static class EvmObjectFormat
                 }
                 return true;
             }
-
         }
 
         header = null;
@@ -133,8 +132,8 @@ internal static class EvmObjectFormat
         {
             KIND_TYPE = 0x01,
             KIND_CODE = 0x02,
-            KIND_DATA = 0x03,
-            KIND_CONTAINER = 0x04,
+            KIND_CONTAINER = 0x03,
+            KIND_DATA = 0x04,
             TERMINATOR = 0x00
         }
 
@@ -153,6 +152,7 @@ internal static class EvmObjectFormat
 
         internal const byte OUTPUTS_OFFSET = INPUTS_OFFSET + 1;
         internal const byte OUTPUTS_MAX = 0x7F;
+        internal const byte NON_RETURNING = 0x80;
 
         internal const byte MAX_STACK_HEIGHT_OFFSET = OUTPUTS_OFFSET + 1;
         internal const int MAX_STACK_HEIGHT_LENGTH = 2;
@@ -198,7 +198,7 @@ internal static class EvmObjectFormat
             Sizes sectionSizes = new();
 
             int TYPESECTION_HEADER_STARTOFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH;
-            int TYPESECTION_HEADER_ENDOFFSET = VERSION_OFFSET + ONE_BYTE_LENGTH + TWO_BYTE_LENGTH;
+            int TYPESECTION_HEADER_ENDOFFSET = TYPESECTION_HEADER_STARTOFFSET + TWO_BYTE_LENGTH;
             if (container[TYPESECTION_HEADER_STARTOFFSET] != (byte)Separator.KIND_TYPE)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
@@ -212,7 +212,6 @@ internal static class EvmObjectFormat
             }
 
             int CODESECTION_HEADER_STARTOFFSET = TYPESECTION_HEADER_ENDOFFSET + ONE_BYTE_LENGTH;
-            int CODESECTION_HEADER_ENDOFFSET = CODESECTION_HEADER_STARTOFFSET + TWO_BYTE_LENGTH;
             if (container[CODESECTION_HEADER_STARTOFFSET] != (byte)Separator.KIND_CODE)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
@@ -223,7 +222,7 @@ internal static class EvmObjectFormat
             sectionSizes.CodeSectionSize = (ushort)(numberOfCodeSections * TWO_BYTE_LENGTH);
             if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed 1024");
+                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
                 return false;
             }
 
@@ -242,31 +241,37 @@ internal static class EvmObjectFormat
 
                 codeSections[pos] = codeSectionSize;
             }
-            CODESECTION_HEADER_ENDOFFSET = CODESECTION_HEADER_PREFIX_SIZE + numberOfCodeSections * TWO_BYTE_LENGTH;
+            var CODESECTION_HEADER_ENDOFFSET = CODESECTION_HEADER_PREFIX_SIZE + numberOfCodeSections * TWO_BYTE_LENGTH;
 
             int CONTAINERSECTION_HEADER_STARTOFFSET = CODESECTION_HEADER_ENDOFFSET + ONE_BYTE_LENGTH;
             int? CONTAINERSECTION_HEADER_ENDOFFSET = null;
-            int[] containersSections = null;
+            int[] containerSections = null;
             if (container[CONTAINERSECTION_HEADER_STARTOFFSET] == (byte)Separator.KIND_CONTAINER)
             {
-                int numberOfContainersSections = GetUInt16(container, CONTAINERSECTION_HEADER_STARTOFFSET + ONE_BYTE_LENGTH);
-                sectionSizes.ContainerSectionSize = (ushort)(numberOfContainersSections * TWO_BYTE_LENGTH);
-
-                containersSections = new int[numberOfContainersSections];
-                for (ushort pos = 0; pos < numberOfCodeSections; pos++)
+                ushort numberOfContainerSections = GetUInt16(container, CONTAINERSECTION_HEADER_STARTOFFSET + ONE_BYTE_LENGTH);
+                sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * TWO_BYTE_LENGTH);
+                if (numberOfContainerSections > MAXIMUM_NUM_CONTAINER_SECTIONS)
                 {
-                    int currentCodeSizeOffset = CODESECTION_HEADER_STARTOFFSET + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
-                    int containerSectionSize = GetUInt16(container, currentCodeSizeOffset + ONE_BYTE_LENGTH);
+                    if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
+                    return false;
+                }
+
+                containerSections = new int[numberOfContainerSections];
+                int CONTAINER_SECTION_HEADER_PREFIX_SIZE = CONTAINERSECTION_HEADER_STARTOFFSET + TWO_BYTE_LENGTH;
+                for (ushort pos = 0; pos < numberOfContainerSections; pos++)
+                {
+                    int currentContainerSizeOffset = CONTAINER_SECTION_HEADER_PREFIX_SIZE + pos * EvmObjectFormat.TWO_BYTE_LENGTH; // offset of pos'th code size
+                    int containerSectionSize = GetUInt16(container, currentContainerSizeOffset + ONE_BYTE_LENGTH);
 
                     if (containerSectionSize == 0)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {containerSectionSize}");
+                        if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
                         return false;
                     }
 
-                    containersSections[pos] = containerSectionSize;
-                    CONTAINERSECTION_HEADER_ENDOFFSET = currentCodeSizeOffset + containerSectionSize;
+                    containerSections[pos] = containerSectionSize;
                 }
+                CONTAINERSECTION_HEADER_ENDOFFSET = CONTAINER_SECTION_HEADER_PREFIX_SIZE + numberOfContainerSections * TWO_BYTE_LENGTH;
             }
 
 
@@ -294,18 +299,18 @@ internal static class EvmObjectFormat
             );
 
             CompoundSectionHeader codeSectionHeader = new(
-                Start: typeSectionHeader.Start + typeSectionHeader.Size,
+                Start: typeSectionHeader.EndOffset,
                 SubSectionsSizes: codeSections
             );
 
-            CompoundSectionHeader? containerSectionHeader = containersSections is null ? null
+            CompoundSectionHeader? containerSectionHeader = containerSections is null ? null
                 : new(
-                        Start: codeSectionHeader.Start + codeSectionHeader.Size,
-                        SubSectionsSizes: containersSections
+                        Start: codeSectionHeader.EndOffset,
+                        SubSectionsSizes: containerSections
                     );
 
             SectionHeader dataSectionHeader = new(
-                Start: containerSectionHeader?.Start + containerSectionHeader?.Size ?? codeSectionHeader.EndOffset,
+                Start: containerSectionHeader?.EndOffset ?? codeSectionHeader.EndOffset,
                 Size: sectionSizes.DataSectionSize
             );
 
@@ -324,10 +329,11 @@ internal static class EvmObjectFormat
         public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header)
         {
             int startOffset = header.TypeSection.Start;
-            int calculatedCodeLength = header.TypeSection.Size
-                + header.CodeSections.Size
-                + header.DataSection.Size
-                + (header.ContainerSection?.Size ?? 0);
+            int calculatedCodeLength =
+                    header.TypeSection.Size
+                +   header.CodeSections.Size
+                +   header.DataSection.Size
+                +   (header.ContainerSection?.Size ?? 0);
             CompoundSectionHeader codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..];
             (int typeSectionStart, ushort typeSectionSize) = header.TypeSection;
@@ -381,24 +387,23 @@ internal static class EvmObjectFormat
 
 
                 bool isNonReturning = typesection[sectionIdx * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
-                ReadOnlySpan<byte> code = container.Slice(codeSectionStartOffset, codeSectionSize);
+                ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSectionStartOffset, codeSectionSize);
                 if (!ValidateInstructions(sectionIdx, isNonReturning, typesection, code, header, validationQueue, out ushort jumpsCount))
                 {
-                    ArrayPool<bool>.Shared.Return(visitedSections);
+                    ArrayPool<bool>.Shared.Return(visitedSections, true);
                     return false;
                 }
             }
 
             var HasNoNonReachableCodeSections = visitedSections[..header.CodeSections.Count].All(id => id);
-            ArrayPool<bool>.Shared.Return(visitedSections);
+            ArrayPool<bool>.Shared.Return(visitedSections, true);
 
             return HasNoNonReachableCodeSections;
-
         }
 
         bool ValidateTypeSection(ReadOnlySpan<byte> types)
         {
-            if (types[INPUTS_OFFSET] != 0 || types[OUTPUTS_OFFSET] != 0)
+            if (types[INPUTS_OFFSET] != 0 || types[OUTPUTS_OFFSET] != NON_RETURNING)
             {
                 if (Logger.IsTrace) Logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
                 return false;
@@ -422,7 +427,7 @@ internal static class EvmObjectFormat
                     return false;
                 }
 
-                if (outputCount > OUTPUTS_MAX)
+                if (outputCount > OUTPUTS_MAX && outputCount != NON_RETURNING)
                 {
                     if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
                     return false;
@@ -639,7 +644,6 @@ internal static class EvmObjectFormat
 
                         if (initcodeSectionId >= header.ContainerSection?.Count)
                         {
-
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSections.Count}");
                             return false;
                         }

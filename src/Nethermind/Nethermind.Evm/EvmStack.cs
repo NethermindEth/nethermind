@@ -415,8 +415,8 @@ public ref struct EvmStack<TTracing>
 
         ref byte bytes = ref MemoryMarshal.GetReference(_bytes);
 
-        ref byte bottom = ref Unsafe.Add(ref bytes, (n - m) * WordSize);
-        ref byte top = ref Unsafe.Add(ref bytes, (n - 1) * WordSize);
+        ref byte bottom = ref Unsafe.Add(ref bytes, (Head - n - m) * WordSize);
+        ref byte top = ref Unsafe.Add(ref bytes, (Head - n) * WordSize);
 
         Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
         Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));

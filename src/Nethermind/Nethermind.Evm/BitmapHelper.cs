@@ -23,14 +23,14 @@ public static class BitmapHelper
 
         for (int pc = 0; pc < code.Length;)
         {
-            Instruction op = (Instruction)code[pc];
+            var opMetadaata = ((Instruction)code[pc]).StackRequirements();
+
             pc++;
 
-            int numbits = op switch
-            {
-                Instruction.RJUMPV => isEof ? op.GetImmediateCount(isEof, code[pc]) : 0,
-                _ => op.GetImmediateCount(isEof),
-            };
+            int numbits =
+                code[pc] == (byte)Instruction.RJUMPV
+                    ? Instruction.RJUMPV.GetImmediateCount(isEof, code[pc])
+                    : opMetadaata.immediates.Value;
 
             if (numbits == 0) continue;
 

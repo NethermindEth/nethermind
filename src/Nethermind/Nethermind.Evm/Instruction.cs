@@ -206,17 +206,12 @@ namespace Nethermind.Evm
     public static class InstructionExtensions
     {
         public static int GetImmediateCount(this Instruction instruction, bool IsEofContext, byte jumpvCount = 0)
-            => instruction switch
+            =>
+            instruction switch
             {
-                Instruction.CALLF or Instruction.JUMPF => IsEofContext ? EvmObjectFormat.TWO_BYTE_LENGTH : 0,
-                Instruction.DUPN or Instruction.SWAPN => IsEofContext ? EvmObjectFormat.ONE_BYTE_LENGTH : 0,
-                Instruction.RJUMP or Instruction.RJUMPI => IsEofContext ? EvmObjectFormat.TWO_BYTE_LENGTH : 0,
                 Instruction.RJUMPV => IsEofContext ? jumpvCount * EvmObjectFormat.TWO_BYTE_LENGTH + EvmObjectFormat.ONE_BYTE_LENGTH : 0,
                 >= Instruction.PUSH0 and <= Instruction.PUSH32 => instruction - Instruction.PUSH0,
-                Instruction.DATALOADN => IsEofContext ? EvmObjectFormat.TWO_BYTE_LENGTH: 0,
-                Instruction.RETURNCONTRACT => IsEofContext ? EvmObjectFormat.ONE_BYTE_LENGTH : 0,
-                Instruction.CREATE3 => IsEofContext ? EvmObjectFormat.ONE_BYTE_LENGTH : 0,
-                _ => 0
+                _ => IsEofContext ? instruction.StackRequirements().immediates.Value : 0
             };
         public static bool IsTerminating(this Instruction instruction) => instruction switch
         {
@@ -240,9 +235,9 @@ namespace Nethermind.Evm
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
                 Instruction.RETURNCONTRACT or Instruction.CREATE4 or Instruction.CREATE3 => IsEofContext,
-                Instruction.DATACOPY or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
+                Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
                 Instruction.STATICCALL2 or Instruction.DELEGATECALL2 or Instruction.CALL2 => IsEofContext,
-                Instruction.RETURNDATACOPY => IsEofContext,
+                Instruction.RETURNDATALOAD => IsEofContext,
                 Instruction.CALL => !IsEofContext,
                 Instruction.CALLCODE => !IsEofContext,
                 Instruction.DELEGATECALL => !IsEofContext,
@@ -306,6 +301,7 @@ namespace Nethermind.Evm
             Instruction.EXTCODECOPY => (4, 0, 0),
             Instruction.RETURNDATASIZE => (0, 1, 0),
             Instruction.RETURNDATACOPY => (3, 0, 0),
+            Instruction.RETURNDATALOAD => (1, 1, 0),
             Instruction.EXTCODEHASH => (1, 1, 0),
             Instruction.BLOCKHASH => (1, 1, 0),
             Instruction.COINBASE => (0, 1, 0),
@@ -364,7 +360,7 @@ namespace Nethermind.Evm
             Instruction.CALL2 => (3, 1, 0),
             Instruction.STATICCALL2 => (3, 1, 0),
             Instruction.DELEGATECALL2 => (3, 1, 0),
-            _ => throw new NotImplementedException(),
+            _ => throw new NotImplementedException($"opcode {instruction} not implemented yet"),
         };
 
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null)
