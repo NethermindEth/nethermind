@@ -314,10 +314,17 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts = AllocationContexts.All, int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts = AllocationContexts.All,
+            int timeoutMilliseconds = 0,
+            CancellationToken? cancellationToken = null)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
+
+            if (cancellationToken == null) cancellationToken = CancellationToken.None;
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken.Value, _refreshLoopCancellation.Token);
 
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
             while (true)
@@ -335,7 +342,7 @@ namespace Nethermind.Synchronization.Peers
 
                 if (!_signals.SafeWaitHandle.IsClosed)
                 {
-                    await _signals.WaitOneAsync(waitTime, _refreshLoopCancellation.Token);
+                    await _signals.WaitOneAsync(waitTime, cts.Token);
                     if (!_signals.SafeWaitHandle.IsClosed)
                     {
                         _signals.Reset(); // without this we have no delay
@@ -343,6 +350,21 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
         }
+
+        public async Task<T> AllocateAndRun<T>(Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
+            CancellationToken cancellationToken)
+        {
+            SyncPeerAllocation allocation = await Allocate(peerAllocationStrategy, allocationContexts, cancellationToken: cancellationToken);
+            try
+            {
+                return await func(allocation.Current!.SyncPeer);
+            }
+            finally
+            {
+                Free(allocation);
+            }
+        }
+
 
         private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
         {

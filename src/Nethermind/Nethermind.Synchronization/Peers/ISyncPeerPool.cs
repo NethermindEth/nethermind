@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
@@ -13,7 +14,17 @@ namespace Nethermind.Synchronization.Peers
 {
     public interface ISyncPeerPool : IDisposable
     {
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            int timeoutMilliseconds = 0,
+            CancellationToken? cancellationToken = null);
+
+        Task<T> AllocateAndRun<T>(
+            Func<ISyncPeer, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            CancellationToken cancellationToken);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
