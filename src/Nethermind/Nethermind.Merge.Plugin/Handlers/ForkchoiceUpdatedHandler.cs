@@ -121,6 +121,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
             if (headBlockHeader == null)
             {
+                if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
                 headBlockHeader = await FetchHeaderFromPeer(forkchoiceState);
             }
 
