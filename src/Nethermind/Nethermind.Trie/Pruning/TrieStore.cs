@@ -191,7 +191,7 @@ namespace Nethermind.Trie.Pruning
                 _trieStore.MemoryUsedByDirtyCache = 0;
             }
 
-            internal readonly struct Key
+            internal readonly struct Key : IEquatable<Key>
             {
                 internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
                 public Hash256? Address { get; }
