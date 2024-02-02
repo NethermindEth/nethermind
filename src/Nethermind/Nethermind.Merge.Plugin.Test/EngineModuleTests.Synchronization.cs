@@ -18,6 +18,7 @@ using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -112,13 +113,19 @@ public partial class EngineModuleTests
         chain.BeaconSync!.ShouldBeInBeaconHeaders().Should().BeFalse();
         chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
 
+        ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
+        syncPeer
+            .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
+            .Returns(Task.FromResult(new BlockHeader[1] { block.Header }));
+        SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
+        alloc.AllocateBestPeer(new []{new PeerInfo(syncPeer)}, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chain.SyncPeerPool
-            .AllocateAndRun(
-                Arg.Any<Func<ISyncPeer, Task<BlockHeader[]>>>(),
+            .Allocate(
                 Arg.Any<IPeerAllocationStrategy>(),
                 Arg.Any<AllocationContexts>(),
+                Arg.Any<int>(),
                 Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new BlockHeader[1] { block.Header }));
+            .Returns(alloc);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =

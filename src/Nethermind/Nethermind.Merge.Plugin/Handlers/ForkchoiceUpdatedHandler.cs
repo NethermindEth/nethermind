@@ -119,13 +119,15 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 headBlockHeader = block.Header;
             }
 
-            if (headBlockHeader == null)
+            if (headBlockHeader is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
-                headBlockHeader = await FetchHeaderFromPeer(forkchoiceState);
+                using CancellationTokenSource cts = new CancellationTokenSource();
+                cts.CancelAfter(TimeSpan.FromSeconds(2));
+                headBlockHeader = await _syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash, cts.Token);
             }
 
-            if (headBlockHeader != null)
+            if (headBlockHeader is not null)
             {
                 StartNewBeaconHeaderSync(forkchoiceState, headBlockHeader, simpleRequestStr);
                 return ForkchoiceUpdatedV1Result.Syncing;
@@ -264,29 +266,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         }
 
         return null;
-    }
-
-    private async Task<BlockHeader?> FetchHeaderFromPeer(ForkchoiceStateV1 forkchoiceState)
-    {
-        using CancellationTokenSource cts = new CancellationTokenSource();
-        cts.CancelAfter(TimeSpan.FromSeconds(2));
-
-        BlockHeader[]? headers = null;
-        try
-        {
-            headers = await _syncPeerPool.AllocateAndRun(
-                peer => peer.GetBlockHeaders(forkchoiceState.HeadBlockHash, 1, 0, cts.Token),
-                BySpeedStrategy.FastestHeader,
-                AllocationContexts.Headers,
-                cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            // Timeout or no peer.
-            return null;
-        }
-
-        return headers?.Length == 1 ? headers[0] : null;
     }
 
     private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)

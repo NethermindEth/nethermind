@@ -43,7 +43,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 IPeerAllocationStrategy peerAllocationStrategy,
                 AllocationContexts contexts,
                 int timeoutMilliseconds = 0,
-                CancellationToken? cancellationToken = null)
+                CancellationToken cancellationToken = default)
             {
                 await _peerSemaphore.WaitAsync();
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -55,12 +55,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     Substitute.For<INodeStatsManager>(),
                     Substitute.For<IBlockTree>());
                 return allocation;
-            }
-
-            public Task<T> AllocateAndRun<T>(Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
-                CancellationToken cancellationToken)
-            {
-                throw new NotImplementedException();
             }
 
             public void Free(SyncPeerAllocation syncPeerAllocation)

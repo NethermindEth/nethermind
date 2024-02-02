@@ -318,13 +318,12 @@ namespace Nethermind.Synchronization.Peers
             IPeerAllocationStrategy peerAllocationStrategy,
             AllocationContexts allocationContexts = AllocationContexts.All,
             int timeoutMilliseconds = 0,
-            CancellationToken? cancellationToken = null)
+            CancellationToken cancellationToken = default)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
 
-            if (cancellationToken == null) cancellationToken = CancellationToken.None;
-            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken.Value, _refreshLoopCancellation.Token);
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
             while (true)
@@ -348,20 +347,6 @@ namespace Nethermind.Synchronization.Peers
                         _signals.Reset(); // without this we have no delay
                     }
                 }
-            }
-        }
-
-        public async Task<T> AllocateAndRun<T>(Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
-            CancellationToken cancellationToken)
-        {
-            SyncPeerAllocation allocation = await Allocate(peerAllocationStrategy, allocationContexts, cancellationToken: cancellationToken);
-            try
-            {
-                return await func(allocation.Current!.SyncPeer);
-            }
-            finally
-            {
-                Free(allocation);
             }
         }
 
