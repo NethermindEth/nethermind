@@ -275,7 +275,7 @@ public partial class BlockProcessor : IBlockProcessor
         }
 
         ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
-        Hash256 root = new ValidatorExitsTrie(validatorExits, true).RootHash;
+        Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
         block.Body.ValidatorExits = validatorExits;
         block.Header.ValidatorExitsRoot = root;
     }

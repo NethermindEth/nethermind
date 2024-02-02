@@ -18,11 +18,13 @@ namespace Nethermind.Core
 
         public BlockBody() : this(null, null, null) { }
 
-        public BlockBody WithChangedTransactions(Transaction[] transactions) => new(transactions, Uncles, Withdrawals);
+        public BlockBody WithChangedTransactions(Transaction[] transactions) => new(transactions, Uncles, Withdrawals, ValidatorExits);
 
-        public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals);
+        public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals, ValidatorExits);
 
-        public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals);
+        public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals, ValidatorExits);
+
+        public BlockBody WithChangedValidatorExits(ValidatorExit[]? validatorExits) => new(Transactions, Uncles, Withdrawals, validatorExits);
 
         public static BlockBody WithOneTransactionOnly(Transaction tx) => new(new[] { tx }, null, null);
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -86,6 +87,16 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                .TestObject,
+            Build.A.Block.WithNumber(1)
+                .WithBaseFeePerGas(1)
+                .WithTransactions(transactions)
+                .WithUncles(uncles)
+                .WithWithdrawals(8)
+                .WithBlobGasUsed(ulong.MaxValue)
+                .WithExcessBlobGas(ulong.MaxValue)
+                .WithMixHash(Keccak.EmptyTreeHash)
+                .WithValidatorExits(new[] { new ValidatorExit(TestItem.AddressA, new byte[48]) })
                 .TestObject
         };
     }

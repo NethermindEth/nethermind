@@ -156,6 +156,44 @@ public class HeaderDecoderTests
         blockHeader.ExcessBlobGas.Should().Be(excessBlobGas);
     }
 
+    [Test]
+    public void Can_encode_decode_with_ValidatorExitRoot()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithValidatorExitsRoot(TestItem.KeccakA).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
+        blockHeader.ValidatorExitsRoot.Should().Be(TestItem.KeccakA);
+    }
+
+    [Test]
+    public void Can_encode_decode_with_ValidatorExitRoot_equals_to_null()
+    {
+        BlockHeader header = Build.A.BlockHeader
+            .WithTimestamp(ulong.MaxValue)
+            .WithBaseFee(1)
+            .WithWithdrawalsRoot(Keccak.Zero)
+            .WithBlobGasUsed(0)
+            .WithExcessBlobGas(0)
+            .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithValidatorExitsRoot(null).TestObject;
+
+        Rlp rlp = Rlp.Encode(header);
+        BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
+
+        blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
+        blockHeader.ValidatorExitsRoot.Should().BeNull();
+    }
+
     public static IEnumerable<object?[]> CancunFieldsSource()
     {
         yield return new object?[] { null, null, null };

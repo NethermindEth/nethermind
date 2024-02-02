@@ -150,8 +150,14 @@ namespace Nethermind.Serialization.Rlp
                     contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
             }
 
-            int? validatorExitsLength = GetValidatorExitsLength(item, rlpBehaviors);
-            contentLength += validatorExitsLength ?? 0;
+            int? validatorExitsLength = null;
+            if (item.ValidatorExits is not null)
+            {
+                validatorExitsLength = GetValidatorExitsLength(item, rlpBehaviors);
+
+                if (validatorExitsLength is not null)
+                    contentLength += Rlp.LengthOfSequence(validatorExitsLength.Value);
+            }
 
             return (contentLength, txLength, unclesLength, withdrawalsLength, validatorExitsLength);
         }

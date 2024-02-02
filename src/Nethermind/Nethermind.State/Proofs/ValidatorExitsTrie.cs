@@ -4,8 +4,10 @@
 using System;
 using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
@@ -27,5 +29,12 @@ public class ValidatorExitsTrie : PatriciaTrie<ValidatorExit>
         {
             Set(Rlp.Encode(key++).Bytes, _codec.Encode(exit).Bytes);
         }
+    }
+
+    public static Hash256 CalculateRoot(ValidatorExit[] validatorExits)
+    {
+        using TrackingCappedArrayPool cappedArray = new(validatorExits.Length * 4);
+        Hash256 rootHash = new ValidatorExitsTrie(validatorExits, canBuildProof: false, bufferPool: cappedArray).RootHash;
+        return rootHash;
     }
 }

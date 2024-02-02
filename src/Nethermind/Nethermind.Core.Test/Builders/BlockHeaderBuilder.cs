@@ -195,4 +195,10 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         TestObjectInternal.ParentBeaconBlockRoot = parentBeaconBlockRoot;
         return this;
     }
+
+    public BlockHeaderBuilder WithValidatorExitsRoot(Hash256? validatorExitsRoot)
+    {
+        TestObjectInternal.ValidatorExitsRoot = validatorExitsRoot;
+        return this;
+    }
 }

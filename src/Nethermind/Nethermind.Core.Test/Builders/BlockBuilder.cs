@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -278,6 +279,15 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
         {
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
+            return this;
+        }
+
+        public BlockBuilder WithValidatorExits(ValidatorExit[]? validatorExits)
+        {
+            TestObjectInternal = TestObjectInternal.WithReplacedBody(
+                TestObjectInternal.Body.WithChangedValidatorExits(validatorExits));
+
+            TestObjectInternal.Header.TxRoot = validatorExits is not null ? ValidatorExitsTrie.CalculateRoot(validatorExits) : null;
             return this;
         }
     }
