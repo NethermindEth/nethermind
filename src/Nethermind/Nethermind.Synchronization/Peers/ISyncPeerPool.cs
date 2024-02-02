@@ -3,8 +3,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -13,7 +15,11 @@ namespace Nethermind.Synchronization.Peers
 {
     public interface ISyncPeerPool : IDisposable
     {
-        Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, int timeoutMilliseconds = 0);
+        Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
+            int timeoutMilliseconds = 0,
+            CancellationToken cancellationToken = default);
 
         void Free(SyncPeerAllocation syncPeerAllocation);
 
@@ -95,5 +101,44 @@ namespace Nethermind.Synchronization.Peers
         event EventHandler<PeerBlockNotificationEventArgs> NotifyPeerBlock;
 
         event EventHandler<PeerHeadRefreshedEventArgs> PeerRefreshed;
+    }
+
+    public static class SyncPeerPoolExtensions
+    {
+        public static async Task<T> AllocateAndRun<T>(this ISyncPeerPool syncPeerPool, Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
+            CancellationToken cancellationToken)
+        {
+            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(peerAllocationStrategy, allocationContexts, cancellationToken: cancellationToken);
+            try
+            {
+                if (allocation is null) return default;
+                return await func(allocation.Current?.SyncPeer);
+            }
+            finally
+            {
+                syncPeerPool.Free(allocation);
+            }
+        }
+
+
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken)
+        {
+            BlockHeader[]? headers = null;
+            try
+            {
+                headers = await syncPeerPool.AllocateAndRun(
+                    peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
+                    BySpeedStrategy.FastestHeader,
+                    AllocationContexts.Headers,
+                    cancellationToken);
+            }
+            catch (OperationCanceledException)
+            {
+                // Timeout or no peer.
+                return null;
+            }
+
+            return headers?.Length == 1 ? headers[0] : null;
+        }
     }
 }

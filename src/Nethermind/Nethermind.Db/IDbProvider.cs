@@ -34,5 +34,6 @@ namespace Nethermind.Db
 
         void RegisterDb<T>(string dbName, T db) where T : class, IDb;
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
+        IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
     }
 }
