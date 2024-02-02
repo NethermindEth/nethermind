@@ -14,7 +14,7 @@ namespace Nethermind.Evm.Test
     /// </summary>
     internal class Eip1153Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.CancunBlockTimestamp;
 
         /// <summary>
