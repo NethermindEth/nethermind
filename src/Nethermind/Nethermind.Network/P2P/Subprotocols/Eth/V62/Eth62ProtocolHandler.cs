@@ -182,7 +182,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
                     ReportIn(getBlockHeadersMessage, size);
-                    Handle(getBlockHeadersMessage);
+                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -192,7 +192,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     ReportIn(getBodiesMsg, size);
-                    Handle(getBodiesMsg);
+                    ScheduleSyncServe(getBodiesMsg, Handle);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);

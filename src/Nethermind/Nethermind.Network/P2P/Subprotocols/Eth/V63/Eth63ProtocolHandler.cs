@@ -71,7 +71,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     ReportIn(getReceiptsMessage, size);
-                    Handle(getReceiptsMessage);
+                    ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -81,7 +81,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                     ReportIn(getNodeDataMessage, size);
-                    Handle(getNodeDataMessage);
+                    ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -99,18 +99,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
-        private void Handle(GetNodeDataMessage msg)
+        private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(FulfillNodeDataRequest(msg));
+            NodeDataMessage response = await FulfillNodeDataRequest(msg, cancellationToken);
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+
+            return response;
         }
 
-        protected NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
+        protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             if (msg.Hashes.Count > 4096)
             {
@@ -119,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
 
-            return new NodeDataMessage(nodeData);
+            return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
         protected virtual void Handle(NodeDataMessage msg, int size)

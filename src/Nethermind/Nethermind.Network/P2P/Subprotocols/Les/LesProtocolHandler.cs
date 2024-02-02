@@ -122,27 +122,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
-                    Handle(getBlockHeadersMessage);
+                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString(), size);
-                    Handle(getBlockBodiesMessage);
+                    ScheduleSyncServe(getBlockBodiesMessage, Handle);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString(), size);
-                    Handle(getReceiptsMessage);
+                    ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString(), size);
-                    Handle(getContractCodesMessage);
+                    ScheduleSyncServe(getContractCodesMessage, Handle);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString(), size);
-                    Handle(getHelperTrieProofsMessage);
+                    ScheduleSyncServe(getHelperTrieProofsMessage, Handle);
                     break;
             }
         }
@@ -199,35 +199,35 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
-        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+        public async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(getBlockHeaders.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
+            return new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        public async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(getBlockBodies.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
+            return new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetReceiptsMessage getReceipts)
+        public async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceipts, CancellationToken cancellationToken)
         {
-            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
+            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = await FulfillReceiptsRequest(getReceipts.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
+            return new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetContractCodesMessage getContractCodes)
+        public Task<ContractCodesMessage> Handle(GetContractCodesMessage getContractCodes, CancellationToken cancellationToken)
         {
             var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, NodeDataType.Code);
             // todo - implement cost tracking
-            Send(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
+            return Task.FromResult(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
         }
 
-        public void Handle(GetHelperTrieProofsMessage getHelperTrieProofs)
+        public Task<HelperTrieProofsMessage> Handle(GetHelperTrieProofsMessage getHelperTrieProofs, CancellationToken cancellationToken)
         {
             List<byte[]> proofNodes = new();
             List<byte[]> auxData = new();
@@ -244,7 +244,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                         throw new SubprotocolException("bloom bits trie not yet supported");
                 }
             }
-            Send(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), getHelperTrieProofs.RequestId, int.MaxValue));
+
+            return Task.FromResult(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), getHelperTrieProofs.RequestId, int.MaxValue));
         }
 
         public void GetCHTData(HelperTrieRequest request, List<byte[]> proofNodes, List<byte[]> auxData)
