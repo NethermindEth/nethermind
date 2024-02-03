@@ -7,6 +7,7 @@ using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -38,6 +39,7 @@ public class NodeDataProtocolHandlerTests
             _svc,
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             LimboLogs.Instance);
         _handler.Init();
     }

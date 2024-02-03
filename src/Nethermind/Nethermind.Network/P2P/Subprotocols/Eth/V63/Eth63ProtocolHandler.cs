@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
 
-            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
 
             return Task.FromResult(new NodeDataMessage(nodeData));
         }

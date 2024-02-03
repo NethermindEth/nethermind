@@ -227,7 +227,7 @@ namespace Nethermind.Network
                 {
                     var handler = version switch
                     {
-                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _logManager),
+                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager),
                         _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);

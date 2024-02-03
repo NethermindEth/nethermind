@@ -357,7 +357,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 blocks[i] = SyncServer.Find(hashes[i]);
                 sizeEstimate += MessageSizeEstimator.EstimateSize(blocks[i]);
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
                 {
                     Array.Resize(ref blocks, i + 1);
                     break;
@@ -408,7 +408,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
                 }
 
-                if (sizeEstimate > SoftOutgoingMessageSizeLimit)
+                if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
                 {
                     Array.Resize(ref txReceipts, i + 1);
                     break;

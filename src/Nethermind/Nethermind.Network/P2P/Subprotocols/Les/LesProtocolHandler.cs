@@ -224,7 +224,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public Task<ContractCodesMessage> Handle(GetContractCodesMessage getContractCodes, CancellationToken cancellationToken)
         {
-            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, NodeDataType.Code);
+            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, cancellationToken, NodeDataType.Code);
             // todo - implement cost tracking
             return Task.FromResult(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
         }
