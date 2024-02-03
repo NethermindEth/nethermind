@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -37,11 +38,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
+            ISyncScheduler syncScheduler,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, logManager)
+            : base(session, serializer, statsManager, syncServer, syncScheduler, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

@@ -79,9 +79,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
+            ISyncScheduler syncScheduler,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            SyncScheduler = syncScheduler ?? throw new ArgumentNullException(nameof(SyncScheduler));
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);

@@ -17,6 +17,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Scheduler;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
@@ -35,7 +36,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
+            ISyncScheduler syncScheduler,
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, syncScheduler, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }

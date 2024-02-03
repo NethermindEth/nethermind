@@ -30,6 +30,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Network.Scheduler;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -506,6 +507,8 @@ public class InitializeNetwork : IStep
 
         NetworkStorage peerStorage = new(peersDb, _api.LogManager);
         ISyncServer syncServer = _api.SyncServer!;
+        SyncScheduler syncScheduler = new SyncScheduler(_api.LogManager);
+        _api.DisposeStack.Push(syncScheduler);
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
@@ -513,6 +516,7 @@ public class InitializeNetwork : IStep
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
+            syncScheduler,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

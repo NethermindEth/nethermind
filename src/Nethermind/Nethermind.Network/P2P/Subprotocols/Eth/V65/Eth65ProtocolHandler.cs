@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V64;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -30,13 +31,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
+            ISyncScheduler syncScheduler,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, syncScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }

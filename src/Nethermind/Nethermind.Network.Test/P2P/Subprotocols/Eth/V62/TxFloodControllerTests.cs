@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -34,6 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
+                Substitute.For<ISyncScheduler>(),
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);

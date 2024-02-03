@@ -14,6 +14,7 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
@@ -47,11 +48,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
+            ISyncScheduler syncScheduler,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, syncScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)>(Send);
