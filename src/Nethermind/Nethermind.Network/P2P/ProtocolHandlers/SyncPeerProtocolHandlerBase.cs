@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
-        protected ISyncScheduler SyncScheduler { get; }
+        protected IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
 
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
@@ -79,11 +79,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ISyncScheduler syncScheduler,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            SyncScheduler = syncScheduler ?? throw new ArgumentNullException(nameof(SyncScheduler));
+            BackgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler));
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
@@ -444,7 +444,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
         {
-            SyncScheduler.ScheduleSyncServe(request, fulfillFunc, Send);
+            BackgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
+        }
+
+        // I just don't want to create a closure.. so this happens.
+        private async Task BackgroundSyncSender<TReq, TRes>(
+            (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        {
+            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+            Send(response);
         }
 
         #region Cleanup

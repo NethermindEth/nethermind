@@ -36,8 +36,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ISyncScheduler syncScheduler,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, syncScheduler, logManager)
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }

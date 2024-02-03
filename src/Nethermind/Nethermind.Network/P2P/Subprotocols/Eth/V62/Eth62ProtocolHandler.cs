@@ -38,12 +38,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ISyncScheduler syncScheduler,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, syncScheduler, logManager)
+            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));

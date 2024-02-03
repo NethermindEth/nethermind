@@ -61,13 +61,13 @@ namespace Nethermind.Network
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
         private readonly Regex? _clientIdPattern;
-        private readonly ISyncScheduler _syncScheduler;
+        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
-            ISyncScheduler syncScheduler,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
@@ -84,7 +84,7 @@ namespace Nethermind.Network
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            _syncScheduler = syncScheduler ?? throw new ArgumentNullException(nameof(syncScheduler));
+            _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -203,9 +203,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _syncScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _syncScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _syncScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -247,7 +247,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _syncScheduler, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;

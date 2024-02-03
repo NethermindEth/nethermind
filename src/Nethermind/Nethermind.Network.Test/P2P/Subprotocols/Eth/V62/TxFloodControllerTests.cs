@@ -35,7 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
-                Substitute.For<ISyncScheduler>(),
+                Substitute.For<IBackgroundTaskScheduler>(),
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);

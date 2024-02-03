@@ -22,14 +22,14 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
         ISyncServer syncServer,
-        ISyncScheduler syncScheduler,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, syncScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
     }
 

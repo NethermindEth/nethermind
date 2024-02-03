@@ -9,13 +9,13 @@ using Nethermind.Logging;
 
 namespace Nethermind.Network.Scheduler;
 
-public class SyncScheduler: ISyncScheduler, IAsyncDisposable
+public class BackgroundTaskScheduler: IBackgroundTaskScheduler, IAsyncDisposable
 {
     private readonly CancellationTokenSource _cancellationTokenSource;
     private readonly Channel<IActivity> _activities;
     private readonly ILogger _logger;
 
-    public SyncScheduler(ILogManager logManager)
+    public BackgroundTaskScheduler(ILogManager logManager)
     {
         _cancellationTokenSource = new CancellationTokenSource();
         _activities = Channel.CreateBounded<IActivity>(1024);
@@ -42,16 +42,15 @@ public class SyncScheduler: ISyncScheduler, IAsyncDisposable
         }
     }
 
-    public void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc, Action<TRes> sendFunc)
+    public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
     {
         DateTimeOffset deadline = DateTimeOffset.Now + TimeSpan.FromSeconds(2);
 
-        IActivity activity = new SyncActivity<TReq, TRes>()
+        IActivity activity = new SyncActivity<TReq>()
         {
             Deadline = deadline,
             Request = request,
             FulfillFunc = fulfillFunc,
-            SendFunc = sendFunc
         };
 
         _activities.Writer.TryWrite(activity);
@@ -63,12 +62,11 @@ public class SyncScheduler: ISyncScheduler, IAsyncDisposable
         await _cancellationTokenSource.CancelAsync();
     }
 
-    private struct SyncActivity<TReq, TRes>: IActivity
+    private struct SyncActivity<TReq>: IActivity
     {
         public DateTimeOffset Deadline { get; init; }
         public TReq Request { get; init; }
-        public Func<TReq, CancellationToken, Task<TRes>> FulfillFunc { get; init; }
-        public Action<TRes> SendFunc { get; init; }
+        public Func<TReq, CancellationToken, Task> FulfillFunc { get; init; }
 
         public async Task Do(CancellationToken cancellationToken)
         {
@@ -84,8 +82,7 @@ public class SyncScheduler: ISyncScheduler, IAsyncDisposable
                 cts.CancelAfter(timeToComplete);
             }
 
-            TRes resp = await FulfillFunc.Invoke(Request, cts.Token);
-            SendFunc(resp);
+            await FulfillFunc.Invoke(Request, cts.Token);
         }
     }
 

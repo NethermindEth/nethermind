@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Network.Scheduler;
 
-public interface ISyncScheduler
+public interface IBackgroundTaskScheduler
 {
-    void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc, Action<TRes> sendFunc);
+    void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc);
 }

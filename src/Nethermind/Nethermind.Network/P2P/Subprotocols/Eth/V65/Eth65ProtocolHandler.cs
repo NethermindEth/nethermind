@@ -31,14 +31,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
-            ISyncScheduler syncScheduler,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, syncScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _pooledTxsRequestor = pooledTxsRequestor;
         }
