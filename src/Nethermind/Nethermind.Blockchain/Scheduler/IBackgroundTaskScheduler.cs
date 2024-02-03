@@ -5,7 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 
-namespace Nethermind.Network.Scheduler;
+namespace Nethermind.Blockchain.Scheduler;
 
 /// <summary>
 /// Provide interface to run task in background.
@@ -21,7 +21,7 @@ namespace Nethermind.Network.Scheduler;
 ///
 /// Note: Yes, I know there is a built in TaskScheduler that can do some magical stuff that stop execution on async
 /// and stuff, but that is complicated and I don't wanna explain why you need `async Task.Yield()` in the middle of a loop,
-/// or explicitly specify it to run on this task scheduler and such.
+/// or explicitly specify it to run on this task scheduler and such. Maybe some other time ok?
 /// </summary>
 public interface IBackgroundTaskScheduler
 {

@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -209,6 +210,7 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
+        public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public IWallet? Wallet { get; set; }
         public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }

@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -17,7 +18,6 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;

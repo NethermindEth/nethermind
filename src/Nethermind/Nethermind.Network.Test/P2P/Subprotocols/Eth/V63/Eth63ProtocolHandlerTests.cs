@@ -5,9 +5,11 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -109,7 +111,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
-            Assert.Throws<EthSyncException>(() => ctx.ProtocolHandler.HandleMessage(getReceiptsPacket));
+            ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+            ctx.Session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -155,6 +158,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         _serializationService,
                         Substitute.For<INodeStatsManager>(),
                         SyncServer,
+                        RunImmediatelyScheduler.Instance,
                         Substitute.For<ITxPool>(),
                         Substitute.For<IGossipPolicy>(),
                         LimboLogs.Instance);

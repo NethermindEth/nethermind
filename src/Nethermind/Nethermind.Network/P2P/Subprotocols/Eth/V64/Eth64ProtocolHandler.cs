@@ -2,12 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
-using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;

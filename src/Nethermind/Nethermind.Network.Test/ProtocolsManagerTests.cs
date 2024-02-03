@@ -7,10 +7,12 @@ using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -103,6 +105,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    RunImmediatelyScheduler.Instance,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,

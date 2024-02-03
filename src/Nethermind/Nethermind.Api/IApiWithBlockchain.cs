@@ -5,6 +5,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -19,7 +20,6 @@ using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Network.Scheduler;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;

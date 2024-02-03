@@ -10,10 +10,12 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -76,6 +78,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _gossipPolicy,
                 LimboLogs.Instance,
@@ -121,6 +124,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _svc,
                 new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _gossipPolicy,
                 LimboLogs.Instance);

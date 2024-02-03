@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
@@ -74,6 +76,7 @@ public class Eth68ProtocolHandlerTests
             _svc,
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
+            RunImmediatelyScheduler.Instance,
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
@@ -203,6 +206,7 @@ public class Eth68ProtocolHandlerTests
             _svc,
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
+            RunImmediatelyScheduler.Instance,
             _transactionPool,
             new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
             _gossipPolicy,

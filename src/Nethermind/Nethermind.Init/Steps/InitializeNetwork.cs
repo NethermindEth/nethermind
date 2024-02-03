@@ -30,7 +30,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
-using Nethermind.Network.Scheduler;
 using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;

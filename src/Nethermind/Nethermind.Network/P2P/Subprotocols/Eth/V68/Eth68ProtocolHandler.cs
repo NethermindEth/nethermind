@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -13,7 +14,6 @@ using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages;
 using Nethermind.Network.Rlpx;
-using Nethermind.Network.Scheduler;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;

@@ -8,12 +8,14 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -513,6 +515,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -540,6 +543,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -552,6 +556,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -592,6 +597,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),
@@ -645,6 +651,7 @@ public class TxBroadcasterTests
             Substitute.For<IMessageSerializationService>(),
             Substitute.For<INodeStatsManager>(),
             Substitute.For<ISyncServer>(),
+            RunImmediatelyScheduler.Instance,
             Substitute.For<ITxPool>(),
             Substitute.For<IPooledTxsRequestor>(),
             Substitute.For<IGossipPolicy>(),

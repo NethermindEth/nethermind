@@ -7,7 +7,7 @@ using System.Threading.Channels;
 using System.Threading.Tasks;
 using Nethermind.Logging;
 
-namespace Nethermind.Network.Scheduler;
+namespace Nethermind.Blockchain.Scheduler;
 
 public class BackgroundTaskScheduler: IBackgroundTaskScheduler, IAsyncDisposable
 {

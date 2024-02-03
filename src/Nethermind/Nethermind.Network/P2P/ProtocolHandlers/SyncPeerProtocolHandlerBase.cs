@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -19,7 +20,6 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.Scheduler;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -451,8 +451,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         private async Task BackgroundSyncSender<TReq, TRes>(
             (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
         {
-            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-            Send(response);
+            try
+            {
+                TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+                Send(response);
+            }
+            catch (EthSyncException e)
+            {
+                Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
+            }
         }
 
         #region Cleanup
