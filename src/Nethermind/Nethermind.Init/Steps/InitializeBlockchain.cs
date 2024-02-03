@@ -11,7 +11,6 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
-using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -19,6 +18,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -128,9 +128,12 @@ namespace Nethermind.Init.Steps
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
 
-            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(initConfig.BackgroundTaskConcurrency, _api.LogManager);
-            _api.DisposeStack.Push(backgroundTaskScheduler);
+            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+                mainBlockProcessor,
+                initConfig.BackgroundTaskConcurrency,
+                _api.LogManager);
             setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
+            _api.DisposeStack.Push(backgroundTaskScheduler);
 
             return Task.CompletedTask;
         }

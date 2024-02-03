@@ -8,7 +8,6 @@ using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Core;

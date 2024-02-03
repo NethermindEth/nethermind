@@ -4,7 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using Nethermind.Blockchain.Scheduler;
+using Nethermind.Consensus.Scheduler;
 
 namespace Nethermind.Core.Test;
 

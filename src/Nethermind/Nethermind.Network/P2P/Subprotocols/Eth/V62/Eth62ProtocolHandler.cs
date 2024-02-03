@@ -6,8 +6,8 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Scheduler;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;

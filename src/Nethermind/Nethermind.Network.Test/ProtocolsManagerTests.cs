@@ -7,7 +7,6 @@ using System.Threading;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Scheduler;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
