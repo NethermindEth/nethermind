@@ -507,8 +507,6 @@ public class InitializeNetwork : IStep
 
         NetworkStorage peerStorage = new(peersDb, _api.LogManager);
         ISyncServer syncServer = _api.SyncServer!;
-        BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(_api.LogManager);
-        _api.DisposeStack.Push(backgroundTaskScheduler);
         ForkInfo forkInfo = new(_api.SpecProvider!, syncServer.Genesis.Hash!);
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
@@ -516,7 +514,7 @@ public class InitializeNetwork : IStep
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
-            backgroundTaskScheduler,
+            _api.BackgroundTaskScheduler,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

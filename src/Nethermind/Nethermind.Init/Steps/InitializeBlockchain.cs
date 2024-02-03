@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
+using Nethermind.Network.Scheduler;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
@@ -126,6 +127,10 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
+
+            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(initConfig.BackgroundTaskConcurrency, _api.LogManager);
+            _api.DisposeStack.Push(backgroundTaskScheduler);
+            setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
 
             return Task.CompletedTask;
         }
