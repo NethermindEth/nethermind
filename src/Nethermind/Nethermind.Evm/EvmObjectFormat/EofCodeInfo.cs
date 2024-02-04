@@ -19,7 +19,7 @@ public class EofCodeInfo : ICodeInfo
     public ReadOnlyMemory<byte> TypeSection { get; }
     public ReadOnlyMemory<byte> CodeSection { get; }
     public ReadOnlyMemory<byte> DataSection { get; }
-    public ReadOnlyMemory<byte>? ContainerSection { get; }
+    public ReadOnlyMemory<byte> ContainerSection { get; }
     public SectionHeader SectionOffset(int sectionId) => _header.CodeSections[sectionId];
     public SectionHeader ContainerOffset(int containerId) =>
         _header.ContainerSection is null

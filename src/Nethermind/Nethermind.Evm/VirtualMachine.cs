@@ -2084,6 +2084,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Metrics.Creates++;
                         if (vmState.IsStatic) goto StaticCallViolation;
 
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         (exceptionType, returnData) = InstructionEofCreate(vmState, ref codeSection, ref stack, ref gasAvailable, spec, instruction);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -2487,6 +2488,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (!spec.IsEofEnabled)
                             goto InvalidInstruction;
+
+                        UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head, sectionIndex);
                         exceptionType = InstructionEofCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
@@ -3091,13 +3094,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     int initCodeIdx = codeSection[vmState.ProgramCounter];
                     SectionHeader containerSection = env.CodeInfo.ContainerOffset(initCodeIdx);
-                    initCode = env.CodeInfo.ContainerSection[containerSection.Start..containerSection.Size];
+                    initCode = env.CodeInfo.ContainerSection[containerSection.Start..containerSection.EndOffset];
                     break;
                 }
             case Instruction.CREATE4 :
                 {
                     byte[] initContainerHash = stack.PopWord256().ToArray();
-                    var initcode = env.TxExecutionContext.InitCodes.First(
+                    var initcode = env.TxExecutionContext.InitCodes?.First(
                         initcode => initContainerHash == Keccak.Compute(initcode).Bytes
                     );
                     if(initcode is null)

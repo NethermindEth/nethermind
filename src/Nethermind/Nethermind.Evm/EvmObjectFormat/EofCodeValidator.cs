@@ -620,8 +620,7 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        ushort containerId = code.Slice(postInstructionByte, TWO_BYTE_LENGTH).ReadEthUInt16();
-
+                        ushort containerId = code[postInstructionByte];
                         if (containerId >= 0 && containerId < header.ContainerSection?.Count)
                         {
 
@@ -639,7 +638,7 @@ internal static class EvmObjectFormat
                             return false;
                         }
 
-                        ushort initcodeSectionId = code[postInstructionByte + ONE_BYTE_LENGTH];
+                        byte initcodeSectionId = code[postInstructionByte];
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
 
                         if (initcodeSectionId >= header.ContainerSection?.Count)
@@ -694,7 +693,7 @@ internal static class EvmObjectFormat
             short[] recordedStackHeight = ArrayPool<short>.Shared.Rent(code.Length);
             ushort suggestedMaxHeight = typesection.Slice(sectionId * MINIMUM_TYPESECTION_SIZE + TWO_BYTE_LENGTH, TWO_BYTE_LENGTH).ReadEthUInt16();
 
-            ushort curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
+            ushort curr_outputs = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80 ? (ushort)0 : typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
             ushort peakStackHeight = typesection[sectionId * MINIMUM_TYPESECTION_SIZE + INPUTS_OFFSET];
 
             ushort worksetTop = 0; ushort worksetPointer = 0;
@@ -738,10 +737,10 @@ internal static class EvmObjectFormat
                                 outputs = typesection[sectionIndex * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                                 outputs = (ushort)(outputs == 0x80 ? 0 : outputs);
 
-                                ushort maxStackHeigh = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
+                                ushort maxStackHeight = typesection.Slice(sectionIndex * MINIMUM_TYPESECTION_SIZE + MAX_STACK_HEIGHT_OFFSET, TWO_BYTE_LENGTH).ReadEthUInt16();
                                 unreachedBytes -= immediates.Value;
 
-                                if (worklet.StackHeight + maxStackHeigh > MAX_STACK_HEIGHT)
+                                if (worklet.StackHeight + maxStackHeight - inputs > MAX_STACK_HEIGHT)
                                 {
                                     if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
                                     return false;
@@ -759,8 +758,8 @@ internal static class EvmObjectFormat
                                 unreachedBytes -= immediates.Value;
                                 break;
                             case Instruction.EXCHANGE:
-                                byte imm_n = (byte)((code[posPostInstruction] >> 4) + 1);
-                                byte imm_m = (byte)((code[posPostInstruction] & 0x0F) + 1);
+                                byte imm_n = (byte)(code[posPostInstruction] >> 4);
+                                byte imm_m = (byte)(code[posPostInstruction] & 0x0F);
                                 outputs = inputs = (ushort)(imm_n + imm_m);
                                 unreachedBytes -= immediates.Value;
                                 break;
