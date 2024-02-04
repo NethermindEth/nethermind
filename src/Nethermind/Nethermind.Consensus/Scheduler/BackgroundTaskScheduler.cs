@@ -90,6 +90,7 @@ public class BackgroundTaskScheduler: IBackgroundTaskScheduler, IAsyncDisposable
                     await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
                     // Throttle deque to prevent infinite loop.
                     await _restartQueueSignal.WaitOneAsync(TimeSpan.FromMilliseconds(1), _mainCancellationTokenSource.Token);
+                    continue;
                 }
             }
 
