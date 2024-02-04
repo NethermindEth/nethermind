@@ -3,14 +3,18 @@
 
 using System;
 using System.Linq;
+using k8s;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -64,8 +68,8 @@ public class InvalidBlockInterceptorTest
         Block block = Build.A.Block.TestObject;
         Block suggestedBlock = Build.A.Block.WithExtraData(new byte[] { 1 }).TestObject;
         TxReceipt[] txs = { };
-        _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock).Returns(baseReturnValue);
-        _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock);
+        _baseValidator.ValidateProcessedBlock(block, txs, suggestedBlock, Prague.Instance).Returns(baseReturnValue);
+        _invalidBlockInterceptor.ValidateProcessedBlock(block, txs, suggestedBlock, Prague.Instance);
 
         _tracker.Received().SetChildParent(suggestedBlock.GetOrCalculateHash(), suggestedBlock.ParentHash!);
         if (isInvalidBlockReported)

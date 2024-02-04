@@ -3,6 +3,7 @@
 
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
@@ -77,9 +78,9 @@ public class InvalidBlockInterceptor : IBlockValidator
         return result;
     }
 
-    public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock)
+    public bool ValidateProcessedBlock(Block block, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
     {
-        bool result = _baseValidator.ValidateProcessedBlock(block, receipts, suggestedBlock);
+        bool result = _baseValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, spec);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");

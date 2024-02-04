@@ -25,6 +25,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly TxDecoder _txDecoder = new();
         private static readonly ReceiptMessageDecoder _receiptDecoder = new();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
+        private static readonly DepositDecoder _depositDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
         private CappedArray<byte> _data;
@@ -73,6 +74,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
+        public void Encode(Deposit value) => _depositDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {

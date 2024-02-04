@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Validators;
 
@@ -11,6 +12,6 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
 
     bool ValidateSuggestedBlock(Block block);
 
-    bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
+    bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec);
 
 }

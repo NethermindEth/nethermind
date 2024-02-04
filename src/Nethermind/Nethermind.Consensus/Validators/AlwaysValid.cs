@@ -49,11 +49,6 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
-    {
-        return _result;
-    }
-
     public bool ValidateParams(BlockHeader parent, BlockHeader header, bool isUncle = false)
     {
         return _result;
@@ -84,6 +79,11 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     public bool ValidateOrphanedBlock(Block block, out string? error)
     {
         error = null;
+        return _result;
+    }
+
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
+    {
         return _result;
     }
 }

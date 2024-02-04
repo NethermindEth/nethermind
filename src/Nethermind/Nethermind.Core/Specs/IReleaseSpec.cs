@@ -273,6 +273,13 @@ namespace Nethermind.Core.Specs
         bool IsEip4788Enabled { get; }
         Address Eip4788ContractAddress { get; }
 
+
+        /// <summary>
+        /// Parent Beacon Block precompile
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        Address Eip6110ContractAddress { get; }
+
         /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>

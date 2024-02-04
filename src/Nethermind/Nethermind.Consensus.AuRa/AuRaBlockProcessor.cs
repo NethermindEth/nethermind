@@ -73,21 +73,21 @@ namespace Nethermind.Consensus.AuRa
             set => _auRaValidator = value;
         }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, out IReleaseSpec spec)
         {
             ValidateAuRa(block);
             _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options, out spec);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options, out IReleaseSpec spec)
         {
-            return base.ProcessBlock(block, blockTracer, options);
+            return base.ProcessBlock(block, blockTracer, options, out spec);
         }
 
         // This validations cannot be run in AuraSealValidator because they are dependent on state.
