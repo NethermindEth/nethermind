@@ -25,5 +25,5 @@ public class SyncedTxGossipPolicyTests
     [TestCase(SyncMode.Disconnected, ExpectedResult = false)]
     [TestCase(SyncMode.UpdatingPivot, ExpectedResult = false)]
     public bool can_gossip(SyncMode mode) =>
-        ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossippedTransactions;
+        ((ITxGossipPolicy)new SyncedTxGossipPolicy(new StaticSelector(mode))).ShouldListenToGossipedTransactions;
 }

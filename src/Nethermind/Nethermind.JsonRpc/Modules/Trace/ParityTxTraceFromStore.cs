@@ -62,6 +62,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         {
         }
 
+        [JsonConverter(typeof(ParityTraceActionConverter))]
         public ParityTraceAction Action { get; set; }
 
         public Hash256 BlockHash { get; set; }

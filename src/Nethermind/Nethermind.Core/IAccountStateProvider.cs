@@ -5,6 +5,6 @@ namespace Nethermind.Core
 {
     public interface IAccountStateProvider
     {
-        Account GetAccount(Address address);
+        AccountStruct GetAccount(Address address);
     }
 }

@@ -52,7 +52,7 @@ namespace Nethermind.Db.FullPruning
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             byte[]? value = _currentDb.Get(key, flags); // we are reading from the main DB
-            if (value != null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
+            if (value is not null && _pruningContext?.DuplicateReads == true && (flags & ReadFlags.SkipDuplicateRead) == 0)
             {
                 Duplicate(_pruningContext.CloningDb, key, value, WriteFlags.None);
             }
@@ -115,10 +115,10 @@ namespace Nethermind.Db.FullPruning
             _pruningContext?.CloningDb.Dispose();
         }
 
-        public long GetSize() => _currentDb.GetSize() + (_pruningContext?.CloningDb.GetSize() ?? 0);
-        public long GetCacheSize() => _currentDb.GetCacheSize() + (_pruningContext?.CloningDb.GetCacheSize() ?? 0);
-        public long GetIndexSize() => _currentDb.GetIndexSize() + (_pruningContext?.CloningDb.GetIndexSize() ?? 0);
-        public long GetMemtableSize() => _currentDb.GetMemtableSize() + (_pruningContext?.CloningDb.GetMemtableSize() ?? 0);
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+        {
+            return _currentDb.GatherMetric(includeSharedCache);
+        }
 
         public string Name => _settings.DbName;
 

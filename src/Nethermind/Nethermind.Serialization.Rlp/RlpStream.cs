@@ -28,7 +28,8 @@ namespace Nethermind.Serialization.Rlp
         private static readonly DepositDecoder _depositDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
-        private CappedArray<byte> _data;
+        private readonly CappedArray<byte> _data;
+        private int _position = 0;
 
         protected RlpStream()
         {
@@ -184,8 +185,6 @@ namespace Nethermind.Serialization.Rlp
             Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
         public ref readonly CappedArray<byte> Data => ref _data;
-
-        private int _position = 0;
 
         public virtual int Position
         {
@@ -558,7 +557,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.Value.Span);
         }
 
-        public void Encode(Span<byte> input)
+        public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -1312,7 +1311,7 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte.Span;
             }
 
             if (prefix < 128)

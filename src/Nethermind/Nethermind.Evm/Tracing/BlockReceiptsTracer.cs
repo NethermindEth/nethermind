@@ -157,7 +157,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) =>
         _currentTxTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
 
-    public void ReportByteCode(byte[] byteCode) =>
+    public void ReportByteCode(ReadOnlyMemory<byte> byteCode) =>
         _currentTxTracer.ReportByteCode(byteCode);
 
     public void ReportGasUpdateForVmTrace(long refund, long gasAvailable) =>
@@ -193,7 +193,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     }
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
-    private int _currentIndex;
+    protected int _currentIndex { get; private set; }
     private readonly List<TxReceipt> _txReceipts = new();
     protected Transaction? CurrentTx;
     public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;

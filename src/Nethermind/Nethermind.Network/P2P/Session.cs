@@ -305,7 +305,7 @@ namespace Nethermind.Network.P2P
             // Disconnect may send disconnect reason message. But the hello message must be sent first, which is done
             // during Initialized event.
             // https://github.com/ethereum/devp2p/blob/master/rlpx.md#user-content-hello-0x00
-            if (_disconnectAfterInitialized != null)
+            if (_disconnectAfterInitialized is not null)
             {
                 InitiateDisconnect(_disconnectAfterInitialized.Value.Item1, _disconnectAfterInitialized.Value.Item2);
                 _disconnectAfterInitialized = null;
@@ -394,7 +394,7 @@ namespace Nethermind.Network.P2P
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized != null) return;
+                    if (_disconnectAfterInitialized is not null) return;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
                     return;

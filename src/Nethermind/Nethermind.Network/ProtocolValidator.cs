@@ -61,7 +61,7 @@ namespace Nethermind.Network
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
-            if (syncPeerArgs.ForkId == null)
+            if (syncPeerArgs.ForkId is null)
             {
                 return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
             }

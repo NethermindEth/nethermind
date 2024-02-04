@@ -8,7 +8,7 @@ namespace Nethermind.Core
 {
     public class Account
     {
-        public static Account TotallyEmpty = new();
+        public static readonly Account TotallyEmpty = new();
 
         private readonly Hash256? _codeHash;
         private readonly Hash256? _storageRoot;
@@ -100,5 +100,44 @@ namespace Nethermind.Core
         {
             return new(newCodeHash, this);
         }
+
+        public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+    }
+
+    public readonly struct AccountStruct
+    {
+        private readonly ValueHash256 _codeHash = Keccak.OfAnEmptyString.ValueHash256;
+        private readonly ValueHash256 _storageRoot = Keccak.EmptyTreeHash.ValueHash256;
+
+        public AccountStruct(in UInt256 nonce, in UInt256 balance, in ValueHash256 storageRoot, in ValueHash256 codeHash)
+        {
+            _codeHash = codeHash;
+            _storageRoot = storageRoot;
+            Nonce = nonce;
+            Balance = balance;
+        }
+
+        public AccountStruct(in UInt256 nonce, in UInt256 balance)
+        {
+            Nonce = nonce;
+            Balance = balance;
+        }
+
+        public AccountStruct(in UInt256 balance)
+        {
+            Balance = balance;
+        }
+
+        public bool HasCode => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
+
+        public bool HasStorage => _storageRoot != Keccak.EmptyTreeHash.ValueHash256;
+
+        public UInt256 Nonce { get; }
+        public UInt256 Balance { get; }
+        public ValueHash256 StorageRoot => _storageRoot;
+        public ValueHash256 CodeHash => _codeHash;
+        public bool IsTotallyEmpty => _storageRoot == Keccak.EmptyTreeHash.ValueHash256 && IsEmpty;
+        public bool IsEmpty => _codeHash == Keccak.OfAnEmptyString.ValueHash256 && Balance.IsZero && Nonce.IsZero;
+        public bool IsContract => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
     }
 }

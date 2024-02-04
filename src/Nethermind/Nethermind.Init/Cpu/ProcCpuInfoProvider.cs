@@ -48,7 +48,7 @@ internal static class ProcCpuInfoProvider
         // CPU min MHz: 800,0000
         //
         // And we don't need "CPU MHz" line
-        if (input == null || input.Length < 6)
+        if (input is null || input.Length < 6)
             return null;
 
         Frequency.TryParseMHz(input[3].Trim().Replace(',', '.'), out var minFrequency);

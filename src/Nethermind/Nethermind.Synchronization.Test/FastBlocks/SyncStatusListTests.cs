@@ -55,7 +55,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             BlockInfo?[] infos = new BlockInfo?[500];
             syncStatusList.GetInfosForBatch(infos);
 
-            infos.Count((it) => it != null).Should().Be(101);
+            infos.Count((it) => it is not null).Should().Be(101);
         }
 
         [Test]
