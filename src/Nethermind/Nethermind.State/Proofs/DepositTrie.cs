@@ -18,10 +18,10 @@ public class DepositTrie : PatriciaTrie<Deposit>
 
     /// <inheritdoc/>
     /// <param name="Deposits">The Deposits to build the trie of.</param>
-    public DepositTrie(IEnumerable<Deposit> Deposits, bool canBuildProof = false)
+    public DepositTrie(Deposit[] Deposits, bool canBuildProof = false)
         : base(Deposits, canBuildProof) => ArgumentNullException.ThrowIfNull(Deposits);
 
-    protected override void Initialize(IEnumerable<Deposit> Deposits)
+    protected override void Initialize(Deposit[] Deposits)
     {
         var key = 0;
 
