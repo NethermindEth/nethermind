@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
@@ -186,14 +187,108 @@ namespace Nethermind.Evm.Test
             Instruction[] validOpcodes = _validOpcodes[(blockNumber, timestamp)];
             for (int i = 0; i <= byte.MaxValue; i++)
             {
-                logger.Info($"============ Testing opcode {i}==================");
+                bool isEofContext = timestamp >= MainnetSpecProvider.PragueActivation.Timestamp;
+                bool isValidOpcode = false;
+
+                Instruction opcode = (Instruction)i;
+
+                if (opcode == Instruction.RETF) continue;
+
                 byte[] code = Prepare.EvmCode
-                    .Op((byte)i)
-                    .Done;
+                        .Op((byte)i)
+                        .Done; ;
 
-                bool isValidOpcode = ((Instruction)i != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
+                if(InstructionExtensions.IsValid(opcode, true) && !InstructionExtensions.IsValid(opcode, false))
+                {
+                    var opcodeMetadata = InstructionExtensions.StackRequirements(opcode);
+                    opcodeMetadata.InputCount ??= 1;
+                    opcodeMetadata.OutputCount ??= (opcode is Instruction.DUPN ? (ushort)2 : (ushort)1);
+
+                    bool isFunCall = opcode is Instruction.CALLF;
+
+                    byte[] stackHeighExpected = BitConverter.GetBytes(Math.Max(opcodeMetadata.InputCount.Value, opcodeMetadata.OutputCount.Value));
+
+                    List<byte> codesection = new();
+
+                    for(var j = 0; j < opcodeMetadata.InputCount; j++)
+                    {
+                        codesection.AddRange(
+                            Prepare.EvmCode
+                                .PushSingle(0)
+                                .Done
+                        );
+                    }
+
+                    codesection.Add((byte)i);
+
+                    for (var j = 0; j < (opcodeMetadata.immediates ?? 3); j++)
+                    {
+                        if(isFunCall && j == 1)
+                        {
+                            codesection.Add(1);
+                            continue;
+                        }
+                        codesection.Add(0);
+                    }
+
+                    for (var j = 0; j < opcodeMetadata.OutputCount; j++)
+                    {
+                        codesection.AddRange(
+                            Prepare.EvmCode
+                                .Op(Instruction.POP)
+                                .Done
+                        );
+                    }
+
+                    if(opcode is not Instruction.JUMPF)
+                    {
+                        codesection.Add((byte)Instruction.STOP);
+                    }
+
+
+                    byte[] codeSectionSize = BitConverter.GetBytes((ushort)(codesection.Count));
+                    code = [
+                        // start header
+                        0xef, 0x00,
+                        0x01,
+                        0x01,
+                            0x00, (isFunCall ? (byte)0x08 : (byte)0x04),
+                        0x02,
+                            0x00, (isFunCall ? (byte)0x02 : (byte)0x01),
+                            codeSectionSize[1], codeSectionSize[0],
+                            .. (isFunCall ? [0x00, 0x01] : Array.Empty<byte>()),
+                        0x03,
+                            0x00, 0x01,
+                            0x00, 0x02,
+                        0x04,
+                            0x00, 0x20,
+                        0x00,
+                        // end header
+                        // start typesection
+                            0x00, 0x80,
+                            stackHeighExpected[1], stackHeighExpected[0],
+                            .. (isFunCall ? [0x00, 0x00, 0x00, 0x00] : Array.Empty<byte>()),
+                        // end typesection
+                        // start codesection
+                            // start codesection 0
+                            .. codesection,
+                            // end codesection 0
+                            // start codesection 1
+                            .. (isFunCall ? [(byte)Instruction.RETF]: Array.Empty<byte>()),
+                            // end codesection 1
+                        // end codesection
+                        // start container section
+                        (byte)Instruction.RETURNCONTRACT, 0x00,
+                        // end container section
+                        // start data section
+                        .. Enumerable.Range(0, 32).Select(b => (byte)b).ToArray()
+                        // end data section
+                    ];
+                }
+
+                logger.Info($"============ Testing opcode {i}==================");
+                isValidOpcode = (opcode != Instruction.INVALID) && validOpcodes.Contains((Instruction)i);
                 TestAllTracerWithOutput result = Execute((blockNumber, timestamp ?? 0), 1_000_000, code);
-
                 if (isValidOpcode)
                 {
                     result.Error.Should().NotBe(InvalidOpCodeErrorMessage, ((Instruction)i).ToString());
