@@ -465,7 +465,7 @@ namespace Nethermind.Trie
                     InitializeAndSetLeafValue(key, in buffer);
                 }
                 else
-                { 
+                {
                     InitializeExtension(key);
                 }
             }
