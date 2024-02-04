@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -458,16 +457,16 @@ namespace Nethermind.Trie
             {
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
 
-                Initialize(isLeaf ? NodeType.Leaf : NodeType.Extension, key);
                 if (isLeaf)
                 {
-                    NodeType = NodeType.Leaf;
-                    Key = key;
-
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    SetValue(in buffer, overrideSealed: true);
+                    InitializeAndSetLeafValue(key, in buffer);
+                }
+                else
+                { 
+                    InitializeExtension(key);
                 }
             }
             else
@@ -991,27 +990,55 @@ namespace Nethermind.Trie
             }
         }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void Initialize(NodeType nodeType, byte[]? key = null)
+        private void InitializeAndSetLeafValue(byte[] key, in CappedArray<byte> value)
         {
+            object[] data = new object[2];
+            data[0] = key;
+            data[1] = value.IsNull ? CappedArray<byte>.NullBoxed : value;
+            // Overwriting both key and value so just replace the array.
+            Volatile.Write(ref _data, data);
+
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+            NodeType = NodeType.Leaf;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void InitializeExtension(byte[] key)
+        {
+            object[] data = new object[2];
+            data[0] = key;
+
+            object[] prev = Interlocked.CompareExchange(ref _data, data, null);
+            if (prev is not null)
+            {
+                // Was already set, so update the previous array.
+                prev[0] = key;
+            }
+
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+            NodeType = NodeType.Extension;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private void Initialize(NodeType nodeType)
+        {
+            object[] data;
             switch (nodeType)
             {
                 case NodeType.Unknown:
                     ThrowCannotResolveException();
                     return;
                 case NodeType.Branch:
-                    Interlocked.CompareExchange(ref _data, new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount], null);
+                    data = new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount];
                     break;
                 default:
-                    Interlocked.CompareExchange(ref _data, new object[2], null);
+                    data = new object[2];
                     break;
             }
 
-            if (key is not null)
-            {
-                _data[0] = key;
-            }
-            // Set NodeType after setting key as it alters code path to one that expects the key to be set
+            // Only initialize the array if not already initialized.
+            Interlocked.CompareExchange(ref _data, data, null);
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
             NodeType = nodeType;
 
             [DoesNotReturn]
