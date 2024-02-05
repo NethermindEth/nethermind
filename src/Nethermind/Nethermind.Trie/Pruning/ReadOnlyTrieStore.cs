@@ -54,11 +54,6 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public void PersistCache(CancellationToken cancellationToken)
-        {
-            _trieStore.PersistCache(cancellationToken);
-        }
-
         public void Dispose() { }
     }
 }

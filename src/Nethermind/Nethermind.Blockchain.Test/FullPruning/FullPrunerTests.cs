@@ -204,7 +204,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                     FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                     FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<ITrieStore>(), LimboLogs.Instance);
+                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<IPruningTrieStore>(), LimboLogs.Instance);
             }
 
             public async Task<bool> WaitForPruning()

@@ -19,7 +19,7 @@ namespace Nethermind.Trie.Pruning
     /// Trie store helps to manage trie commits block by block.
     /// If persistence and pruning are needed they have a chance to execute their behaviour on commits.
     /// </summary>
-    public class TrieStore : ITrieStore
+    public class TrieStore : ITrieStore, IPruningTrieStore
     {
         private class DirtyNodesCache
         {

@@ -168,7 +168,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, trieStore);
 
         return Task.CompletedTask;
     }
@@ -182,7 +182,8 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        TrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -214,7 +215,7 @@ public class InitializeStateDb : IStep
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
                 FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.TrieStore!, api.LogManager);
+                    drive, trieStore, api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

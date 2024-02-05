@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
         private readonly IDriveInfo? _driveInfo;
-        private readonly ITrieStore _trieStore;
+        private readonly IPruningTrieStore _trieStore;
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
@@ -48,7 +48,7 @@ namespace Nethermind.Blockchain.FullPruning
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
-            ITrieStore trieStore,
+            IPruningTrieStore trieStore,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
