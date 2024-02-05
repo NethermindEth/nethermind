@@ -779,6 +779,28 @@ namespace Nethermind.Synchronization.Test
             Assert.GreaterOrEqual(failures, 0, "pending requests");
         }
 
+        [Test]
+        public async Task When_no_peer_will_cancel_on_cancellation_token()
+        {
+            await using Context ctx = new();
+            using CancellationTokenSource cts = new CancellationTokenSource();
+            cts.CancelAfter(100);
+
+            bool wasCancelled = false;
+            try
+            {
+                await ctx.Pool.AllocateAndRun(
+                    (peer) => { return peer.GetBlockHeaders(0, 1, 1, CancellationToken.None); },
+                    BySpeedStrategy.FastestHeader, AllocationContexts.Headers, cts.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                wasCancelled = true;
+            }
+
+            wasCancelled.Should().BeTrue();
+        }
+
         private async Task<SimpleSyncPeerMock[]> SetupPeers(Context ctx, int count)
         {
             SimpleSyncPeerMock[] peers = new SimpleSyncPeerMock[count];

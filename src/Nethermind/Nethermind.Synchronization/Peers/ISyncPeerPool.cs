@@ -105,10 +105,18 @@ namespace Nethermind.Synchronization.Peers
 
     public static class SyncPeerPoolExtensions
     {
-        public static async Task<T> AllocateAndRun<T>(this ISyncPeerPool syncPeerPool, Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
+        public static async Task<T> AllocateAndRun<T>(
+            this ISyncPeerPool syncPeerPool,
+            Func<ISyncPeer, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
         {
-            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(peerAllocationStrategy, allocationContexts, cancellationToken: cancellationToken);
+            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
+                peerAllocationStrategy,
+                allocationContexts,
+                timeoutMilliseconds: int.MaxValue,
+                cancellationToken: cancellationToken);
             try
             {
                 if (allocation is null) return default;
