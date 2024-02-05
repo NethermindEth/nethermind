@@ -18,22 +18,17 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
         {
             bool endOfMessage = false;
             int read = await Socket.ReceiveAsync(buffer, SocketFlags.Peek);
+            
+            int delimiter = ((IList<byte>)buffer[..read]).IndexOf(NewLine[0]);
 
-            int delimiter;
-            if (read < buffer.Count || buffer[^1] == NewLine[0])
+            if (delimiter != -1)
             {
-                endOfMessage = read > 0 && buffer[read - 1 ] == NewLine[0];
-                await Socket.ReceiveAsync(buffer, SocketFlags.None);
-            }
-            else if ((delimiter = ((IList<byte>)buffer).IndexOf(NewLine[0])) != -1)
-            {
-                read = await Socket.ReceiveAsync(buffer[0..delimiter], SocketFlags.None);
                 endOfMessage = true;
+                read = delimiter + 1;
             }
-            else
-            {
-                await Socket.ReceiveAsync(buffer, SocketFlags.None);
-            }
+
+            await Socket.ReceiveAsync(buffer[..read], SocketFlags.None);
+
             result = new ReceiveResult()
             {
                 Closed = read == 0,
