@@ -84,15 +84,7 @@ public static class ChainSpecLoaderExtensions
             throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
-        FileInfo fileInfo = new(filePath);
-        if (fileInfo.Length >= 1024 * 1024 * 1024)//1GB
-        {
-            using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
-            return chainSpecLoader.Load(fileStream);
-        }
-        else
-        {
-            return chainSpecLoader.Load(File.ReadAllText(filePath));
-        }
+        using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return chainSpecLoader.Load(fileStream);
     }
 }
