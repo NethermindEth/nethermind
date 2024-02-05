@@ -40,7 +40,7 @@ namespace Nethermind.Merge.Plugin
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            return Validate(header, parent, isUncle, out _);   
+            return Validate(header, parent, isUncle, out _);
         }
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
         {

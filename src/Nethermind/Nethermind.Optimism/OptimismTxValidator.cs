@@ -23,5 +23,5 @@ public class OptimismTxValidator : ITxValidator
         error = null;
         return transaction.Type == TxType.DepositTx || _txValidator.IsWellFormed(transaction, releaseSpec, out error);
     }
-    
+
 }

@@ -134,7 +134,7 @@ namespace Nethermind.Blockchain.Test.Validators
             BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             Block suggestedBlock = Build.A.Block.TestObject;
             Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-            
+
             sut.ValidateProcessedBlock(
                 suggestedBlock,
                 Array.Empty<TxReceipt>(),

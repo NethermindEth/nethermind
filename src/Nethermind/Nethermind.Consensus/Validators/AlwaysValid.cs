@@ -41,7 +41,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
-        error = null;   
+        error = null;
         return _result;
     }
 
