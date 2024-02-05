@@ -42,7 +42,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         : base(session, statsManager, serializer, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-        _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));;
+        _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler)); ;
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
     }
     public override void Init()

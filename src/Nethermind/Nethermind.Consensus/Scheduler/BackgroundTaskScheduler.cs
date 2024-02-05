@@ -26,7 +26,7 @@ namespace Nethermind.Consensus.Scheduler;
 /// and stuff, but that is complicated and I don't wanna explain why you need `async Task.Yield()` in the middle of a loop,
 /// or explicitly specify it to run on this task scheduler and such. Maybe some other time ok?
 /// </summary>
-public class BackgroundTaskScheduler: IBackgroundTaskScheduler, IAsyncDisposable
+public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposable
 {
     private static readonly TimeSpan DefaultTimeout = TimeSpan.FromSeconds(2);
 
@@ -140,7 +140,7 @@ public class BackgroundTaskScheduler: IBackgroundTaskScheduler, IAsyncDisposable
         await _mainCancellationTokenSource.CancelAsync();
     }
 
-    private struct SyncActivity<TReq>: IActivity
+    private struct SyncActivity<TReq> : IActivity
     {
         public DateTimeOffset Deadline { get; init; }
         public TReq Request { get; init; }

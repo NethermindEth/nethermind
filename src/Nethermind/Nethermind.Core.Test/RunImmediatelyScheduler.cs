@@ -8,7 +8,7 @@ using Nethermind.Consensus.Scheduler;
 
 namespace Nethermind.Core.Test;
 
-public class RunImmediatelyScheduler: IBackgroundTaskScheduler
+public class RunImmediatelyScheduler : IBackgroundTaskScheduler
 {
     public static RunImmediatelyScheduler Instance = new RunImmediatelyScheduler();
 

@@ -86,7 +86,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
 
-    [ConfigItem(Description = "[TECHNICAL] Specify limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
 }
 
