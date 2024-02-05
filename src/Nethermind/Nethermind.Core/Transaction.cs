@@ -56,6 +56,7 @@ namespace Nethermind.Core
         public Signature? Signature { get; set; }
         public bool IsSigned => Signature is not null;
         public bool IsContractCreation => To is null;
+        public bool IsEofContractCreation => Initcodes is not null;
         public bool IsMessageCall => To is not null;
 
         private Hash256? _hash;

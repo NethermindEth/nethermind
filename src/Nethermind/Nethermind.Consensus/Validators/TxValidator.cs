@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
+using Nethermind.Evm.EOF;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.Validators
                    Validate1559GasFields(transaction, releaseSpec) &&
                    Validate3860Rules(transaction, releaseSpec) &&
                    Validate4844Fields(transaction) &&
-                   ValidateMegaEofInitcodes(transaction, releaseSpec);
+                   ValidateMegaEofRules(transaction, releaseSpec);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -107,9 +108,17 @@ namespace Nethermind.Consensus.Validators
             return !spec.ValidateChainId;
         }
 
-        private static bool ValidateMegaEofInitcodes(Transaction transaction, IReleaseSpec spec)
+        private static bool ValidateMegaEofRules(Transaction transaction, IReleaseSpec spec)
         {
             if (!spec.IsEofEnabled) return true;
+
+            if (transaction.To is null &&
+                transaction.Data is not null &&
+                transaction.Data.Value.Span.StartsWith(EvmObjectFormat.MAGIC)
+                )
+            {
+                return false;
+            }
 
             if (transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount) return false;
 

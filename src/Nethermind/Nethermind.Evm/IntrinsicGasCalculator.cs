@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
+using Nethermind.Specs;
 
 namespace Nethermind.Evm;
 
@@ -19,6 +20,7 @@ public static class IntrinsicGasCalculator
         result += DataCost(transaction, releaseSpec);
         result += CreateCost(transaction, releaseSpec);
         result += AccessListCost(transaction, releaseSpec);
+        result += EofInitCodeCost(transaction, releaseSpec);
         return result;
     }
 
@@ -33,20 +35,41 @@ public static class IntrinsicGasCalculator
         return createCost;
     }
 
+    private static long EofInitCodeCost(Transaction transaction, IReleaseSpec releaseSpec)
+    {
+        if(releaseSpec.IsEofEnabled && transaction.IsEofContractCreation)
+        {
+            long initcodeCosts = 0;
+            foreach(var initcode in transaction.Initcodes)
+            {
+                initcodeCosts += CalculateCalldataCost(initcode, releaseSpec);
+            }
+            return initcodeCosts;
+        }
+        return 0;
+    }
+
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
-        long txDataNonZeroGasCost =
-            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
-        long dataCost = 0;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-        for (int i = 0; i < data.Length; i++)
-        {
-            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
-        }
+        long dataCost = CalculateCalldataCost(data, releaseSpec);
 
         if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
         {
             dataCost += EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord;
+        }
+
+        return dataCost;
+    }
+
+    private static long CalculateCalldataCost(Span<byte> data, IReleaseSpec releaseSpec)
+    {
+        long txDataNonZeroGasCost =
+            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+        long dataCost = 0;
+        for (int i = 0; i < data.Length; i++)
+        {
+            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
         }
 
         return dataCost;
