@@ -450,10 +450,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
                             (int start, int size) = previousState.Env.CodeInfo.ContainerOffset(containerIndex);
                             ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection.Slice(start, size).Span;
-                            bool invalidCode = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header);
+                            bool isEof_unvalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header);
                             byte[] bytecodeResultArray = null;
 
-                            if (!invalidCode)
+                            if (!isEof_unvalidated)
                             {
                                 Span<byte> bytecodeResult = new byte[container.Length + header.Value.DataSection.Size];
 
@@ -514,6 +514,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 bytecodeResultArray = bytecodeResult.ToArray();
                             }
 
+                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, false, out _)
+                                && bytecodeResultArray.Length < spec.MaxCodeSize;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                             {
