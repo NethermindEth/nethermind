@@ -164,7 +164,7 @@ namespace Nethermind.Consensus.Validators
 
             if (transaction.To is null)
             {
-                error = $"BlobTxMissingTo: Must be set.";
+                error = $"TxMissingTo: Must be set.";
                 return false;
             }
 

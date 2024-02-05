@@ -242,7 +242,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.WithdrawalsEnabled && block.Withdrawals is null)
         {
-            error = $"Block body is missing withdrawals.";
+            error = $"MissingWithdrawals: Block body is missing withdrawals.";
 
             if (_logger.IsWarn) _logger.Warn($"Withdrawals cannot be null in block {block.Hash} when EIP-4895 activated.");
 
@@ -251,7 +251,7 @@ public class BlockValidator : IBlockValidator
 
         if (!spec.WithdrawalsEnabled && block.Withdrawals is not null)
         {
-            error = $"Block body cannot have withdrawals.";
+            error = $"WithdrawalsNotEnabled: Block body cannot have withdrawals.";
 
             if (_logger.IsWarn) _logger.Warn($"Withdrawals must be null in block {block.Hash} when EIP-4895 not activated.");
 
@@ -262,7 +262,7 @@ public class BlockValidator : IBlockValidator
         {
             if (!ValidateWithdrawalsHashMatches(block, out Hash256 withdrawalsRoot))
             {
-                error = $"Invalid withdrawalsRoot: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
+                error = $"InvalidWithdrawalsRoot: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}";
                 if (_logger.IsWarn) _logger.Warn($"Withdrawals root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.WithdrawalsRoot}, got {withdrawalsRoot}");
 
                 return false;

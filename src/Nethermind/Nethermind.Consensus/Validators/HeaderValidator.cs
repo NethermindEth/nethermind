@@ -152,7 +152,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = $"InvalidBaseFeePerGas: Does not match calculated calculated.";
+                    error = $"InvalidBaseFeePerGas: Does not match calculated.";
                     return false;
                 }
             }
@@ -180,21 +180,21 @@ namespace Nethermind.Consensus.Validators
             if (blockHeader.Number < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block number is negative {blockHeader.Number}");
-                error = $"InvalidNegativeBlockNumber: Block number cannot be negative.";
+                error = $"NegativeBlockNumber: Block number cannot be negative.";
                 return false;
             }
 
             if (blockHeader.GasLimit < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasLimit is negative {blockHeader.GasLimit}");
-                error = $"InvalidNegativeGasLimit: Cannot be negative.";
+                error = $"NegativeGasLimit: Cannot be negative.";
                 return false;
             }
 
             if (blockHeader.GasUsed < 0)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({blockHeader.Hash}) - Block GasUsed is negative {blockHeader.GasUsed}");
-                error = $"InvalidNegativeGasUsed: Cannot be negative.";
+                error = $"NegativeGasUsed: Cannot be negative.";
                 return false;
             }
             error = null;
