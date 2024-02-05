@@ -7,8 +7,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.Specs;
+using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using NSubstitute;
 using NUnit.Framework;
@@ -127,18 +129,13 @@ namespace Nethermind.Blockchain.Test.Validators
         }
 
         [Test]
-        public void ValidateProcessedBlock_HashesAreNotTheSame_ReturnsFalse()
+        public void ValidateProcessedBlock_StateRootIsWrong_ReturnsFalse()
         {
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
             BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             Block suggestedBlock = Build.A.Block.TestObject;
             Block processedBlock = Build.A.Block.WithStateRoot(Keccak.Zero).TestObject;
-
-            sut.ValidateProcessedBlock(
-                suggestedBlock,
-                Array.Empty<TxReceipt>(),
-                processedBlock);
 
             Assert.That(sut.ValidateProcessedBlock(
                 suggestedBlock,
@@ -147,7 +144,7 @@ namespace Nethermind.Blockchain.Test.Validators
         }
 
         [Test]
-        public void ValidateProcessedBlock_HashesAreNotTheSame_ErrorIsSet()
+        public void ValidateProcessedBlock_StateRootIsWrong_ErrorIsSet()
         {
             TxValidator txValidator = new(TestBlockchainIds.ChainId);
             ISpecProvider specProvider = Substitute.For<ISpecProvider>();
@@ -161,7 +158,56 @@ namespace Nethermind.Blockchain.Test.Validators
                 Array.Empty<TxReceipt>(),
                 processedBlock, out error);
 
-            Assert.That(error, Is.Not.Empty);
+            Assert.That(error, Does.StartWith("InvalidStateRoot"));
+        }
+
+        [Test]
+        public void ValidateSuggestedBlock_UncleHashIsWrong_ErrorIsSet()
+        {
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+            Block suggestedBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithUnclesHash(Keccak.Zero).TestObject).TestObject;
+            string? error;
+
+            sut.ValidateSuggestedBlock(
+                suggestedBlock, out error);
+            
+            Assert.That(error, Does.StartWith("InvalidUnclesHash"));
+        }
+
+        [Test]
+        public void ValidateSuggestedBlock_TxRootHashIsWrong_ErrorIsSet()
+        {
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            ISpecProvider specProvider = Substitute.For<ISpecProvider>();
+            BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+            Block suggestedBlock = Build.A.Block.WithHeader(Build.A.BlockHeader.WithTransactionsRoot(Keccak.Zero).TestObject).TestObject;
+            string? error;
+
+            sut.ValidateSuggestedBlock(
+                suggestedBlock, out error);
+
+            Assert.That(error, Does.StartWith("InvalidTxRoot"));
+        }
+
+        [Test]
+        public void ValidateSuggestedBlock_MaxFeePerBlobGasIsTooLow_ErrorIsSet()
+        {
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
+            ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Cancun.Instance));
+            BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
+            Block suggestedBlock = Build.A.Block.WithBlobGasUsed(131072).WithExcessBlobGas(1).WithTransactions(Build.A.Transaction.WithShardBlobTxTypeAndFields(1)
+                                                                                     .WithMaxFeePerBlobGas(0)
+                                                                                     .WithMaxFeePerGas(1000000)
+                                                                                     .Signed()
+                                                                                     .TestObject).TestObject;
+            string? error;
+
+            sut.ValidateSuggestedBlock(
+                suggestedBlock, out error);
+
+            Assert.That(error, Does.StartWith("InsufficientMaxFeePerBlobGas"));
         }
     }
 }
