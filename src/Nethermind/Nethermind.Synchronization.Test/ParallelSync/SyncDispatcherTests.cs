@@ -39,7 +39,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, int timeoutMilliseconds = 0)
+            public async Task<SyncPeerAllocation> Allocate(
+                IPeerAllocationStrategy peerAllocationStrategy,
+                AllocationContexts contexts,
+                int timeoutMilliseconds = 0,
+                CancellationToken cancellationToken = default)
             {
                 await _peerSemaphore.WaitAsync();
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();

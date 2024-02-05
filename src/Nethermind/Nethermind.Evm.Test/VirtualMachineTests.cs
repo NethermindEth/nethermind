@@ -423,7 +423,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TLOAD)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad), "gas");
     }
 
@@ -542,7 +542,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TSTORE)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore), "gas");
     }
 
