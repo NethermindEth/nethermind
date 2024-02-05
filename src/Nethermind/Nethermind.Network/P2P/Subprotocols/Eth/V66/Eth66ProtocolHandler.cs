@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     Metrics.Eth66GetPooledTransactionsReceived++;
                     ReportIn(getPooledTxMsg, size);
-                    Handle(getPooledTxMsg);
+                    ScheduleSyncServe(getPooledTxMsg, Handle);
                     break;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
@@ -158,12 +158,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             return new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage);
         }
 
-        private void Handle(GetPooledTransactionsMessage getPooledTransactions)
+        private async Task<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
         {
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
-
-            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
-                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
+            return new PooledTransactionsMessage(getPooledTransactions.RequestId,
+                await FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, cancellationToken));
         }
 
         private async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)

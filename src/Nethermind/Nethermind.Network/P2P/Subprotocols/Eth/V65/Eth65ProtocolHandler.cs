@@ -3,6 +3,8 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
@@ -74,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     ReportIn(getPooledTxMsg, size);
-                    Handle(getPooledTxMsg);
+                    BackgroundTaskScheduler.ScheduleTask(getPooledTxMsg, Handle);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
@@ -119,25 +121,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void Handle(GetPooledTransactionsMessage msg)
+        private async Task Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
-            Send(FulfillPooledTransactionsRequest(msg, txsToSend));
+            Send(await FulfillPooledTransactionsRequest(msg, cancellationToken));
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        internal PooledTransactionsMessage FulfillPooledTransactionsRequest(
-            GetPooledTransactionsMessage msg, IList<Transaction> txsToSend)
+        internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
+            using ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             for (int i = 0; i < msg.Hashes.Count; i++)
             {
+                if (cancellationToken.IsCancellationRequested) break;
+
                 if (_txPool.TryGetPendingTransaction(msg.Hashes[i], out Transaction tx))
                 {
                     int txSize = tx.GetLength();
@@ -153,7 +157,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 }
             }
 
-            return new PooledTransactionsMessage(txsToSend);
+            return Task.FromResult(new PooledTransactionsMessage(txsToSend));
         }
 
         protected override void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
