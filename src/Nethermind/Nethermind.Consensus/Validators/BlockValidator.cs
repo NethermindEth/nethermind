@@ -185,26 +185,29 @@ public class BlockValidator : IBlockValidator
                 }
             }
 
-            List<Deposit> depositList = new List<Deposit>(capacity: processedBlock.Transactions.Length);
-            for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            if (suggestedBlock.Deposits is not null)
             {
-                foreach(var log in receipts[i].Logs)
+                List<Deposit> depositList = new List<Deposit>();
+                for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {
-                    if(log.LoggersAddress == spec.Eip6110ContractAddress)
+                    foreach (var log in receipts[i].Logs)
                     {
-                        var depositDecoder = new DepositDecoder();
-                        Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                        depositList.Add(deposit);
+                        if (log.LoggersAddress == spec.Eip6110ContractAddress)
+                        {
+                            var depositDecoder = new DepositDecoder();
+                            Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
+                            depositList.Add(deposit);
+                        }
                     }
                 }
+                Hash256 expectedDepositsRoot = new DepositTrie(suggestedBlock.Deposits).RootHash;
+                Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
+                if (actualDepositsRoot != expectedDepositsRoot)
+                {
+                    _logger.Error($"- deposits root : expected {expectedDepositsRoot}, got {actualDepositsRoot}");
+                }
             }
-            Hash256 expectedDepositsRoot = new DepositTrie(suggestedBlock.Deposits).RootHash;
-            Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
 
-            if(actualDepositsRoot !=  expectedDepositsRoot)
-            {
-                _logger.Error($"- deposits root : expected {expectedDepositsRoot}, got {actualDepositsRoot}");
-            }
 
             if (suggestedBlock.ExtraData is not null)
             {
