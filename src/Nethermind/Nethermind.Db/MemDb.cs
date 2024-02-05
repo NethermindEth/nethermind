@@ -103,7 +103,7 @@ namespace Nethermind.Db
         public int Count => _db.Count;
 
         public long GetSize() => 0;
-        public long GetCacheSize() => 0;
+        public long GetCacheSize(bool includeCacheSize) => 0;
         public long GetIndexSize() => 0;
         public long GetMemtableSize() => 0;
 

@@ -2294,8 +2294,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                ReadOnlyMemory<byte> memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
-                _txTracer.ReportMemoryChange(dataOffset, memoryTrace.Span);
+                ReadOnlyMemory<byte>? memoryTrace = vmState.Memory?.Inspect(in dataOffset, 32);
+                _txTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
             }
 
             if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace("FAIL - call depth");

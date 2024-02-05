@@ -23,10 +23,10 @@ public sealed class GaugeMetricAttribute : Attribute { }
 [AttributeUsage(AttributeTargets.Property | AttributeTargets.Field)]
 public sealed class KeyIsLabelAttribute : Attribute
 {
-    public string LabelName { get; }
+    public string[] LabelNames { get; }
 
-    public KeyIsLabelAttribute(string labelName)
+    public KeyIsLabelAttribute(params string[] labelNames)
     {
-        LabelName = labelName;
+        LabelNames = labelNames;
     }
 }
