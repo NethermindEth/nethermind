@@ -31,7 +31,7 @@ public class IpcSocketMessageStream(Socket socket) : NetworkStream(socket), IMes
                 {
                     Buffer.BlockCopy(bufferedData, 0, buffer.Array!, buffer.Offset, bufferedDataLength);
                 }
-                catch(Exception ) 
+                catch (Exception)
                 {
 
                 }

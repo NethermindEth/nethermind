@@ -161,22 +161,4 @@ public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
 
         return result;
     }
-
-    //public Task CloseAsync(ReceiveResult? result)
-    //{
-    //    if (_socket.State is WebSocketState.Open or WebSocketState.CloseSent)
-    //    {
-    //        return _socket.CloseAsync(result is WebSocketsReceiveResult { CloseStatus: { } } r ? r.CloseStatus.Value : WebSocketCloseStatus.Empty,
-    //            result?.CloseStatusDescription,
-    //            CancellationToken.None);
-    //    }
-
-    //    if (_socket.State is WebSocketState.CloseReceived)
-    //    {
-    //        return _socket.CloseOutputAsync(WebSocketCloseStatus.NormalClosure, result?.CloseStatusDescription,
-    //            CancellationToken.None);
-    //    }
-
-    //    return Task.CompletedTask;
-    //}
 }

@@ -30,7 +30,7 @@ namespace Nethermind.Analytics
 
         public ISocketsClient CreateClient(WebSocket webSocket, string clientName, HttpContext httpContext)
         {
-            SocketClient<WebSocketMessageStream> socketsClient = new (clientName, new WebSocketMessageStream(webSocket, _logManager), _jsonSerializer);
+            SocketClient<WebSocketMessageStream> socketsClient = new(clientName, new WebSocketMessageStream(webSocket, _logManager), _jsonSerializer);
             _clients.TryAdd(socketsClient.Id, socketsClient);
 
             return socketsClient;

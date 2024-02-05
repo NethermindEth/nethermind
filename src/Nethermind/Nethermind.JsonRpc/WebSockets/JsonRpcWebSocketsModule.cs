@@ -67,7 +67,6 @@ namespace Nethermind.JsonRpc.WebSockets
                 new WebSocketMessageStream(webSocket, _logManager),
                 RpcEndpoint.Ws,
                 _jsonRpcProcessor,
-                _jsonRpcService,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
                 jsonRpcUrl,

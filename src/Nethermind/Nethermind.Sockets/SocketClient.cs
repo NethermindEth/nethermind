@@ -9,7 +9,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Sockets;
 
-public class SocketClient<TStream> : ISocketsClient where TStream: Stream, IMessageBorderPreservingStream
+public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMessageBorderPreservingStream
 {
     public const int MAX_POOLED_SIZE = 5 * 1024 * 1024; // TODO: Either resize down or change to LargerArrayPool
 

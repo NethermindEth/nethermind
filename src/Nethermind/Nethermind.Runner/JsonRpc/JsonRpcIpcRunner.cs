@@ -28,7 +28,6 @@ namespace Nethermind.Runner.JsonRpc
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
         private string _path;
@@ -37,7 +36,6 @@ namespace Nethermind.Runner.JsonRpc
 
         public JsonRpcIpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcService jsonRpcService,
             IConfigProvider configurationProvider,
             ILogManager logManager,
             IJsonRpcLocalStats jsonRpcLocalStats,
@@ -46,7 +44,6 @@ namespace Nethermind.Runner.JsonRpc
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonRpcProcessor = jsonRpcProcessor;
-            _jsonRpcService = jsonRpcService;
             _logger = logManager.GetClassLogger();
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
@@ -125,7 +122,6 @@ namespace Nethermind.Runner.JsonRpc
                     new IpcSocketMessageStream(socket),
                     RpcEndpoint.IPC,
                     _jsonRpcProcessor,
-                    _jsonRpcService,
                     _jsonRpcLocalStats,
                     _jsonSerializer,
                     maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);

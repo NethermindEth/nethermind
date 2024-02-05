@@ -832,13 +832,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+            using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
             using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
                 stream: handler,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
-                jsonRpcService: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                 jsonSerializer: new EthereumJsonSerializer()
             );
@@ -867,13 +866,12 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+            using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
             using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
                 stream: handler,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
-                jsonRpcService: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                 jsonSerializer: new EthereumJsonSerializer()
             );

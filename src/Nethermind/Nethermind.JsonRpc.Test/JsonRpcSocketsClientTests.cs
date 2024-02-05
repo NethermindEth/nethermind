@@ -47,7 +47,6 @@ public class JsonRpcSocketsClientTests
                     stream: handler,
                     endpointType: RpcEndpoint.IPC,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -85,7 +84,6 @@ public class JsonRpcSocketsClientTests
                     stream: handler,
                     endpointType: RpcEndpoint.IPC,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -126,7 +124,6 @@ public class JsonRpcSocketsClientTests
                     stream: stream,
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -145,7 +142,7 @@ public class JsonRpcSocketsClientTests
             await Task.WhenAll(sendMessages, receiveMessages);
             int sent = sendMessages.Result;
             int received = receiveMessages.Result;
-            
+
             Assert.That(received, Is.EqualTo(sent));
         }
 
@@ -207,7 +204,6 @@ public class JsonRpcSocketsClientTests
                     stream: stream,
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -241,7 +237,7 @@ public class JsonRpcSocketsClientTests
 
         private static async Task<int> CountNumberOfMessages(Socket socket, CancellationToken token)
         {
-            using IpcSocketMessageStream stream = new (socket);
+            using IpcSocketMessageStream stream = new(socket);
 
             int messages = 0;
             try
@@ -262,7 +258,7 @@ public class JsonRpcSocketsClientTests
                 }
             }
             catch (OperationCanceledException) { }
-            
+
             return messages;
         }
 
@@ -312,13 +308,12 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+                using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
                 using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                     clientName: "TestClient",
                     stream: handler,
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -357,13 +352,12 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+                using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
                 using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                     clientName: "TestClient",
                     stream: handler,
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
@@ -397,13 +391,12 @@ public class JsonRpcSocketsClientTests
                 using ClientWebSocket socket = new();
                 await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-                using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+                using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
                 using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                     clientName: "TestClient",
                     stream: handler,
                     endpointType: RpcEndpoint.Ws,
                     jsonRpcProcessor: null!,
-                    jsonRpcService: null!,
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer(),
                     maxBatchResponseBodySize: maxByteCount
