@@ -452,47 +452,47 @@ namespace Nethermind.Trie
             switch (numberOfItems)
             {
                 case > 2:
-                {
-                    NodeType = NodeType.Branch;
-                    return true;
-                }
-                case 2:
-                {
-                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
-                    object[] data = [key, null];
-                    if (isLeaf)
                     {
-                        ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
-                        CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
-                        valueSpan.CopyTo(buffer.AsSpan());
-
-                        data[1] = buffer.IsNull ? CappedArray<byte>.NullBoxed : buffer;
-
-                        // Overwriting both key and value so just replace the array.
-                        Volatile.Write(ref _data, data);
-
-                        // Set NodeType after setting key as it alters code path to one that expects the key to be set.
-                        NodeType = NodeType.Leaf;
+                        NodeType = NodeType.Branch;
+                        return true;
                     }
-                    else
+                case 2:
                     {
-                        object[] prev = Interlocked.CompareExchange(ref _data, data, null);
-                        if (prev is not null)
+                        (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                        object[] data = [key, null];
+                        if (isLeaf)
                         {
-                            // Was already set, so update the previous array.
-                            prev[0] = key;
+                            ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
+                            CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
+                            valueSpan.CopyTo(buffer.AsSpan());
+
+                            data[1] = buffer.IsNull ? CappedArray<byte>.NullBoxed : buffer;
+
+                            // Overwriting both key and value so just replace the array.
+                            Volatile.Write(ref _data, data);
+
+                            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+                            NodeType = NodeType.Leaf;
+                        }
+                        else
+                        {
+                            object[] prev = Interlocked.CompareExchange(ref _data, data, null);
+                            if (prev is not null)
+                            {
+                                // Was already set, so update the previous array.
+                                prev[0] = key;
+                            }
+
+                            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+                            NodeType = NodeType.Extension;
                         }
 
-                        // Set NodeType after setting key as it alters code path to one that expects the key to be set.
-                        NodeType = NodeType.Extension;
+                        return true;
                     }
-
-                    return true;
-                }
                 default:
-                {
-                    return false;
-                }
+                    {
+                        return false;
+                    }
             }
         }
 
