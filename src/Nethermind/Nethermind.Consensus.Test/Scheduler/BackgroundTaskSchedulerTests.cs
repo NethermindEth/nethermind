@@ -97,16 +97,21 @@ public class BackgroundTaskSchedulerTests
         await using BackgroundTaskScheduler scheduler = new BackgroundTaskScheduler(_blockProcessor, 2, LimboLogs.Instance);
         _blockProcessor.BlocksProcessing += Raise.EventWith(new BlocksProcessingEventArgs(null));
 
-        ManualResetEvent waitSignal = new ManualResetEvent(false);
-        scheduler.ScheduleTask(1, (_, token) =>
+        int executionCount = 0;
+        for (int i = 0; i < 5; i++)
         {
-            waitSignal.Set();
-            return Task.CompletedTask;
-        });
+            scheduler.ScheduleTask(1, (_, token) =>
+            {
+                executionCount++;
+                return Task.CompletedTask;
+            });
+        }
+
+        await Task.Delay(10);
+        executionCount.Should().Be(0);
 
         _blockProcessor.BlockProcessed += Raise.EventWith(new BlockProcessedEventArgs(null, null));
-
-        (await waitSignal.WaitOneAsync(CancellationToken.None)).Should().BeTrue();
+        Assert.That(() => executionCount, Is.EqualTo(5).After(10, 1));
     }
 
     [Test]
