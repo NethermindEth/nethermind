@@ -161,6 +161,9 @@ public class ChainSpecLoader : IChainSpecLoader
             Eip1559BaseFeeInitialValue = chainSpecJson.Params.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee,
             Eip1559BaseFeeMaxChangeDenominator = chainSpecJson.Params.Eip1559BaseFeeMaxChangeDenominator ??
                                                  Eip1559Constants.DefaultBaseFeeMaxChangeDenominator,
+
+            Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
+            Eip6110ContractAddress = chainSpecJson.Params.Eip6110ContractAddress,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
