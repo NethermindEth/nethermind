@@ -129,16 +129,19 @@ namespace Nethermind.Synchronization.Peers
         }
 
 
-        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken)
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
         {
             BlockHeader[]? headers = null;
             try
             {
+                using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
+
                 headers = await syncPeerPool.AllocateAndRun(
                     peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
                     BySpeedStrategy.FastestHeader,
                     AllocationContexts.Headers,
-                    cancellationToken);
+                    cts.Token);
             }
             catch (OperationCanceledException)
             {
