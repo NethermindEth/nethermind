@@ -62,9 +62,9 @@ namespace Nethermind.JsonRpc.WebSockets
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }
 
-            JsonRpcSocketsClient? socketsClient = new(
+            JsonRpcSocketsClient<WebSocketMessageStream>? socketsClient = new(
                 clientName,
-                new WebSocketHandler(webSocket, _logManager),
+                new WebSocketMessageStream(webSocket, _logManager),
                 RpcEndpoint.Ws,
                 _jsonRpcProcessor,
                 _jsonRpcService,

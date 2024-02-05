@@ -112,8 +112,6 @@ namespace Nethermind.Runner.JsonRpc
 
         private async void AcceptCallback(IAsyncResult ar)
         {
-            JsonRpcSocketsClient socketsClient = null;
-
             try
             {
                 Socket socket = _server.EndAccept(ar);
@@ -122,9 +120,9 @@ namespace Nethermind.Runner.JsonRpc
 
                 _resetEvent.Set();
 
-                socketsClient = new JsonRpcSocketsClient(
+                using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                     string.Empty,
-                    new IpcSocketsHandler(socket),
+                    new IpcSocketMessageStream(socket),
                     RpcEndpoint.IPC,
                     _jsonRpcProcessor,
                     _jsonRpcService,
@@ -132,7 +130,7 @@ namespace Nethermind.Runner.JsonRpc
                     _jsonSerializer,
                     maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
-                await socketsClient.ReceiveAsync();
+                await socketsClient.ReceiveLoopAsync();
             }
             catch (IOException exc) when (exc.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
             {
@@ -149,10 +147,6 @@ namespace Nethermind.Runner.JsonRpc
             catch (Exception exc)
             {
                 if (_logger.IsError) _logger.Error("Error when handling IPC communication with a client.", exc);
-            }
-            finally
-            {
-                socketsClient?.Dispose();
             }
         }
 

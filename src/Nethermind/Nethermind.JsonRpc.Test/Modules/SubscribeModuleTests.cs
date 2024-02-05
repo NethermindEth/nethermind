@@ -832,10 +832,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient client = new(
+            using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                handler: handler,
+                stream: handler,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcService: null!,
@@ -867,10 +867,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using ISocketHandler handler = new WebSocketHandler(socket, NullLogManager.Instance);
-            using JsonRpcSocketsClient client = new(
+            using WebSocketMessageStream handler = new (socket, NullLogManager.Instance);
+            using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                handler: handler,
+                stream: handler,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcService: null!,

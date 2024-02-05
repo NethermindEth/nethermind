@@ -17,12 +17,11 @@ using Nethermind.Sockets;
 
 namespace Nethermind.JsonRpc.WebSockets;
 
-public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
+public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDuplexClient where TStream : Stream, IMessageBorderPreservingStream
 {
     public event EventHandler? Closed;
 
     private readonly IJsonRpcProcessor _jsonRpcProcessor;
-    private readonly IJsonRpcService _jsonRpcService;
     private readonly IJsonRpcLocalStats _jsonRpcLocalStats;
     private readonly long? _maxBatchResponseBodySize;
     private readonly JsonRpcContext _jsonRpcContext;
@@ -31,7 +30,7 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
 
     public JsonRpcSocketsClient(
         string clientName,
-        ISocketHandler handler,
+        TStream stream,
         RpcEndpoint endpointType,
         IJsonRpcProcessor jsonRpcProcessor,
         IJsonRpcService jsonRpcService,
@@ -39,10 +38,9 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
         IJsonSerializer jsonSerializer,
         JsonRpcUrl? url = null,
         long? maxBatchResponseBodySize = null)
-        : base(clientName, handler, jsonSerializer)
+        : base(clientName, stream, jsonSerializer)
     {
         _jsonRpcProcessor = jsonRpcProcessor;
-        _jsonRpcService = jsonRpcService;
         _jsonRpcLocalStats = jsonRpcLocalStats;
         _maxBatchResponseBodySize = maxBatchResponseBodySize;
         _jsonRpcContext = new JsonRpcContext(endpointType, this, url);
@@ -122,9 +120,9 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
         {
             if (result.IsCollection)
             {
-                int singleResponseSize = 1;
+                int responseSize = 1;
                 bool isFirst = true;
-                await _handler.SendRawAsync(_jsonOpeningBracket, false);
+                await _stream.WriteAsync(_jsonOpeningBracket);
                 JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses!.GetAsyncEnumerator(CancellationToken.None);
                 try
                 {
@@ -135,15 +133,15 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
                         {
                             if (!isFirst)
                             {
-                                await _handler.SendRawAsync(_jsonComma, false);
-                                singleResponseSize += 1;
+                                await _stream.WriteAsync(_jsonComma);
+                                responseSize += 1;
                             }
                             isFirst = false;
-                            singleResponseSize += await SendJsonRpcResultEntry(entry, false);
+                            responseSize += (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
                             _ = _jsonRpcLocalStats.ReportCall(entry.Report);
 
                             // We reached the limit and don't want to responded to more request in the batch
-                            if (!_jsonRpcContext.IsAuthenticated && singleResponseSize > _maxBatchResponseBodySize)
+                            if (!_jsonRpcContext.IsAuthenticated && responseSize > _maxBatchResponseBodySize)
                             {
                                 enumerator.IsStopped = true;
                             }
@@ -155,27 +153,24 @@ public class JsonRpcSocketsClient : SocketClient, IJsonRpcDuplexClient
                     await enumerator.DisposeAsync();
                 }
 
-                await _handler.SendRawAsync(_jsonClosingBracket, true);
-                singleResponseSize += 1;
+                await _stream.WriteAsync(_jsonClosingBracket);
+                responseSize++;
 
-                return singleResponseSize;
+                responseSize += await _stream.WriteEndOfMessageAsync();
+
+                return responseSize;
             }
             else
             {
-                return await SendJsonRpcResultEntry(result.SingleResponse!.Value);
+                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                responseSize += await _stream.WriteEndOfMessageAsync();
+
+                return responseSize;
             }
         }
         finally
         {
             _sendSemaphore.Release();
-        }
-    }
-
-    private async Task<int> SendJsonRpcResultEntry(JsonRpcResult.Entry result, bool endOfMessage = true)
-    {
-        using (result)
-        {
-            return (int)await _jsonSerializer.SerializeAsync(_handler.SendUsingStream(), result.Response, indented: false, leaveOpen: !endOfMessage);
         }
     }
 }
