@@ -1,22 +1,20 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Globalization;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -39,25 +37,43 @@ public class ChainSpecLoader : IChainSpecLoader
         try
         {
             ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-            ChainSpec chainSpec = new();
-
-            chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-            chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
-            chainSpec.Name = chainSpecJson.Name;
-            chainSpec.DataDir = chainSpecJson.DataDir;
-            LoadGenesis(chainSpecJson, chainSpec);
-            LoadEngine(chainSpecJson, chainSpec);
-            LoadAllocations(chainSpecJson, chainSpec);
-            LoadBootnodes(chainSpecJson, chainSpec);
-            LoadParameters(chainSpecJson, chainSpec);
-            LoadTransitions(chainSpecJson, chainSpec);
-
-            return chainSpec;
+            return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
         {
             throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
         }
+    }
+
+    public ChainSpec Load(Stream streamData)
+    {
+        try
+        {
+            ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(streamData);
+            return InitChainSpecFrom(chainSpecJson);
+        }
+        catch (Exception e)
+        {
+            throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
+        }
+    }
+
+    private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
+    {
+        ChainSpec chainSpec = new();
+
+        chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+        chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
+        chainSpec.Name = chainSpecJson.Name;
+        chainSpec.DataDir = chainSpecJson.DataDir;
+        LoadGenesis(chainSpecJson, chainSpec);
+        LoadEngine(chainSpecJson, chainSpec);
+        LoadAllocations(chainSpecJson, chainSpec);
+        LoadBootnodes(chainSpecJson, chainSpec);
+        LoadParameters(chainSpecJson, chainSpec);
+        LoadTransitions(chainSpecJson, chainSpec);
+
+        return chainSpec;
     }
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -84,6 +84,15 @@ public static class ChainSpecLoaderExtensions
             throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
         if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
-        return chainSpecLoader.Load(File.ReadAllText(filePath));
+        FileInfo fileInfo = new(filePath);
+        if (fileInfo.Length >= 1024 * 1024 * 1024)//1GB
+        {
+            using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+            return chainSpecLoader.Load(fileStream);
+        }
+        else
+        {
+            return chainSpecLoader.Load(File.ReadAllText(filePath));
+        }
     }
 }
