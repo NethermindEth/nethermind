@@ -106,11 +106,7 @@ namespace Nethermind.Blockchain.FullPruning
                 cancellationToken,
                 (h) => _blockTree.OnUpdateMainChain += h,
                 (h) => _blockTree.OnUpdateMainChain -= h,
-                (e) =>
-                {
-                    if (!e.WereProcessed) return false;
-                    return handler(e);
-                });
+                (e) => e.WereProcessed && handler(e));
         }
 
         protected virtual async Task RunFullPruning(CancellationToken cancellationToken)
@@ -151,7 +147,7 @@ namespace Nethermind.Blockchain.FullPruning
             long blockToWaitFor = 0;
             await WaitForMainChainChange(cancellationToken, (e) =>
             {
-                if (e.Blocks == null || e.Blocks.Count == 0) return false;
+                if (e.Blocks.Count == 0) return false;
 
                 blockToWaitFor = e.Blocks[^1].Number;
                 if (_logger.IsInfo)

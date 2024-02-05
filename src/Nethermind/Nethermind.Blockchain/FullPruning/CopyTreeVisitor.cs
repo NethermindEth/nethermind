@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -30,7 +31,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
-        private WriteBatcher _writeBatcher;
+        private ConcurrentWriteBatcher _concurrentWriteBatcher;
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
@@ -42,7 +43,7 @@ namespace Nethermind.Blockchain.FullPruning
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
-            _writeBatcher = new WriteBatcher(pruningContext);
+            _concurrentWriteBatcher = new ConcurrentWriteBatcher(pruningContext);
         }
 
         public bool IsFullDbScan => true;
@@ -57,6 +58,8 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
         public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
@@ -81,7 +84,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _writeBatcher.PutSpan(node.Keccak.Bytes, node.FullRlp.AsSpan(), _writeFlags);
+                _concurrentWriteBatcher.PutSpan(node.Keccak.Bytes, node.FullRlp.AsSpan(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes
@@ -110,7 +113,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _finished = true;
             LogProgress("Finished");
-            _writeBatcher.Dispose();
+            _concurrentWriteBatcher.Dispose();
         }
     }
 }

@@ -10,14 +10,16 @@ namespace Nethermind.Core.Utils;
 /// <summary>
 /// Batches writes into a set of concurrent batches. For cases where throughput matter, but not atomicity.
 /// </summary>
-public class WriteBatcher : IWriteBatch
+public class ConcurrentWriteBatcher : IWriteBatch
 {
+    private const long PersistEveryNWrite = 10000;
+
     private long _counter = 0;
     private readonly ConcurrentQueue<IWriteBatch> _batches = new();
     private readonly IKeyValueStoreWithBatching _underlyingDb;
     private bool _disposing = false;
 
-    public WriteBatcher(IKeyValueStoreWithBatching underlyingDb)
+    public ConcurrentWriteBatcher(IKeyValueStoreWithBatching underlyingDb)
     {
         _underlyingDb = underlyingDb;
     }
@@ -33,15 +35,22 @@ public class WriteBatcher : IWriteBatch
 
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags flags = WriteFlags.None)
     {
-        if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
-        if (!_batches.TryDequeue(out IWriteBatch? currentBatch))
-        {
-            currentBatch = _underlyingDb.StartWriteBatch();
-        }
-
+        IWriteBatch currentBatch = RentWriteBatch();
         currentBatch.PutSpan(key, value, flags);
+        ReturnWriteBatch(currentBatch);
+    }
+
+    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    {
+        IWriteBatch currentBatch = RentWriteBatch();
+        currentBatch.Set(key, value, flags);
+        ReturnWriteBatch(currentBatch);
+    }
+
+    private void ReturnWriteBatch(IWriteBatch currentBatch)
+    {
         long val = Interlocked.Increment(ref _counter);
-        if (val % 10000 == 0)
+        if (val % PersistEveryNWrite == 0)
         {
             currentBatch.Dispose();
         }
@@ -51,7 +60,7 @@ public class WriteBatcher : IWriteBatch
         }
     }
 
-    public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+    private IWriteBatch RentWriteBatch()
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
         if (!_batches.TryDequeue(out IWriteBatch? currentBatch))
@@ -59,15 +68,6 @@ public class WriteBatcher : IWriteBatch
             currentBatch = _underlyingDb.StartWriteBatch();
         }
 
-        currentBatch.Set(key, value, flags);
-        long val = Interlocked.Increment(ref _counter);
-        if (val % 10000 == 0)
-        {
-            currentBatch.Dispose();
-        }
-        else
-        {
-            _batches.Enqueue(currentBatch);
-        }
+        return currentBatch;
     }
 }
