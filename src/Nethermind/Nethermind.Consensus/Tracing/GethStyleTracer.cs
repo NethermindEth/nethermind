@@ -7,6 +7,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
@@ -25,6 +26,7 @@ namespace Nethermind.Consensus.Tracing;
 
 public class GethStyleTracer : IGethStyleTracer
 {
+    private readonly IBlockStore _badBlockStore;
     private readonly IBlockTree _blockTree;
     private readonly ISpecProvider _specProvider;
     private readonly ChangeableTransactionProcessorAdapter _transactionProcessorAdapter;
@@ -37,6 +39,7 @@ public class GethStyleTracer : IGethStyleTracer
         IWorldState worldState,
         IReceiptStorage receiptStorage,
         IBlockTree blockTree,
+        IBlockStore badBlockStore,
         ISpecProvider specProvider,
         ChangeableTransactionProcessorAdapter transactionProcessorAdapter,
         IFileSystem fileSystem)
@@ -45,6 +48,7 @@ public class GethStyleTracer : IGethStyleTracer
         _worldState = worldState;
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+        _badBlockStore = badBlockStore ?? throw new ArgumentNullException(nameof(badBlockStore));
         _specProvider = specProvider;
         _transactionProcessorAdapter = transactionProcessorAdapter;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
@@ -149,6 +153,24 @@ public class GethStyleTracer : IGethStyleTracer
             if (parent?.Hash is null)
                 throw new InvalidOperationException("Cannot trace blocks with invalid parents");
         }
+
+        var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
+
+        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+
+        return tracer.FileNames;
+    }
+
+    public IEnumerable<string> TraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options, CancellationToken cancellationToken)
+    {
+        ArgumentNullException.ThrowIfNull(blockHash);
+        ArgumentNullException.ThrowIfNull(options);
+
+        var block = _badBlockStore
+            .GetAll()
+            .Where(b => b.Hash == blockHash)
+            .FirstOrDefault()
+            ?? throw new InvalidOperationException("Only historical blocks");
 
         var tracer = new GethLikeBlockFileTracer(block, options, _fileSystem);
 

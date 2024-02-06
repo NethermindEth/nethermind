@@ -101,6 +101,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             chainProcessingEnv.StateProvider,
             _receiptStorage,
             _blockTree,
+            _badBlockStore,
             _specProvider,
             transactionProcessorAdapter,
             _fileSystem);

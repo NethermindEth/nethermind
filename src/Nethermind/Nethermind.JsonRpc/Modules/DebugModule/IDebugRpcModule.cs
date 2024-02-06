@@ -108,6 +108,10 @@ public interface IDebugRpcModule : IRpcModule
         IsImplemented = true, IsSharable = false)]
     ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
 
+    [JsonRpcMethod(Description = "This method is similar to the `debug_standardTraceBlockToFile` method, but can be used to obtain information about a block that has been rejected as invalid.",
+        IsImplemented = true, IsSharable = false)]
+    ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
+
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
     ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 }

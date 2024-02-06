@@ -328,6 +328,18 @@ public class DebugRpcModule : IDebugRpcModule
         return ResultWrapper<IEnumerable<string>>.Success(files);
     }
 
+    public ResultWrapper<IEnumerable<string>> debug_standardTraceBadBlockToFile(Hash256 blockHash, GethTraceOptions options = null)
+    {
+        using var cancellationTokenSource = new CancellationTokenSource(_traceTimeout);
+        var cancellationToken = cancellationTokenSource.Token;
+
+        var files = _debugBridge.TraceBadBlockToFile(blockHash, cancellationToken, options);
+
+        if (_logger.IsTrace) _logger.Trace($"{nameof(debug_standardTraceBadBlockToFile)} request {blockHash}, result: {files}");
+
+        return ResultWrapper<IEnumerable<string>>.Success(files);
+    }
+
     public ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks()
     {
         IEnumerable<BadBlock> badBlocks = _debugBridge.GetBadBlocks().Select(block => new BadBlock(block, true, _specProvider, _blockDecoder));
