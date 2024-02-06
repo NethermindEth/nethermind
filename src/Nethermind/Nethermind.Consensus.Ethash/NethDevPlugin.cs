@@ -14,6 +14,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
@@ -38,7 +39,8 @@ namespace Nethermind.Consensus.Ethash
 
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
+            IChainSpecParametersProvider? parameters = _nethermindApi.ChainSpecParametersProvider;
+            if (parameters?.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
                 return Task.FromResult((IBlockProducer)null);
             }

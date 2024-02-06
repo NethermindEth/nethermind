@@ -35,8 +35,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public AuRaParameters AuRa { get; set; }
 
-        public CliqueParameters Clique { get; set; }
-
         public EthashParameters Ethash { get; set; }
 
         public ChainParameters Parameters { get; set; }

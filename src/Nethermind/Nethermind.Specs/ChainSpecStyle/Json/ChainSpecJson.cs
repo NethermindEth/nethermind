@@ -168,18 +168,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public AuraEngineParamsJson Params { get; set; }
         }
 
-        internal class OptimismEngineParamsJson
-        {
-            public ulong RegolithTimestamp { get; set; }
-            public long BedrockBlockNumber { get; set; }
-            public ulong? CanyonTimestamp { get; set; }
-            public Address L1FeeRecipient { get; set; }
-            public Address L1BlockAddress { get; set; }
-            public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
-            public Address Create2DeployerAddress { get; set; }
-            public byte[] Create2DeployerCode { get; set; }
-        }
-
         internal class NethDevJson
         {
         }
@@ -187,7 +175,6 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
         internal class EngineJson
         {
             public EthashEngineJson Ethash { get; set; }
-            public CliqueEngineJson Clique { get; set; }
             public AuraEngineJson AuthorityRound { get; set; }
             public NethDevJson NethDev { get; set; }
 

@@ -7,6 +7,7 @@ using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Clique.Test;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -17,6 +18,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
@@ -32,18 +34,21 @@ namespace Nethermind.Consensus.Clique
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Core.SealEngineType.Clique)
+            IChainSpecParametersProvider? chainSpecParametersProvider = _nethermindApi.ChainSpecParametersProvider;
+            if (chainSpecParametersProvider?.SealEngineType != Core.SealEngineType.Clique)
             {
                 return Task.CompletedTask;
             }
+
+            _parameters = chainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpecEngineParameters>();
 
             (IApiWithStores getFromApi, IApiWithBlockchain setInApi) = _nethermindApi.ForInit;
 
 
             _cliqueConfig = new CliqueConfig
             {
-                BlockPeriod = getFromApi!.ChainSpec!.Clique.Period,
-                Epoch = getFromApi.ChainSpec.Clique.Epoch
+                BlockPeriod = _parameters.Period,
+                Epoch = _parameters.Epoch
             };
 
             _snapshotManager = new SnapshotManager(
@@ -53,7 +58,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.EthereumEcdsa!,
                 getFromApi.LogManager);
 
-            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, getFromApi.ChainSpec);
+            setInApi.HealthHintService = new CliqueHealthHintService(_snapshotManager, _parameters);
 
             setInApi.SealValidator = new CliqueSealValidator(
                 _cliqueConfig,
@@ -69,7 +74,7 @@ namespace Nethermind.Consensus.Clique
 
         public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
+            if (_parameters is null)
             {
                 return Task.FromResult((IBlockProducer)null);
             }
@@ -161,7 +166,7 @@ namespace Nethermind.Consensus.Clique
 
         public Task InitRpcModules()
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
+            if (_parameters is null)
             {
                 return Task.CompletedTask;
             }
@@ -186,6 +191,8 @@ namespace Nethermind.Consensus.Clique
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         private INethermindApi? _nethermindApi;
+
+        private CliqueChainSpecEngineParameters? _parameters;
 
         private ISnapshotManager? _snapshotManager;
 

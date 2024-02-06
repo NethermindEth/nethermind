@@ -38,7 +38,6 @@ namespace Nethermind.Api
         ILogManager LogManager { get; set; }
         ProtectedPrivateKey? OriginalSignerKey { get; set; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
-        string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
         IChainSpecParametersProvider? ChainSpecParametersProvider { get; set; }
         ISyncModeSelector SyncModeSelector { get; set; }
@@ -51,7 +50,7 @@ namespace Nethermind.Api
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins
                 .OfType<IConsensusPlugin>()
-                .SingleOrDefault(cp => cp.SealEngineType == SealEngineType);
+                .SingleOrDefault(cp => cp.SealEngineType == ChainSpecParametersProvider?.SealEngineType);
 
         public IEnumerable<IConsensusWrapperPlugin> GetConsensusWrapperPlugins() =>
             Plugins.OfType<IConsensusWrapperPlugin>().Where(p => p.Enabled);

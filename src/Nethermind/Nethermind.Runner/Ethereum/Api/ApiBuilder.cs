@@ -56,7 +56,6 @@ namespace Nethermind.Runner.Ethereum.Api
                 enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
                 new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
             nethermindApi.ChainSpecParametersProvider = chainSpecParametersProvider;
-            nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, chainSpecParametersProvider, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
