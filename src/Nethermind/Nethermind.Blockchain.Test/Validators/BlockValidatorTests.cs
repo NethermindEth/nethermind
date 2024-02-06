@@ -172,7 +172,7 @@ namespace Nethermind.Blockchain.Test.Validators
 
             sut.ValidateSuggestedBlock(
                 suggestedBlock, out error);
-            
+
             Assert.That(error, Does.StartWith("InvalidUnclesHash"));
         }
 

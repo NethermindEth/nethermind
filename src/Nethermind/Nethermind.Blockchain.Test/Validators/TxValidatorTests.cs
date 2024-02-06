@@ -414,7 +414,7 @@ public class TxValidatorTests
     public void IsWellFormed_NotBlobTxButBlobVersionedHashesIsSet_ReturnFalse()
     {
         TransactionBuilder<Transaction> txBuilder = Build.A.Transaction
-            .WithBlobVersionedHashes([[ 0x0 ]])
+            .WithBlobVersionedHashes([[0x0]])
             .WithChainId(TestBlockchainIds.ChainId)
             .SignedAndResolved();
 
