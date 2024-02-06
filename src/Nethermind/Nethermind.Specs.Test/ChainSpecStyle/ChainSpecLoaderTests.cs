@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -112,10 +112,12 @@ public class ChainSpecLoaderTests
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        var data = File.ReadAllText(path);
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.Load(data);
-        return chainSpec;
+        using (Stream stream = File.OpenRead(path))
+        {
+            ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
+            ChainSpec chainSpec = chainSpecLoader.Load(stream);
+            return chainSpec;
+        }
     }
 
     [Test]
