@@ -80,6 +80,10 @@ namespace Nethermind.Trie.Pruning
         public bool CanAccessByPath() => _trieStore.CanAccessByPath();
         public bool ShouldResetObjectsOnRootChange() => _trieStore.ShouldResetObjectsOnRootChange();
 
+        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+
+        public void StopPrefetch() { }
+
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);

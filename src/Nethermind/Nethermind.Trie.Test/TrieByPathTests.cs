@@ -1408,6 +1408,28 @@ public class TrieByPathTests
         }
     }
 
+    [Test]
+    public void Test_prefetch()
+    {
+        MemColumnsDb<StateColumns> memDb = new();
+        using TrieStoreByPath trieStore = new(memDb, ByPathPersist.IfBlockOlderThan(10), LimboLogs.Instance);
+
+        PatriciaTree patriciaTree = new StateTree(trieStore, _logManager);
+
+        patriciaTree.Set(_keyAccountA, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000201"));
+        patriciaTree.Set(_keyAccountB, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000202"));
+        patriciaTree.Set(_keyAccountC, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000203"));
+
+
+        patriciaTree.Commit(0);
+        patriciaTree.Set(_keyAccountD, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000101"));
+        patriciaTree.Set(_keyAccountE, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000102"));
+
+        trieStore.PrefetchPath(_keyAccountD, Array.Empty<byte>(), patriciaTree.RootHash);
+
+        patriciaTree.Commit(1);
+
+    }
 
     [Test()]
     [Explicit]
