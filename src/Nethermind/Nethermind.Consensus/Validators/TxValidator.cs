@@ -55,6 +55,7 @@ namespace Nethermind.Consensus.Validators
                 TxType.AccessList => releaseSpec.UseTxAccessLists,
                 TxType.EIP1559 => releaseSpec.IsEip1559Enabled,
                 TxType.Blob => releaseSpec.IsEip4844Enabled,
+                TxType.EofInitcodeTx => releaseSpec.IsEofEnabled,
                 _ => false
             };
 
