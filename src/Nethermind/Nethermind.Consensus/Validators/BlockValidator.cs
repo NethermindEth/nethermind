@@ -134,8 +134,10 @@ public class BlockValidator : IBlockValidator
     /// <param name="receipts">List of tx receipts from the processed block (required only for better diagnostics when the receipt root is invalid).</param>
     /// <param name="suggestedBlock">Block received from the network - unchanged.</param>
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
     {
+        IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
+
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
         if (!isValid && _logger.IsError)
         {
@@ -187,7 +189,8 @@ public class BlockValidator : IBlockValidator
 
             if (suggestedBlock.Deposits is not null)
             {
-                List<Deposit> depositList = new List<Deposit>();
+                Deposit[] depositList = new Deposit[suggestedBlock.Deposits.Length];
+                int depositCount = 0;
                 for (int i = 0; i < processedBlock.Transactions.Length; i++)
                 {
                     foreach (var log in receipts[i].Logs)
@@ -196,11 +199,11 @@ public class BlockValidator : IBlockValidator
                         {
                             var depositDecoder = new DepositDecoder();
                             Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                            depositList.Add(deposit);
+                            depositList[depositCount++] = deposit;
                         }
                     }
                 }
-                Hash256 expectedDepositsRoot = new DepositTrie(suggestedBlock.Deposits).RootHash;
+                Hash256 expectedDepositsRoot = suggestedBlock.Header.DepositsRoot;
                 Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
                 if (actualDepositsRoot != expectedDepositsRoot)
                 {
@@ -378,7 +381,8 @@ public class BlockValidator : IBlockValidator
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
             ValidateUnclesHashMatches(header, toBeValidated, out _) &&
-            ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+            ValidateWithdrawalsHashMatches(header, toBeValidated, out _) &&
+            ValidateDepositsHashMatches(header, toBeValidated, out _);
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot)
     {

@@ -469,7 +469,7 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
             {
                 Thread.Sleep(1000);
                 return true;

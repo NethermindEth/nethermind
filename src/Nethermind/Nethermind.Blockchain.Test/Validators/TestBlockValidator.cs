@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Blockchain.Test.Validators;
 
@@ -45,6 +44,11 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
+    {
+        return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
+    }
+
     public bool ValidateWithdrawals(Block block, out string? error)
     {
         error = null;
@@ -56,10 +60,5 @@ public class TestBlockValidator : IBlockValidator
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
-    }
-
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
-    {
-        return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
     }
 }

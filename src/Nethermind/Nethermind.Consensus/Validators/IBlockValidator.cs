@@ -12,6 +12,6 @@ public interface IBlockValidator : IHeaderValidator, IWithdrawalValidator
 
     bool ValidateSuggestedBlock(Block block);
 
-    bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec);
+    bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock);
 
 }

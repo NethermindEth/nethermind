@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Validators
 {
@@ -28,6 +27,11 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
+        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock)
+        {
+            return false;
+        }
+
         public bool ValidateWithdrawals(Block block, out string? error)
         {
             error = null;
@@ -37,11 +41,6 @@ namespace Nethermind.Consensus.Validators
         public bool ValidateOrphanedBlock(Block block, out string? error)
         {
             error = null;
-            return false;
-        }
-
-        public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, IReleaseSpec spec)
-        {
             return false;
         }
     }
