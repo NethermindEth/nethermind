@@ -199,7 +199,7 @@ namespace Ethereum.Test.Base
 
             blockchainProcessor.Start();
             blockTree.SuggestBlock(genesisBlock);
-            
+
             genesisProcessed.WaitOne();
             for (int i = 0; i < correctRlp.Count; i++)
             {
