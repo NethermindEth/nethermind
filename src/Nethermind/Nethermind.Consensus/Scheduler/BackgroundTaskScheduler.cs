@@ -117,7 +117,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         timeout ??= DefaultTimeout;
         DateTimeOffset deadline = DateTimeOffset.Now + timeout.Value;
 
-        IActivity activity = new SyncActivity<TReq>()
+        IActivity activity = new Activity<TReq>()
         {
             Deadline = deadline,
             Request = request,
@@ -140,7 +140,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         await _mainCancellationTokenSource.CancelAsync();
     }
 
-    private struct SyncActivity<TReq> : IActivity
+    private readonly struct Activity<TReq> : IActivity
     {
         public DateTimeOffset Deadline { get; init; }
         public TReq Request { get; init; }
