@@ -2,9 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
+using System.Collections.Generic;
+using System.Linq;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
+using Nethermind.Db;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
+
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
@@ -89,11 +104,267 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void GetTrace_should_not_thor_on_not_initialized_memory()
+        public void GetTrace_should_not_throw_on_not_initialized_memory()
         {
             EvmPooledMemory memory = new();
             memory.CalculateMemoryCost(0, 32);
             memory.GetTrace().ToHexWordList().Should().BeEquivalentTo(new string[] { "0000000000000000000000000000000000000000000000000000000000000000" });
         }
+
+        [Test]
+        public void GetTrace_memory_should_not_bleed_between_txs()
+        {
+            var first = new byte[] {
+                0x5b, 0x38, 0x36, 0x59, 0x59, 0x59, 0x59, 0x52, 0x3a, 0x60, 0x05, 0x30,
+                0xf4, 0x05, 0x56};
+            var second = new byte[] {
+                0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
+                0x56};
+
+            var a = run(second).ToString();
+            run(first);
+            var b = run(second).ToString();
+
+            Assert.That(b, Is.EqualTo(a));
+        }
+
+        [Test]
+        public void GetTrace_memory_should_not_overflow()
+        {
+            var input = new byte[] {
+                0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
+                0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
+            run(input);
+        }
+
+        private static PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
+        private static Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
+
+        private static Address to = new Address("0x000000000000000000000000636f6e7472616374");
+        private static Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
+        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+        private static string run(byte[] input)
+        {
+            long blocknr = 12965000;
+            long gas = 34218;
+            ulong ts = 123456;
+            MemDb stateDb = new();
+            TrieStore trieStore = new(
+                    stateDb,
+                    LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(
+                    trieStore,
+                    new MemDb(),
+                    LimboLogs.Instance);
+            ISpecProvider specProvider = new TestSpecProvider(London.Instance);
+            VirtualMachine virtualMachine = new(
+                    Nethermind.Evm.Test.TestBlockhashProvider.Instance,
+                    specProvider,
+                    LimboLogs.Instance);
+            TransactionProcessor transactionProcessor = new TransactionProcessor(
+                    specProvider,
+                    stateProvider,
+                    virtualMachine,
+                    LimboLogs.Instance);
+
+            stateProvider.CreateAccount(to, 123);
+            stateProvider.InsertCode(to, input, specProvider.GenesisSpec);
+
+            stateProvider.CreateAccount(sender, 40000000);
+            stateProvider.Commit(specProvider.GenesisSpec);
+
+            stateProvider.CommitTree(0);
+
+            Transaction tx = Build.A.Transaction.
+                WithData(input).
+                WithTo(to).
+                WithGasLimit(gas).
+                WithGasPrice(0).
+                WithValue(0).
+                SignedAndResolved(ethereumEcdsa, PrivateKeyD, true).
+                TestObject;
+            Block block = Build.A.Block.
+                WithBeneficiary(coinbase).
+                WithNumber(blocknr + 1).
+                WithTimestamp(ts).
+                WithTransactions(tx).
+                WithGasLimit(30000000).
+                WithDifficulty(0).
+                TestObject;
+            MyTracer tracer = new();
+            transactionProcessor.Execute(
+                    tx,
+                    new BlockExecutionContext(block.Header),
+                    tracer);
+            return tracer.lastmemline;
+        }
+    }
+
+    public class MyTracer : ITxTracer, IDisposable
+    {
+        public bool IsTracingReceipt => true;
+        public bool IsTracingActions => false;
+        public bool IsTracingOpLevelStorage => true;
+        public bool IsTracingMemory => true;
+        public bool IsTracingDetailedMemory { get; set; } = true;
+        public bool IsTracingInstructions => true;
+        public bool IsTracingRefunds { get; } = false;
+        public bool IsTracingCode => true;
+        public bool IsTracingStack { get; set; } = true;
+        public bool IsTracingState => false;
+        public bool IsTracingStorage => false;
+        public bool IsTracingBlockHash { get; } = false;
+        public bool IsTracingAccess { get; } = false;
+        public bool IsTracingFees => false;
+        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+
+        public string lastmemline;
+
+        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
+        {
+        }
+
+        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256 stateRoot = null)
+        {
+        }
+
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        {
+        }
+
+        public void ReportOperationError(EvmExceptionType error)
+        {
+        }
+
+        public void ReportOperationRemainingGas(long gas)
+        {
+        }
+
+        public void SetOperationStack(TraceStack stack)
+        {
+        }
+
+        public void SetOperationMemory(TraceMemory memoryTrace)
+        {
+            lastmemline = string.Concat("0x", string.Join("", memoryTrace.ToHexWordList().Select(mt => mt.Replace("0x", string.Empty))));
+        }
+
+        public void SetOperationMemorySize(ulong newSize)
+        {
+        }
+
+        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+        {
+        }
+
+        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        {
+        }
+
+        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        {
+        }
+
+        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        {
+        }
+
+        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportAccountRead(Address address)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportStorageChange(in StorageCell storageAddress, byte[] before, byte[] after)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportStorageRead(in StorageCell storageCell)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportBlockHash(Hash256 blockHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportByteCode(ReadOnlyMemory<byte> byteCode)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+        {
+        }
+
+        public void ReportRefundForVmTrace(long refund, long gasAvailable)
+        {
+        }
+
+        public void ReportRefund(long refund)
+        {
+        }
+
+        public void ReportExtraGasPressure(long extraGasPressure)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        {
+        }
+
+        public void ReportFees(UInt256 fees, UInt256 burntFees)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void Dispose() { }
     }
 }

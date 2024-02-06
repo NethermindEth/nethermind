@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             (int contentLength, int pwasLength, int proofsLength) = GetLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
