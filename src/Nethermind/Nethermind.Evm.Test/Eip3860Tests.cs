@@ -7,6 +7,7 @@ using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Test
@@ -72,7 +73,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Disabled_InitCode_TxCreation_Exceeds_Limit_Succeeds()
         {
-            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp - 1, Spec.MaxInitCodeSize + 1);
+            (_, var tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp - 1, Spec.MaxInitCodeSize + 1);
 
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
@@ -80,22 +81,22 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Exceeds_Limit_Fails()
         {
-            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
+            (var result, _) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize + 1);
 
-            Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Failure));
-            Assert.That(tracer.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
+            Assert.That(result.Fail, Is.True);
+            Assert.That(result.Error, Is.EqualTo("EIP-3860 - transaction size over max init code size"));
         }
 
         [Test]
         public void Test_EIP_3860_Enabled_InitCode_TxCreation_Within_Limit_Succeeds()
         {
             //7680 is the size of create instructions - Prepare.EvmCode.Create
-            var tracer = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize - 7680);
+            (_, var tracer) = PrepExecuteCreateTransaction(MainnetSpecProvider.ShanghaiBlockTimestamp, Spec.MaxInitCodeSize - 7680);
 
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
         }
 
-        protected TestAllTracerWithOutput PrepExecuteCreateTransaction(ulong timestamp, long byteCodeSize)
+        protected (TransactionResult, TestAllTracerWithOutput tracer) PrepExecuteCreateTransaction(ulong timestamp, long byteCodeSize)
         {
             var byteCode = new byte[byteCodeSize];
 
@@ -109,9 +110,8 @@ namespace Nethermind.Evm.Test
             transaction.To = null;
             transaction.Data = createCode;
             TestAllTracerWithOutput tracer = CreateTracer();
-            _processor.Execute(transaction, block.Header, tracer);
-
-            return tracer;
+            TransactionResult result = _processor.Execute(transaction, block.Header, tracer);
+            return (result, tracer);
         }
     }
 }

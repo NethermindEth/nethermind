@@ -67,13 +67,9 @@ public class TransactionProcessorTests
     public void Can_process_simple_transaction(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Success, Is.True);
     }
 
     [TestCase(true, true)]
@@ -90,7 +86,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
+        TransactionResult result = Execute(tx, block, tracer);
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
@@ -109,13 +105,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_intrinsic_gas(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(20000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -125,13 +117,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_missing_sender(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.Signed(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -141,13 +129,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_non_existing_sender_account(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -157,13 +141,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_invalid_nonce(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).WithNonce(100).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -188,10 +168,8 @@ public class TransactionProcessorTests
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
 
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -208,11 +186,8 @@ public class TransactionProcessorTests
         tx.Value = 1.Ether() - GasCostOf.Transaction;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.BerlinBlockNumber).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -228,11 +203,8 @@ public class TransactionProcessorTests
             .WithGasLimit(100000).TestObject;
 
         Block block = Build.A.Block.WithNumber(MainnetSpecProvider.LondonBlockNumber).WithTransactions(tx).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withStateDiff, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -242,13 +214,9 @@ public class TransactionProcessorTests
     public void Can_handle_quick_fail_on_above_block_gas_limit(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
-        Execute(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Failure));
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(true, true)]
@@ -258,13 +226,9 @@ public class TransactionProcessorTests
     public void Will_not_cause_quick_fail_above_block_gas_limit_during_calls(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
-
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(20000).TestObject;
-
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, withTrace, withTrace);
-        CallAndRestore(tracer, tx, block);
-
-        Assert.That(tracer.TxReceipts[0].StatusCode, Is.EqualTo(StatusCode.Success));
+        TransactionResult result = CallAndRestore(tx, block);
+        Assert.That(result.Success, Is.True);
     }
 
     [TestCase]
@@ -340,11 +304,8 @@ public class TransactionProcessorTests
             ? MainnetSpecProvider.ByzantiumBlockNumber
             : MainnetSpecProvider.ByzantiumBlockNumber - 1;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
-
-        Execute(tracer, tx, block);
-
-        tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase(562949953421312ul)]
@@ -358,11 +319,8 @@ public class TransactionProcessorTests
 
         long blockNumber = MainnetSpecProvider.LondonBlockNumber;
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
-        BlockReceiptsTracer tracer = BuildTracer(block, tx, true, true);
-
-        Execute(tracer, tx, block);
-
-        tracer.TxReceipts[0].StatusCode.Should().Be(StatusCode.Failure);
+        TransactionResult result = Execute(tx, block);
+        Assert.That(result.Fail, Is.True);
     }
 
     [TestCase]
@@ -631,7 +589,7 @@ public class TransactionProcessorTests
         Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
 
         BlockReceiptsTracer tracer = BuildTracer(block, tx, false, false);
-        Execute(tracer, tx, block);
+        Execute(tx, block, tracer);
         _stateProvider.AccountExists(tx.SenderAddress).Should().BeTrue();
     }
 
@@ -730,21 +688,31 @@ public class TransactionProcessorTests
         return tracer;
     }
 
-    private void Execute(BlockReceiptsTracer tracer, Transaction tx, Block block)
+    private TransactionResult Execute(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _transactionProcessor.Execute(tx, block.Header, tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        tracer?.StartNewBlockTrace(block);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.Execute(tx, block.Header, tracer ?? NullTxTracer.Instance);
+        if (result)
+        {
+            tracer?.EndTxTrace();
+            tracer?.EndBlockTrace();
+        }
+
+        return result;
     }
 
-    private void CallAndRestore(BlockReceiptsTracer tracer, Transaction tx, Block block)
+    private TransactionResult CallAndRestore(Transaction tx, Block block, BlockReceiptsTracer? tracer = null)
     {
-        tracer.StartNewBlockTrace(block);
-        tracer.StartNewTxTrace(tx);
-        _transactionProcessor.CallAndRestore(tx, block.Header, tracer);
-        tracer.EndTxTrace();
-        tracer.EndBlockTrace();
+        tracer?.StartNewBlockTrace(block);
+        tracer?.StartNewTxTrace(tx);
+        TransactionResult result = _transactionProcessor.CallAndRestore(tx, block.Header, tracer ?? NullTxTracer.Instance);
+        if (result)
+        {
+            tracer?.EndTxTrace();
+            tracer?.EndBlockTrace();
+        }
+
+        return result;
     }
 }
