@@ -7,6 +7,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Trie;
@@ -109,7 +110,7 @@ namespace Nethermind.Evm.Test
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
-            Hash256 storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            ValueHash256 storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());

@@ -27,6 +27,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using System.Threading.Tasks;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Buffers;
 using Nethermind.State.Tracing;
 using NSubstitute;
 
@@ -850,8 +851,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 // the exception will be thrown if the account did not exist before the call
                 try
                 {
-                    byte[] verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!)!;
-                    new AccountDecoder().Decode(new RlpStream(verifyOneProof));
+                    CappedArray<byte> verifyOneProof = ProofVerifier.VerifyOneProof(accountProof.Proof!, block.StateRoot!);
+                    new AccountDecoder().Decode(verifyOneProof.AsSpan());
                 }
                 catch (Exception)
                 {

@@ -29,7 +29,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-        if (block.Withdrawals != null)
+        if (block.Withdrawals is not null)
         {
             foreach (var withdrawal in block.Withdrawals)
             {

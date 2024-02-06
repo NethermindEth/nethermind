@@ -27,6 +27,7 @@ namespace Nethermind.Network.Test.P2P
             serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
+            channel.IsWritable.Returns(true);
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
 
@@ -46,6 +47,7 @@ namespace Nethermind.Network.Test.P2P
             serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
+            channel.IsWritable.Returns(true);
             channel.Active.Returns(false);
             context.Channel.Returns(channel);
 
@@ -65,6 +67,7 @@ namespace Nethermind.Network.Test.P2P
             serialized.SafeRelease();
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
+            channel.IsWritable.Returns(true);
             channel.Active.Returns(true);
             context.Channel.Returns(channel);
 

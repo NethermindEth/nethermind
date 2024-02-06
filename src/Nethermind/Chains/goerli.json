@@ -48,7 +48,6 @@
 		"eip4844TransitionTimestamp": "0x65A77460",
 		"eip5656TransitionTimestamp": "0x65A77460",
 		"eip6780TransitionTimestamp": "0x65A77460",
-		"eip4788ContractAddress": "0x000F3df6D732807Ef1319fB7B8bB8522d0Beac02",
 		"terminalTotalDifficulty": "A4A470",
 		"gasLimitBoundDivisor": "0x400",
 		"maxCodeSize": "0x6000",

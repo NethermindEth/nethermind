@@ -121,7 +121,10 @@ public class ColumnDb : IDb
         _rocksDb.Remove(key, _columnFamily, _mainDb.WriteOptions);
     }
 
-    public bool KeyExists(ReadOnlySpan<byte> key) => _rocksDb.Get(key, _columnFamily) is not null;
+    public bool KeyExists(ReadOnlySpan<byte> key)
+    {
+        return _mainDb.KeyExistsWithColumn(key, _columnFamily);
+    }
 
     public void Flush()
     {
@@ -138,12 +141,11 @@ public class ColumnDb : IDb
     /// </summary>
     /// <exception cref="NotSupportedException"></exception>
     public void Clear() { throw new NotSupportedException(); }
-    public long GetSize() => _mainDb.GetSize();
-    public long GetCacheSize() => _mainDb.GetCacheSize();
-    public long GetIndexSize() => _mainDb.GetIndexSize();
-    public long GetMemtableSize() => _mainDb.GetMemtableSize();
 
-    public void DangerousReleaseMemory(in Span<byte> span)
+    // Maybe it should be column specific metric?
+    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _mainDb.GatherMetric(includeSharedCache);
+
+    public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
     {
         _mainDb.DangerousReleaseMemory(span);
     }

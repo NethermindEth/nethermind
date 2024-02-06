@@ -114,8 +114,7 @@ namespace Nethermind.Api
         public IConfigProvider ConfigProvider { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
-        public IRocksDbFactory? RocksDbFactory { get; set; }
-        public IMemDbFactory? MemDbFactory { get; set; }
+        public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public ISigner? EngineSigner { get; set; }

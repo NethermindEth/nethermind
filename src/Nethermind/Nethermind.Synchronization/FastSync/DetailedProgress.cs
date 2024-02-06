@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private void LoadFromSerialized(byte[]? serializedData)
         {
-            if (serializedData == null)
+            if (serializedData is null)
             {
                 return;
             }
@@ -152,7 +152,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 stream.Encode(entry);
             }
-            return stream.Data;
+            return stream.Data.ToArray()!;
         }
 
         private static int GetLength(Span<long> progress)

@@ -4,10 +4,10 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Synchronization.Reporting;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
@@ -90,13 +90,13 @@ public interface IDebugRpcModule : IRpcModule
     Task<ResultWrapper<bool>> debug_insertReceipts(BlockParameter blockParameter, ReceiptForRpc[] receiptForRpc);
 
     [JsonRpcMethod(Description = "Get Raw Block format.")]
-    ResultWrapper<byte[]> debug_getRawBlock(long blockNumber);
+    ResultWrapper<byte[]> debug_getRawBlock(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Receipt format.")]
-    ResultWrapper<byte[][]> debug_getRawReceipts(long blockNumber);
+    ResultWrapper<byte[][]> debug_getRawReceipts(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Header format.")]
-    ResultWrapper<byte[]> debug_getRawHeader(long blockNumber);
+    ResultWrapper<byte[]> debug_getRawHeader(BlockParameter blockParameter);
 
     [JsonRpcMethod(Description = "Get Raw Transaction format.")]
     ResultWrapper<byte[]> debug_getRawTransaction(Hash256 transactionHash);
@@ -109,5 +109,5 @@ public interface IDebugRpcModule : IRpcModule
     ResultWrapper<IEnumerable<string>> debug_standardTraceBlockToFile(Hash256 blockHash, GethTraceOptions options = null);
 
     [JsonRpcMethod(Description = "Return list of invalid blocks.")]
-    ResultWrapper<IEnumerable<Block>> debug_getBadBlocks();
+    ResultWrapper<IEnumerable<BadBlock>> debug_getBadBlocks();
 }

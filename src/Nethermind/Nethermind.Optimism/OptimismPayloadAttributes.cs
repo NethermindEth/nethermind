@@ -123,7 +123,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
 
         if (Withdrawals is not null)
         {
-            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Count}");
+            sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Length}");
         }
 
         sb.Append('}');
