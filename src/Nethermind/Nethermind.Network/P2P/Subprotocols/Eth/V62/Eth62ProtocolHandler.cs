@@ -261,41 +261,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             IList<Transaction> iList = msg.Transactions;
 
-            if (iList is ArrayPoolList<Transaction> apl)
-            {
-                HandleFast(apl.AsSpan());
-            }
-            else if (iList is Transaction[] array)
-            {
-                HandleFast(array.AsSpan());
-            }
-            else if (iList is List<Transaction> list)
-            {
-                HandleFast(CollectionsMarshal.AsSpan(list));
-            }
-            else
-            {
-                HandleSlow(iList);
-            }
+            BackgroundTaskScheduler.ScheduleTask((iList, 0), HandleSlow);
         }
 
-        private void HandleFast(Span<Transaction> transactions)
+        private Task HandleSlow((IList<Transaction>, int) request, CancellationToken cancellationToken)
         {
-            bool isTrace = Logger.IsTrace;
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                PrepareAndSubmitTransaction(transactions[i], isTrace);
-            }
-        }
+            IList<Transaction> transactions = request.Item1;
+            int startIdx = request.Item2;
 
-        private void HandleSlow(IList<Transaction> transactions)
-        {
             bool isTrace = Logger.IsTrace;
             int count = transactions.Count;
-            for (int i = 0; i < count; i++)
+            for (int i = startIdx; i < count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    // Reschedule and with different start index
+                    BackgroundTaskScheduler.ScheduleTask((transactions, i), HandleSlow);
+                    return Task.CompletedTask;
+                }
+
                 PrepareAndSubmitTransaction(transactions[i], isTrace);
             }
+            return Task.CompletedTask;
         }
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
@@ -306,15 +293,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash);
             }
 
-            BackgroundTaskScheduler.ScheduleTask((tx, isTrace), SubmitTx);
-        }
-
-        Task SubmitTx((Transaction tx, bool isTrace) inp, CancellationToken cancellationToken)
-        {
-            if (cancellationToken.IsCancellationRequested) return Task.CompletedTask;
-
-            Transaction tx = inp.tx;
-            bool isTrace = inp.isTrace;
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
@@ -323,8 +301,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
-
-            return Task.CompletedTask;
         }
 
         private void Handle(NewBlockHashesMessage newBlockHashes)
