@@ -16,7 +16,7 @@ namespace Nethermind.Evm;
 
 public class TransactionSubstate
 {
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private static readonly List<Address> _emptyDestroyList = new(0);
     private static readonly List<LogEntry> _emptyLogs = new(0);
 
@@ -67,7 +67,7 @@ public class TransactionSubstate
         IReadOnlyCollection<LogEntry> logs,
         bool shouldRevert,
         bool isTracerConnected,
-        ILogger? logger = null)
+        ILogger logger = default)
     {
         _logger = logger;
         Output = output;
@@ -147,7 +147,7 @@ public class TransactionSubstate
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
-            if (_logger?.IsError == true) _logger.Error("Couldn't parse revert message", e);
+            if (_logger.IsError == true) _logger.Error("Couldn't parse revert message", e);
             return null;
         }
     }
