@@ -38,6 +38,8 @@ namespace Nethermind.Trie.Pruning
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null);
         bool CanAccessByPath();
         bool ShouldResetObjectsOnRootChange();
+        void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot);
+        void StopPrefetch();
     }
 
     public interface IPruningTrieStore

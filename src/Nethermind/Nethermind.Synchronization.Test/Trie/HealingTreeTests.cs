@@ -133,6 +133,8 @@ public class HealingTreeTests
 
         public bool CanAccessByPath() => false;
         public bool ShouldResetObjectsOnRootChange() => false;
+        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+        public void StopPrefetch() { }
 
         public void ClearCache() { }
 

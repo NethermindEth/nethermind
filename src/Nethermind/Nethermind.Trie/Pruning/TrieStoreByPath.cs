@@ -3,9 +3,11 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -13,6 +15,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.ByPath;
 
 namespace Nethermind.Trie.Pruning
@@ -40,6 +43,8 @@ namespace Nethermind.Trie.Pruning
         private long _rlpReadLvl1;
         private long _rlpReadLvl2;
         private long _rlpCacheReads;
+
+        private readonly PathPrefetcher? _prefetcher;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -378,6 +383,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (_logger.IsDebug) _logger.Debug("Disposing trie");
             PersistOnShutdown();
+            _prefetcher?.Dispose();
         }
 
         #region Private
@@ -931,8 +937,64 @@ namespace Nethermind.Trie.Pruning
         }
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
-
         public void Set(in ValueHash256 hash, byte[] rlp) { }
+
+        public void PrefetchPath(ReadOnlySpan<byte> rawKey, byte[] storeNibblePrefix, Hash256 stateRoot)
+        {
+            int fullLength = storeNibblePrefix.Length + rawKey.Length * 2;
+            Span<byte> nibbles = stackalloc byte[130];
+
+            storeNibblePrefix.CopyTo(nibbles);
+            Nibbles.BytesToNibbleBytes(rawKey, nibbles.Slice(storeNibblePrefix.Length, 64));
+            nibbles = nibbles.Slice(0, fullLength);
+
+            int index = storeNibblePrefix.Length;
+            while (index < fullLength)
+            {
+                byte[]? rlp = null;
+                Span<byte> currentPath = nibbles[..index];
+                NodeData? nodeData = _committedNodes.GetNodeDataAtRoot(stateRoot, currentPath);
+                rlp = nodeData?.RLP;
+                if (rlp is null)
+                {
+                    if (!_readCache.TryGetValue(currentPath, out rlp))
+                    {
+                        rlp = TryLoadRlp(currentPath, null);
+                    }
+                }
+
+                if (rlp is null)
+                    return;
+
+                RlpStream rlpStream = rlp.AsRlpStream();
+
+                int sequenceLength = rlpStream.ReadSequenceLength();
+
+                int numberOfItems = rlpStream.PeekNumberOfItemsRemaining(null, 3);
+
+                if (numberOfItems > 2)
+                {
+                    //branch - get next nibble
+                    index++;
+                    continue;
+                }
+                if (numberOfItems == 2)
+                {
+                    (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                    index += key.Length;
+                }
+            }
+        }
+
+        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot)
+        {
+            _prefetcher?.Enqueue(new PrefetchWorkItem(key.ToArray(), storeNibblePrefix, stateRoot));
+        }
+
+        public void StopPrefetch()
+        {
+            _prefetcher?.Stop();
+        }
 
         private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
@@ -945,6 +1007,113 @@ namespace Nethermind.Trie.Pruning
 
             //public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
+
+        }
+    }
+
+    public class PathPrefetcher : IDisposable
+    {
+        private readonly TrieStoreByPath _trieStore;
+        private readonly ConcurrentQueue<PrefetchWorkItem> _prefetchQueue;
+        private readonly CancellationTokenSource _prefetchCancellationTokenSource;
+        private readonly ManualResetEventSlim _prefetchEvent;
+        private readonly ConcurrentDictionary<PrefetchWorkItem, bool> _prefetchedThisRound;
+        private readonly ILogger _logger;
+
+        public PathPrefetcher(TrieStoreByPath trieStore, int threadsCount, ILogManager logManager)
+        {
+            _trieStore = trieStore;
+
+            _prefetchCancellationTokenSource = new CancellationTokenSource();
+            _prefetchQueue = new ConcurrentQueue<PrefetchWorkItem>();
+            _prefetchEvent = new ManualResetEventSlim(false);
+            _prefetchedThisRound = new ConcurrentDictionary<PrefetchWorkItem, bool>();
+
+            for (int i = 0; i < threadsCount; i++)
+            {
+                Task.Run(() => PrefetchWorker(_prefetchCancellationTokenSource.Token), _prefetchCancellationTokenSource.Token);
+            }
+            _logger = logManager?.GetClassLogger<PathPrefetcher>() ?? throw new ArgumentNullException(nameof(logManager));
+        }
+
+        private void PrefetchWorker(CancellationToken cancellationToken)
+        {
+            while (!cancellationToken.IsCancellationRequested)
+            {
+                _prefetchEvent.Wait(cancellationToken);
+
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
+                if (_prefetchQueue.TryDequeue(out PrefetchWorkItem item))
+                {
+                    _trieStore.PrefetchPath(item.Key, item.StoreNibblePrefix, item.StateRoot);
+                    _prefetchedThisRound.TryAdd(item, true);
+                }
+                else
+                {
+                    _prefetchEvent.Reset();
+                }
+            }
+        }
+
+        public void Enqueue(PrefetchWorkItem newItem)
+        {
+            if (!_prefetchedThisRound.ContainsKey(newItem))
+            {
+                _prefetchQueue.Enqueue(newItem);
+                _prefetchEvent.Set();
+            }
+        }
+
+        public void Stop()
+        {
+            _prefetchQueue.Clear();
+            _prefetchedThisRound.Clear();
+        }
+
+        public void Dispose()
+        {
+            _prefetchCancellationTokenSource.Cancel();
+            _prefetchCancellationTokenSource.Dispose();
+            _prefetchEvent.Dispose();
+        }
+    }
+
+    public class PrefetchWorkItem
+    {
+        public PrefetchWorkItem(byte[] key, byte[] storeNibblePrefix, Hash256 stateRoot)
+        {
+            Key = key;
+            StoreNibblePrefix = storeNibblePrefix;
+            StateRoot = stateRoot;
+        }
+
+        public byte[] Key { get; set; }
+        public byte[] StoreNibblePrefix { get; set; }
+        public Hash256 StateRoot { get; set; }
+
+        public override bool Equals(object? obj)
+        {
+            if (obj == null || GetType() != obj.GetType())
+                return false;
+
+            PrefetchWorkItem second = (PrefetchWorkItem)obj;
+            if (Bytes.BytesComparer.Compare(Key, second.Key) == 0 &&
+                Bytes.BytesComparer.Compare(StoreNibblePrefix, second.StoreNibblePrefix) == 0 &&
+                StateRoot == second.StateRoot)
+                return true;
+
+            return false;
+        }
+
+        public override int GetHashCode()
+        {
+            int hash = 11;
+            hash = hash * 13 + Key.GetHashCode();
+            hash = hash * 19 + StoreNibblePrefix.GetHashCode();
+            hash = hash * 17 + StateRoot.GetHashCode();
+            return hash;
         }
     }
 }

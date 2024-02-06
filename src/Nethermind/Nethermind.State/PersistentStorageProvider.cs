@@ -88,7 +88,11 @@ namespace Nethermind.State
 
             return value;
         }
-
+        public override void Commit(IStorageTracer tracer)
+        {
+            _trieStore.StopPrefetch();
+            base.Commit(tracer);
+        }
 
         /// <summary>
         /// Called by Commit
@@ -304,6 +308,16 @@ namespace Nethermind.State
             _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
 
             if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
+        }
+
+        public override void Set(in StorageCell storageCell, byte[] newValue)
+        {
+            base.Set(storageCell, newValue);
+
+            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            Span<byte> key = stackalloc byte[32];
+            StorageTree.GetKey(storageCell.Index, key);
+            _trieStore.PrefetchForSet(key, tree.StoreNibblePathPrefix, tree.ParentStateRootHash);
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
