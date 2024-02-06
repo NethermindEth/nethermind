@@ -51,6 +51,20 @@ public class PerTableDbConfig
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
     public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
     public int TargetFileSizeMultiplier => ReadConfig<int>(nameof(TargetFileSizeMultiplier));
+    public bool UseTwoLevelIndex => ReadConfig<bool>(nameof(UseTwoLevelIndex));
+    public bool UseHashIndex => ReadConfig<bool>(nameof(UseHashIndex));
+    public ulong? PrefixExtractorLength => ReadConfig<ulong?>(nameof(PrefixExtractorLength));
+    public bool AllowMmapReads => ReadConfig<bool>(nameof(AllowMmapReads));
+    public bool VerifyChecksum => ReadConfig<bool>(nameof(VerifyChecksum));
+    public double MaxBytesForLevelMultiplier => ReadConfig<double>(nameof(MaxBytesForLevelMultiplier));
+    public ulong? MaxCompactionBytes => ReadConfig<ulong?>(nameof(MaxCompactionBytes));
+    public int MinWriteBufferNumberToMerge => ReadConfig<int>(nameof(MinWriteBufferNumberToMerge));
+    public ulong? RowCacheSize => ReadConfig<ulong?>(nameof(RowCacheSize));
+    public bool OptimizeFiltersForHits => ReadConfig<bool>(nameof(OptimizeFiltersForHits));
+    public bool OnlyCompressLastLevel => ReadConfig<bool>(nameof(OnlyCompressLastLevel));
+    public long? MaxWriteBufferSizeToMaintain => ReadConfig<long?>(nameof(MaxWriteBufferSizeToMaintain));
+    public bool UseHashSkipListMemtable => ReadConfig<bool>(nameof(UseHashSkipListMemtable));
+    public int BlockRestartInterval => ReadConfig<int>(nameof(BlockRestartInterval));
 
     private T? ReadConfig<T>(string propertyName)
     {

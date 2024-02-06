@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
-            _buffer.EnsureWritable(bytesToWrite.Length, true);
+            _buffer.EnsureWritable(bytesToWrite.Length);
 
             Span<byte> target =
                 _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.WriterIndex, bytesToWrite.Length);
@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Rlp
 
         public override void Write(IReadOnlyList<byte> bytesToWrite)
         {
-            _buffer.EnsureWritable(bytesToWrite.Count, true);
+            _buffer.EnsureWritable(bytesToWrite.Count);
             Span<byte> target =
                 _buffer.Array.AsSpan(_buffer.ArrayOffset + _buffer.WriterIndex, bytesToWrite.Count);
             for (int i = 0; i < bytesToWrite.Count; ++i)
@@ -48,13 +48,13 @@ namespace Nethermind.Serialization.Rlp
 
         public override void WriteByte(byte byteToWrite)
         {
-            _buffer.EnsureWritable(1, true);
+            _buffer.EnsureWritable(1);
             _buffer.WriteByte(byteToWrite);
         }
 
         protected override void WriteZero(int length)
         {
-            _buffer.EnsureWritable(length, true);
+            _buffer.EnsureWritable(length);
             _buffer.WriteZero(length);
         }
 
