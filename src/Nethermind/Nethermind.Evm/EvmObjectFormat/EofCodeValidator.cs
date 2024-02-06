@@ -317,6 +317,7 @@ internal static class EvmObjectFormat
             header = new EofHeader
             {
                 Version = VERSION,
+                PrefixSize = HEADER_TERMINATOR_OFFSET,
                 TypeSection = typeSectionHeader,
                 CodeSections = codeSectionHeader,
                 ContainerSection = containerSectionHeader,

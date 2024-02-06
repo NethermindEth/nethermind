@@ -11,6 +11,7 @@ namespace Nethermind.Evm.EOF;
 public struct EofHeader()
 {
     public required byte Version;
+    public required int PrefixSize;
     public required SectionHeader TypeSection;
     public required CompoundSectionHeader CodeSections;
     public required SectionHeader DataSection;

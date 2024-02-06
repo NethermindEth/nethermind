@@ -455,37 +455,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (!isEof_unvalidated)
                             {
-                                Span<byte> bytecodeResult = new byte[container.Length + header.Value.DataSection.Size];
+                                Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
 
                                 // copy magic eof prefix
                                 int movingOffset = 0;
-                                ReadOnlySpan<byte> magicSpan = container.Slice(0, EvmObjectFormat.MAGIC.Length + EvmObjectFormat.ONE_BYTE_LENGTH);
-                                magicSpan.CopyTo(bytecodeResult);
-                                movingOffset += magicSpan.Length;
-
-                                // copy typesection header
-                                ReadOnlySpan<byte> typesectionHeaderSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
-                                typesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += typesectionHeaderSpan.Length;
-
-                                // copy codesection header
-                                ReadOnlySpan<byte> codesectionHeaderSpan = container.Slice(header.Value.CodeSections.Start, header.Value.CodeSections.Size);
-                                codesectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += codesectionHeaderSpan.Length;
-
-
-                                // copy containersection header
-                                ReadOnlySpan<byte> containerectionHeaderSpan = container.Slice(header.Value.ContainerSection.Value.Start, header.Value.ContainerSection.Value.Size);
-                                containerectionHeaderSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += containerectionHeaderSpan.Length;
+                                ReadOnlySpan<byte> eofPrefix = container.Slice(header.Value.PrefixSize);
+                                eofPrefix.CopyTo(bytecodeResult);
+                                movingOffset += header.Value.PrefixSize - 3; // we move offset back by TERMINATOR + SIZE_OF_DATA_SECTION_HEADER
 
                                 // copy datasection header
-                                bytecodeResult[movingOffset++] = (byte)EvmObjectFormat.Eof1.Separator.KIND_DATA;
-                                byte[] newDataSectionLength = (auxExtraData.Length + header.Value.DataSection.Size).ToBigEndianByteArray();
+                                byte[] newDataSectionLength = ((ushort)(auxExtraData.Length + header.Value.DataSection.Size)).ToBigEndianByteArray();
                                 newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += newDataSectionLength.Length;
-
-                                bytecodeResult[movingOffset++] = (byte)EvmObjectFormat.Eof1.Separator.TERMINATOR;
+                                movingOffset = header.Value.PrefixSize;
 
                                 // copy type section
                                 ReadOnlySpan<byte> typesectionSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
