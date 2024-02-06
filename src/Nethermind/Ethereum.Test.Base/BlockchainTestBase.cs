@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -185,8 +186,21 @@ namespace Ethereum.Test.Base
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
+            ManualResetEvent genesisProcessed = new(false);
+
+            blockTree.NewHeadBlock += (_, args) =>
+            {
+                if (args.Block.Number == 0)
+                {
+                    Assert.That(stateProvider.StateRoot, Is.EqualTo(genesisBlock.Header.StateRoot));
+                    genesisProcessed.Set();
+                }
+            };
+
             blockchainProcessor.Start();
-            await blockTree.SuggestBlockAsync(genesisBlock);
+            blockTree.SuggestBlock(genesisBlock);
+            
+            genesisProcessed.WaitOne();
             for (int i = 0; i < correctRlp.Count; i++)
             {
                 if (correctRlp[i].Block.Hash is null)
@@ -200,7 +214,7 @@ namespace Ethereum.Test.Base
                     correctRlp[i].Block.Header.IsPostMerge = correctRlp[i].Block.Difficulty == 0;
                     if (!test.SealEngineUsed || blockValidator.ValidateSuggestedBlock(correctRlp[i].Block))
                     {
-                        await blockTree.SuggestBlockAsync(correctRlp[i].Block);
+                        blockTree.SuggestBlock(correctRlp[i].Block);
                     }
                     else
                     {
