@@ -15,7 +15,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Facade.Eth;
@@ -832,10 +831,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
+            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
             using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                stream: handler,
+                stream: stream,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
@@ -866,10 +865,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             using ClientWebSocket socket = new();
             await socket.ConnectAsync(new Uri("ws://localhost:1337/"), CancellationToken.None);
 
-            using WebSocketMessageStream handler = new(socket, NullLogManager.Instance);
+            using WebSocketMessageStream stream = new(socket, NullLogManager.Instance);
             using JsonRpcSocketsClient<WebSocketMessageStream> client = new(
                 clientName: "TestClient",
-                stream: handler,
+                stream: stream,
                 endpointType: RpcEndpoint.Ws,
                 jsonRpcProcessor: null!,
                 jsonRpcLocalStats: new NullJsonRpcLocalStats(),
