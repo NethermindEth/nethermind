@@ -525,6 +525,10 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                     new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
                     DumpOptions.Geth);
             }
+            else
+            {
+                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
+            }
 
             processedBlocks = null;
         }
