@@ -204,7 +204,7 @@ public class BlockValidator : IBlockValidator
                     }
                 }
                 Hash256 expectedDepositsRoot = suggestedBlock.Header.DepositsRoot;
-                Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
+                Hash256 actualDepositsRoot = new DepositTrie(depositList).RootHash;
                 if (actualDepositsRoot != expectedDepositsRoot)
                 {
                     _logger.Error($"- deposits root : expected {expectedDepositsRoot}, got {actualDepositsRoot}");
