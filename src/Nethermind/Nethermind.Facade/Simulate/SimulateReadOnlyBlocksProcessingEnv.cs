@@ -114,8 +114,9 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         BlockTree = new NonDistructiveBlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
 
-        var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
-        StateProvider = new WorldState(store, DbProvider.CodeDb, LimboLogs.Instance);
+        //var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
+        //StateProvider = new WorldState(store, DbProvider.CodeDb, LimboLogs.Instance);
+        StateProvider = WorldStateManager.GlobalWorldState;
 
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
