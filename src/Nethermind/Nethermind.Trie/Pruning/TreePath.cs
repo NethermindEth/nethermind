@@ -214,7 +214,7 @@ public struct TreePath
         }
     }
 
-    public TreePath this[Range range]
+    public readonly TreePath this[Range range]
     {
         get
         {
@@ -282,7 +282,7 @@ public struct TreePath
         Length = pathLength;
     }
 
-    public int CommonPrefixLength(in TreePath otherTreePath)
+    public readonly int CommonPrefixLength(in TreePath otherTreePath)
     {
         int minOfTwoLength = Math.Min(Length, otherTreePath.Length);
         int bytePrefixLength = minOfTwoLength / 2;
@@ -302,7 +302,7 @@ public struct TreePath
         return commonPrefix;
     }
 
-    public byte[] ToNibble()
+    public readonly byte[] ToNibble()
     {
         bool odd = Length % 2 == 1;
         Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
@@ -310,13 +310,13 @@ public struct TreePath
         return (odd ? theNibbles[..Length] : theNibbles).ToArray();
     }
 
-    public string ToHexString()
+    public readonly string ToHexString()
     {
         string fromPath = Span.ToHexString();
         return fromPath[..Length];
     }
 
-    public override string ToString()
+    public readonly override string ToString()
     {
         return ToHexString();
     }
@@ -367,10 +367,21 @@ public struct TreePath
         }
     }
 
-    public int CompareTo(TreePath treePath)
+    public readonly int CompareTo(in TreePath otherTree)
     {
-        // TODO: Implement this properly
-        return Bytes.BytesComparer.Compare(ToNibble(), treePath.ToNibble());
+        int minLength = Math.Min(Length, otherTree.Length);
+        int commonByteLength = minLength / 2;
+        int compareByByte =
+            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+        if (compareByByte != 0) return compareByByte;
+
+        if (minLength % 2 == 1)
+        {
+            int result = this[minLength-1].CompareTo(otherTree[minLength-1]);
+            if (result != 0) return result;
+        }
+
+        return Length.CompareTo(otherTree.Length);
     }
 }
 
