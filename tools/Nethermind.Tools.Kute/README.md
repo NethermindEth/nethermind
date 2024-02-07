@@ -20,7 +20,7 @@ To get real JSON-RPC messages, run the Nethermind Client using the `RpcRecorderS
 
 Kute includes a built in help that can be accessed by the options `-h | --help`.
 
-Some typical usages are as follow:
+Some typical usages are as follows:
 
 ### Use all messages in the folder `/rpc-logs`
 
@@ -72,7 +72,7 @@ Some typical usages are as follow:
 
 ### A note on "progress"
 
-Kute supports a `-p|--progress` flag which will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
+Kute supports a `-p|--progress` flag that will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
 
 ### TODO
 

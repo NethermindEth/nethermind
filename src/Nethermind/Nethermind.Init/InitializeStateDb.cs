@@ -36,7 +36,7 @@ namespace Nethermind.Init;
 public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
-    private ILogger? _logger;
+    private ILogger _logger;
 
     public InitializeStateDb(INethermindApi api)
     {
@@ -79,6 +79,8 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
+        CachingStore cachedStateDb = getApi.DbProvider.StateDb
+            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 

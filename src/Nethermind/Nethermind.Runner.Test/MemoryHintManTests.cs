@@ -168,7 +168,7 @@ namespace Nethermind.Runner.Test
         {
             _initConfig.MemoryHint = memoryHint;
             SetMemoryAllowances(1);
-            _dbConfig.StateDbRowCacheSize.Should().BeGreaterThan(0);
+            Trie.MemoryAllowance.TrieNodeCacheCount.Should().BeGreaterThan(0);
         }
 
         [TestCase(true)]

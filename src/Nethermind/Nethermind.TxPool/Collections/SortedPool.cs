@@ -188,7 +188,7 @@ namespace Nethermind.TxPool.Collections
 
         protected bool TryRemoveNonLocked(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value) && value != null)
+            if (_cacheMap.TryGetValue(key, out value) && value is not null)
             {
                 if (Remove(key, value))
                 {
@@ -286,7 +286,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            return _cacheMap.TryGetValue(key, out value) && value != null;
+            return _cacheMap.TryGetValue(key, out value) && value is not null;
         }
 
         /// <summary>

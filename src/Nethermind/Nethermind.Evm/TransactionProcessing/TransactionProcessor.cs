@@ -5,6 +5,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -147,10 +149,10 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit)
                 WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
-            ExecutionEnvironment env = BuildExecutionEnvironmnet(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, tracer, opts, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
-            if (!ExecuteEVMCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
+            if (!ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode))
                 return;
 
             if (!PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode))
@@ -297,31 +299,32 @@ namespace Nethermind.Evm.TransactionProcessing
 
             bool deleteCallerAccount = false;
 
-            if (!WorldState.AccountExists(tx.SenderAddress))
+            Address sender = tx.SenderAddress;
+            if (sender is null || !WorldState.AccountExists(sender))
             {
-                if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {tx.SenderAddress} - trying to recover it");
+                if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
 
-                Address prevSender = tx.SenderAddress;
                 // hacky fix for the potential recovery issue
                 if (tx.Signature is not null)
                     tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
 
-                if (prevSender != tx.SenderAddress)
+                if (sender != tx.SenderAddress)
                 {
                     if (Logger.IsWarn)
-                        Logger.Warn($"TX recovery issue fixed - tx was coming with sender {prevSender} and the now it recovers to {tx.SenderAddress}");
+                        Logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {tx.SenderAddress}");
+                    sender = tx.SenderAddress;
                 }
                 else
                 {
-                    TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {tx.SenderAddress}");
-                    if (!commit || noValidation || effectiveGasPrice == UInt256.Zero)
+                    TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
+                    if (!commit || noValidation || effectiveGasPrice.IsZero)
                     {
                         deleteCallerAccount = !commit || restore;
-                        WorldState.CreateAccount(tx.SenderAddress, UInt256.Zero);
+                        WorldState.CreateAccount(sender, in UInt256.Zero);
                     }
                 }
 
-                if (tx.SenderAddress is null)
+                if (sender is null)
                 {
                     throw new InvalidDataException($"Failed to recover sender address on tx {tx.Hash} when previously recovered sender account did not exist.");
                 }
@@ -432,7 +435,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return true;
         }
 
-        protected virtual ExecutionEnvironment BuildExecutionEnvironmnet(
+        protected virtual ExecutionEnvironment BuildExecutionEnvironment(
             Transaction tx, in BlockExecutionContext blCtx, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in UInt256 effectiveGasPrice)
         {
@@ -461,7 +464,7 @@ namespace Nethermind.Evm.TransactionProcessing
             );
         }
 
-        protected virtual bool ExecuteEVMCall(
+        protected virtual bool ExecuteEvmCall(
             Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
             in long gasAvailable, in ExecutionEnvironment env,
             out TransactionSubstate? substate, out long spentGas, out byte statusCode)
@@ -552,7 +555,9 @@ namespace Nethermind.Evm.TransactionProcessing
 
                         if (unspentGas >= codeDepositGasCost)
                         {
-                            WorldState.InsertCode(env.ExecutingAccount, substate.Output, spec);
+                            var code = substate.Output.ToArray();
+                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
+
                             unspentGas -= codeDepositGasCost;
                         }
                     }

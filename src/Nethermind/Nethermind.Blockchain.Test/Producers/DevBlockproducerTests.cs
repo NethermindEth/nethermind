@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Test()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.BlockInfos, new MemDb());
             dbProvider.RegisterDb(DbNames.Blocks, new MemDb());
             dbProvider.RegisterDb(DbNames.Headers, new MemDb());

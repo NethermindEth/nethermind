@@ -14,13 +14,13 @@ using Nethermind.Logging;
 namespace Nethermind.Db.ByPathState;
 public class ByPathStateDb : IByPathStateDb
 {
-    private readonly RocksDbSettings _settings;
-    private readonly IRocksDbFactory _dbFactory;
+    private readonly DbSettings _settings;
+    private readonly IDbFactory _dbFactory;
 
     private IColumnsDb<StateColumns> _currentDb;
     private Dictionary<StateColumns, ByPathStateDbPrunner> _prunners;
 
-    public ByPathStateDb(RocksDbSettings settings, IRocksDbFactory dbFactory, ILogManager logManager)
+    public ByPathStateDb(DbSettings settings, IDbFactory dbFactory, ILogManager logManager)
     {
         _settings = settings;
         _dbFactory = dbFactory;
@@ -64,6 +64,11 @@ public class ByPathStateDb : IByPathStateDb
 
     public KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] => throw new NotImplementedException();
 
+    public IDb GetColumnDb(StateColumns key)
+    {
+        return _currentDb.GetColumnDb(key);
+    }
+
     public IEnumerable<StateColumns> ColumnKeys => throw new NotImplementedException();
 
     public void Clear()
@@ -74,31 +79,6 @@ public class ByPathStateDb : IByPathStateDb
     public void Flush()
     {
         _currentDb.Flush();
-    }
-
-    public long GetCacheSize()
-    {
-        return _currentDb.GetCacheSize();
-    }
-
-    public IDb GetColumnDb(StateColumns key)
-    {
-        return _currentDb.GetColumnDb(key);
-    }
-
-    public long GetIndexSize()
-    {
-        return _currentDb.GetIndexSize();
-    }
-
-    public long GetMemtableSize()
-    {
-        return _currentDb.GetMemtableSize();
-    }
-
-    public long GetSize()
-    {
-        return _currentDb.GetSize();
     }
 
     public IColumnsWriteBatch<StateColumns> StartWriteBatch()

@@ -17,7 +17,7 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
 {
     private readonly IDictionary<T, ColumnDb> _columnDbs = new Dictionary<T, ColumnDb>();
 
-    public ColumnsDb(string basePath, RocksDbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
+    public ColumnsDb(string basePath, DbSettings settings, IDbConfig dbConfig, ILogManager logManager, IReadOnlyList<T> keys, IntPtr? sharedCache = null)
         : base(basePath, settings, dbConfig, logManager, GetEnumKeys(keys).Select((key) => key.ToString()).ToList(), sharedCache: sharedCache)
     {
         keys = GetEnumKeys(keys);
@@ -25,6 +25,29 @@ public class ColumnsDb<T> : DbOnTheRocks, IColumnsDb<T> where T : struct, Enum
         foreach (T key in keys)
         {
             _columnDbs[key] = new ColumnDb(_db, this, key.ToString()!);
+        }
+    }
+
+    protected override long FetchTotalPropertyValue(string propertyName)
+    {
+        long total = 0;
+        foreach (KeyValuePair<T, ColumnDb> kv in _columnDbs)
+        {
+            long value = long.TryParse(_db.GetProperty(propertyName, kv.Value._columnFamily), out long parsedValue)
+                ? parsedValue
+                : 0;
+
+            total += value;
+        }
+
+        return total;
+    }
+
+    public override void Compact()
+    {
+        foreach (T key in ColumnKeys)
+        {
+            _columnDbs[key].Compact();
         }
     }
 

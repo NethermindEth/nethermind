@@ -23,7 +23,7 @@ namespace Nethermind.Trie
             return node;
         }
 
-        public static TrieNode CreateLeaf(byte[] path, CappedArray<byte> value)
+        public static TrieNode CreateLeaf(byte[] path, in CappedArray<byte> value)
         {
             TrieNode node = new(NodeType.Leaf);
             node.Key = path;

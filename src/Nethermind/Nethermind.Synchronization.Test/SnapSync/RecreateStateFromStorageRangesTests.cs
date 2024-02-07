@@ -65,7 +65,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             MemColumnsDb<StateColumns> db = new();
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterColumnDb(DbNames.PathState, db);
@@ -88,7 +88,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var proof = accountProofCollector.BuildResult();
 
             MemColumnsDb<StateColumns> db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterColumnDb(DbNames.PathState, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -106,7 +106,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             MemColumnsDb<StateColumns> db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterColumnDb(DbNames.PathState, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -125,7 +125,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemColumnsDb<StateColumns> db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterColumnDb(DbNames.PathState, db);
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
@@ -162,7 +162,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemColumnsDb<StateColumns> db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, new MemDb());
             dbProvider.RegisterColumnDb(DbNames.PathState, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);

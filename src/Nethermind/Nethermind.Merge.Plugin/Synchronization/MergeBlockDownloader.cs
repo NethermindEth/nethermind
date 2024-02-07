@@ -78,7 +78,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return;
             }
 
-            if (blocksRequest == null)
+            if (blocksRequest is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"NULL received for dispatch in {nameof(BlockDownloader)}");
                 return;

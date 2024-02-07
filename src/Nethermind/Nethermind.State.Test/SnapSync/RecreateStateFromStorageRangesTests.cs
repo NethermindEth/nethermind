@@ -49,10 +49,9 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterColumnDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
-            dbProvider.RegisterDb(DbNames.State, new MemDb());
-
+            MemDb db = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -70,9 +69,9 @@ namespace Nethermind.Store.Test.SnapSync
             _inputStateTree!.Accept(accountProofCollector, _inputStateTree.RootHash);
             var proof = accountProofCollector.BuildResult();
 
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterColumnDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
-            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            MemDb db = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
@@ -87,9 +86,9 @@ namespace Nethermind.Store.Test.SnapSync
         {
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterColumnDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
-            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            MemDb db = new MemDb();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -104,9 +103,9 @@ namespace Nethermind.Store.Test.SnapSync
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterColumnDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
-            dbProvider.RegisterDb(DbNames.State, new MemDb()); ;
+            MemDb db = new MemDb();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);
@@ -140,9 +139,9 @@ namespace Nethermind.Store.Test.SnapSync
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             // output state
-            DbProvider dbProvider = new(DbModeHint.Mem);
-            dbProvider.RegisterColumnDb(DbNames.PathState, new MemColumnsDb<StateColumns>());
-            dbProvider.RegisterDb(DbNames.State, new MemDb());
+            MemDb db = new MemDb();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             PathWithAccount pWA = new PathWithAccount(TestItem.Tree.AccountAddress0, Build.A.Account.WithBalance(1).TestObject);

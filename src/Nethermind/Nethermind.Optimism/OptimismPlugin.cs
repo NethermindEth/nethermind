@@ -36,7 +36,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public string Description => "Optimism support for Nethermind";
 
     private OptimismNethermindApi? _api;
-    private ILogger _logger = null!;
+    private ILogger _logger;
     private IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     private IBlocksConfig _blocksConfig = null!;
@@ -244,6 +244,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _beaconPivot,
                 _peerRefresher,
                 _api.SpecProvider,
+                _api.SyncPeerPool!,
                 _api.LogManager,
                 _api.Config<IBlocksConfig>().SecondsPerSlot,
                 _api.Config<IMergeConfig>().SimulateBlockProduction),

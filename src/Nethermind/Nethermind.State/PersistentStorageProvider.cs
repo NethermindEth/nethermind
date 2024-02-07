@@ -10,9 +10,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Newtonsoft.Json.Linq;
 
 namespace Nethermind.State
 {
@@ -62,7 +60,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
+        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         /// <summary>
@@ -238,7 +236,7 @@ namespace Nethermind.State
             return value;
         }
 
-        private byte[] LoadFromTree(in StorageCell storageCell)
+        private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 

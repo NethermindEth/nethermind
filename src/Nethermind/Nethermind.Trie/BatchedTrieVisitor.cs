@@ -282,7 +282,7 @@ public class BatchedTrieVisitor
         using ArrayPoolList<(TrieNode, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
         using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
         ArrayPoolList<(TrieNode, SmallTrieVisitContext)>? currentBatch;
-        while ((currentBatch = GetNextBatch()) != null)
+        while ((currentBatch = GetNextBatch()) is not null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
             // but the path ordering is important for read amplification

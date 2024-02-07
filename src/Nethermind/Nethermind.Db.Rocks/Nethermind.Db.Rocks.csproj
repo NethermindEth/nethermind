@@ -16,7 +16,6 @@
 
   <ItemGroup>
     <PackageReference Include="ConcurrentHashSet" />
-    <PackageReference Include="FastEnum" />
     <PackageReference Include="RocksDB" />
   </ItemGroup>
 </Project>

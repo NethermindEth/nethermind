@@ -8,6 +8,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
@@ -32,7 +33,7 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor)
+            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

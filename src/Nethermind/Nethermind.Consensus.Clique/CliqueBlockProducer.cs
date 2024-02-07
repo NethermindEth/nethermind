@@ -447,7 +447,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             Array.Empty<BlockHeader>(),
             spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
             );
-        header.TxRoot = new TxTrie(block.Transactions).RootHash;
+        header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
         return block;
     }

@@ -322,7 +322,7 @@ internal class PathDataCacheInstance
         }
     }
 
-    public PathDataCacheInstance(ITrieStore trieStore, ILogger? logger, int prefixLength = 66)
+    public PathDataCacheInstance(ITrieStore trieStore, ILogger logger, int prefixLength = 66)
     {
         _trieStore = trieStore;
         _logger = logger;
@@ -333,7 +333,7 @@ internal class PathDataCacheInstance
             _historyColumns[column] = new PathDataHistoryColumn(column, prefixLength);
     }
 
-    private PathDataCacheInstance(ITrieStore trieStore, ILogger? logger, StateId lastState, PathDataCacheInstance? parent, int prefixLength = 66, IEnumerable<PathDataCacheInstance> branches = null) :
+    private PathDataCacheInstance(ITrieStore trieStore, ILogger logger, StateId lastState, PathDataCacheInstance? parent, int prefixLength = 66, IEnumerable<PathDataCacheInstance> branches = null) :
         this(trieStore, logger, prefixLength)
     {
         _lastState = lastState;
@@ -490,7 +490,7 @@ internal class PathDataCacheInstance
 
         if (_logger.IsTrace) _logger.Trace($"Adding node {node.PathToNode.ToHexString()} / {node.FullPath.ToHexString()} with Hash256: {node.Keccak} at block {blockNuber}");
 
-        NodeData nd = new(node.FullRlp.Array, node.Keccak);
+        NodeData nd = new(node.FullRlp.ToArray(), node.Keccak);
         if (node.IsLeaf)
         {
             Span<byte> pathToNode = node.PathToNode;

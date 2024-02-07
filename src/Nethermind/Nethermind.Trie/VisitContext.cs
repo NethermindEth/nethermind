@@ -139,7 +139,7 @@ namespace Nethermind.Trie
             readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
             internal set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _branchChildIndex = 255;
                 }

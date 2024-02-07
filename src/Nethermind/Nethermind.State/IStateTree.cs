@@ -14,4 +14,5 @@ public interface IStateTree : IPatriciaTree
     Account? Get(Address address, Hash256? rootHash = null);
     void Set(Address address, Account? account);
     Rlp? Set(in ValueHash256 keccak, Account? account);
+    AccountStruct? GetStruct(Address address, Hash256? rootHash = null);
 }

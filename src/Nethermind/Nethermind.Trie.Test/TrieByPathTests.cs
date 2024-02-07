@@ -95,8 +95,8 @@ public class TrieByPathTests
         // memDb.Keys.Should().HaveCount(2);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().NotBeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf2);
+        checkTree.Get(_keyAccountA).ToArray().Should().NotBeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf2);
     }
 
     [Test]
@@ -110,15 +110,15 @@ public class TrieByPathTests
         patriciaTree.Set(_keyAccountA, _longLeaf2);
         patriciaTree.Commit(1);
         patriciaTree.UpdateRootHash();
-        patriciaTree.Get(_keyAccountA).Should().NotBeEquivalentTo(_longLeaf1);
-        patriciaTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf2);
+        patriciaTree.Get(_keyAccountA).ToArray().Should().NotBeEquivalentTo(_longLeaf1);
+        patriciaTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf2);
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(2);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().NotBeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf2);
+        checkTree.Get(_keyAccountA).ToArray().Should().NotBeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf2);
     }
 
     [Test]
@@ -135,7 +135,7 @@ public class TrieByPathTests
         // memDb.Keys.Should().HaveCount(0);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeNull();
+        checkTree.Get(_keyAccountA).ToArray().Should().BeNull();
     }
 
     [Test]
@@ -154,7 +154,7 @@ public class TrieByPathTests
         // memDb.Keys.Should().HaveCount(1);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeNull();
+        checkTree.Get(_keyAccountA).ToArray().Should().BeNull();
     }
 
     [Test]
@@ -187,8 +187,8 @@ public class TrieByPathTests
         // memDb.Keys.Should().HaveCount(2);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeNull();
-        checkTree.Get(_keyAccountB).Should().BeNull();
+        checkTree.Get(_keyAccountA).ToArray().Should().BeNull();
+        checkTree.Get(_keyAccountB).ToArray().Should().BeNull();
     }
 
     [Test]
@@ -205,9 +205,9 @@ public class TrieByPathTests
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountC).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     // [Test]
@@ -241,9 +241,9 @@ public class TrieByPathTests
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeNull();
-        checkTree.Get(_keyAccountB).Should().BeNull();
-        checkTree.Get(_keyAccountC).Should().BeNull();
+        checkTree.Get(_keyAccountA).ToArray().Should().BeNull();
+        checkTree.Get(_keyAccountB).ToArray().Should().BeNull();
+        checkTree.Get(_keyAccountC).ToArray().Should().BeNull();
     }
 
     public void Test_add_many(int i)
@@ -267,7 +267,7 @@ public class TrieByPathTests
         {
             Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-            checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value, $@"{i} {j}");
         }
     }
 
@@ -301,14 +301,14 @@ public class TrieByPathTests
         {
             Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j);
-            checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value, $@"{i} {j}");
         }
 
         // read missing
         for (int j = 0; j < i; j++)
         {
             Hash256 key = TestItem.Keccaks[j + 100];
-            checkTree.Get(key.Bytes).Should().BeNull();
+            checkTree.Get(key.Bytes).ToArray().Should().BeNull();
         }
     }
 
@@ -340,7 +340,7 @@ public class TrieByPathTests
         {
             Hash256 key = TestItem.Keccaks[j];
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
-            checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value, $@"{i} {j}");
         }
     }
 
@@ -377,7 +377,7 @@ public class TrieByPathTests
             byte[] value = TestItem.GenerateIndexedAccountRlp(j + 1);
 
             _logger.Trace($"Checking {key.Bytes.ToHexString()} = {value.ToHexString()}");
-            checkTree.Get(key.Bytes).Should().BeEquivalentTo(value, $@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeEquivalentTo(value, $@"{i} {j}");
         }
     }
 
@@ -409,7 +409,7 @@ public class TrieByPathTests
         for (int j = 0; j < i; j++)
         {
             Hash256 key = TestItem.Keccaks[j];
-            checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeNull($@"{i} {j}");
         }
     }
 
@@ -441,7 +441,7 @@ public class TrieByPathTests
         for (int j = 0; j < i; j++)
         {
             Hash256 key = TestItem.Keccaks[j];
-            checkTree.Get(key.Bytes).Should().BeNull($@"{i} {j}");
+            checkTree.Get(key.Bytes).ToArray().Should().BeNull($@"{i} {j}");
         }
     }
 
@@ -478,10 +478,10 @@ public class TrieByPathTests
         // leaf (root)
         // memDb.Keys.Should().HaveCount(5);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountC).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountD).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     [Test]
@@ -498,16 +498,16 @@ public class TrieByPathTests
         patriciaTree.Set(_keyAccountD, _longLeaf1);
         patriciaTree.Set(_keyAccountA, Array.Empty<byte>());
         patriciaTree.Commit(0);
-        patriciaTree.Get(_keyAccountA).Should().BeNull();
-        patriciaTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
-        patriciaTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
-        patriciaTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
+        patriciaTree.Get(_keyAccountA).ToArray().Should().BeNull();
+        patriciaTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        patriciaTree.Get(_keyAccountC).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        patriciaTree.Get(_keyAccountD).ToArray().Should().BeEquivalentTo(_longLeaf1);
 
         // leaf (root)
         // memDb.Keys.Should().HaveCount(6);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeNull();
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeNull();
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
         // checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
         // checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
     }
@@ -539,8 +539,8 @@ public class TrieByPathTests
         patriciaTree.Commit(0);
         // memDb.Keys.Should().HaveCount(4);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf2);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf2);
     }
 
     [Test]
@@ -554,8 +554,8 @@ public class TrieByPathTests
         patriciaTree.Commit(0);
         // memDb.Keys.Should().HaveCount(4);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     [Test]
@@ -596,8 +596,8 @@ public class TrieByPathTests
 
         // memDb.Keys.Should().HaveCount(4);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     [Test]
@@ -626,9 +626,9 @@ public class TrieByPathTests
 
         // memDb.Keys.Should().HaveCount(7);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(key3).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key1).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key2).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key3).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     [Test]
@@ -677,9 +677,9 @@ public class TrieByPathTests
 
         // memDb.Keys.Should().HaveCount(8);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(key1).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(key3).Should().BeNull();
+        checkTree.Get(key1).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key2).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key3).ToArray().Should().BeNull();
     }
 
     [Test]
@@ -701,10 +701,10 @@ public class TrieByPathTests
 
         // memDb.Keys.Should().HaveCount(5);
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(_keyAccountA).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountB).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountC).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(_keyAccountD).Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountA).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountB).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountC).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(_keyAccountD).ToArray().Should().BeEquivalentTo(_longLeaf1);
     }
 
     [Test]
@@ -726,7 +726,7 @@ public class TrieByPathTests
         patriciaTree.Commit(0);
 
         //check inlined node was persisted under its full path
-        byte[] inlinedNodeData = patriciaTree.Get(key1);
+        byte[] inlinedNodeData = patriciaTree.Get(key1).ToArray();
         Assert.That(inlinedNodeData, Is.EqualTo(smallLeafValue).Using<byte[]>(Bytes.Comparer));
 
         byte[] key3 = Bytes.FromHexString("abc00010000f000aa").PadLeft(32);
@@ -738,9 +738,9 @@ public class TrieByPathTests
         patriciaTree.Commit(1);
 
         PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree.RootHash, LimboLogs.Instance);
-        checkTree.Get(key1).Should().BeEquivalentTo(smallLeafValue);
-        checkTree.Get(key2).Should().BeEquivalentTo(_longLeaf1);
-        checkTree.Get(key3).Should().BeEquivalentTo(smallLeafValue2);
+        checkTree.Get(key1).ToArray().Should().BeEquivalentTo(smallLeafValue);
+        checkTree.Get(key2).ToArray().Should().BeEquivalentTo(_longLeaf1);
+        checkTree.Get(key3).ToArray().Should().BeEquivalentTo(smallLeafValue2);
     }
 
     [TestCase("0x0a010b02", "0x0a010b020c030e06", "0x0a010b020c030d04", new string[] { "0x0a010b020c", "0x0a010b020c03" })] //Leaf a1b2 -> a1b2c3e6 | Leaf: a1b2 -> a1b2c3d4
@@ -1231,8 +1231,8 @@ public class TrieByPathTests
             hashTree.RootHash = currentRoot.Item2;
             for (int i = 0; i < accounts.Length; i++)
             {
-                byte[] path = patriciaTree.Get(accounts[i]);
-                byte[] hash = hashTree.Get(accounts[i]);
+                byte[] path = patriciaTree.Get(accounts[i]).ToArray();
+                byte[] hash = hashTree.Get(accounts[i]).ToArray();
 
                 Assert.That(path, Is.EqualTo(hash).Using(Bytes.EqualityComparer));
             }
@@ -1414,7 +1414,7 @@ public class TrieByPathTests
     public void ClearStorageThenCreateOnRocksDb()
     {
         var dirInfo = Directory.CreateTempSubdirectory();
-        using ColumnsDb<StateColumns> stateDb = new(dirInfo.FullName, new RocksDbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
+        using ColumnsDb<StateColumns> stateDb = new(dirInfo.FullName, new DbSettings("pathState", Path.Combine(dirInfo.FullName, "pathState")), new DbConfig(), _logManager, new StateColumns[] { StateColumns.State, StateColumns.Storage });
 
         using TrieStoreByPath pathTrieStore = new(stateDb, ByPathPersist.IfBlockOlderThan(2), _logManager);
         WorldState pathStateProvider = new(pathTrieStore, new MemDb(), _logManager);
@@ -1444,7 +1444,7 @@ public class TrieByPathTests
         pathStateProvider.CommitTree(4);
 
         var data = pathStateProvider.Get(new StorageCell(TestItem.AddressA, 100));
-        Assert.That(data, Is.Not.Null);
+        Assert.That(data.IsNull(), Is.False);
         Assert.That(data[0], Is.EqualTo(100));
     }
 

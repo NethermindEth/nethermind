@@ -19,8 +19,6 @@ namespace Nethermind.Db
         public long ReadsCount { get; private set; }
         public long WritesCount { get; private set; }
 
-        private ILogger logger = new TestLogManager.NUnitLogger(LogLevel.Info);
-
         private readonly SpanConcurrentDictionary<byte, byte[]?> _db;
 
         public MemDb(string name)
@@ -106,7 +104,7 @@ namespace Nethermind.Db
         public int Count => _db.Count;
 
         public long GetSize() => 0;
-        public long GetCacheSize() => 0;
+        public long GetCacheSize(bool includeCacheSize) => 0;
         public long GetIndexSize() => 0;
         public long GetMemtableSize() => 0;
 
@@ -121,7 +119,7 @@ namespace Nethermind.Db
             return Get(key).AsSpan();
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
 

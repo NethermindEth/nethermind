@@ -10,6 +10,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -26,6 +27,9 @@ namespace Nethermind.Serialization.Rlp
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
+        private readonly CappedArray<byte> _data;
+        private int _position = 0;
+
         protected RlpStream()
         {
         }
@@ -36,12 +40,17 @@ namespace Nethermind.Serialization.Rlp
 
         public RlpStream(int length)
         {
-            Data = new byte[length];
+            _data = new byte[length];
         }
 
         public RlpStream(byte[] data)
         {
-            Data = data;
+            _data = data;
+        }
+
+        public RlpStream(in CappedArray<byte> data)
+        {
+            _data = data;
         }
 
         public void Encode(Block value)
@@ -165,17 +174,15 @@ namespace Nethermind.Serialization.Rlp
         {
             for (int i = 0; i < bytesToWrite.Count; ++i)
             {
-                Data![_position + i] = bytesToWrite[i];
+                Data[_position + i] = bytesToWrite[i];
             }
             Position += bytesToWrite.Count;
         }
 
         protected virtual string Description =>
-            Data?.Slice(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
+            Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
-        public byte[]? Data { get; }
-
-        private int _position = 0;
+        public ref readonly CappedArray<byte> Data => ref _data;
 
         public virtual int Position
         {
@@ -548,7 +555,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.Value.Span);
         }
 
-        public void Encode(Span<byte> input)
+        public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -1302,7 +1309,7 @@ namespace Nethermind.Serialization.Rlp
             int prefix = ReadByte();
             if (prefix == 0)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte.Span;
             }
 
             if (prefix < 128)

@@ -27,7 +27,7 @@ public class HealingStorageTree : StorageTree
         ParentStateRootHash = stateRoot;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {

@@ -36,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
 
             int totalSize = Rlp.LengthOf(message.Types) + Rlp.LengthOfSequence(sizesLength) + Rlp.LengthOfSequence(hashesLength);
 
-            byteBuffer.EnsureWritable(totalSize, true);
+            byteBuffer.EnsureWritable(totalSize);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 

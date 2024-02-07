@@ -57,7 +57,7 @@ public class HeaderStore : IHeaderStore
     public void Delete(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber != null) _headerDb.Delete(blockNumber.Value, blockHash);
+        if (blockNumber is not null) _headerDb.Delete(blockNumber.Value, blockHash);
         _blockNumberDb.Delete(blockHash);
         _headerDb.Delete(blockHash);
         _headerCache.Delete(blockHash);
@@ -73,7 +73,7 @@ public class HeaderStore : IHeaderStore
     public long? GetBlockNumber(Hash256 blockHash)
     {
         long? blockNumber = GetBlockNumberFromBlockNumberDb(blockHash);
-        if (blockNumber != null) return blockNumber.Value;
+        if (blockNumber is not null) return blockNumber.Value;
 
         // Probably still hash based
         return Get(blockHash)?.Number;

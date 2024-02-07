@@ -11,16 +11,16 @@ namespace Nethermind.Db
     {
         public static async Task<IDbProvider> InitAsync()
         {
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory(), LimboLogs.Instance);
+            IDbProvider memDbProvider = new DbProvider();
+            StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, new MemDbFactory(), LimboLogs.Instance);
             await standardDbInitializer.InitStandardDbsAsync(true);
             return memDbProvider;
         }
 
         public static IDbProvider Init()
         {
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, null, new MemDbFactory(), LimboLogs.Instance);
+            IDbProvider memDbProvider = new DbProvider();
+            StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(memDbProvider, new MemDbFactory(), LimboLogs.Instance);
             standardDbInitializer.InitStandardDbs(true);
             return memDbProvider;
         }
