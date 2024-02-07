@@ -565,7 +565,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
             Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(336));
-            Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(152));
+            Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(144));
         }
 
         [Test]
