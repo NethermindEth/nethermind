@@ -758,6 +758,11 @@ namespace Nethermind.Trie
                     dataSize += Hash256.MemorySize;
                 }
 
+                if (_data![i] is BoxedTreePath)
+                {
+                    dataSize += MemorySizes.SmallObjectOverhead + TreePath.MemorySize;
+                }
+
                 if (_data![i] is byte[] array)
                 {
                     dataSize += MemorySizes.ArrayOverhead + array.Length;

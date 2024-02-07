@@ -947,12 +947,12 @@ namespace Nethermind.Trie
             }
             else
             {
-                BoxedTreePath shortLeafPath = shorterPath[(extensionLength + 1)..(shorterPath.Length - extensionLength - 1)];
+                BoxedTreePath shortLeafPath = shorterPath[(extensionLength + 1)..shorterPath.Length];
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(shortLeafPath, shorterPathValue);
                 branch.SetChild(shorterPath[extensionLength], shortLeaf);
             }
 
-            BoxedTreePath leafPath = longerPath[(extensionLength + 1)..(longerPath.Length - extensionLength - 1)];
+            BoxedTreePath leafPath = longerPath[(extensionLength + 1)..longerPath.Length];
             TrieNode withUpdatedKeyAndValue = node.CloneWithChangedKeyAndValue(leafPath, longerPathValue);
 
             PushToNodeStack(new StackedNode(branch, longerPath[extensionLength]));
@@ -1021,7 +1021,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                BoxedTreePath path = new BoxedTreePath(remaining[(extensionLength + 1)..(remaining.Length - extensionLength - 1)]);
+                BoxedTreePath path = new BoxedTreePath(remaining[(extensionLength + 1)..remaining.Length]);
                 TrieNode shortLeaf = TrieNodeFactory.CreateLeaf(path, in traverseContext.UpdateValue);
                 branch.SetChild(remaining[extensionLength], shortLeaf);
             }
@@ -1034,7 +1034,7 @@ namespace Nethermind.Trie
 
             if (pathBeforeUpdate.Length - extensionLength > 1)
             {
-                BoxedTreePath extensionPath = pathBeforeUpdate[(extensionLength + 1)..(pathBeforeUpdate.Length - extensionLength - 1)];
+                BoxedTreePath extensionPath = pathBeforeUpdate[(extensionLength + 1)..pathBeforeUpdate.Length];
                 TrieNode secondExtension = TrieNodeFactory.CreateExtension(extensionPath, originalNodeChild);
                 branch.SetChild(pathBeforeUpdate[extensionLength], secondExtension);
             }
@@ -1074,7 +1074,7 @@ namespace Nethermind.Trie
 
             public TreePath GetRemainingUpdatePath()
             {
-                return UpdatePath[CurrentIndex..RemainingUpdatePathLength];
+                return UpdatePath[CurrentIndex..UpdatePath.Length];
             }
 
             public TraverseContext(scoped in TraverseContext context, int index)

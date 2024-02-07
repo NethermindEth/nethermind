@@ -2,9 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -19,6 +18,7 @@ namespace Nethermind.Trie;
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
 public struct TreePath
 {
+    public const int MemorySize = 36;
     public readonly ValueHash256 Path;
 
     public static TreePath Empty => new TreePath();
@@ -36,13 +36,25 @@ public struct TreePath
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
-        if (pathHash.Length != 32) throw new InvalidOperationException("Path must be 32 byte");
-        return new TreePath(new ValueHash256(pathHash), 64);
+        if (pathHash.Length > 32) throw new InvalidOperationException("Path must be at most 32 byte");
+        if (pathHash.Length == 32) return new TreePath(new ValueHash256(pathHash), 64);
+
+        // Some of the test passes path directly to PatriciaTrie, but its not 32 byte.
+        TreePath newTreePath = new TreePath();
+        pathHash.CopyTo(newTreePath.Span);
+        newTreePath.Length = pathHash.Length * 2;
+        return newTreePath;
     }
 
+    // Mainly used in testing code
     public static TreePath FromHexString(string hexString)
     {
-        return new TreePath(new ValueHash256(hexString), hexString.Length);
+        string toHashHex = hexString;
+        if (hexString.Length < 64)
+        {
+            toHashHex += string.Concat(Enumerable.Repeat('0', 64 - hexString.Length));
+        }
+        return new TreePath(new ValueHash256(toHashHex), hexString.Length);
     }
 
     public static TreePath FromNibble(ReadOnlySpan<byte> pathNibbles)
@@ -119,21 +131,21 @@ public struct TreePath
 
     public void AppendMut(in TreePath otherTreePath)
     {
-        if (Length + otherTreePath.Length >= 64)
-            throw new InvalidOperationException("Combined nibble length must be less than 64!");
+        if (Length + otherTreePath.Length > 64)
+            throw new InvalidOperationException("Combined nibble length must be less or equal to 64!");
 
         if (Length % 2 == 0)
         {
             // We are currently even, so can just copy byte by byte.
             int byteToCopy = (otherTreePath.Length + 1) / 2;
             otherTreePath.Path.BytesAsSpan[..byteToCopy].CopyTo(Path.BytesAsSpan[(Length/2)..]);
-            Length = Length + otherTreePath.Length;
+            Length += otherTreePath.Length;
         }
         else
         {
-            // Well.. that is unfortunate.
-            // TODO: Is this significantly faster then just copying it one by one?
-
+            // Well.. that is unfortunate. Originally, I thought of shifting the other path by 4 bit, but it turns out,
+            // the shift works on each element individually. So I'll leave this here for now.
+            /*
             // Append one nib first.
             AppendMut(otherTreePath[0]);
 
@@ -146,6 +158,12 @@ public struct TreePath
                 .CopyTo(Path.BytesAsSpan[(Length/2)..]);
 
             Length += otherTreePath.Length - 1;
+            */
+
+            for (int i = 0; i < otherTreePath.Length; i++)
+            {
+                AppendMut(otherTreePath[i]);
+            }
         }
     }
 
@@ -191,7 +209,6 @@ public struct TreePath
 
     public TreePath this[Range range]
     {
-        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
             (int offset, int length) = range.GetOffsetAndLength(Length);
@@ -203,24 +220,37 @@ public struct TreePath
                 return copied;
             }
 
-            int toCopyLength = length - offset;
-            int toCopyByteLength = (toCopyLength + 1) / 2;
+            int toCopyLength = length;
 
             if (offset % 2 == 0)
             {
+                int byteOffset = (offset / 2);
+                int toCopyByteLength = (toCopyLength + 1) / 2;
                 TreePath newTreePath = new TreePath();
-                Path.Bytes[(offset/2)..(toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
+                Path.Bytes[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
                 newTreePath.Length = toCopyLength;
                 return newTreePath;
             }
             else
             {
+                // I really was counting on the shift working. Maybe some other time.
+                /*
                 TreePath newTreePath = new TreePath();
-                Vector256<byte> shifted = (MemoryMarshal.AsRef<Vector256<byte>>(Span) << 4);
+                Vector256<byte> shifted = Vector256.ShiftLeft(MemoryMarshal.AsRef<Vector256<byte>>(Span), 4);
                 ReadOnlySpan<byte> asSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref shifted, 1));
+                Console.Out.WriteLine(Span.ToHexString());
+                Console.Out.WriteLine(asSpan.ToHexString());
                 asSpan[(offset/2)..(toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
 
                 newTreePath.Length = toCopyLength;
+                return newTreePath;
+                */
+
+                TreePath newTreePath = new TreePath();
+                for (int i = 0; i < length; i++)
+                {
+                    newTreePath.AppendMut(this[i + offset]);
+                }
                 return newTreePath;
             }
         }

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -77,6 +79,28 @@ public class TreePathTests
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
+    [TestCase(1)]
+    [TestCase(11)]
+    [TestCase(20)]
+    [TestCase(40)]
+    [TestCase(41)]
+    public void TestAppendArrayDividedWithAnotherTreePath(int partition)
+    {
+        byte[] nibbles = new byte[64];
+        for (int i = 0; i < 64; i++)
+        {
+            nibbles[i] = (byte)(i % 16);
+        }
+        TreePath path = new TreePath();
+        path.AppendMut(TreePath.FromNibble(nibbles[..partition]));
+        path.Length.Should().Be(partition);
+        path.AppendMut(TreePath.FromNibble(nibbles[partition..]));
+        path.Length.Should().Be(64);
+
+        string asHex = path.Path.Bytes.ToHexString();
+        asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
+    }
+
     [TestCase(1, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(16, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
     [TestCase(30, 1, "0x0000000000000000000000000000000000000000000000000000000000000000")]
@@ -143,22 +167,32 @@ public class TreePathTests
         {
             for (int length = 0; length < 64-startI; length++)
             {
-                TreePath indexed = path[startI..length];
+                TreePath indexed = path[startI..(startI+length)];
 
                 indexed.Length.Should().Be(length);
 
                 for (int i = 0; i < length; i++)
                 {
-                    int offsetI = i - startI;
-                    path[i].Should().Be((byte)(offsetI % 16));
+                    int offsetI = i + startI;
+                    indexed[i].Should().Be((byte)(offsetI % 16));
                 }
             }
         }
     }
 
-    // TODO: Test range indexing
-    // TODO: Test common prefix length
-    // TODO: Test tree path append another treepath
+    [TestCase]
+    public void TestCommonPrefixLength()
+    {
+        TreePath path = TreePath.FromHexString("1111111111111111111111111111111111111111111111111111111111111111");
+
+        for (int commonLength = 0; commonLength < 64; commonLength++)
+        {
+            TreePath another = TreePath.FromHexString(string.Concat(Enumerable.Repeat('1', commonLength)));
+
+            path.CommonPrefixLength(another).Should().Be(commonLength);
+            another.CommonPrefixLength(path).Should().Be(commonLength);
+        }
+    }
 
     private static TreePath CreateFullTreePath()
     {
@@ -170,5 +204,4 @@ public class TreePathTests
 
         return path;
     }
-
 }
