@@ -1153,7 +1153,7 @@ namespace Nethermind.Trie
                     _ => throw new ArgumentOutOfRangeException()
                 };
 
-                _nodeStack.Push(new StackedNode(extension, 0));
+                PushToNodeStack(new StackedNode(extension, 0));
             }
 
             TrieNode branch = Capability switch
