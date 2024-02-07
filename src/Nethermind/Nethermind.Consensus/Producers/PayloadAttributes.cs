@@ -139,17 +139,9 @@ public class PayloadAttributes
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        if (apiVersion >= EngineApiVersions.Prague)
+        if (apiVersion >= EngineApiVersions.Cancun)
         {
             if (actualVersion == apiVersion && expectedVersion != apiVersion)
-            {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
-            }
-        }
-        else if (apiVersion >= EngineApiVersions.Cancun)
-        {
-            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Prague)
             {
                 error = $"{methodName}{expectedVersion} expected";
                 return PayloadAttributesValidationResult.UnsupportedFork;
