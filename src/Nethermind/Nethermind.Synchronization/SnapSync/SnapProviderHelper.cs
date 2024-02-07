@@ -181,7 +181,8 @@ namespace Nethermind.Synchronization.SnapSync
                             node.SetChild(0, child);
 
                             pathIndex += node.Key.Length;
-                            path.AddRange(node.Key);
+                            // TODO: Use TreePath in the path.
+                            path.AddRange(node.Key.TreePath.ToNibble());
                             proofNodesToProcess.Push((node, child, pathIndex, path));
                             sortedBoundaryList.Add(child);
                         }

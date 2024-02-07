@@ -55,7 +55,7 @@ namespace Nethermind.Trie
 
         public void VisitExtension(TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}EXTENSION {node.Key?.ToString()} -> {KeccakOrRlpStringOfNode(node)}");
         }
 
         private readonly AccountDecoder decoder = new();
@@ -63,7 +63,7 @@ namespace Nethermind.Trie
         public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             string leafDescription = trieVisitContext.IsStorage ? "LEAF " : "ACCOUNT ";
-            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {Nibbles.FromBytes(node.Key).ToPackedByteArray().ToHexString(false)} -> {KeccakOrRlpStringOfNode(node)}");
+            _builder.AppendLine($"{GetPrefix(trieVisitContext)}{leafDescription} {node.Key?.ToString()} -> {KeccakOrRlpStringOfNode(node)}");
             Rlp.ValueDecoderContext valueDecoderContext = new(value);
             if (!trieVisitContext.IsStorage)
             {

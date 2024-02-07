@@ -212,7 +212,7 @@ namespace Nethermind.Trie.Test
         {
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
-            trieNode.Key = new byte[] { 5 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
             CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
@@ -232,7 +232,7 @@ namespace Nethermind.Trie.Test
         {
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
-            trieNode.Key = new byte[] { 5 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
             trieNode.SetChild(0, ctx.HeavyLeaf);
 
             CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
@@ -248,7 +248,7 @@ namespace Nethermind.Trie.Test
         public void Can_set_and_get_children_using_indexer()
         {
             TrieNode tiniest = new(NodeType.Leaf);
-            tiniest.Key = new byte[] { 5 };
+            tiniest.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
             tiniest.Value = new byte[] { 10 };
 
             TrieNode trieNode = new(NodeType.Branch);
@@ -290,7 +290,7 @@ namespace Nethermind.Trie.Test
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
             trieNode[0] = ctx.HeavyLeaf;
-            trieNode.Key = new byte[] { 5 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
             CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Extension, rlp);
 
@@ -304,7 +304,7 @@ namespace Nethermind.Trie.Test
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
             trieNode[0] = ctx.TiniestLeaf;
-            trieNode.Key = new byte[] { 5 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
             CappedArray<byte> rlp = trieNode.RlpEncode(NullTrieNodeResolver.Instance);
             TrieNode decoded = new(NodeType.Extension, rlp);
 
@@ -502,7 +502,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode node = new(NodeType.Branch);
             TrieNode randomTrieNode = new(NodeType.Leaf);
-            randomTrieNode.Key = new byte[] { 1, 2, 3 };
+            randomTrieNode.Key = BoxedTreePath.FromNibble(new byte[] { 1, 2, 3 });
             randomTrieNode.Value = new byte[] { 1, 2, 3 };
             for (int i = 0; i < 16; i++)
             {
@@ -535,7 +535,7 @@ namespace Nethermind.Trie.Test
         {
             Context ctx = new();
             TrieNode node = new(NodeType.Branch);
-            node.Key = new byte[] { 1 };
+            node.Key = BoxedTreePath.FromNibble(new byte[] { 1 });
             for (int i = 0; i < 16; i++)
             {
                 node.SetChild(i, ctx.AccountLeaf);
@@ -550,7 +550,7 @@ namespace Nethermind.Trie.Test
         {
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
-            trieNode.Key = new byte[] { 1 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 1 });
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
             Assert.That(trieNode.GetMemorySize(false), Is.EqualTo(120));
@@ -561,7 +561,7 @@ namespace Nethermind.Trie.Test
         {
             Context ctx = new();
             TrieNode trieNode = new(NodeType.Extension);
-            trieNode.Key = new byte[] { 1 };
+            trieNode.Key = BoxedTreePath.FromNibble(new byte[] { 1 });
             trieNode.SetChild(0, ctx.TiniestLeaf);
 
             Assert.That(trieNode.GetMemorySize(true), Is.EqualTo(288));
@@ -666,7 +666,7 @@ namespace Nethermind.Trie.Test
         {
             TrieNode trieNode = new(NodeType.Leaf, Keccak.Zero);
             Assert.Throws<InvalidOperationException>(
-                () => trieNode.Key = Bytes.FromHexString("aaa"));
+                () => trieNode.Key = BoxedTreePath.FromHexString("aaa"));
         }
 
         [Test]
@@ -685,7 +685,7 @@ namespace Nethermind.Trie.Test
             trieNode.SetChild(0, child);
 
             trieNode.PrunePersistedRecursively(1);
-            trieNode.Key = Bytes.FromHexString("abcd");
+            trieNode.Key = BoxedTreePath.FromHexString("abcd");
             trieNode.RlpEncode(NullTrieStore.Instance);
         }
 
@@ -730,7 +730,7 @@ namespace Nethermind.Trie.Test
             TrieNode child = new(NodeType.Unknown, Keccak.Zero);
             TrieNode trieNode = new(NodeType.Extension);
             trieNode.SetChild(0, child);
-            trieNode.Key = Bytes.FromHexString("abcd");
+            trieNode.Key = BoxedTreePath.FromHexString("abcd");
             trieNode.ResolveKey(NullTrieStore.Instance, false);
 
             trieNode.PrunePersistedRecursively(1);
@@ -742,13 +742,13 @@ namespace Nethermind.Trie.Test
         {
             TrieNode child = new(NodeType.Leaf);
             child.Value = Bytes.FromHexString("a");
-            child.Key = Bytes.FromHexString("b");
+            child.Key = BoxedTreePath.FromHexString("b");
             child.ResolveKey(NullTrieStore.Instance, false);
             child.IsPersisted = true;
 
             TrieNode trieNode = new(NodeType.Extension);
             trieNode.SetChild(0, child);
-            trieNode.Key = Bytes.FromHexString("abcd");
+            trieNode.Key = BoxedTreePath.FromHexString("abcd");
             trieNode.ResolveKey(NullTrieStore.Instance, false);
 
             trieNode.PrunePersistedRecursively(2);
@@ -825,7 +825,7 @@ namespace Nethermind.Trie.Test
         public void Batch_not_db_regression()
         {
             TrieNode child = new(NodeType.Leaf);
-            child.Key = Bytes.FromHexString("abc");
+            child.Key = BoxedTreePath.FromHexString("abc");
             child.Value = new byte[200];
             child.Seal();
 
@@ -889,14 +889,14 @@ namespace Nethermind.Trie.Test
             TrieStore trieStore = new(new MemDb(), NullLogManager.Instance);
 
             TrieNode leaf1 = new(NodeType.Leaf);
-            leaf1.Key = Bytes.FromHexString("abc");
+            leaf1.Key = BoxedTreePath.FromHexString("abc");
             leaf1.Value = new byte[111];
             leaf1.ResolveKey(trieStore, false);
             leaf1.Seal();
             trieStore.CommitNode(0, new NodeCommitInfo(leaf1));
 
             TrieNode leaf2 = new(NodeType.Leaf);
-            leaf2.Key = Bytes.FromHexString("abd");
+            leaf2.Key = BoxedTreePath.FromHexString("abd");
             leaf2.Value = new byte[222];
             leaf2.ResolveKey(trieStore, false);
             leaf2.Seal();
@@ -925,7 +925,7 @@ namespace Nethermind.Trie.Test
             for (int i = 0; i < 16; i++)
             {
                 TrieNode randomTrieNode = new(NodeType.Leaf);
-                randomTrieNode.Key = new byte[] { (byte)i, 2, 3 };
+                randomTrieNode.Key = BoxedTreePath.FromNibble(new byte[] { (byte)i, 2, 3 });
                 randomTrieNode.Value = new byte[] { 1, 2, 3 };
                 node.SetChild(i, randomTrieNode);
             }
@@ -946,11 +946,11 @@ namespace Nethermind.Trie.Test
             public Context()
             {
                 TiniestLeaf = new TrieNode(NodeType.Leaf);
-                TiniestLeaf.Key = new byte[] { 5 };
+                TiniestLeaf.Key = BoxedTreePath.FromNibble(new byte[] { 5 });
                 TiniestLeaf.Value = new byte[] { 10 };
 
                 HeavyLeaf = new TrieNode(NodeType.Leaf);
-                HeavyLeaf.Key = new byte[20];
+                HeavyLeaf.Key = BoxedTreePath.FromNibble(new byte[20]);
                 HeavyLeaf.Value = Bytes.Concat(Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes);
 
                 Account account = new(100);

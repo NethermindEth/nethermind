@@ -13,7 +13,7 @@ namespace Nethermind.Trie.Test
         [TestCase(true, (byte)3, (byte)51)]
         public void Encode_gives_correct_output_when_one(bool flag, byte nibble1, byte byte1)
         {
-            byte[] output = HexPrefix.ToBytes(new[] { nibble1 }, flag);
+            byte[] output = HexPrefix.ToBytes( TreePath.FromNibble(new[] { nibble1 }), flag);
             Assert.That(output.Length, Is.EqualTo(1));
             Assert.That(output[0], Is.EqualTo(byte1));
         }
@@ -23,7 +23,7 @@ namespace Nethermind.Trie.Test
         public void Encode_gives_correct_output_when_odd(bool flag, byte nibble1, byte nibble2, byte nibble3,
             byte byte1, byte byte2)
         {
-            byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2, nibble3 }, flag);
+            byte[] output = HexPrefix.ToBytes(TreePath.FromNibble(new[] { nibble1, nibble2, nibble3 }), flag);
 
             Assert.That(output.Length, Is.EqualTo(2));
             Assert.That(output[0], Is.EqualTo(byte1));
@@ -34,7 +34,7 @@ namespace Nethermind.Trie.Test
         [TestCase(true, (byte)3, (byte)7, (byte)32, (byte)55)]
         public void Encode_gives_correct_output_when_even(bool flag, byte nibble1, byte nibble2, byte byte1, byte byte2)
         {
-            byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2 }, flag);
+            byte[] output = HexPrefix.ToBytes(TreePath.FromNibble(new[] { nibble1, nibble2 }), flag);
 
             Assert.That(output.Length, Is.EqualTo(2));
             Assert.That(output[0], Is.EqualTo(byte1));
@@ -46,7 +46,7 @@ namespace Nethermind.Trie.Test
         public void Decode_gives_correct_output_when_even(bool expectedFlag, byte nibble1, byte nibble2, byte byte1,
             byte byte2)
         {
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
+            (TreePath key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
             Assert.That(isLeaf, Is.EqualTo(expectedFlag));
             Assert.That(key.Length, Is.EqualTo(2));
             Assert.That(key[0], Is.EqualTo(nibble1));
@@ -57,7 +57,7 @@ namespace Nethermind.Trie.Test
         [TestCase(true, (byte)3, (byte)51)]
         public void Decode_gives_correct_output_when_one(bool expectedFlag, byte nibble1, byte byte1)
         {
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1 });
+            (TreePath key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1 });
 
             Assert.That(isLeaf, Is.EqualTo(expectedFlag));
             Assert.That(key.Length, Is.EqualTo(1));
@@ -69,7 +69,7 @@ namespace Nethermind.Trie.Test
         public void Decode_gives_correct_output_when_odd(bool expectedFlag, byte nibble1, byte nibble2, byte nibble3,
             byte byte1, byte byte2)
         {
-            (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
+            (TreePath key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
             Assert.That(isLeaf, Is.EqualTo(expectedFlag));
             Assert.That(key.Length, Is.EqualTo(3));
             Assert.That(key[0], Is.EqualTo(nibble1));

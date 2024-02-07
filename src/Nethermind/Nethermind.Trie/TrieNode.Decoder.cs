@@ -63,8 +63,8 @@ namespace Nethermind.Trie
                 Debug.Assert(item.Key is not null,
                     "Extension key is null when encoding");
 
-                byte[] hexPrefix = item.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                BoxedTreePath hexPrefix = item.Key;
+                int hexLength = HexPrefix.ByteLength(hexPrefix.TreePath);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -73,7 +73,7 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
+                HexPrefix.CopyToSpan(hexPrefix.TreePath, isLeaf: false, keyBytes);
 
                 TrieNode nodeRef = item.GetChild(tree, 0);
                 Debug.Assert(nodeRef is not null,
@@ -118,8 +118,8 @@ namespace Nethermind.Trie
                     ThrowNullKey(node);
                 }
 
-                byte[] hexPrefix = node.Key;
-                int hexLength = HexPrefix.ByteLength(hexPrefix);
+                BoxedTreePath hexPrefix = node.Key;
+                int hexLength = HexPrefix.ByteLength(hexPrefix.TreePath);
                 byte[]? rentedBuffer = hexLength > StackallocByteThreshold
                     ? ArrayPool<byte>.Shared.Rent(hexLength)
                     : null;
@@ -128,7 +128,7 @@ namespace Nethermind.Trie
                     ? stackalloc byte[StackallocByteThreshold]
                     : rentedBuffer)[..hexLength];
 
-                HexPrefix.CopyToSpan(hexPrefix, isLeaf: true, keyBytes);
+                HexPrefix.CopyToSpan(hexPrefix.TreePath, isLeaf: true, keyBytes);
                 int contentLength = Rlp.LengthOf(keyBytes) + Rlp.LengthOf(node.Value.AsSpan());
                 int totalLength = Rlp.LengthOfSequence(contentLength);
 

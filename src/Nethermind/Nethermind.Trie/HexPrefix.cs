@@ -2,14 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
     public static class HexPrefix
     {
-        public static int ByteLength(byte[] path) => path.Length / 2 + 1;
+        public static int ByteLength(in TreePath path) => path.Length / 2 + 1;
 
-        public static void CopyToSpan(byte[] path, bool isLeaf, Span<byte> output)
+        public static void CopyToSpan(in TreePath path, bool isLeaf, Span<byte> output)
         {
             if (output.Length != ByteLength(path)) throw new ArgumentOutOfRangeException(nameof(output));
 
@@ -19,6 +20,7 @@ namespace Nethermind.Trie
                 output[0] += (byte)(0x10 + path[0]);
             }
 
+            // TODO: Copy byte by byte
             for (int i = 0; i < path.Length - 1; i += 2)
             {
                 output[i / 2 + 1] =
@@ -28,7 +30,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public static byte[] ToBytes(byte[] path, bool isLeaf)
+        public static byte[] ToBytes(in TreePath path, bool isLeaf)
         {
             byte[] output = new byte[path.Length / 2 + 1];
 
@@ -37,12 +39,19 @@ namespace Nethermind.Trie
             return output;
         }
 
-        public static (byte[] key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
+        public static byte[] ToBytes(BoxedTreePath path, bool isLeaf)
+        {
+            return ToBytes(path.TreePath, isLeaf);
+        }
+
+
+        public static (TreePath key, bool isLeaf) FromBytes(ReadOnlySpan<byte> bytes)
         {
             bool isLeaf = bytes[0] >= 32;
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
-            byte[] path = new byte[nibblesCount];
+            TreePath path = new TreePath(Keccak.Zero, nibblesCount);
+            // TODO: byte by byte copy
             for (int i = 0; i < nibblesCount; i++)
             {
                 path[i] =

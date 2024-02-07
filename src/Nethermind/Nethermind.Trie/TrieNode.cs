@@ -88,15 +88,15 @@ namespace Nethermind.Trie
 
         public long? LastSeen { get; set; }
 
-        public byte[]? Key
+        public BoxedTreePath? Key
         {
-            get => _data?[0] as byte[];
+            get => _data?[0] as BoxedTreePath;
             internal set
             {
                 InitData();
                 if (IsSealed)
                 {
-                    if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
+                    if ((_data[0] as BoxedTreePath) == value)
                     {
                         // No change, parallel read
                         return;
@@ -460,7 +460,8 @@ namespace Nethermind.Trie
             }
             else
             {
-                (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                (TreePath rawKey, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
+                BoxedTreePath key = new BoxedTreePath(rawKey);
                 object[] data = [key, null];
                 if (isLeaf)
                 {
@@ -787,7 +788,7 @@ namespace Nethermind.Trie
             return MemorySizes.Align(unaligned);
         }
 
-        public TrieNode CloneWithChangedKey(byte[] key)
+        public TrieNode CloneWithChangedKey(BoxedTreePath key)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
@@ -823,7 +824,7 @@ namespace Nethermind.Trie
             return trieNode;
         }
 
-        public TrieNode CloneWithChangedKeyAndValue(byte[] key, in CappedArray<byte> changedValue)
+        public TrieNode CloneWithChangedKeyAndValue(BoxedTreePath key, in CappedArray<byte> changedValue)
         {
             TrieNode trieNode = Clone();
             trieNode.Key = key;
