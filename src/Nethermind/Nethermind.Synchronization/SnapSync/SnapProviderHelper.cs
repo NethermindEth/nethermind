@@ -148,29 +148,26 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             // BytesToNibbleBytes will throw if the input is not 32 bytes long, so we can use stackalloc+SkipLocalsInit
-            Span<byte> leftBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(effectiveStartingHAsh.Bytes, leftBoundary);
-            Span<byte> rightBoundary = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(endHash.Bytes, rightBoundary);
-            Span<byte> rightLimit = stackalloc byte[64];
-            Nibbles.BytesToNibbleBytes(limitHash.Bytes, rightLimit);
+            TreePath leftBoundary = new TreePath(effectiveStartingHAsh, 64);
+            TreePath rightBoundary = new TreePath(endHash, 64);
+            TreePath rightLimit = new TreePath(limitHash, 64);
 
             // For when in very-very unlikely case where the last remaining address is Keccak.MaxValue, (who knows why,
             // the chain have special handling for it maybe) and it is not included the returned account range, (again,
             // very-very unlikely), we want `moreChildrenToRight` to return true.
             bool noLimit = limitHash == ValueKeccak.MaxValue;
 
-            Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
+            Stack<(TrieNode parent, TrieNode node, int pathIndex, TreePath path)> proofNodesToProcess = new();
 
             tree.RootRef = root;
-            proofNodesToProcess.Push((null, root, -1, new List<byte>()));
+            proofNodesToProcess.Push((null, root, -1, TreePath.Empty));
             sortedBoundaryList.Add(root);
 
             bool moreChildrenToRight = false;
 
             while (proofNodesToProcess.Count > 0)
             {
-                (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
+                (TrieNode parent, TrieNode node, int pathIndex, TreePath path) = proofNodesToProcess.Pop();
 
                 if (node.IsExtension)
                 {
@@ -182,14 +179,13 @@ namespace Nethermind.Synchronization.SnapSync
 
                             pathIndex += node.Key.Length;
                             // TODO: Use TreePath in the path.
-                            path.AddRange(node.Key.TreePath.ToNibble());
+                            path.AppendMut(node.Key.TreePath);
                             proofNodesToProcess.Push((node, child, pathIndex, path));
                             sortedBoundaryList.Add(child);
                         }
                         else
                         {
-                            Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                            if (Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) >= 0
+                            if (path.CompareTo(leftBoundary[0..path.Length]) >= 0
                                 && parent is not null
                                 && parent.IsBranch)
                             {
@@ -210,10 +206,9 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     pathIndex++;
 
-                    Span<byte> pathSpan = CollectionsMarshal.AsSpan(path);
-                    int left = Bytes.BytesComparer.Compare(pathSpan, leftBoundary[0..path.Count]) == 0 ? leftBoundary[pathIndex] : 0;
-                    int right = Bytes.BytesComparer.Compare(pathSpan, rightBoundary[0..path.Count]) == 0 ? rightBoundary[pathIndex] : 15;
-                    int limit = Bytes.BytesComparer.Compare(pathSpan, rightLimit[0..path.Count]) == 0 ? rightLimit[pathIndex] : 15;
+                    int left = path.CompareTo(leftBoundary[0..path.Length]) == 0 ? leftBoundary[pathIndex] : 0;
+                    int right = path.CompareTo(rightBoundary[0..path.Length]) == 0 ? rightBoundary[pathIndex] : 15;
+                    int limit = path.CompareTo(rightLimit[0..path.Length]) == 0 ? rightLimit[pathIndex] : 15;
 
                     int maxIndex = moreChildrenToRight ? right : 15;
 
@@ -235,10 +230,8 @@ namespace Nethermind.Synchronization.SnapSync
                                 node.SetChild(ci, child);
 
                                 // TODO: we should optimize it - copy only if there are two boundary children
-                                List<byte> newPath = new(path)
-                                {
-                                    (byte)ci
-                                };
+                                TreePath newPath = path;
+                                newPath.AppendMut((byte)ci);
 
                                 proofNodesToProcess.Push((node, child, pathIndex, newPath));
                                 sortedBoundaryList.Add(child);

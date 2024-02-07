@@ -902,6 +902,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             // it's a leaf with a storage, so we need to copy the current path (full 64 nibbles) to StateSyncItem.AccountPathNibbles
                             // and StateSyncItem.PathNibbles will start from null (storage root)
+                            // TODO: Use TreePath
                             Span<byte> childPath = stackalloc byte[currentStateSyncItem.PathNibbles.Length + trieNode.Key!.Length];
                             currentStateSyncItem.PathNibbles.CopyTo(childPath[..currentStateSyncItem.PathNibbles.Length]);
                             trieNode.Key!.TreePath.ToNibble().CopyTo(childPath[currentStateSyncItem.PathNibbles.Length..]);

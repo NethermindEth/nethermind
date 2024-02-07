@@ -167,7 +167,7 @@ public struct TreePath
         }
     }
 
-    internal void AppendMut(byte nib)
+    public void AppendMut(byte nib)
     {
         this[Length] = nib;
         Length++;
@@ -370,6 +370,12 @@ public struct TreePath
         {
             _path.TruncateMut(_previousLength);
         }
+    }
+
+    public int CompareTo(TreePath treePath)
+    {
+        // TODO: Implement this properly
+        return Bytes.BytesComparer.Compare(ToNibble(), treePath.ToNibble());
     }
 }
 
