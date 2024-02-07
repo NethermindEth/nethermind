@@ -761,7 +761,7 @@ namespace Nethermind.Trie
 
                 if (_data![i] is BoxedTreePath)
                 {
-                    dataSize += MemorySizes.SmallObjectOverhead + TreePath.MemorySize;
+                    dataSize += BoxedTreePath.MemorySize;
                 }
 
                 if (_data![i] is byte[] array)

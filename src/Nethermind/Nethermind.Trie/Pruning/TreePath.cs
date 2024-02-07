@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -386,6 +387,8 @@ public struct TreePath
 /// </summary>
 public class BoxedTreePath
 {
+    public const int MemorySize = MemorySizes.SmallObjectOverhead - MemorySizes.SmallObjectFreeDataSize + TreePath.MemorySize;
+
     public BoxedTreePath(in TreePath newKey)
     {
         TreePath = newKey;
