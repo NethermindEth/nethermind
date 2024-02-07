@@ -24,7 +24,7 @@ public struct TreePath
 
     public static TreePath Empty => new TreePath();
 
-    private readonly Span<byte> Span => Path.BytesAsSpan;
+    public readonly Span<byte> Span => Path.BytesAsSpan;
 
     public TreePath(in ValueHash256 path, int length)
     {
@@ -33,7 +33,7 @@ public struct TreePath
         Length = length;
     }
 
-    public int Length { get; private set; }
+    public int Length { get; internal set; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {

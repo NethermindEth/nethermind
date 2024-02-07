@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie
 {
@@ -18,15 +19,13 @@ namespace Nethermind.Trie
             if (path.Length % 2 != 0)
             {
                 output[0] += (byte)(0x10 + path[0]);
+                path.Span[..((path.Length)/2)].CopyTo(output[1..]);
+                Bytes.ShiftLeft4(output[1..]);
+                output[path.Length / 2] |= path[^1];
             }
-
-            // TODO: Copy byte by byte
-            for (int i = 0; i < path.Length - 1; i += 2)
+            else
             {
-                output[i / 2 + 1] =
-                    path.Length % 2 == 0
-                        ? (byte)(16 * path[i] + path[i + 1])
-                        : (byte)(16 * path[i + 1] + path[i + 2]);
+                path.Span[..((path.Length+1)/2)].CopyTo(output[1..]);
             }
         }
 
@@ -51,17 +50,22 @@ namespace Nethermind.Trie
             bool isEven = (bytes[0] & 16) == 0;
             int nibblesCount = bytes.Length * 2 - (isEven ? 2 : 1);
             TreePath path = new TreePath(Keccak.Zero, nibblesCount);
-            // TODO: byte by byte copy
-            for (int i = 0; i < nibblesCount; i++)
+
+            if (isEven)
             {
-                path[i] =
-                    isEven
-                        ? i % 2 == 0
-                            ? (byte)((bytes[1 + i / 2] & 240) / 16)
-                            : (byte)(bytes[1 + i / 2] & 15)
-                        : i % 2 == 0
-                            ? (byte)(bytes[i / 2] & 15)
-                            : (byte)((bytes[1 + i / 2] & 240) / 16);
+                bytes[1..((nibblesCount/2)+1)].CopyTo(path.Span);
+                path.Length = nibblesCount;
+            }
+            else
+            {
+                bytes[..(nibblesCount/2)].CopyTo(path.Span); // Note: last byte not copied as there might not be enough space.
+                Bytes.ShiftLeft4(path.Span[..(nibblesCount/2)]);
+                if (nibblesCount > 1)
+                {
+                    path[^2] = (byte)(bytes[(nibblesCount / 2)] >> 4);
+                }
+                path[^1] = (byte)((bytes[(nibblesCount / 2)]) & 0x0f);
+                path.Length = nibblesCount;
             }
 
             return (path, isLeaf);
