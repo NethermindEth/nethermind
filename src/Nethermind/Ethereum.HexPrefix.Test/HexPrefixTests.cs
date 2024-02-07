@@ -7,7 +7,7 @@ using System.Text.Json.Serialization;
 
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
-
+using Nethermind.Trie;
 using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
@@ -27,11 +27,11 @@ namespace Ethereum.HexPrefix.Test
         [TestCaseSource(nameof(LoadTests))]
         public void Test(HexPrefixTest test)
         {
-            byte[] bytes = Nethermind.Trie.HexPrefix.ToBytes(test.Sequence, test.IsTerm);
+            byte[] bytes = Nethermind.Trie.HexPrefix.ToBytes(TreePath.FromNibble(test.Sequence), test.IsTerm);
             string resultHex = bytes.ToHexString(false);
             Assert.That(resultHex, Is.EqualTo(test.Output));
 
-            (byte[] key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
+            (TreePath key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = Nethermind.Trie.HexPrefix.ToBytes(key, isLeaf);
             string checkHex = checkBytes.ToHexString(false);
             Assert.That(checkHex, Is.EqualTo(test.Output));
