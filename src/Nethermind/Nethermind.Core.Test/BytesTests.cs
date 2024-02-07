@@ -9,6 +9,7 @@ using System.Linq;
 using System.Numerics;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -358,6 +359,22 @@ namespace Nethermind.Core.Test
         {
             first.AsSpan().Or(second);
             first.Should().Equal(expected);
+        }
+
+        [TestCase("", "")]
+        [TestCase("01", "10")]
+        [TestCase("0120", "1200")]
+        [TestCase("0123", "1230")]
+        [TestCase("0123456789abcdef", "123456789abcdef0")]
+        [TestCase("0123456789abcdef0123456789abcdef", "123456789abcdef0123456789abcdef0")]
+        [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
+        [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
+        [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd", "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd0")]
+        public void TestShiftLeft4(string hex, string expectedHex)
+        {
+            byte[] asBytes = hex.ToBytes();
+            Bytes.ShiftLeft4(asBytes);
+            asBytes.ToHexString().Should().Be(expectedHex);
         }
 
         [Test]

@@ -144,26 +144,32 @@ public struct TreePath
         }
         else
         {
-            // Well.. that is unfortunate. Originally, I thought of shifting the other path by 4 bit, but it turns out,
-            // the shift works on each element individually. So I'll leave this here for now.
-            /*
             // Append one nib first.
             AppendMut(otherTreePath[0]);
 
-            // So we'll try to shift it by one nib, then copy it byte by byte.
-            Vector256<byte> shifted = (MemoryMarshal.AsRef<Vector256<byte>>(otherTreePath.Span) << 4);
-
-            // Ok, now we can copy it byte by byte
             int byteToCopy = otherTreePath.Length / 2;
-            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref Unsafe.AsRef(in shifted), 1))[..byteToCopy]
-                .CopyTo(Path.BytesAsSpan[(Length/2)..]);
+            otherTreePath.Path.BytesAsSpan[..byteToCopy].CopyTo(Path.BytesAsSpan[(Length/2)..]);
+            Bytes.ShiftLeft4(Path.BytesAsSpan[(Length/2)..]);
 
-            Length += otherTreePath.Length - 1;
-            */
-
-            for (int i = 0; i < otherTreePath.Length; i++)
+            if (otherTreePath.Length % 2 == 1)
             {
-                AppendMut(otherTreePath[i]);
+                // Note: if odd, last byte is skipped, as there might not be enough space before shift4.
+                // Eg:
+                // 01 2 + 34 56 8 (assuming 4 byte storage instead of 32)
+                // 01 23 + 34 56 8 (after add first)
+                // 01 23 34 56 + 8 (no space for last)
+                // 01 23 45 60 + 8 (after shift4, need to add last manually)
+                Length += otherTreePath.Length - 2;
+                AppendMut(otherTreePath[^1]);
+            }
+            else
+            {
+                // If odd and enough space
+                // 01 2 + 34 56 80
+                // 01 23 + 34 56 80 (after add first)
+                // 01 23 34 56 80   (before shift4)
+                // 01 23 45 68 00   (after shift4, everything is fine..)
+                Length += otherTreePath.Length - 1;
             }
         }
     }
@@ -234,24 +240,12 @@ public struct TreePath
             }
             else
             {
-                // I really was counting on the shift working. Maybe some other time.
-                /*
+                int byteOffset = (offset / 2);
+                int toCopyByteLength = (toCopyLength + 2) / 2;
                 TreePath newTreePath = new TreePath();
-                Vector256<byte> shifted = Vector256.ShiftLeft(MemoryMarshal.AsRef<Vector256<byte>>(Span), 4);
-                ReadOnlySpan<byte> asSpan = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref shifted, 1));
-                Console.Out.WriteLine(Span.ToHexString());
-                Console.Out.WriteLine(asSpan.ToHexString());
-                asSpan[(offset/2)..(toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
-
+                Path.Bytes[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
+                Bytes.ShiftLeft4(newTreePath.Path.BytesAsSpan[..toCopyByteLength]);
                 newTreePath.Length = toCopyLength;
-                return newTreePath;
-                */
-
-                TreePath newTreePath = new TreePath();
-                for (int i = 0; i < length; i++)
-                {
-                    newTreePath.AppendMut(this[i + offset]);
-                }
                 return newTreePath;
             }
         }

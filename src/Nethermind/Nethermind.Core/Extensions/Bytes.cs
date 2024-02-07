@@ -1136,5 +1136,41 @@ namespace Nethermind.Core.Extensions
                     (BinaryPrimitives.ReverseEndianness(endIth), BinaryPrimitives.ReverseEndianness(ith));
             }
         }
+
+        /// <summary>
+        /// Shift all bits of the span by 4 bit to left (a nibble).
+        /// </summary>
+        /// <param name="bytes"></param>
+        public static void ShiftLeft4(Span<byte> bytes)
+        {
+            // TODO: Vector256/128
+            while (bytes.Length >= 8)
+            {
+                ulong currentNum = BinaryPrimitives.ReadUInt64BigEndian(bytes[0..]);
+                currentNum <<= 4;
+                if (bytes.Length > 8) currentNum |= (ulong)bytes[8] >> 4;
+                BinaryPrimitives.WriteUInt64BigEndian(bytes[0..], currentNum);
+                bytes = bytes[8..];
+            }
+
+            while (bytes.Length >= 4)
+            {
+                uint currentNum = BinaryPrimitives.ReadUInt32BigEndian(bytes[0..]);
+                currentNum <<= 4;
+                if (bytes.Length > 4) currentNum |= (uint)bytes[4] >> 4;
+                BinaryPrimitives.WriteUInt32BigEndian(bytes[0..], currentNum);
+                bytes = bytes[4..];
+            }
+
+            if (bytes.Length == 0) return;
+            for (int i = 0; i < bytes.Length-1; i++)
+            {
+                byte theByte = (byte)((bytes[i] << 4) | (bytes[i + 1] >> 4));
+                bytes[i] = theByte;
+            }
+
+            // At this point, it should be only one bytes left
+            bytes[^1] = (byte)(bytes[^1] << 4);
+        }
     }
 }
