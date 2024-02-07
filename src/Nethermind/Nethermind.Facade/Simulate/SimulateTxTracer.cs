@@ -50,7 +50,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = StatusCode.FailureBytes,
+                Code = StatusCode.FailureBytes.ToArray(),
                 Message = error
             },
             ReturnData = output,

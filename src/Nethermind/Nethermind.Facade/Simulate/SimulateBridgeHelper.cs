@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Transactions;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -12,10 +13,12 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.State;
+using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -37,10 +40,30 @@ public class SimulateBridgeHelper
         _blocksConfig = blocksConfig;
     }
 
-    private void UpdateStateByModifyingAccounts(BlockHeader blockHeader, BlockStateCall<TransactionWithSourceDetails> blockStateCall, SimulateReadOnlyBlocksProcessingEnv env)
+    private void UpdateStateByModifyingAccounts(BlockHeader blockHeader,
+        BlockStateCall<TransactionWithSourceDetails> blockStateCall, SimulateReadOnlyBlocksProcessingEnv env)
     {
         IReleaseSpec currentSpec = env.SpecProvider.GetSpec(blockHeader);
-        env.StateProvider.ApplyStateOverrides(env.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec, blockHeader.Number);
+        env.StateProvider.ApplyStateOverrides(env.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec,
+            blockHeader.Number);
+
+        IEnumerable<Address?>? senders = blockStateCall.Calls.Select(details => details.Transaction.SenderAddress);
+        IEnumerable<Address?>? targets = blockStateCall.Calls.Select(details => details.Transaction.To!);
+        var all = senders.Union(targets)
+            .Where(address => address != null)
+            .Distinct()
+            .ToList();
+
+        foreach (Address address in all)
+        {
+            env.StateProvider.CreateAccountIfNotExists(address, 0, 0);
+        }
+
+        IWorldState? state = env.StateProvider;
+        state.Commit(currentSpec);
+        state.CommitTree(blockHeader.Number);
+        state.RecalculateStateRoot();
+
         blockHeader.StateRoot = env.StateProvider.StateRoot;
     }
 
@@ -86,6 +109,7 @@ public class SimulateBridgeHelper
                         UInt256.Zero,
                         parent.Number + 1,
                         parent.GasLimit,
+
                         parent.Timestamp + 1,
                         Array.Empty<byte>())
                     {
@@ -118,7 +142,6 @@ public class SimulateBridgeHelper
                     {
                         if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
                         {
-                            env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
                             cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
                             nonceCache[transaction.SenderAddress] = cachedNonce;
                         }
@@ -163,7 +186,9 @@ public class SimulateBridgeHelper
                     return transaction;
                 }
                 IReleaseSpec? spec = _specProvider.GetSpec(parent);
-                IEnumerable<Transaction> transactions = callInputBlock.Calls?.Select(t => SetTxHashAndMissingDefaults(t, spec)) ?? Array.Empty<Transaction>();
+                Transaction[] transactions = callInputBlock.Calls?.Select(t => SetTxHashAndMissingDefaults(t, spec)).ToArray() ?? Array.Empty<Transaction>();
+
+
                 Block? currentBlock = new(callHeader, transactions, Array.Empty<BlockHeader>());
                 currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
 

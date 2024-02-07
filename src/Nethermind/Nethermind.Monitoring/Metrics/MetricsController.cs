@@ -8,6 +8,7 @@ using System.ComponentModel;
 using System.Diagnostics.Metrics;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
@@ -36,7 +37,7 @@ namespace Nethermind.Monitoring.Metrics
         {
             internal MemberInfo MemberInfo;
             internal string DictionaryName;
-            internal string LabelName;
+            internal string[] LabelNames;
             internal string GaugeName;
             internal IDictionary Dictionary;
         }
@@ -63,8 +64,8 @@ namespace Nethermind.Monitoring.Metrics
 
             foreach (DictionaryMetricInfo info in _dictionaryCache[type])
             {
-                if (info.LabelName is null) continue; // Old behaviour creates new metric as it is created
-                _gauges[info.GaugeName] = CreateMemberInfoMetricsGauge(info.MemberInfo, info.LabelName);
+                if (info.LabelNames is null || info.LabelNames.Length == 0) continue; // Old behaviour creates new metric as it is created
+                _gauges[info.GaugeName] = CreateMemberInfoMetricsGauge(info.MemberInfo, info.LabelNames);
             }
         }
 
@@ -103,7 +104,7 @@ namespace Nethermind.Monitoring.Metrics
             string description = member.GetCustomAttribute<DescriptionAttribute>()?.Description;
             string name = member.GetCustomAttribute<DataMemberAttribute>()?.Name ?? member.Name;
 
-            if (member.GetCustomAttribute<CounterMetricAttribute>() != null)
+            if (member.GetCustomAttribute<CounterMetricAttribute>() is not null)
             {
                 return meter.CreateObservableCounter(name, observer, description: description);
             }
@@ -167,7 +168,7 @@ namespace Nethermind.Monitoring.Metrics
                     {
                         MemberInfo = p,
                         DictionaryName = p.Name,
-                        LabelName = p.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelName,
+                        LabelNames = p.GetCustomAttribute<KeyIsLabelAttribute>()?.LabelNames,
                         GaugeName = GetGaugeNameKey(type.Name, p.Name),
                         Dictionary = (IDictionary)p.GetValue(null)
                     })
@@ -224,7 +225,7 @@ namespace Nethermind.Monitoring.Metrics
 
             foreach (DictionaryMetricInfo info in _dictionaryCache[type])
             {
-                if (info.LabelName is null)
+                if (info.LabelNames is null)
                 {
                     IDictionary dict = info.Dictionary;
                     // Its fine that the key here need to call `ToString()`. Better here then in the metrics, where it might
@@ -251,7 +252,20 @@ namespace Nethermind.Monitoring.Metrics
                     foreach (object key in dict.Keys)
                     {
                         double value = Convert.ToDouble(dict[key]);
-                        ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                        if (key is ITuple keyAsTuple)
+                        {
+                            string[] labels = new string[keyAsTuple.Length];
+                            for (int i = 0; i < keyAsTuple.Length; i++)
+                            {
+                                labels[i] = keyAsTuple[i].ToString();
+                            }
+
+                            ReplaceValueIfChanged(value, gaugeName, labels);
+                        }
+                        else
+                        {
+                            ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                        }
                     }
                 }
             }

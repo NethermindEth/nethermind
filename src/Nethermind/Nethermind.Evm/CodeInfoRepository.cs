@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -60,8 +62,8 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         CodeInfo cachedCodeInfo = null;
-        Hash256 codeHash = worldState.GetCodeHash(codeSource);
-        if (ReferenceEquals(codeHash, Keccak.OfAnEmptyString))
+        ValueHash256 codeHash = worldState.GetCodeHash(codeSource);
+        if (codeHash == Keccak.OfAnEmptyString.ValueHash256)
         {
             cachedCodeInfo = CodeInfo.Empty;
         }
@@ -70,11 +72,11 @@ public class CodeInfoRepository : ICodeInfoRepository
 
         if (!haveCached)
         {
-            byte[] code = worldState.GetCode(codeHash);
+            byte[]? code = worldState.GetCode(codeHash);
 
             if (code is null)
             {
-                throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+                MissingCode(codeSource, codeHash);
             }
 
             cachedCodeInfo = new CodeInfo(code);
@@ -88,6 +90,13 @@ public class CodeInfoRepository : ICodeInfoRepository
         }
 
         return cachedCodeInfo;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void MissingCode(Address codeSource, in ValueHash256 codeHash)
+        {
+            throw new NullReferenceException($"Code {codeHash} missing in the state for address {codeSource}");
+        }
     }
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)

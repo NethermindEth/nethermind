@@ -42,7 +42,7 @@ public class BlockStore : IBlockStore
 
     private void TruncateToMaxSize()
     {
-        int toDelete = (int)(_blockDb.GetSize() - _maxSize!);
+        int toDelete = (int)(_blockDb.GatherMetric().Size - _maxSize!);
         if (toDelete > 0)
         {
             foreach (var blockToDelete in GetAll().Take(toDelete))
@@ -84,11 +84,11 @@ public class BlockStore : IBlockStore
         _blockDb.Remove(blockHash.Bytes);
     }
 
-    public Block? Get(long blockNumber, Hash256 blockHash, bool shouldCache = false)
+    public Block? Get(long blockNumber, Hash256 blockHash, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = false)
     {
-        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, shouldCache);
-        if (b != null) return b;
-        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, shouldCache);
+        Block? b = _blockDb.Get(blockNumber, blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
+        if (b is not null) return b;
+        return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
@@ -97,7 +97,7 @@ public class BlockStore : IBlockStore
         GetBlockNumPrefixedKey(blockNumber, blockHash, keyWithBlockNumber);
 
         MemoryManager<byte>? memoryOwner = _blockDb.GetOwnedMemory(keyWithBlockNumber);
-        if (memoryOwner == null)
+        if (memoryOwner is null)
         {
             memoryOwner = _blockDb.GetOwnedMemory(blockHash.Bytes);
         }

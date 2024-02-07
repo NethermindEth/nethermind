@@ -61,6 +61,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         const int badBlocksStored = 1;
         IBlockStore badBlockStore = new BlockStore(dbProvider.BadBlocksDb, badBlocksStored);
 
+
         BlockTree tmpBlockTree = new(blockStore,
             headerStore,
             dbProvider.BlockInfosDb,
@@ -96,7 +97,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         IWorldStateManager worldStateManager,
         IReadOnlyBlockTree roBlockTree,
         IReadOnlyDbProvider readOnlyDbProvider,
-        //ITrieStore trieStore,
         IBlockTree blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager = null,
@@ -105,7 +105,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     {
         ReadOnlyBlockTree = roBlockTree;
         DbProvider = readOnlyDbProvider;
-        //_trieStore = trieStore;
 
         WorldStateManager = worldStateManager;
         _logManager = logManager;
@@ -114,6 +113,9 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
 
         BlockTree = new NonDistructiveBlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+
+        var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
+        StateProvider = new WorldState(store, DbProvider.CodeDb, LimboLogs.Instance);
 
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
@@ -139,7 +141,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
 
     public IBlockProcessor GetProcessor(Hash256 stateRoot)
     {
-        //StateProvider.StateRoot = stateRoot;
         IReadOnlyTransactionProcessor transactionProcessor = Build(stateRoot);
 
         return new BlockProcessor(SpecProvider,

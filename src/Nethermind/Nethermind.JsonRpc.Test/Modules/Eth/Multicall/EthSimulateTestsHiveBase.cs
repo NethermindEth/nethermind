@@ -350,7 +350,7 @@ public class EthSimulateTestsHiveBase
     public async Task TestsimulateGasFeesAndValueError38014()
     {
         EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}]}";
+        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000123\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}]}";
         var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateGasFeesAndValueError38014");

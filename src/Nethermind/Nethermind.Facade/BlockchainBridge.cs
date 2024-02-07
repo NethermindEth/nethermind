@@ -156,19 +156,19 @@ namespace Nethermind.Facade
         {
             SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
             SimulateOutput result = new();
-            try
-            {
-                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
+            //try
+            //{
+            (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
 
-                if (!success)
-                {
-                    result.Error = error;
-                }
-            }
-            catch (Exception ex)
+            if (!success)
             {
-                result.Error = ex.ToString();
+                result.Error = error;
             }
+            //}
+            //catch (Exception ex)
+            //{
+            //    result.Error = ex.ToString();
+            //}
 
             result.Items = simulateOutputTracer.Results;
             return result;

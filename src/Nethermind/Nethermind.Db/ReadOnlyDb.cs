@@ -73,10 +73,11 @@ namespace Nethermind.Db
             return this.LikeABatch();
         }
 
-        public long GetSize() => _memDb.GetSize() + _wrappedDb.GetSize();
-        public long GetCacheSize() => _memDb.GetCacheSize() + _wrappedDb.GetCacheSize();
-        public long GetIndexSize() => _memDb.GetIndexSize() + _wrappedDb.GetIndexSize();
-        public long GetMemtableSize() => _memDb.GetMemtableSize() + _wrappedDb.GetMemtableSize();
+        //public long GetSize() => _memDb.GetSize() + _wrappedDb.GetSize();
+        //public long GetCacheSize() => _memDb.GetCacheSize() + _wrappedDb.GetCacheSize();
+        //public long GetIndexSize() => _memDb.GetIndexSize() + _wrappedDb.GetIndexSize();
+        //public long GetMemtableSize() => _memDb.GetMemtableSize() + _wrappedDb.GetMemtableSize();
+        public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _wrappedDb.GatherMetric(includeSharedCache);
 
         public void Remove(ReadOnlySpan<byte> key) { }
 
@@ -109,7 +110,7 @@ namespace Nethermind.Db
             _memDb.Set(keyBytes, value.ToArray(), writeFlags);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span) { }
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
     }

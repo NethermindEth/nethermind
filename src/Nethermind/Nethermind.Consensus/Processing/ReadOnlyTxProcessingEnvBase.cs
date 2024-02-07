@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.Processing;
 public class ReadOnlyTxProcessingEnvBase
 {
     public IStateReader StateReader { get; }
-    public IWorldState StateProvider { get; }
+    public IWorldState StateProvider { get; protected set; }
     public IBlockTree BlockTree { get; protected set; }
     public IBlockhashProvider BlockhashProvider { get; protected set; }
 

@@ -1299,9 +1299,13 @@ namespace Nethermind.Blockchain
 
             Block? block = null;
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
-            if (blockNumber != null)
+            if (blockNumber is not null)
             {
-                block = _blockStore.Get(blockNumber.Value, blockHash, shouldCache: false);
+                block = _blockStore.Get(
+                    blockNumber.Value,
+                    blockHash,
+                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                    shouldCache: false);
             }
 
             if (block is null)

@@ -21,6 +21,7 @@ public enum DisconnectReason : byte
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
+    Exception,
 
     // Non sync, non connection related disconnect
     SnapServerNotImplemented,

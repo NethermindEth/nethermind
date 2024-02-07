@@ -19,5 +19,5 @@ public class SimulateCallResult
     public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
     public Error? Error { get; set; }
-    public Log[]? Logs { get; set; }
+    public Log[] Logs { get; set; } = { };
 }

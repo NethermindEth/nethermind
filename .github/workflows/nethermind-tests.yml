@@ -86,7 +86,7 @@ jobs:
       id: test
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover' || '' }}
+          ${{ env.COLLECT_COVERAGE == 'true' && '--collect:"XPlat Code Coverage"' || '' }}
     - name: Save test outcome
       if: success() || failure()
       run: echo "${{ steps.test.outcome == 'success' }}," >> nethermind.outcome
@@ -102,7 +102,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.project }}-coverage
-        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        path: src/Nethermind/${{ matrix.project }}/TestResults/**/coverage.cobertura.xml
         retention-days: ${{ env.RETENTION }}
 
   nethermind-tests-status:
@@ -156,7 +156,7 @@ jobs:
       id: test
       run: |
         dotnet test src/Nethermind/${{ matrix.project }} -c release \
-          ${{ env.COLLECT_COVERAGE == 'true' && '-p:CollectCoverage=true -p:CoverletOutputFormat=opencover -p:Exclude="[Nethermind.Core.Test]*%2c[Nethermind.Blockchain.Test]*%2c[Ethereum.Test.Base]*"' || '' }}
+          ${{ env.COLLECT_COVERAGE == 'true' && '--collect:"XPlat Code Coverage" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Exclude=[Nethermind.Core.Test]*,[Nethermind.Blockchain.Test]*,[Ethereum.Test.Base]*' || '' }}
     - name: Save test outcome
       if: success() || failure()
       run: echo "${{ steps.test.outcome == 'success' }}," >> ethereum.outcome
@@ -172,7 +172,7 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ${{ matrix.project }}-coverage
-        path: src/Nethermind/${{ matrix.project }}/coverage.opencover.xml
+        path: src/Nethermind/${{ matrix.project }}/TestResults/**/coverage.cobertura.xml
         retention-days: ${{ env.RETENTION }}
 
   ethereum-tests-status:

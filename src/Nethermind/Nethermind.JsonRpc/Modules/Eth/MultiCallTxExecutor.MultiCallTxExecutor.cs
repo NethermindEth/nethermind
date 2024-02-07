@@ -21,11 +21,12 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>, SimulatePayload<TransactionWithSourceDetails>>
 {
     private long gasCapBudget;
-
+    private long blocksLimit;
     public SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
     {
         gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
+        blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     }
 
     protected override SimulatePayload<TransactionWithSourceDetails> Prepare(SimulatePayload<TransactionForRpc> call)
@@ -97,7 +98,19 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"No state available for block {header.Hash}", ErrorCodes.ResourceUnavailable);
         }
 
-        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
+        if (call.BlockStateCalls?.Length > blocksLimit)
+        {
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Too many blocks provided, node is configured to simulate up to {blocksLimit} while {call.BlockStateCalls?.Length} were given", ErrorCodes.InvalidParams);
+        }
+
+        //todo resolve numbers and timestamps
+        //bool isInOrder = call.BlockStateCalls?
+        //    .Zip(call.BlockStateCalls?.Skip(1), (current, next) => current.BlockOverrides?.Number < next.MyProperty)
+        //    .All(x => x);
+
+
+
+        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout * 100);
         SimulatePayload<TransactionWithSourceDetails>? toProcess = Prepare(call);
         return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
     }

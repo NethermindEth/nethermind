@@ -17,6 +17,14 @@ namespace Nethermind.Facade;
 
 public static class StateOverridesExtensions
 {
+
+    public static void ApplyStateOverrides(
+        this IWorldState state,
+
+        long blockNumber)
+    {
+    }
+
     public static void ApplyStateOverrides(
         this IWorldState state,
         OverridableCodeInfoRepository overridableCodeInfoRepository,
@@ -55,7 +63,7 @@ public static class StateOverridesExtensions
     {
         try
         {
-            account = stateProvider.GetAccount(address);
+            account = stateProvider.GetAccount(address).ToOldAccount();
         }
         catch (TrieException)
         {
