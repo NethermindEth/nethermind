@@ -139,7 +139,7 @@ public struct TreePath
         {
             // We are currently even, so can just copy byte by byte.
             int byteToCopy = (otherTreePath.Length + 1) / 2;
-            otherTreePath.Path.BytesAsSpan[..byteToCopy].CopyTo(Path.BytesAsSpan[(Length/2)..]);
+            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length/2)..]);
             Length += otherTreePath.Length;
         }
         else
@@ -148,8 +148,8 @@ public struct TreePath
             AppendMut(otherTreePath[0]);
 
             int byteToCopy = otherTreePath.Length / 2;
-            otherTreePath.Path.BytesAsSpan[..byteToCopy].CopyTo(Path.BytesAsSpan[(Length/2)..]);
-            Bytes.ShiftLeft4(Path.BytesAsSpan[(Length/2)..]);
+            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length/2)..]);
+            Bytes.ShiftLeft4(Span[(Length/2)..]);
 
             if (otherTreePath.Length % 2 == 1)
             {
@@ -234,7 +234,7 @@ public struct TreePath
                 int byteOffset = (offset / 2);
                 int toCopyByteLength = (toCopyLength + 1) / 2;
                 TreePath newTreePath = new TreePath();
-                Path.Bytes[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
+                Span[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Span);
                 newTreePath.Length = toCopyLength;
                 return newTreePath;
             }
@@ -243,8 +243,8 @@ public struct TreePath
                 int byteOffset = (offset / 2);
                 int toCopyByteLength = (toCopyLength + 2) / 2;
                 TreePath newTreePath = new TreePath();
-                Path.Bytes[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Path.BytesAsSpan);
-                Bytes.ShiftLeft4(newTreePath.Path.BytesAsSpan[..toCopyByteLength]);
+                Span[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Span);
+                Bytes.ShiftLeft4(newTreePath.Span[..toCopyByteLength]);
                 newTreePath.Length = toCopyLength;
                 return newTreePath;
             }
@@ -306,13 +306,13 @@ public struct TreePath
     {
         bool odd = Length % 2 == 1;
         Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
-        Nibbles.BytesToNibbleBytes(Path.Bytes[..((Length + 1) / 2)], theNibbles);
+        Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
         return (odd ? theNibbles[..Length] : theNibbles).ToArray();
     }
 
     public string ToHexString()
     {
-        string fromPath = Path.Bytes.ToHexString();
+        string fromPath = Span.ToHexString();
         return fromPath[..Length];
     }
 

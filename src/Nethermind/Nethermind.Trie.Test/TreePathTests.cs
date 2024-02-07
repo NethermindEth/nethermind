@@ -17,7 +17,7 @@ public class TreePathTests
     {
         TreePath path = CreateFullTreePath();
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -26,7 +26,7 @@ public class TreePathTests
     {
         TreePath path = CreateFullTreePath();
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -53,7 +53,7 @@ public class TreePathTests
 
         path.Length.Should().Be(0);
         newPath.Length.Should().Be(64);
-        string asHex = newPath.Path.Bytes.ToHexString();
+        string asHex = newPath.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -75,7 +75,7 @@ public class TreePathTests
         path = path.Append(nibbles[partition..]);
         path.Length.Should().Be(64);
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -97,7 +97,7 @@ public class TreePathTests
         path.AppendMut(TreePath.FromNibble(nibbles[partition..]));
         path.Length.Should().Be(64);
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -133,7 +133,7 @@ public class TreePathTests
 
         TreePath path = TreePath.FromNibble(nibbles);
         path.Length.Should().Be(expectedLength);
-        path.Path.BytesAsSpan.ToHexString().Should().Be(expectedHashHex);
+        path.Span.ToHexString().Should().Be(expectedHashHex);
     }
 
     [TestCase]
