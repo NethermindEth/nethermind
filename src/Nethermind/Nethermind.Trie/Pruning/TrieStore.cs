@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -363,6 +364,8 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => IsPersisted(hash);
+
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
         {
             return new ReadOnlyTrieStore(this, keyValueStore);
@@ -373,6 +376,16 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Hash256? hash)
         {
             return FindCachedOrUnknown(hash, false);
+        }
+
+        public TrieNode FindCachedOrUnknown(Hash256? hash, Span<byte> nodePath, Span<byte> storagePrefix)
+        {
+            return FindCachedOrUnknown(hash, false);
+        }
+
+        public TrieNode FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256 rootHash)
+        {
+            throw new NotImplementedException();
         }
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
@@ -588,6 +601,12 @@ namespace Nethermind.Trie.Pruning
         private bool IsCurrentListSealed => CurrentPackage is null || CurrentPackage.IsSealed;
 
         private long LatestCommittedBlockNumber { get; set; }
+
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        {
+            throw new NotImplementedException();
+        }
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
 
         private void CreateCommitSet(long blockNumber)
         {
@@ -822,6 +841,21 @@ namespace Nethermind.Trie.Pruning
             });
         }
 
+        public byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void PersistNode(TrieNode trieNode, IWriteBatch? keyValueStore = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)
+        {
+            //keyValueStore ??= _keyValueStore;
+            //keyValueStore.Set(trieNode.Keccak.Bytes, trieNode.Value.ToArray(), writeFlags);
+        }
+
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None)
+        {
+        }
+
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
@@ -839,6 +873,18 @@ namespace Nethermind.Trie.Pruning
         {
             _keyValueStore.Set(hash, rlp);
         }
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null)
+        {
+            _keyValueStore.DeleteByRange(startKey, endKey);
+        }
+
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
+
+        public bool CanAccessByPath() => false;
+
+        public bool ShouldResetObjectsOnRootChange() => true;
+
+        public void OpenContext(long blockNumber, Hash256 keccak) { }
 
         private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {

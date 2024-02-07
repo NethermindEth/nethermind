@@ -47,7 +47,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 TempDirectory = TempPath.GetTempDirectory();
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePathStateDb = false)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
@@ -61,7 +61,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 IDbProvider dbProvider = new DbProvider();
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
+                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, LogManager, new FileSystem());
                 await standardDbInitializer.InitStandardDbsAsync(true);
                 return dbProvider;
             }

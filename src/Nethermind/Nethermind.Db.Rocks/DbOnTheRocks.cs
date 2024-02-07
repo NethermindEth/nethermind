@@ -802,6 +802,16 @@ public class DbOnTheRocks : IDb, ITunableDb
             throw;
         }
     }
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+    {
+        DeleteByRange(startKey, endKey, null);
+    }
+
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, ColumnFamilyHandle? cf = null)
+    {
+        using RocksDbWriteBatch batch = new(this);
+        batch.DeleteByRange(startKey.ToArray(), endKey.ToArray(), cf);
+    }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false)
     {
@@ -1126,6 +1136,26 @@ public class DbOnTheRocks : IDb, ITunableDb
                 _dbOnTheRocks.CreateMarkerIfCorrupt(e);
                 throw;
             }
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, ColumnFamilyHandle? cf = null)
+        {
+            //_rocksBatch.DeleteRange(startKey, Convert.ToUInt64(startKey.Length), endKey, Convert.ToUInt64(endKey.Length));
+            using Iterator iterator = _dbOnTheRocks._db.NewIterator(cf);
+            iterator.Seek(startKey);
+            while (iterator.Valid())
+            {
+                if (Bytes.BytesComparer.Compare(iterator.Key(), endKey) >= 0)
+                    break;
+                //Console.WriteLine($"Deleting: {Convert.ToHexString(iterator.Key())} - {Convert.ToHexString(iterator.Value())}");
+                Delete(iterator.Key(), cf);
+                iterator.Next();
+            }
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            DeleteByRange(startKey, endKey, null);
         }
     }
 

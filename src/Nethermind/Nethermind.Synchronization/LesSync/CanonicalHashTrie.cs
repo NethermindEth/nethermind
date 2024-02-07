@@ -12,6 +12,7 @@ using Nethermind.Logging;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.LesSync
 {
@@ -23,12 +24,12 @@ namespace Nethermind.Synchronization.LesSync
         private static readonly byte[] MaxSectionKey = Encoding.ASCII.GetBytes("MaxSection");
 
         public CanonicalHashTrie(IKeyValueStoreWithBatching db)
-            : base(db, GetMaxRootHash(db), true, true, NullLogManager.Instance)
+            : base(new TrieStore(db, NullLogManager.Instance), GetMaxRootHash(db), true, true, NullLogManager.Instance)
         {
         }
 
         public CanonicalHashTrie(IKeyValueStoreWithBatching db, Hash256 rootHash)
-            : base(db, rootHash, true, true, NullLogManager.Instance)
+            : base(new TrieStore(db, NullLogManager.Instance), rootHash, true, true, NullLogManager.Instance)
         {
         }
 

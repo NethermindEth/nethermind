@@ -55,7 +55,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.Blocks;
+using System;
 
 namespace Nethermind.Api
 {
@@ -201,7 +201,39 @@ namespace Nethermind.Api
         public IHealthHintService? HealthHintService { get; set; }
         public IRpcCapabilitiesProvider? RpcCapabilitiesProvider { get; set; }
         public ITxValidator? TxValidator { get; set; }
-        public IBlockFinalizationManager? FinalizationManager { get; set; }
+
+        private IBlockFinalizationManager? _finalizationManager;
+        public IBlockFinalizationManager? FinalizationManager
+        {
+            get => _finalizationManager;
+            set
+            {
+                if (_blocksFinalizedHandlers.Count > 0)
+                {
+                    foreach (EventHandler<FinalizeEventArgs> handler in _blocksFinalizedHandlers)
+                    {
+                        // TODO: unregistering?
+                        value!.BlocksFinalized += handler;
+                    }
+                }
+
+                _finalizationManager = value;
+            }
+        }
+
+        private List<EventHandler<FinalizeEventArgs>> _blocksFinalizedHandlers = new();
+        public void RegisterForBlockFinalized(EventHandler<FinalizeEventArgs> blocksFinalizedHandler)
+        {
+            if (FinalizationManager != null)
+            {
+                FinalizationManager.BlocksFinalized += blocksFinalizedHandler;
+            }
+            else
+            {
+                _blocksFinalizedHandlers.Add(blocksFinalizedHandler);
+            }
+        }
+
         public IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         public IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }

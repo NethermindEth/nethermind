@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -8,6 +9,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -15,14 +17,23 @@ using NUnit.Framework;
 
 namespace Nethermind.Store.Test
 {
-    [TestFixture, Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.All)]
+    [TestFixture(TrieNodeResolverCapability.Hash)]
+    [TestFixture(TrieNodeResolverCapability.Path)]
     public class PatriciaTreeTests
     {
+        private readonly TrieNodeResolverCapability _resolverCapability;
+
+        public PatriciaTreeTests(TrieNodeResolverCapability resolverCapability)
+        {
+            _resolverCapability = resolverCapability;
+        }
+
         [Test]
         public void Create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
+            IStateTree stateTree = _resolverCapability.CreateStateStore();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
@@ -38,7 +49,7 @@ namespace Nethermind.Store.Test
         public void Create_create_commit_change_balance_get()
         {
             Account account = new(1);
-            StateTree stateTree = new();
+            IStateTree stateTree = _resolverCapability.CreateStateStore();
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Set(TestItem.AddressB, account);
             stateTree.Commit(0);
@@ -54,9 +65,9 @@ namespace Nethermind.Store.Test
         [Test]
         public void Create_commit_reset_change_balance_get()
         {
-            MemDb db = new();
+            MemColumnsDb<StateColumns> db = new();
             Account account = new(1);
-            StateTree stateTree = new(new TrieStore(db, LimboLogs.Instance), LimboLogs.Instance);
+            IStateTree stateTree = _resolverCapability.CreateStateStore(db, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
@@ -67,32 +78,50 @@ namespace Nethermind.Store.Test
             stateTree.Get(TestItem.AddressA);
             account = account.WithChangedBalance(2);
             stateTree.Set(TestItem.AddressA, account);
-            stateTree.Commit(0);
+            stateTree.Commit(1);
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Account a1 = stateTree.Get(TestItem.AddressA, rootHash);
+            Account a2 = stateTree.Get(TestItem.AddressA);
+
+            Assert.That(a1.Balance, Is.EqualTo((UInt256)1));
+            Assert.That(a2.Balance, Is.EqualTo((UInt256)2));
         }
 
         [TestCase(true, false)]
         [TestCase(false, true)]
         public void Commit_with_skip_root_should_skip_root(bool skipRoot, bool hasRoot)
         {
-            MemDb db = new();
-            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            ITrieStore trieStore = _resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new TrieStore(new MemDb(), LimboLogs.Instance),
+                TrieNodeResolverCapability.Path => new TrieStoreByPath(new MemColumnsDb<StateColumns>(), LimboLogs.Instance),
+                _ => throw new Exception()
+            };
             Account account = new(1);
 
-            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            IStateTree stateTree = _resolverCapability.CreateStateStore(trieStore, LimboLogs.Instance);
+
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
             Hash256 stateRoot = stateTree.RootHash;
             stateTree.Commit(0, skipRoot);
 
-            if (hasRoot)
+            switch (_resolverCapability)
             {
-                trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
-            }
-            else
-            {
-                trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                case TrieNodeResolverCapability.Hash:
+                    if (hasRoot)
+                        trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                    else
+                        trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                    break;
+                case TrieNodeResolverCapability.Path:
+                    if (hasRoot)
+                        trieStore.LoadRlp(Array.Empty<byte>(), stateRoot).Length.Should().BeGreaterThan(0);
+                    else
+                        trieStore.Invoking(ts => ts.LoadRlp(Array.Empty<byte>(), stateRoot)).Should().Throw<TrieException>();
+                    break;
+                default:
+                    break;
             }
         }
     }

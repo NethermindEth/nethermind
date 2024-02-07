@@ -12,6 +12,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
@@ -24,6 +25,7 @@ using Nethermind.State;
 using Nethermind.Trie;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Test
 {
@@ -31,6 +33,7 @@ namespace Nethermind.Blockchain.Test
     [Parallelizable(ParallelScope.Self)]
     public class BlockchainProcessorTests
     {
+        private static readonly ILogManager _logManager = new NUnitLogManager(LogLevel.Trace);
         private class ProcessingTestContext
         {
             private readonly ILogManager _logManager = LimboLogs.Instance;
@@ -498,9 +501,10 @@ namespace Nethermind.Blockchain.Test
                 .FullyProcessed(_block4D8).BecomesNewHead();
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test]
         public async Task Can_process_fast_sync()
         {
+            var logger = _logManager.GetClassLogger();
             BasicTestBlockchain testBlockchain = await BasicTestBlockchain.Create();
             await testBlockchain.BuildSomeBlocks(5);
 

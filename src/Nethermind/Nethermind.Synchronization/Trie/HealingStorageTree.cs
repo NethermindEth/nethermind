@@ -24,6 +24,7 @@ public class HealingStorageTree : StorageTree
         _address = address;
         _stateRoot = stateRoot;
         _recovery = recovery;
+        ParentStateRootHash = stateRoot;
     }
 
     public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)

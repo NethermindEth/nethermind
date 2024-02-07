@@ -18,15 +18,15 @@ namespace Nethermind.State
     {
         private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
-        private readonly StateTree _state;
-        private readonly StorageTree _storage;
+        private readonly IStateTree _state;
+        private readonly ITrieStore? _trieStore;
 
         public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _state = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
         public AccountStruct? GetAccount(Hash256 stateRoot, Address address)
@@ -46,8 +46,10 @@ namespace Nethermind.State
             }
 
             Metrics.StorageTreeReads++;
-
-            return _storage.Get(index, new Hash256(storageRoot));
+            Hash256 storageRootHash = new Hash256(storageRoot);
+            StorageTree tree = new(_trieStore, storageRootHash, NullLogManager.Instance, address);
+            tree.ParentStateRootHash = stateRoot;
+            return tree.Get(index, storageRootHash);
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
@@ -64,12 +66,18 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor visitor = new();
-            RunTreeVisitor(visitor, stateRoot);
-            return visitor.HasRoot;
+            if (_trieStore.Capability == TrieNodeResolverCapability.Hash)
+            {
+                RootCheckVisitor visitor = new();
+                RunTreeVisitor(visitor, stateRoot);
+                return visitor.HasRoot;
+            }
+
+            return _trieStore.FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>()).NodeType != NodeType.Unknown ||
+                _trieStore.IsPersisted(stateRoot, Array.Empty<byte>());
         }
 
-        public byte[]? GetCode(Hash256 stateRoot, Address address)
+        public byte[] GetCode(Hash256 stateRoot, Address address)
         {
             AccountStruct? account = GetState(stateRoot, address);
             return account is null ? Array.Empty<byte>() : GetCode(account.Value.CodeHash);

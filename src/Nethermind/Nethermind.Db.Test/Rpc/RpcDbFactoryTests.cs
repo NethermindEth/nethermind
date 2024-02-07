@@ -32,7 +32,7 @@ namespace Nethermind.Db.Test.Rpc
             IDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
             IDbProvider memDbProvider = new DbProvider();
-            StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, Substitute.For<IFileSystem>());
+            StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, LimboLogs.Instance, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
 
             ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(

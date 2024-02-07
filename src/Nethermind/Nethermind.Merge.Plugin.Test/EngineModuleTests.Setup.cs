@@ -19,6 +19,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -61,9 +62,9 @@ public partial class EngineModuleTests
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
-    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
+    protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider, bool usePathBasedState,
         ILogManager? logManager = null)
-        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
+        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider, usePathBasedState);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -259,14 +260,17 @@ public partial class EngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePathStateDb = false)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, usePathStateDb);
             return chain;
         }
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
             (MergeTestBlockchain)await Build(specProvider, null);
+
+        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null, bool usePathStateDb = false) =>
+            (MergeTestBlockchain)await Build(specProvider, null, usePathStateDb: usePathStateDb);
     }
 }
 

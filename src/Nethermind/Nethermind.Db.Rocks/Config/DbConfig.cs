@@ -204,6 +204,9 @@ public class DbConfig : IDbConfig
     public int StateDbBlockRestartInterval { get; set; } = 16;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
+    public int? PathStateStateDbBlockSize { get; set; } = 16 * 1024;
+    public int? PathStateStorageDbBlockSize { get; set; } = 16 * 1024;
+
     public uint RecycleLogFileNum { get; set; } = 0;
     public bool WriteAheadLogSync { get; set; } = false;
 

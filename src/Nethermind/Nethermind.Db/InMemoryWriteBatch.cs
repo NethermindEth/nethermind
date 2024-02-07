@@ -5,13 +5,14 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Db
 {
     public class InMemoryWriteBatch : IWriteBatch
     {
         private readonly IKeyValueStore _store;
-        private readonly ConcurrentDictionary<byte[], byte[]?> _currentItems = new();
+        private readonly ConcurrentDictionary<byte[], byte[]?> _currentItems = new(Bytes.EqualityComparer);
         private WriteFlags _writeFlags = WriteFlags.None;
 
         public InMemoryWriteBatch(IKeyValueStore storeWithNoBatchSupport)
@@ -33,6 +34,11 @@ namespace Nethermind.Db
         {
             _currentItems[key.ToArray()] = value;
             _writeFlags = flags;
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _store.DeleteByRange(startKey, endKey);
         }
     }
 }

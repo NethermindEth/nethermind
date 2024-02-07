@@ -32,6 +32,8 @@ namespace Nethermind.Trie
                     ThrowNullNode();
                 }
 
+                if (tree.Capability == TrieNodeResolverCapability.Path) item.ResolveNode(tree);
+
                 return item.NodeType switch
                 {
                     NodeType.Branch => RlpEncodeBranch(tree, item, bufferPool),
@@ -201,6 +203,7 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)data;
+                            if (tree.Capability == TrieNodeResolverCapability.Path) childNode!.ResolveNode(tree);
                             childNode!.ResolveKey(tree, false, bufferPool: bufferPool);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }

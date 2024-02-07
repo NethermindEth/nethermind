@@ -1176,7 +1176,7 @@ namespace Nethermind.Blockchain
             }
             else
             {
-                if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
+                // if (_logger.IsInfo) _logger.Info($"Deleting an invalid block or its descendant {hash}");
                 _blockInfoDb.Set(DeletePointerAddressInDb, hash.Bytes);
             }
         }

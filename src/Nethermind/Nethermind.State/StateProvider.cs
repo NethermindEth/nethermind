@@ -3,6 +3,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -41,11 +43,16 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
+        private readonly ITrieStore? _trieStore;
+
         public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
+            _trieStore = trieStore;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
+            Debug.Assert(trieStore is not null);
+            _tree = stateTree;
+            _tree ??= trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
@@ -75,10 +82,16 @@ namespace Nethermind.State
 
                 return _tree.RootHash;
             }
-            set => _tree.RootHash = value;
+            set
+            {
+                if (_trieStore.Capability == TrieNodeResolverCapability.Path)
+                    _tree.ParentStateRootHash = value;
+
+                _tree.RootHash = value;
+            }
         }
 
-        internal readonly StateTree _tree;
+        internal readonly IStateTree _tree;
 
         public bool IsContract(Address address)
         {

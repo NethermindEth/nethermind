@@ -90,22 +90,18 @@ public interface IInitConfig : IConfig
 public enum DiagnosticMode
 {
     None,
-
     [ConfigItem(Description = "Diagnostics mode which uses an in-memory DB")]
     MemDb,
-
     [ConfigItem(Description = "Diagnostics mode which uses a remote DB")]
     RpcDb,
-
     [ConfigItem(Description = "Diagnostics mode which uses a read-only DB")]
     ReadOnlyDb,
-
     [ConfigItem(Description = "Just scan rewards for blocks + genesis")]
     VerifyRewards,
-
     [ConfigItem(Description = "Just scan and sum supply on all accounts")]
     VerifySupply,
-
     [ConfigItem(Description = "Verifies if full state is stored")]
-    VerifyTrie
+    VerifyTrie,
+    [ConfigItem(Description = "Verifies if full state is stored and stop processing")]
+    VerifyTrieBlocking
 }

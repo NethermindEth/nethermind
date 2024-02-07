@@ -7,6 +7,7 @@ namespace Nethermind.Db
     {
         public const string Storage = "storage";
         public const string State = "state";
+        public const string PathState = "pathState";
         public const string Code = "code";
         public const string Blocks = "blocks";
         public const string Headers = "headers";

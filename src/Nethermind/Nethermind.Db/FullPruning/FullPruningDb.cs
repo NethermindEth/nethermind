@@ -103,6 +103,12 @@ namespace Nethermind.Db.FullPruning
             _updateDuplicateWriteMetrics?.Invoke();
         }
 
+        private void Duplicate(IWriteOnlyKeyValueStore db, Span<byte> startKey, Span<byte> endKey)
+        {
+            db.DeleteByRange(startKey, endKey);
+            _updateDuplicateWriteMetrics?.Invoke();
+        }
+
         // we also need to duplicate writes that are in batches
         public IWriteBatch StartWriteBatch() =>
             _pruningContext is null
@@ -296,6 +302,11 @@ namespace Nethermind.Db.FullPruning
                     _disposed = true;
                 }
             }
+
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                _db.DeleteByRange(startKey, endKey);
+            }
         }
 
         /// <summary>
@@ -317,6 +328,12 @@ namespace Nethermind.Db.FullPruning
                 _db = db;
             }
 
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                _writeBatch.DeleteByRange(startKey, endKey);
+                _db.Duplicate(_clonedWriteBatch, startKey, endKey);
+            }
+
             public void Dispose()
             {
                 _writeBatch.Dispose();
@@ -336,6 +353,11 @@ namespace Nethermind.Db.FullPruning
             {
                 tunableDb.Tune(type);
             }
+        }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _currentDb.DeleteByRange(startKey, endKey);
         }
     }
 }

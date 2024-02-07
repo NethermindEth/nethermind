@@ -61,7 +61,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _blockTree = Build.A.BlockTree(_specProvider).WithTransactions(receiptStorage).OfChainLength(10).TestObject;
             _dbProvider = await TestMemDbProvider.InitAsync();
 
-            ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
+            //ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
+            //TODO - make configurable
+            ITrieStore trieStore = new TrieStoreByPath(_dbProvider.PathStateDb, ByPathPersist.IfBlockOlderThan(16), LimboLogs.Instance);
             _readOnlyWorldStateManager = new ReadOnlyWorldStateManager(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
 
             ProofModuleFactory moduleFactory = new(
@@ -873,7 +875,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private WorldState CreateInitialState(byte[]? code)
         {
-            WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            //WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(new TrieStoreByPath(_dbProvider.PathStateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

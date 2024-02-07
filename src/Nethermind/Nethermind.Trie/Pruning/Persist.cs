@@ -26,4 +26,10 @@ namespace Nethermind.Trie.Pruning
             }
         }
     }
+
+    public static class ByPathPersist
+    {
+        public static IByPathPersistenceStrategy EveryBlock = ByPathArchive.Instance;
+        public static IByPathPersistenceStrategy IfBlockOlderThan(long length) => new ByPathConstantInterval(length);
+    }
 }

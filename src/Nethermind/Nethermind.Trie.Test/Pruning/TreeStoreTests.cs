@@ -411,6 +411,20 @@ namespace Nethermind.Trie.Test.Pruning
                 return _db[key.ToArray()];
             }
 
+            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+            {
+                List<byte[]> keys = new();
+                foreach (byte[] key in _db.Keys)
+                {
+                    if (Bytes.BytesComparer.Compare(key, startKey) >= 0 && Bytes.BytesComparer.Compare(key, endKey) <= 0)
+                        keys.Add(key);
+                }
+                foreach (byte[] key in keys)
+                {
+                    _db.Remove(key, out _);
+                }
+            }
+
             public IWriteBatch StartWriteBatch()
             {
                 return new BadWriteBatch();
@@ -432,6 +446,22 @@ namespace Nethermind.Trie.Test.Pruning
                 public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 {
                     _inBatched[key.ToArray()] = value;
+                }
+
+                public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+                {
+                    if (Bytes.BytesComparer.Compare(startKey, endKey) == 0)
+                        _inBatched.Remove(startKey.ToArray(), out _);
+
+                    List<byte[]> keys = new();
+                    foreach (byte[] key in _inBatched.Keys)
+                    {
+                        if (Bytes.BytesComparer.Compare(key, startKey) >= 0 && Bytes.BytesComparer.Compare(key, endKey) < 0)
+                            keys.Add(key);
+                    }
+
+                    foreach (byte[] key in keys)
+                        _inBatched.Remove(key, out _);
                 }
             }
         }

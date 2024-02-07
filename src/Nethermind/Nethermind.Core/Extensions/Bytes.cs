@@ -26,6 +26,7 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]> EqualityComparer = new BytesEqualityComparer();
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
+        public static readonly ISpanEqualityComparer<byte> SpanNibbleEqualityComparer = new SpanNibbleBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
         public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
         public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
@@ -63,6 +64,13 @@ namespace Nethermind.Core.Extensions
             public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCode(obj);
         }
 
+        private class SpanNibbleBytesEqualityComparer : ISpanEqualityComparer<byte>
+        {
+            public bool Equals(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y) => AreEqual(x, y);
+
+            public int GetHashCode(ReadOnlySpan<byte> obj) => GetSimplifiedHashCodeForNibbles(obj);
+        }
+
         public class BytesComparer : Comparer<byte[]>
         {
             public override int Compare(byte[]? x, byte[]? y)
@@ -71,24 +79,24 @@ namespace Nethermind.Core.Extensions
 
                 if (x is null)
                 {
-                    return y is null ? 0 : 1;
+                    return y is null ? 0 : -1;
                 }
 
                 if (y is null)
                 {
-                    return -1;
+                    return 1;
                 }
 
                 if (x.Length == 0)
                 {
-                    return y.Length == 0 ? 0 : 1;
+                    return y.Length == 0 ? 0 : -1;
                 }
 
                 for (int i = 0; i < x.Length; i++)
                 {
                     if (y.Length <= i)
                     {
-                        return -1;
+                        return 1;
                     }
 
                     int result = x[i].CompareTo(y[i]);
@@ -98,7 +106,7 @@ namespace Nethermind.Core.Extensions
                     }
                 }
 
-                return y.Length > x.Length ? 1 : 0;
+                return y.Length > x.Length ? -1 : 0;
             }
 
             public static int Compare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
@@ -111,14 +119,14 @@ namespace Nethermind.Core.Extensions
 
                 if (x.Length == 0)
                 {
-                    return y.Length == 0 ? 0 : 1;
+                    return y.Length == 0 ? 0 : -1;
                 }
 
                 for (int i = 0; i < x.Length; i++)
                 {
                     if (y.Length <= i)
                     {
-                        return -1;
+                        return 1;
                     }
 
                     int result = x[i].CompareTo(y[i]);
@@ -128,7 +136,7 @@ namespace Nethermind.Core.Extensions
                     }
                 }
 
-                return y.Length > x.Length ? 1 : 0;
+                return y.Length > x.Length ? -1 : 0;
             }
         }
 
@@ -1115,6 +1123,25 @@ namespace Nethermind.Core.Extensions
             if (bytes.Length == 0)
             {
                 return 0;
+            }
+
+            return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);
+        }
+
+        public static int GetSimplifiedHashCodeForNibbles(this ReadOnlySpan<byte> bytes)
+        {
+            const int fnvPrime = 0x01000193;
+
+            if (bytes.Length == 0)
+                return 0;
+
+            if (bytes.Length >= 6)
+            {
+                byte f = (byte)((byte)(bytes[0] << 4) | bytes[1]);
+                byte m = (byte)((byte)(bytes[^2] << 4) | bytes[^1]);
+                byte l = (byte)((byte)(bytes[(bytes.Length - 1) / 2] << 4) | bytes[(bytes.Length - 1) / 2 + 1]);
+
+                return (fnvPrime * bytes.Length * (((fnvPrime * (f + 7)) ^ (l + 23)) + 11)) ^ (m + 53);
             }
 
             return (fnvPrime * bytes.Length * (((fnvPrime * (bytes[0] + 7)) ^ (bytes[^1] + 23)) + 11)) ^ (bytes[(bytes.Length - 1) / 2] + 53);

@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -28,12 +29,16 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly ProgressTracker _progressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager, TrieNodeResolverCapability resolverCapability = TrieNodeResolverCapability.Hash)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
-
+            _trieStorePool = resolverCapability switch
+            {
+                TrieNodeResolverCapability.Hash => new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager)),
+                TrieNodeResolverCapability.Path => new DefaultObjectPool<ITrieStore>(new PathBasedTrieStorePoolPolicy(_dbProvider.PathStateDb, logManager)),
+                _ => throw new ArgumentOutOfRangeException()
+            };
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
         }
@@ -72,7 +77,12 @@ namespace Nethermind.Synchronization.SnapSync
             ITrieStore store = _trieStorePool.Get();
             try
             {
-                StateTree tree = new(store, _logManager);
+                IStateTree tree = store.Capability switch
+                {
+                    TrieNodeResolverCapability.Hash => new StateTree(store, _logManager),
+                    TrieNodeResolverCapability.Path => new StateTreeByPath(store, _logManager),
+                    _ => throw new ArgumentOutOfRangeException()
+                };
 
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
@@ -160,8 +170,11 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
         {
+            if (pathWithAccount is null)
+                throw new TrieException("Not Allowed");
+            Debug.Assert(pathWithAccount is not null, "path based storage need the account for the storage tree");
             ITrieStore store = _trieStorePool.Get();
-            StorageTree tree = new(store, _logManager);
+            StorageTree tree = new(store, _logManager, pathWithAccount.Path);
             try
             {
                 (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
@@ -338,6 +351,29 @@ namespace Nethermind.Synchronization.SnapSync
                     Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock,
                     _logManager);
+            }
+
+            public bool Return(ITrieStore obj)
+            {
+                return true;
+            }
+        }
+
+        private class PathBasedTrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
+        {
+            private readonly IColumnsDb<StateColumns> _stateDb;
+            private readonly ILogManager _logManager;
+
+            public PathBasedTrieStorePoolPolicy(IColumnsDb<StateColumns> stateDb, ILogManager logManager)
+            {
+                _stateDb = stateDb;
+                _logManager = logManager;
+            }
+
+            public ITrieStore Create()
+            {
+                //no in memory caching
+                return new TrieStoreByPath(_stateDb, _logManager);
             }
 
             public bool Return(ITrieStore obj)

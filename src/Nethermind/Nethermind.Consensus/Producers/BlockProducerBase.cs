@@ -174,6 +174,7 @@ namespace Nethermind.Consensus.Producers
 
         private Task<Block?> ProduceNewBlock(BlockHeader parent, CancellationToken token, IBlockTracer? blockTracer, PayloadAttributes? payloadAttributes = null)
         {
+            Logger.Info($"ProduceNewBlock {parent.Number} {parent.ToString()}");
             if (TrySetState(parent.StateRoot))
             {
                 Block block = PrepareBlock(parent, payloadAttributes);

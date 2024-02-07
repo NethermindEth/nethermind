@@ -73,7 +73,8 @@ public class TestBlockchain : IDisposable
     public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
-    public TrieStore TrieStore { get; set; } = null!;
+    public IColumnsDb<StateColumns> PathStateDb => DbProvider.PathStateDb;
+    public ITrieStore TrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
     public ISpecProvider SpecProvider { get; set; } = null!;
@@ -108,21 +109,21 @@ public class TestBlockchain : IDisposable
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
     public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
-
     public ManualTimestamper Timestamper { get; protected set; } = null!;
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePathStateDb = false)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = new TrieStore(StateDb, LogManager);
+        TrieStore = usePathStateDb ? new TrieStoreByPath(PathStateDb, ByPathPersist.IfBlockOlderThan(64), LogManager) : new TrieStore(StateDb, LogManager);
+
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account
@@ -186,8 +187,8 @@ public class TestBlockchain : IDisposable
         SealEngine = new SealEngine(sealer, Always.Valid);
 
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
-        ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
-        LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
+        ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LogManager), SpecProvider);
+        LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LogManager, receiptsRecovery);
         BeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
@@ -282,7 +283,7 @@ public class TestBlockchain : IDisposable
             blocksConfig);
     }
 
-    public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
+    public virtual ILogManager LogManager { get; set; } = new NUnitLogManager(LogLevel.Trace);
 
     protected virtual TxPool.TxPool CreateTxPool() =>
         new(
@@ -300,7 +301,7 @@ public class TestBlockchain : IDisposable
         {
             MinGasPrice = 0
         };
-        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LimboLogs.Instance,
+        ITxFilterPipeline txFilterPipeline = TxFilterPipelineBuilder.CreateStandardFilteringPipeline(LogManager,
             SpecProvider, blocksConfig);
         return new TxPoolTxSource(TxPool, SpecProvider, TransactionComparerProvider, LogManager, txFilterPipeline);
     }

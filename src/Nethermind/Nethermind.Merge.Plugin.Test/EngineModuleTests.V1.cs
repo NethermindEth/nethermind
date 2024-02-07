@@ -17,6 +17,7 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -1022,6 +1023,8 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpc = CreateEngineModule(chain);
         IReadOnlyList<ExecutionPayload> branch = await ProduceBranchV1(rpc, chain, 8, CreateParentBlockRequestOnHead(chain.BlockTree), moveHead);
+        var logger = new NUnitLogger(LogLevel.Trace);
+        logger.Info("-----------------------------------------------------------------------------------------------------");
 
         foreach (ExecutionPayload block in branch)
         {
@@ -1040,6 +1043,7 @@ public partial class EngineModuleTests
             result.Data.Status.Should().Be(PayloadStatus.Valid);
             chain.StateReader.HasStateForRoot(executePayloadRequest.StateRoot).Should().BeTrue();
 
+            logger.Info($"///chain.StateReader.GetBalance({executePayloadRequest.StateRoot}, {to}) : {chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to)}");
             chain.StateReader.GetBalance(executePayloadRequest.StateRoot, to).Should().Be(toBalanceAfter);
             if (moveHead)
             {

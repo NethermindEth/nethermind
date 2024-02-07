@@ -97,8 +97,6 @@ namespace Nethermind.State
         /// <param name="tracer">Storage tracer</param>
         protected override void CommitCore(IStorageTracer tracer)
         {
-            if (_logger.IsTrace) _logger.Trace("Committing storage changes");
-
             if (_changes[_currentPosition] is null)
             {
                 throw new InvalidOperationException($"Change at current position {_currentPosition} was null when commiting {nameof(PartialStorageProviderBase)}");
@@ -145,6 +143,12 @@ namespace Nethermind.State
 
                 if (change.ChangeType == ChangeType.Destroy)
                 {
+                    //mark the prefix consisting of the account address as deleted to avoid dirty reads after storage is cleared
+                    if (_trieStore.Capability == TrieNodeResolverCapability.Path)
+                    {
+                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+                        tree.ClearedBySelfDestruct = true;
+                    }
                     continue;
                 }
 
@@ -165,7 +169,6 @@ namespace Nethermind.State
                         {
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
-
                         StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
                         Db.Metrics.StorageTreeWrites++;
                         toUpdateRoots.Add(change.StorageCell.Address);
@@ -174,7 +177,6 @@ namespace Nethermind.State
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
                         }
-
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -292,13 +294,26 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager);
+            Hash256 stateRootHash = null;
+            if (_storages.ContainsKey(address))
+                stateRootHash = _storages[address].ParentStateRootHash;
+            _storages[address] = new StorageTree(_trieStore, Keccak.EmptyTreeHash, _logManager, address);
+            // mark the tree as cleared by SD - will be used by path state to avoid reads from flat storage until
+            // they get committed to avoid reading uncleared data
+            _storages[address].ClearedBySelfDestruct = true;
+            _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
+
+            if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
         }
 
         private class StorageTreeFactory : IStorageTreeFactory
         {
             public StorageTree Create(Address address, ITrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
-                => new(trieStore, storageRoot, logManager);
+            {
+                StorageTree st = new(trieStore, storageRoot, logManager, address);
+                st.ParentStateRootHash = stateRoot;
+                return st;
+            }
         }
     }
 }

@@ -3,6 +3,7 @@
 
 #nullable disable
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -17,7 +18,7 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
-namespace Nethermind.Store.Test
+namespace Nethermind.Store.Test.SnapSync
 {
     [TestFixture]
     public class RecreateStateFromAccountRangesTests
@@ -95,8 +96,9 @@ namespace Nethermind.Store.Test
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is a part of the proof nodes
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithNonExistenceProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithNonExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -115,12 +117,13 @@ namespace Nethermind.Store.Test
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.Keys.Count, Is.EqualTo(expected));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithExistenceProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithExistenceProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -139,12 +142,13 @@ namespace Nethermind.Store.Test
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.Keys.Count, Is.EqualTo(expected));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
-        [Test]
-        public void RecreateAccountStateFromOneRangeWithoutProof()
+        [TestCase(TrieNodeResolverCapability.Hash, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 14)]
+        public void RecreateAccountStateFromOneRangeWithoutProof(TrieNodeResolverCapability resolverCapability, int expected)
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -156,12 +160,13 @@ namespace Nethermind.Store.Test
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
+            Assert.That(db.Keys.Count, Is.EqualTo(expected));  // we don't have the proofs so we persist all nodes
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
-        [Test]
-        public void RecreateAccountStateFromMultipleRange()
+        [TestCase(TrieNodeResolverCapability.Hash, 2, 5, 10)]
+        [TestCase(TrieNodeResolverCapability.Path, 4, 9, 14)]
+        public void RecreateAccountStateFromMultipleRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -181,7 +186,7 @@ namespace Nethermind.Store.Test
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected1));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -192,7 +197,7 @@ namespace Nethermind.Store.Test
 
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.Keys.Count, Is.EqualTo(expected2));  // we don't persist proof nodes (boundary nodes)
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -206,12 +211,13 @@ namespace Nethermind.Store.Test
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.Keys.Count, Is.EqualTo(expected3));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
-        [Test]
-        public void MissingAccountFromRange()
+        [TestCase(TrieNodeResolverCapability.Hash, 2, 2, 6)]
+        [TestCase(TrieNodeResolverCapability.Path, 4, 4, 8)]
+        public void MissingAccountFromRange(TrieNodeResolverCapability resolverCapability, int expected1, int expected2, int expected3)
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
@@ -231,7 +237,7 @@ namespace Nethermind.Store.Test
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected1));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -243,7 +249,7 @@ namespace Nethermind.Store.Test
             // missing TestItem.Tree.AccountsWithHashes[2]
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected2));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -257,7 +263,7 @@ namespace Nethermind.Store.Test
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(6));
+            Assert.That(db.Keys.Count, Is.EqualTo(expected3));
             Assert.IsFalse(db.KeyExists(rootHash));
         }
     }

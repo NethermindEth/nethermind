@@ -59,5 +59,9 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+        }
     }
 }

@@ -5,21 +5,26 @@ using System;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
+using Nethermind.Logging;
 
 namespace Nethermind.Db
 {
     public class StandardDbInitializer : RocksDbInitializer
     {
         private readonly IFileSystem _fileSystem;
+        private readonly ILogManager _logManager;
 
         public StandardDbInitializer(
             IDbProvider? dbProvider,
             IDbFactory? rocksDbFactory,
+            ILogManager logManager,
             IFileSystem? fileSystem = null)
             : base(dbProvider, rocksDbFactory)
         {
             _fileSystem = fileSystem ?? new FileSystem();
+            _logManager = logManager;
         }
 
         public void InitStandardDbs(bool useReceiptsDb, bool useBlobsDb = true)
@@ -50,6 +55,9 @@ namespace Nethermind.Db
                     : DbFactory,
                 () => Interlocked.Increment(ref Metrics.StateDbInPruningWrites)));
 
+            DbSettings pathStateDbSettings = BuildDbSettings(DbNames.PathState);
+            RegisterCustomColumnDb(DbNames.PathState, () => new ByPathStateDb(
+                pathStateDbSettings, DbFactory, _logManager));
             RegisterDb(BuildDbSettings(DbNames.Code));
             RegisterDb(BuildDbSettings(DbNames.Bloom));
             RegisterDb(BuildDbSettings(DbNames.CHT));

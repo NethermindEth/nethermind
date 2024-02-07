@@ -22,6 +22,11 @@ namespace Nethermind.Core
             _onDispose = onDispose;
         }
 
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _storePretendingToSupportBatches.DeleteByRange(startKey, endKey);
+        }
+
         public void Dispose()
         {
             _onDispose?.Invoke();

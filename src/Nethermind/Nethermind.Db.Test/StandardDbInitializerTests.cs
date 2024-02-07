@@ -73,7 +73,7 @@ namespace Nethermind.Db.Test
                 ? new MemDbFactory()
                 : new RocksDbFactory(new DbConfig(), LimboLogs.Instance, Path.Combine(_folderWithDbs, path));
 
-            StandardDbInitializer initializer = new(dbProvider, dbFactory, Substitute.For<IFileSystem>());
+            StandardDbInitializer initializer = new(dbProvider, dbFactory, LimboLogs.Instance, Substitute.For<IFileSystem>());
             await initializer.InitStandardDbsAsync(useReceipts);
             return dbProvider;
         }

@@ -20,7 +20,7 @@ namespace Nethermind.Synchronization.SnapSync
     public static class SnapProviderHelper
     {
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
-            StateTree tree,
+            IStateTree tree,
             long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
@@ -122,7 +122,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         [SkipLocalsInit]
         private static (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) FillBoundaryTree(
-            PatriciaTree tree,
+            IPatriciaTree tree,
             in ValueHash256? startingHash,
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
@@ -162,6 +162,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             Stack<(TrieNode parent, TrieNode node, int pathIndex, List<byte> path)> proofNodesToProcess = new();
 
+            root.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
             tree.RootRef = root;
             proofNodesToProcess.Push((null, root, -1, new List<byte>()));
             sortedBoundaryList.Add(root);
@@ -172,6 +173,9 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 (TrieNode parent, TrieNode node, int pathIndex, List<byte> path) = proofNodesToProcess.Pop();
 
+                node.PathToNode = path.ToArray();
+                node.StoreNibblePathPrefix = tree.StoreNibblePathPrefix;
+                //Console.WriteLine($"Node {node.PathToNode.ToHexString()} hash: {node.Keccak}");
                 if (node.IsExtension)
                 {
                     if (node.GetChildHashAsValueKeccak(0, out ValueHash256 childKeccak))
@@ -257,12 +261,29 @@ namespace Nethermind.Synchronization.SnapSync
             for (int i = 0; i < proofs.Length; i++)
             {
                 byte[] proof = proofs[i];
-                TrieNode node = new(NodeType.Unknown, proof, isDirty: true);
-                node.IsBoundaryProofNode = true;
-                node.ResolveNode(store);
-                node.ResolveKey(store, isRoot: i == 0);
+                if (store.Capability == TrieNodeResolverCapability.Path)
+                {
+                    //a workaround to correctly resolve a node for path based store - avoids recalc of keccak for child node
+                    TrieNode node = new(NodeType.Unknown, proof, false)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
 
-                dict[node.Keccak] = node;
+                    dict[node.Keccak] = node.CloneWithKeccak();
+                    dict[node.Keccak].IsBoundaryProofNode = true;
+                }
+                else
+                {
+                    TrieNode node = new(NodeType.Unknown, proof, true)
+                    {
+                        IsBoundaryProofNode = true
+                    };
+                    node.ResolveNode(store);
+                    node.ResolveKey(store, i == 0);
+                    dict[node.Keccak] = node;
+                }
             }
 
             return dict;
@@ -315,12 +336,34 @@ namespace Nethermind.Synchronization.SnapSync
                 return data.IsBoundaryProofNode == false;
             }
 
-            if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
+            if (store.Capability == TrieNodeResolverCapability.Hash)
             {
-                return true;
+                if (!node.GetChildHashAsValueKeccak(childIndex, out ValueHash256 childKeccak))
+                    return true;
+                return store.IsPersisted(childKeccak);
             }
+            else
+            {
+                Hash256 childKeccak = node.GetChildHash(childIndex);
+                if (childKeccak is null)
+                    return true;
 
-            return store.IsPersisted(childKeccak);
+                if (node.IsBranch)
+                {
+                    Span<byte> childPath = stackalloc byte[node.FullPath.Length + 1];
+                    node.FullPath.CopyTo(childPath);
+                    childPath[^1] = (byte)childIndex;
+                    return store.IsPersisted(childKeccak, childPath.ToArray());
+                }
+                else if (node.IsExtension)
+                {
+                    Span<byte> childPath = stackalloc byte[node.FullPath.Length + node.Key.Length];
+                    node.FullPath.CopyTo(childPath);
+                    node.Key.CopyTo(childPath.Slice(node.FullPath.Length));
+                    return store.IsPersisted(childKeccak, childPath.ToArray());
+                }
+                return false;
+            }
         }
     }
 }

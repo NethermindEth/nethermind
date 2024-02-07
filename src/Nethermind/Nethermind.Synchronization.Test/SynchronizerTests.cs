@@ -42,6 +42,7 @@ using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Db.ByPathState;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -339,6 +340,13 @@ namespace Nethermind.Synchronization.Test
 
                 SyncPeerPool = new SyncPeerPool(BlockTree, stats, bestPeerStrategy, _logManager, 25);
                 Pivot pivot = new(syncConfig);
+                //TODO - add param in tests
+                ByPathStateConfig byPathStateConfig = new()
+                {
+                    Enabled = false,
+                    InMemHistoryBlocks = 128,
+                    PersistenceInterval = 64
+                };
 
                 IInvalidChainTracker invalidChainTracker = new NoopInvalidChainTracker();
                 if (IsMerge(synchronizerType))
@@ -372,6 +380,7 @@ namespace Nethermind.Synchronization.Test
                         new ChainSpec(),
                         No.BeaconSync,
                         reader,
+                        byPathStateConfig,
                         _logManager);
                 }
                 else
@@ -397,6 +406,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         reader,
+                        byPathStateConfig,
                         _logManager);
                 }
 

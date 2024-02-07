@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -29,12 +31,18 @@ namespace Nethermind.Synchronization.FastSync
 
         public bool Equals(DependentItem? x, DependentItem? y)
         {
-            return x?.SyncItem.Hash == y?.SyncItem.Hash;
+            if (x is null)
+            {
+                return y is null;
+            }
+
+            return y is not null && StateSyncItemComparer.Instance.Equals(x.SyncItem, y.SyncItem);
+
         }
 
         public int GetHashCode(DependentItem obj)
         {
-            return obj?.SyncItem.Hash.GetHashCode() ?? 0;
+            return StateSyncItemComparer.Instance.GetHashCode(obj.SyncItem);
         }
     }
 }

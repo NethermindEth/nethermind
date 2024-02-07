@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
@@ -17,6 +19,12 @@ namespace Nethermind.Trie
         public bool IsStorage { get; internal set; }
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
+
+        public bool KeepTrackOfAbsolutePath { get; init; }
+
+        private List<byte>? _absolutePathNibbles;
+
+        public List<byte> AbsolutePathNibbles => _absolutePathNibbles ??= new List<byte>();
         public int VisitedNodes => _visitedNodes;
 
         public int MaxDegreeOfParallelism
@@ -24,6 +32,17 @@ namespace Nethermind.Trie
             get => _maxDegreeOfParallelism;
             internal init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
         }
+
+        public AbsolutePathStruct AbsolutePathNext(byte[] path)
+        {
+            return new AbsolutePathStruct(!KeepTrackOfAbsolutePath ? null : AbsolutePathNibbles, path);
+        }
+
+        public AbsolutePathStruct AbsolutePathNext(byte path)
+        {
+            return new AbsolutePathStruct(!KeepTrackOfAbsolutePath ? null : AbsolutePathNibbles, path);
+        }
+
 
         public SemaphoreSlim Semaphore
         {
@@ -39,7 +58,13 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
+        public TrieVisitContext Clone()
+        {
+            TrieVisitContext cloned = (TrieVisitContext)MemberwiseClone();
+            if (_absolutePathNibbles is not null)
+                cloned._absolutePathNibbles = new List<byte>(_absolutePathNibbles);
+            return cloned;
+        }
 
         public void Dispose()
         {
@@ -134,6 +159,32 @@ namespace Nethermind.Trie
                 BranchChildIndex = BranchChildIndex,
                 ExpectAccounts = ExpectAccounts
             };
+        }
+    }
+
+    public readonly ref struct AbsolutePathStruct
+    {
+        public AbsolutePathStruct(List<byte>? absolutePath, byte[]? path)
+        {
+            _absolutePath = absolutePath;
+            _pathLength = path!.Length;
+            _absolutePath?.AddRange(path!);
+        }
+
+        public AbsolutePathStruct(List<byte>? absolutePath, byte path)
+        {
+            _absolutePath = absolutePath;
+            _pathLength = 1;
+            _absolutePath?.Add(path);
+        }
+
+        private readonly List<byte>? _absolutePath;
+        private readonly int _pathLength;
+
+        public void Dispose()
+        {
+            if (_pathLength > 0)
+                _absolutePath?.RemoveRange(_absolutePath.Count - _pathLength, _pathLength);
         }
     }
 }

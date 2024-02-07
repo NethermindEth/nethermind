@@ -108,5 +108,7 @@ namespace Nethermind.Db
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
 
         public bool PreferWriteByArray => true; // Because of memdb buffer
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
     }
 }

@@ -1,7 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using System.Linq;
+using FluentAssertions;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test
@@ -95,6 +101,152 @@ namespace Nethermind.Trie.Test
             byte[] bytes = Enumerable.Repeat((byte)17, 32).ToArray();
             byte[] result = Nibbles.ToBytes(nibbles);
             CollectionAssert.AreEqual(bytes, result);
+        }
+
+        [Test]
+        public void Nibbles_to_encoded_bytes_correct_output()
+        {
+            byte[] nibbles = Enumerable.Repeat((byte)1, 64).ToArray();
+            byte[] bytes = Enumerable.Repeat((byte)17, 32).ToArray();
+            byte[] result = Nibbles.ToEncodedStorageBytes(nibbles);
+
+            //encoded / even
+            Assert.That(result[0], Is.EqualTo(0xfe));
+            CollectionAssert.AreEqual(bytes, result.AsSpan(1).ToArray());
+
+            byte[] nibbles2 = Enumerable.Repeat((byte)1, 5).ToArray();
+            var rawBytes = Enumerable.Repeat((byte)17, 2).ToList();
+            rawBytes.Insert(0, 1);
+            byte[] bytes2 = rawBytes.ToArray();
+
+            byte[] result2 = Nibbles.ToEncodedStorageBytes(nibbles2);
+
+            //encoded / odd
+            Assert.That(result2[0], Is.EqualTo(0xff));
+            CollectionAssert.AreEqual(bytes2, result2.AsSpan(1).ToArray());
+        }
+
+        [Test]
+        public void Nibbles_encoding_decoding_for_path_based_tree()
+        {
+            byte[] nibbles = Enumerable.Repeat((byte)2, 64).ToArray();
+            byte[] result = Nibbles.NibblesToByteStorage(nibbles);
+            Nibbles.BytesToNibblesStorage(result).Should().BeEquivalentTo(nibbles);
+
+            byte[] nibbles2 = Enumerable.Repeat((byte)2, 5).ToArray();
+            byte[] result2 = Nibbles.NibblesToByteStorage(nibbles2);
+            Nibbles.BytesToNibblesStorage(result2).Should().BeEquivalentTo(nibbles2);
+        }
+
+        [Test]
+        public void Nibbles_encoding_decoding_for_path_based_tree_fuzz()
+        {
+            int numberOfKeys = 1000;
+            Random r = new Random(Environment.TickCount);
+
+            SortedList<byte[], int> nibblesList = new SortedList<byte[], int>(Bytes.Comparer);
+            SortedList<byte[], int> encodedList = new SortedList<byte[], int>(Bytes.Comparer);
+
+            byte[] GenShortNibblePath(Random r)
+            {
+                return GenNibblePath(r).Slice(0, r.Next(1, 64));
+            }
+
+            byte[] GenNibblePath(Random r)
+            {
+                Span<byte> buffer = stackalloc byte[32];
+                r.NextBytes(buffer);
+                return Nibbles.BytesToNibbleBytes(buffer);
+            }
+
+            for (int i = 0; i < numberOfKeys / 2; i++)
+            {
+                byte[] newValue = GenShortNibblePath(r);
+                if (!nibblesList.ContainsKey(newValue))
+                    nibblesList.Add(newValue, i);
+            }
+
+            //simulate longer paths for storage - all prefixed with account path
+            byte[][] accountPaths = new byte[numberOfKeys / 100][];
+            for (int i = 0; i < numberOfKeys / 100; i++)
+                accountPaths[i] = GenNibblePath(r);
+
+            for (int i = numberOfKeys / 2; i < numberOfKeys; i++)
+            {
+                int accountIndex = r.Next(accountPaths.Length);
+                byte[] newValue = GenShortNibblePath(r);
+                byte[] newFullKey = Bytes.Concat(accountPaths[accountIndex], newValue);
+
+                if (!nibblesList.ContainsKey(newFullKey))
+                    nibblesList.Add(newFullKey, i);
+            }
+
+            foreach (var kvp in nibblesList)
+            {
+                byte[] encodedBytes = Nibbles.NibblesToByteStorage(kvp.Key);
+                byte[] decodedNibbles = Nibbles.BytesToNibblesStorage(encodedBytes);
+
+                bool isEqual = Bytes.BytesComparer.Compare(decodedNibbles, kvp.Key) == 0;
+
+                Assert.That(isEqual, Is.True);
+
+                encodedList.Add(encodedBytes, kvp.Value);
+            }
+
+            var valuesInNibbleList = nibblesList.Values;
+            var valuesInByteList = nibblesList.Values;
+
+            for (int i = 0; i < valuesInNibbleList.Count; i++)
+            {
+                Assert.That(valuesInByteList[i], Is.EqualTo(valuesInNibbleList[i]));
+            }
+        }
+
+        [Test]
+        public void Nibbles_to_byte_and_reverse()
+        {
+            List<byte[]> keys = new List<byte[]>
+            {
+                Bytes.FromHexString("1234"),
+                KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray()
+            };
+
+            foreach (byte[]? key in keys)
+            {
+                Span<byte> nibbles = new byte[2 * key.Length];
+
+                Nibbles.BytesToNibbleBytes(key, nibbles);
+                Nibbles.ToBytes(nibbles).Should().BeEquivalentTo(key);
+            }
+        }
+
+        [Test]
+        public void StoragePrefixTests()
+        {
+            byte[] storagePrefixBytes = KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray();
+            Span<byte> storagePrefixNibbles = stackalloc byte[2 * storagePrefixBytes.Length];
+            Nibbles.BytesToNibbleBytes(storagePrefixBytes, storagePrefixNibbles);
+            Nibbles.ToBytes(storagePrefixNibbles).Should().BeEquivalentTo(storagePrefixBytes);
+
+            List<byte[]> nodePaths = new List<byte[]>
+            {
+                Bytes.FromHexString("1234"),
+                KeccakHash.ComputeHash(TestItem.AddressA.Bytes).ToArray(),
+                KeccakHash.ComputeHash(TestItem.AddressB.Bytes).ToArray(),
+                KeccakHash.ComputeHash(TestItem.AddressC.Bytes).ToArray(),
+            };
+
+            foreach (byte[]? nodePath in nodePaths)
+            {
+                byte[] nodeNibblePath = Nibbles.BytesToNibbleBytes(nodePath);
+
+                byte[] storagePath = storagePrefixBytes.Concat(nodePath).ToArray();
+                byte[] storageConcatNibblesPath = storagePrefixNibbles.ToArray().Concat(nodeNibblePath).ToArray();
+                byte[] storageCalculatedNibblesPath = Nibbles.BytesToNibbleBytes(storagePath);
+
+                storageCalculatedNibblesPath.Should().BeEquivalentTo(storageConcatNibblesPath);
+                Nibbles.ToBytes(storageConcatNibblesPath).Should().BeEquivalentTo(storagePath);
+            }
         }
     }
 }

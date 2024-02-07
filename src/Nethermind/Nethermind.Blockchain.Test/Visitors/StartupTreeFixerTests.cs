@@ -18,6 +18,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.Test.Visitors
 {

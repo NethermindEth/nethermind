@@ -117,5 +117,10 @@ namespace Nethermind.Db.Rpc
         public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            throw new NotImplementedException();
+        }
     }
 }

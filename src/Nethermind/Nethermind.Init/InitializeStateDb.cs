@@ -8,12 +8,14 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.ByPathState;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
@@ -56,6 +58,7 @@ public class InitializeStateDb : IStep
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
+        IByPathStateConfig pathStateConfig = getApi.Config<IByPathStateConfig>();
 
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
@@ -81,61 +84,81 @@ public class InitializeStateDb : IStep
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
-        IPersistenceStrategy persistenceStrategy;
-        IPruningStrategy pruningStrategy;
-        if (pruningConfig.Mode.IsMemory())
+        ITrieStore trieStore;
+        IKeyValueStoreWithBatching? stateWitnessedBy = null;
+        if (pathStateConfig.Enabled)
         {
-            persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
-            if (pruningConfig.Mode.IsFull())
-            {
-                PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
-                getApi.DisposeStack.Push(triggerPersistenceStrategy);
-                persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
-            }
+            //setApi.MainStateDbWithCache = getApi.DbProvider.PathStateDb;
+            //stateWitnessedBy = setApi.MainStateDbWithCache.WitnessedBy(witnessCollector);
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            ByPathConstantPersistenceStrategy persistenceStrategy = new(getApi.DbProvider.PathStateDb as IByPathStateDb, getApi.BlockTree!, pathStateConfig.InMemHistoryBlocks, pathStateConfig.PersistenceInterval, getApi.LogManager);
+            _api.RegisterForBlockFinalized(persistenceStrategy.FinalizationManager_BlocksFinalized);
+
+            setApi.TrieStore = trieStore = new TrieStoreByPath(
+                getApi.DbProvider.PathStateDb,
+                persistenceStrategy,
+                getApi.LogManager);
         }
         else
         {
-            pruningStrategy = No.Pruning;
-            persistenceStrategy = Persist.EveryBlock;
-        }
+            stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
 
-        TrieStore trieStore = syncConfig.TrieHealing
-            ? new HealingTrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager)
-            : new TrieStore(
-                stateWitnessedBy,
-                pruningStrategy,
-                persistenceStrategy,
-                getApi.LogManager);
-
-        // TODO: Needed by node serving. Probably should use `StateReader` instead.
-        setApi.TrieStore = trieStore;
-
-        IWorldState worldState = syncConfig.TrieHealing
-            ? new HealingWorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager)
-            : new WorldState(
-                trieStore,
-                codeDb,
-                getApi.LogManager);
-
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
+            IPersistenceStrategy persistenceStrategy;
+            IPruningStrategy pruningStrategy;
+            if (pruningConfig.Mode.IsMemory())
             {
-                cachedStateDb.PersistCache(args.Context);
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-            };
+                persistenceStrategy = Persist.IfBlockOlderThan(pruningConfig.PersistenceInterval); // TODO: this should be based on time
+                if (pruningConfig.Mode.IsFull())
+                {
+                    PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
+                    getApi.DisposeStack.Push(triggerPersistenceStrategy);
+                    persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+                }
+
+                pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            }
+            else
+            {
+                pruningStrategy = No.Pruning;
+                persistenceStrategy = Persist.EveryBlock;
+            }
+
+            trieStore = syncConfig.TrieHealing
+                ? new HealingTrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager)
+                : new TrieStore(
+                    stateWitnessedBy,
+                    pruningStrategy,
+                    persistenceStrategy,
+                    getApi.LogManager);
+
+            // TODO: Needed by node serving. Probably should use `StateReader` instead.
+            setApi.TrieStore = trieStore;
+
+            if (pruningConfig.Mode.IsFull())
+            {
+                IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
+                fullPruningDb.PruningStarted += (_, args) =>
+                {
+                    ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
+                };
+            }
         }
+
+        //IWorldState worldState = syncConfig.TrieHealing
+        //    ? new HealingWorldState(
+        //        trieStore,
+        //        codeDb,
+        //        getApi.LogManager)
+        //    : new WorldState(
+        //        trieStore,
+        //        codeDb,
+        //        getApi.LogManager);
+
+        IWorldState worldState = setApi.WorldState = new WorldState(trieStore, codeDb, getApi.LogManager);
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(

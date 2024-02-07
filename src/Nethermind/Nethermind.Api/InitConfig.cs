@@ -33,6 +33,7 @@ namespace Nethermind.Api
         public long? MemoryHint { get; set; }
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
+        public bool UsePathBasedState { get; set; } = false;
         public bool DisableMallocOpts { get; set; } = false;
         public long? ExitOnBlockNumber { get; set; } = null;
 

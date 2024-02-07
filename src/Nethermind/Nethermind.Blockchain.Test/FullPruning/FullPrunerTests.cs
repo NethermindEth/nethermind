@@ -345,6 +345,11 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     _context.MarkStart();
                 }
 
+                public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+                {
+                    _context.DeleteByRange(startKey, endKey);
+                }
+
                 public CancellationTokenSource CancellationTokenSource { get; } = new();
             }
         }

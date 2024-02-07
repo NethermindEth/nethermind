@@ -39,6 +39,8 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie.Pruning;
+using Nethermind.Db.ByPathState;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
 
@@ -72,6 +74,7 @@ public class InitializeNetwork : IStep
     private readonly ILogger _logger;
     private readonly INetworkConfig _networkConfig;
     protected readonly ISyncConfig _syncConfig;
+    protected readonly IByPathStateConfig _pathStateConfig;
 
     public InitializeNetwork(INethermindApi api)
     {
@@ -79,6 +82,7 @@ public class InitializeNetwork : IStep
         _logger = _api.LogManager.GetClassLogger();
         _networkConfig = _api.Config<INetworkConfig>();
         _syncConfig = _api.Config<ISyncConfig>();
+        _pathStateConfig = _api.Config<IByPathStateConfig>();
     }
 
     public async Task Execute(CancellationToken cancellationToken)
@@ -155,6 +159,7 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _api.StateReader!,
+                _pathStateConfig,
                 _api.LogManager);
         }
 

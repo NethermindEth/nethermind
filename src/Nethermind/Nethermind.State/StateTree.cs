@@ -6,7 +6,9 @@ using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
@@ -14,7 +16,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class StateTree : PatriciaTree
+    public class StateTree : PatriciaTree, IStateTree
     {
         private readonly AccountDecoder _decoder = new();
 
@@ -22,7 +24,7 @@ namespace Nethermind.State
 
         [DebuggerStepThrough]
         public StateTree(ICappedArrayPool? bufferPool = null)
-            : base(new MemDb(), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
+            : base(new TrieStore(new MemDb(), NullLogManager.Instance), Keccak.EmptyTreeHash, true, true, NullLogManager.Instance, bufferPool: bufferPool)
         {
             TrieType = TrieType.State;
         }
@@ -31,6 +33,7 @@ namespace Nethermind.State
         public StateTree(ITrieStore? store, ILogManager? logManager)
             : base(store, Keccak.EmptyTreeHash, true, true, logManager)
         {
+            //Debug.Assert(store.Capability == TrieNodeResolverCapability.Hash);
             TrieType = TrieType.State;
         }
 

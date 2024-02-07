@@ -5,10 +5,12 @@ using System;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.Trie;
@@ -78,12 +80,15 @@ public class HealingTreeTests
         Expression<Predicate<GetTrieNodesRequest>> requestMatch)
         where T : PatriciaTree
     {
-        ITrieStore trieStore = Substitute.For<ITrieStore>();
-        trieStore.FindCachedOrUnknown(_key).Returns(
-            k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
-            k => new TrieNode(NodeType.Leaf) { Key = path });
         TestMemDb db = new();
-        trieStore.TrieNodeRlpStore.Returns(db);
+        ITrieStore trieStore = new TrieStoreMock(db, path);
+
+        //ITrieStore trieStore = Substitute.For<ITrieStore>();
+        //trieStore.FindCachedOrUnknown(_key).Returns(
+        //    k => throw new MissingTrieNodeException("", new TrieNodeException("", _key), path, 1),
+        //    k => new TrieNode(NodeType.Leaf) { Key = path });
+
+        //trieStore.AsKeyValueStore().Returns(db);
 
         ITrieNodeRecovery<GetTrieNodesRequest> recovery = Substitute.For<ITrieNodeRecovery<GetTrieNodesRequest>>();
         recovery.CanRecover.Returns(isMainThread);
@@ -101,5 +106,93 @@ public class HealingTreeTests
         {
             action.Should().Throw<MissingTrieNodeException>();
         }
+    }
+
+    /// <summary>
+    /// Mock class implementation as no support for ref structs in Castle, so methods using them cannot be mocked using NSubstitute
+    /// </summary>
+    private class TrieStoreMock : ITrieStore, IReadOnlyTrieStore
+    {
+        private int _findCachedOrUnknownCallCount = 0;
+        private byte[] _path;
+        private TestMemDb _db;
+
+        public TrieStoreMock(TestMemDb db, byte[] path)
+        {
+            _path = path;
+            _db = db;
+            TrieNodeRlpStore = null!;
+        }
+
+        public TrieNodeResolverCapability Capability => TrieNodeResolverCapability.Hash;
+
+        public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+        public IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
+
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore) { return this; }
+
+        public bool CanAccessByPath() => false;
+        public bool ShouldResetObjectsOnRootChange() => false;
+
+        public void ClearCache() { }
+
+        public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch? writeBatch = null) { }
+
+        public void Dispose() { }
+
+        public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => false;
+
+        public TrieNode FindCachedOrUnknown(Hash256 hash)
+        {
+            return FindCachedOrUnknown(hash, Array.Empty<byte>(), Array.Empty<byte>());
+        }
+
+        public TrieNode FindCachedOrUnknown(Hash256 hash, Span<byte> nodePath, Span<byte> storagePrefix)
+        {
+            _findCachedOrUnknownCallCount++;
+
+            if (_findCachedOrUnknownCallCount == 1)
+                throw new MissingTrieNodeException("", new TrieNodeException("", _key), _path, 1);
+
+            if (_findCachedOrUnknownCallCount == 2)
+                return new TrieNode(NodeType.Leaf) { Key = _path };
+
+            return new TrieNode(NodeType.Unknown, hash);
+        }
+
+        public TrieNode? FindCachedOrUnknown(Span<byte> nodePath, byte[] storagePrefix, Hash256? rootHash)
+        {
+            return new TrieNode(NodeType.Unknown);
+        }
+
+        public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
+        {
+            //just to shush compilation complaining it's not used
+            ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(blockNumber));
+        }
+
+        public bool IsPersisted(in ValueHash256 keccak) => false;
+
+        public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) { return null; }
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
+        {
+            throw new NotImplementedException();
+        }
+
+        public byte[]? LoadRlp(Span<byte> nodePath, Hash256? rootHash = null) { return null; }
+
+        public void MarkPrefixDeleted(long blockNumber, ReadOnlySpan<byte> keyPrefix) { }
+
+        public void OpenContext(long blockNumber, Hash256 keccak) { }
+
+        public void Set(in ValueHash256 hash, byte[] rlp) { }
+
+        public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
+
+        public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
+
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) { return null; }
     }
 }

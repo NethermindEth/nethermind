@@ -495,7 +495,7 @@ namespace Nethermind.Trie.Test
 
         private static PatriciaTree CreateCheckTree(MemDb memDb, PatriciaTree patriciaTree)
         {
-            PatriciaTree checkTree = new(memDb);
+            PatriciaTree checkTree = new(new TrieStore(memDb, LimboLogs.Instance), LimboLogs.Instance);
             checkTree.RootHash = patriciaTree.RootHash;
             return checkTree;
         }

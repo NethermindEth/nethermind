@@ -38,6 +38,9 @@ namespace Nethermind.Trie
         private object?[]? _data;
         private int _isDirty;
 
+
+        public byte[] StoreNibblePathPrefix { get; set; } = Array.Empty<byte>();
+
         /// <summary>
         /// Ethereum Patricia Trie specification allows for branch values,
         /// although branched never have values as all the keys are of equal length.
@@ -87,6 +90,47 @@ namespace Nethermind.Trie
         public bool IsExtension => NodeType == NodeType.Extension;
 
         public long? LastSeen { get; set; }
+        public const long LastSeenNotSet = 0L;
+
+        /// <summary>
+        /// PATH BASED TREE
+        /// This is used to keep track of the path from root to node.
+        /// </summary>
+        public byte[]? PathToNode { get; set; }
+
+        /// <summary>
+        /// PATH BASED TREE
+        /// This calculates the complete path of the node in the tree.
+        /// FullPath = [StoreNibblePathPrefix] + [PathToNode] + [Key]
+        /// </summary>
+        public byte[]? FullPath
+        {
+            get
+            {
+                if (PathToNode is null) return null;
+
+                byte[] fullPath;
+                if (IsLeaf)
+                {
+                    // Key + PathToNode is presumed to be 64 here. This is because of the fact the we use 32 bytes (64 nibbles)
+                    // path to address leafs in merkle tree
+                    Span<byte> fullSpan = fullPath = new byte[StoreNibblePathPrefix.Length + 64];
+                    StoreNibblePathPrefix.CopyTo(fullSpan);
+                    fullSpan = fullSpan[StoreNibblePathPrefix.Length..];
+                    PathToNode.CopyTo(fullSpan);
+                    fullSpan = fullSpan[PathToNode.Length..];
+                    Key.CopyTo(fullSpan);
+                    return fullPath;
+                }
+
+                if (StoreNibblePathPrefix.Length == 0) return PathToNode;
+                Span<byte> fullPathToNode = fullPath = new byte[StoreNibblePathPrefix.Length + PathToNode.Length];
+                StoreNibblePathPrefix.CopyTo(fullPathToNode);
+                fullPathToNode = fullPathToNode[StoreNibblePathPrefix.Length..];
+                PathToNode.CopyTo(fullPathToNode);
+                return fullPath;
+            }
+        }
 
         public byte[]? Key
         {
@@ -268,7 +312,29 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieNode(NodeType nodeType, in CappedArray<byte> rlp, bool isDirty = false)
+        public TrieNode(NodeType nodeType, Span<byte> path, byte[] storagePrefix)
+        {
+            PathToNode = path.ToArray();
+            StoreNibblePathPrefix = storagePrefix;
+            NodeType = nodeType;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, Span<byte> path, Hash256 keccak)
+        {
+            Keccak = keccak ?? throw new ArgumentNullException(nameof(keccak));
+            PathToNode = path.ToArray();
+            NodeType = nodeType;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, CappedArray<byte> rlp, bool isDirty = false)
         {
             NodeType = nodeType;
             _isDirty = isDirty ? 1 : 0;
@@ -295,12 +361,35 @@ namespace Nethermind.Trie
             }
         }
 
+        public TrieNode(NodeType nodeType, byte[] path, Hash256 keccak, byte[] rlp)
+            : this(nodeType, rlp)
+        {
+            PathToNode = path;
+            Keccak = keccak;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
+        public TrieNode(NodeType nodeType, byte[] path, byte[] storagePrefix, Hash256 keccak, byte[] rlp)
+            : this(nodeType, rlp)
+        {
+            PathToNode = path;
+            Keccak = keccak;
+            StoreNibblePathPrefix = storagePrefix;
+            if (nodeType == NodeType.Unknown)
+            {
+                IsPersisted = true;
+            }
+        }
+
         public override string ToString()
         {
 #if DEBUG
             return
                 $"[{NodeType}({FullRlp.Length}){(FullRlp.IsNotNull && FullRlp.Length < 32 ? $"{FullRlp.AsSpan().ToHexString()}" : "")}" +
-                $"|{Id}|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
+                $"|{Keccak}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|FP:{FullPath?.ToHexString()}|SP:{StoreNibblePathPrefix.ToHexString()}";
 #else
             return $"[{NodeType}({FullRlp.Length})|{Keccak?.ToShortString()}|{LastSeen}|D:{IsDirty}|S:{IsSealed}|P:{IsPersisted}|";
 #endif
@@ -343,12 +432,32 @@ namespace Nethermind.Trie
                 if (rlp is null)
                 {
                     Hash256 keccak = Keccak;
-                    if (keccak is null)
+                    CappedArray<byte> fullRlp = null;
+                    if (tree.Capability == TrieNodeResolverCapability.Hash)
                     {
-                        ThrowMissingKeccak();
-                    }
+                        if (keccak is null)
+                        {
+                            ThrowMissingKeccak();
+                        }
 
-                    CappedArray<byte> fullRlp = tree.LoadRlp(keccak, readFlags);
+                        fullRlp = tree.LoadRlp(keccak, readFlags);
+                    }
+                    else if (tree.Capability == TrieNodeResolverCapability.Path)
+                    {
+                        if (PathToNode is null)
+                            ThrowMissingPath();
+
+                        fullRlp = tree.LoadRlp(FullPath);
+                        //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
+                        //diagnostic code - check keccak of loaded RLP
+                        //if (Keccak is not null)
+                        //{
+                        //    Hash256 dbHash = Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
+                        //    if (Keccak != dbHash)
+                        //        throw new TrieException($"Hash mismatch - wanted {Keccak}, got {dbHash} for path {FullPath.ToHexString()}");
+                        //}
+                        Keccak = null;
+                    }
 
                     if (fullRlp.IsNull)
                     {
@@ -359,7 +468,7 @@ namespace Nethermind.Trie
                     IsPersisted = true;
                 }
 
-                if (!DecodeRlp(rlp.GetRlpStream(), bufferPool, out int numberOfItems))
+                if (!DecodeRlp(rlp.GetRlpStream(), bufferPool, tree, out int numberOfItems))
                 {
                     ThrowUnexpectedNumberOfItems(numberOfItems);
                 }
@@ -374,6 +483,13 @@ namespace Nethermind.Trie
             static void ThrowMissingKeccak()
             {
                 throw new TrieException("Unable to resolve node without Keccak");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowMissingPath()
+            {
+                throw new TrieException("Unable to resolve node without its path");
             }
 
             [DoesNotReturn]
@@ -432,7 +548,7 @@ namespace Nethermind.Trie
                     return true;
                 }
 
-                return DecodeRlp(rplStream.GetRlpStream(), bufferPool, out _);
+                return DecodeRlp(rplStream.GetRlpStream(), bufferPool, tree, out _);
             }
             catch (RlpException)
             {
@@ -440,7 +556,7 @@ namespace Nethermind.Trie
             }
         }
 
-        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, out int itemsCount)
+        private bool DecodeRlp(ValueRlpStream rlpStream, ICappedArrayPool bufferPool, ITrieNodeResolver tree, out int itemsCount)
         {
             Metrics.TreeNodeRlpDecodings++;
 
@@ -472,6 +588,16 @@ namespace Nethermind.Trie
                     data[1] = buffer.IsNull ? CappedArray<byte>.NullBoxed : buffer;
                     // Overwriting both key and value so just replace the array.
                     Volatile.Write(ref _data, data);
+                    if (tree?.Capability == TrieNodeResolverCapability.Path && PathToNode is not null)
+                    {
+                        //correct path to node - should avoid it?
+                        if (PathToNode.Length + Key.Length > 64)
+                        {
+                            byte[] newPathToNode = new byte[64 - Key.Length];
+                            Array.Copy(PathToNode, newPathToNode, 64 - Key.Length);
+                            PathToNode = newPathToNode;
+                        }
+                    }
                 }
                 else
                 {
@@ -664,7 +790,70 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                child = tree.FindCachedOrUnknown(reference);
+                switch (tree.Capability)
+                {
+                    case TrieNodeResolverCapability.Hash:
+                        child = tree.FindCachedOrUnknown(reference);
+                        break;
+                    case TrieNodeResolverCapability.Path:
+                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                        GetChildPath(childIndex, childPath);
+                        child = tree.FindCachedOrUnknown(reference, childPath, StoreNibblePathPrefix);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
+            }
+            else
+            {
+                // we expect this to happen as a Trie traversal error (please see the stack trace above)
+                // we need to investigate this case when it happens again
+                bool isKeccakCalculated = Keccak is not null && FullRlp.IsNotNull;
+                bool isKeccakCorrect = isKeccakCalculated && Keccak == Nethermind.Core.Crypto.Keccak.Compute(FullRlp.AsSpan());
+                throw new TrieException($"Unexpected type found at position {childIndex} of {this} with {nameof(_data)} of length {_data?.Length}. Expected a {nameof(TrieNode)} or {nameof(Keccak)} but found {childOrRef?.GetType()} with a value of {childOrRef}. Keccak calculated? : {isKeccakCalculated}; Keccak correct? : {isKeccakCorrect}");
+            }
+
+            // pruning trick so we never store long persisted paths
+            if (child?.IsPersisted == true)
+            {
+                UnresolveChild(childIndex);
+            }
+
+            return child;
+        }
+
+        public TrieNode? GetChild(ITrieNodeResolver tree, int childIndex, Hash256? stateRoot)
+        {
+            /* extensions store value before the child while branches store children before the value
+             * so just to treat them in the same way we update index on extensions
+             */
+            childIndex = IsExtension ? childIndex + 1 : childIndex;
+            object childOrRef = ResolveChild(tree, childIndex, stateRoot);
+
+            TrieNode? child;
+            if (ReferenceEquals(childOrRef, _nullNode) || ReferenceEquals(childOrRef, null))
+            {
+                child = null;
+            }
+            else if (childOrRef is TrieNode childNode)
+            {
+                child = childNode;
+            }
+            else if (childOrRef is Hash256 reference)
+            {
+                switch (tree.Capability)
+                {
+                    case TrieNodeResolverCapability.Hash:
+                        child = tree.FindCachedOrUnknown(reference);
+                        break;
+                    case TrieNodeResolverCapability.Path:
+                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                        GetChildPath(childIndex, childPath);
+                        child = tree.FindCachedOrUnknown(childPath, StoreNibblePathPrefix, stateRoot);
+                        break;
+                    default:
+                        throw new ArgumentOutOfRangeException();
+                }
             }
             else
             {
@@ -789,8 +978,36 @@ namespace Nethermind.Trie
 
         public TrieNode CloneWithChangedKey(byte[] key)
         {
+            Debug.Assert(NodeType != NodeType.Leaf || PathToNode is null || key.Length + PathToNode.Length == 64);
+
             TrieNode trieNode = Clone();
             trieNode.Key = key;
+            return trieNode;
+        }
+
+        private TrieNode CloneWithChangedKey(byte[] key, Span<byte> pathToNode)
+        {
+            Debug.Assert(NodeType != NodeType.Leaf || PathToNode is null || key.Length + pathToNode.Length == 64);
+
+            TrieNode trieNode = Clone();
+            trieNode.Key = key;
+            trieNode.PathToNode = pathToNode.ToArray();
+            return trieNode;
+        }
+
+        public TrieNode CloneWithChangedKey(byte[] path, int removeLength) => CloneWithChangedKey(path, PathToNode!.AsSpan()[..^removeLength]);
+
+        public TrieNode CloneNodeForDeletion()
+        {
+            TrieNode trieNode = new TrieNode(NodeType);
+            if (PathToNode is not null) trieNode.PathToNode = (byte[])PathToNode.Clone();
+            trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
+            if (Key is not null) trieNode.Key = (byte[])Key.Clone();
+            trieNode._rlp = null;
+            //why was this introduced? modifies cloned node and can break processing for hash PT
+            //IsDirty = true;
+            //IsPersisted = false;
+            //LastSeen = null;
             return trieNode;
         }
 
@@ -812,7 +1029,18 @@ namespace Nethermind.Trie
             {
                 trieNode._rlp = rlp;
             }
+            if (PathToNode is not null)
+                trieNode.PathToNode = (byte[])PathToNode.Clone();
 
+            trieNode.StoreNibblePathPrefix = (byte[])StoreNibblePathPrefix.Clone();
+
+            return trieNode;
+        }
+
+        public TrieNode CloneWithKeccak()
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Keccak = Keccak;
             return trieNode;
         }
 
@@ -828,6 +1056,15 @@ namespace Nethermind.Trie
             TrieNode trieNode = Clone();
             trieNode.Key = key;
             trieNode.Value = changedValue;
+            return trieNode;
+        }
+
+        public TrieNode CloneWithChangedKeyAndValue(byte[] key, CappedArray<byte> changedValue, byte[] changedPathToNode)
+        {
+            TrieNode trieNode = Clone();
+            trieNode.Key = key;
+            trieNode.Value = changedValue;
+            trieNode.PathToNode = changedPathToNode;
             return trieNode;
         }
 
@@ -880,7 +1117,15 @@ namespace Nethermind.Trie
             else
             {
                 TrieNode? storageRoot = _storageRoot;
-                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, out storageRoot)))
+                Span<byte> storageRootPath = null;
+                // TODO: fix this hack
+                if (resolver.Capability == TrieNodeResolverCapability.Path)
+                {
+                    storageRootPath = new byte[FullPath!.Length + 1];
+                    FullPath.CopyTo(storageRootPath);
+                    storageRootPath[^1] = 128;
+                }
+                if (storageRoot is not null || (resolveStorageRoot && TryResolveStorageRoot(resolver, storageRootPath, out storageRoot)))
                 {
                     if (logger.IsTrace) logger.Trace($"Persist recursively on storage root {_storageRoot} of {this}");
                     storageRoot!.CallRecursively(action, resolver, skipPersisted, logger);
@@ -943,29 +1188,19 @@ namespace Nethermind.Trie
             // }
         }
 
-        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, out TrieNode? storageRoot)
+        private bool TryResolveStorageRoot(ITrieNodeResolver resolver, Span<byte> storagePrefix, out TrieNode? storageRoot)
         {
-            bool hasStorage = false;
             storageRoot = _storageRoot;
+            if (!IsLeaf) return false;
 
-            if (IsLeaf)
-            {
-                if (storageRoot is not null)
-                {
-                    hasStorage = true;
-                }
-                else if (Value.Length > 64) // if not a storage leaf
-                {
-                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
-                    {
-                        hasStorage = true;
-                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey);
-                    }
-                }
-            }
+            if (storageRoot is not null) return true;
+            if (!(Value.Length > 64)) return false; // is not a storage leaf
 
-            return hasStorage;
+            Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+            if (storageRootKey == Core.Crypto.Keccak.EmptyTreeHash) return false;
+
+            _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, Array.Empty<byte>(), storagePrefix);
+            return true;
         }
 
         [MemberNotNull(nameof(_data))]
@@ -1027,6 +1262,18 @@ namespace Nethermind.Trie
             }
         }
 
+        private int GetChildPathLength()
+        {
+            return PathToNode!.Length + (Key?.Length ?? 0) + (IsBranch ? 1 : 0);
+        }
+
+        private void GetChildPath(int i, in Span<byte> childPath)
+        {
+            PathToNode.CopyTo(childPath);
+            Key.CopyTo(childPath[PathToNode!.Length..]);
+            if (IsBranch) childPath[^1] = (byte)i;
+        }
+
         private object? ResolveChild(ITrieNodeResolver tree, int i)
         {
             object? childOrRef;
@@ -1055,9 +1302,25 @@ namespace Nethermind.Trie
                             }
                         case 160:
                             {
+                                TrieNode child = null;
                                 rlpStream.Position--;
                                 Hash256 keccak = rlpStream.DecodeKeccak();
-                                TrieNode child = tree.FindCachedOrUnknown(keccak);
+
+                                switch (tree.Capability)
+                                {
+                                    case TrieNodeResolverCapability.Hash:
+                                        child = tree.FindCachedOrUnknown(keccak!);
+                                        break;
+                                    case TrieNodeResolverCapability.Path:
+                                        {
+                                            Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                            GetChildPath(i, childPath);
+                                            child = tree.FindCachedOrUnknown(keccak!, childPath, StoreNibblePathPrefix);
+                                            break;
+                                        }
+                                    default:
+                                        throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
+                                }
                                 _data![i] = childOrRef = child;
 
                                 if (IsPersisted && !child.IsPersisted)
@@ -1071,7 +1334,111 @@ namespace Nethermind.Trie
                             {
                                 rlpStream.Position--;
                                 Span<byte> fullRlp = rlpStream.PeekNextItem();
-                                TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                                TrieNode child = null;
+                                switch (tree.Capability)
+                                {
+                                    case TrieNodeResolverCapability.Hash:
+                                        child = new(NodeType.Unknown, fullRlp.ToArray());
+                                        break;
+                                    case TrieNodeResolverCapability.Path:
+                                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                        GetChildPath(i, childPath);
+                                        child = new(NodeType.Unknown, childPath.ToArray(), null, fullRlp.ToArray());
+                                        child.StoreNibblePathPrefix = StoreNibblePathPrefix;
+                                        break;
+                                    default:
+                                        throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
+                                }
+
+                                _data![i] = childOrRef = child;
+                                break;
+                            }
+                    }
+                }
+                else
+                {
+                    childOrRef = _data?[i];
+                }
+            }
+
+            return childOrRef;
+        }
+
+        private object? ResolveChild(ITrieNodeResolver tree, int i, Hash256? stateRoot)
+        {
+            object? childOrRef;
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
+            {
+                childOrRef = _data?[i];
+            }
+            else
+            {
+                InitData();
+                if (_data![i] is null)
+                {
+                    // Allows to load children in parallel
+                    ValueRlpStream rlpStream = rlp.GetRlpStream();
+                    SeekChild(ref rlpStream, i);
+                    int prefix = rlpStream!.ReadByte();
+
+                    switch (prefix)
+                    {
+                        case 0:
+                        case 128:
+                            {
+                                _data![i] = childOrRef = _nullNode;
+                                break;
+                            }
+                        case 160:
+                            {
+                                TrieNode child = null;
+                                rlpStream.Position--;
+                                Hash256 keccak = rlpStream.DecodeKeccak();
+
+                                switch (tree.Capability)
+                                {
+                                    case TrieNodeResolverCapability.Hash:
+                                        child = tree.FindCachedOrUnknown(keccak!);
+                                        break;
+                                    case TrieNodeResolverCapability.Path:
+                                        {
+                                            Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                            GetChildPath(i, childPath);
+                                            child = tree.FindCachedOrUnknown(childPath, StoreNibblePathPrefix, stateRoot);
+                                            break;
+                                        }
+                                    default:
+                                        throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
+                                }
+                                _data![i] = childOrRef = child;
+
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, tree, false, NullLogger.Instance);
+                                }
+
+                                break;
+                            }
+                        default:
+                            {
+                                rlpStream.Position--;
+                                Span<byte> fullRlp = rlpStream.PeekNextItem();
+                                TrieNode child = null;
+                                switch (tree.Capability)
+                                {
+                                    case TrieNodeResolverCapability.Hash:
+                                        child = new(NodeType.Unknown, fullRlp.ToArray());
+                                        break;
+                                    case TrieNodeResolverCapability.Path:
+                                        Span<byte> childPath = stackalloc byte[GetChildPathLength()];
+                                        GetChildPath(i, childPath);
+                                        child = new(NodeType.Unknown, childPath.ToArray(), StoreNibblePathPrefix, null, fullRlp.ToArray());
+                                        break;
+                                    default:
+                                        throw new ArgumentOutOfRangeException($"tree capability cannot be {tree.Capability}");
+                                }
+
                                 _data![i] = childOrRef = child;
                                 break;
                             }

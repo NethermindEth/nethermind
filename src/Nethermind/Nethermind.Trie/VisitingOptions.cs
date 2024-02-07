@@ -47,5 +47,7 @@ namespace Nethermind.Trie
                 return Environment.ProcessorCount;
             return rawMaxDegreeOfParallelism;
         }
+
+        public bool KeepTrackOfAbsolutePath { get; init; } = false;
     }
 }

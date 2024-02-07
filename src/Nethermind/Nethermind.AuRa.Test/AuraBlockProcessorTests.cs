@@ -145,7 +145,7 @@ namespace Nethermind.AuRa.Test
 
         private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
-            IDb stateDb = new MemDb();
+            MemDb stateDb = new();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);

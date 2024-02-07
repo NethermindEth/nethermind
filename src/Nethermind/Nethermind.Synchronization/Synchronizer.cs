@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
+using Nethermind.Db.ByPathState;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -114,6 +115,7 @@ namespace Nethermind.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
             IStateReader stateReader,
+            IByPathStateConfig pathStateConfig,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -139,7 +141,7 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager, pathStateConfig.Enabled ? TrieNodeResolverCapability.Path : TrieNodeResolverCapability.Hash);
         }
 
         public virtual void Start()
@@ -273,7 +275,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.PathStateDb as ByPathStateDb, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,

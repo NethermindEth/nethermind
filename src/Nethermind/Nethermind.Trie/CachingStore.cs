@@ -29,6 +29,11 @@ namespace Nethermind.Trie
         }
 
         public bool PreferWriteByArray => true;
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _wrappedStore.DeleteByRange(startKey, endKey);
+        }
+
         private readonly SpanLruCache<byte, byte[]> _cache;
 
         public byte[]? this[ReadOnlySpan<byte> key]

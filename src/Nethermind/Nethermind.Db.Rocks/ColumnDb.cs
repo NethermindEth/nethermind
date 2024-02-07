@@ -113,6 +113,11 @@ public class ColumnDb : IDb
         {
             _underlyingWriteBatch.Set(key, value, _columnDb._columnFamily, flags);
         }
+
+        public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+        {
+            _underlyingWriteBatch.DeleteByRange(startKey, endKey, _columnDb._columnFamily);
+        }
     }
 
     public void Remove(ReadOnlySpan<byte> key)
@@ -124,6 +129,11 @@ public class ColumnDb : IDb
     public bool KeyExists(ReadOnlySpan<byte> key)
     {
         return _mainDb.KeyExistsWithColumn(key, _columnFamily);
+    }
+
+    public void DeleteByRange(Span<byte> startKey, Span<byte> endKey)
+    {
+        _mainDb.DeleteByRange(startKey, endKey, _columnFamily);
     }
 
     public void Flush()

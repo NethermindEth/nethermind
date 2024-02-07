@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Prepared_block_contains_author_field()
         {
-            IDb stateDb = new MemDb();
+            MemDb stateDb = new();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
@@ -65,9 +65,9 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_store_a_witness()
         {
-            IDb stateDb = new MemDb();
+            MemColumnsDb<StateColumns> stateDb = new();
             IDb codeDb = new MemDb();
-            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            TrieStoreByPath trieStore = new TrieStoreByPath(stateDb, LimboLogs.Instance);
 
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Recovers_state_on_cancel()
         {
-            IDb stateDb = new MemDb();
+            MemDb stateDb = new();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);

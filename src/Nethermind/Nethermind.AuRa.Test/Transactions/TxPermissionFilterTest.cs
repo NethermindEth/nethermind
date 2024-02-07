@@ -274,7 +274,6 @@ public class TxPermissionFilterTest
             TransactionPermissionContractVersions =
                 new LruCache<ValueHash256, UInt256>(PermissionBasedTxFilter.Cache.MaxCacheSize, nameof(TransactionPermissionContract));
 
-            IReadOnlyTrieStore trieStore = new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly();
             IReadOnlyTxProcessorSource txProcessorSource = new ReadOnlyTxProcessingEnv(
                 WorldStateManager,
                 BlockTree,
