@@ -36,21 +36,6 @@ public static class IntExtensions
         return bytes;
     }
 
-    public static byte[] ToBigEndianByteArray(this ulong value)
-    {
-        byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(bytes);
-        }
-
-        return bytes;
-    }
-
-    public static byte[] ToBigEndianByteArray(this long value)
-        => ToBigEndianByteArray((ulong)value);
-
-
     public static byte[] ToBigEndianByteArray(this uint value)
     {
         byte[] bytes = BitConverter.GetBytes(value);
@@ -64,19 +49,4 @@ public static class IntExtensions
 
     public static byte[] ToBigEndianByteArray(this int value)
         => ToBigEndianByteArray((uint)value);
-
-    public static byte[] ToBigEndianByteArray(this ushort value)
-    {
-        byte[] bytes = BitConverter.GetBytes(value);
-        if (BitConverter.IsLittleEndian)
-        {
-            Array.Reverse(bytes);
-        }
-
-        return bytes;
-    }
-
-    public static byte[] ToBigEndianByteArray(this short value)
-        => ToBigEndianByteArray((ushort)value);
-
 }
