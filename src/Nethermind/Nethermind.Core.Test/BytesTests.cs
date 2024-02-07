@@ -9,7 +9,6 @@ using System.Linq;
 using System.Numerics;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -372,7 +371,7 @@ namespace Nethermind.Core.Test
         [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd", "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcd0")]
         public void TestShiftLeft4(string hex, string expectedHex)
         {
-            byte[] asBytes = hex.ToBytes();
+            byte[] asBytes = Bytes.FromHexString(hex);
             Bytes.ShiftLeft4(asBytes);
             asBytes.ToHexString().Should().Be(expectedHex);
         }

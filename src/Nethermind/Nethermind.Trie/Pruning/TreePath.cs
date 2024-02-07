@@ -139,7 +139,7 @@ public struct TreePath
         {
             // We are currently even, so can just copy byte by byte.
             int byteToCopy = (otherTreePath.Length + 1) / 2;
-            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length/2)..]);
+            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length / 2)..]);
             Length += otherTreePath.Length;
         }
         else
@@ -148,8 +148,8 @@ public struct TreePath
             AppendMut(otherTreePath[0]);
 
             int byteToCopy = otherTreePath.Length / 2;
-            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length/2)..]);
-            Bytes.ShiftLeft4(Span[(Length/2)..]);
+            otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length / 2)..]);
+            Bytes.ShiftLeft4(Span[(Length / 2)..]);
 
             if (otherTreePath.Length % 2 == 1)
             {
@@ -234,7 +234,7 @@ public struct TreePath
                 int byteOffset = (offset / 2);
                 int toCopyByteLength = (toCopyLength + 1) / 2;
                 TreePath newTreePath = new TreePath();
-                Span[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Span);
+                Span[byteOffset..(byteOffset + toCopyByteLength)].CopyTo(newTreePath.Span);
                 newTreePath.Length = toCopyLength;
                 return newTreePath;
             }
@@ -243,7 +243,7 @@ public struct TreePath
                 int byteOffset = (offset / 2);
                 int toCopyByteLength = (toCopyLength + 2) / 2;
                 TreePath newTreePath = new TreePath();
-                Span[byteOffset..(byteOffset+toCopyByteLength)].CopyTo(newTreePath.Span);
+                Span[byteOffset..(byteOffset + toCopyByteLength)].CopyTo(newTreePath.Span);
                 Bytes.ShiftLeft4(newTreePath.Span[..toCopyByteLength]);
                 newTreePath.Length = toCopyLength;
                 return newTreePath;
@@ -287,7 +287,7 @@ public struct TreePath
         int minOfTwoLength = Math.Min(Length, otherTreePath.Length);
         int bytePrefixLength = minOfTwoLength / 2;
         int byteCommonPrefix = Span[..bytePrefixLength].CommonPrefixLength(otherTreePath.Span[..bytePrefixLength]);
-        int commonPrefix = byteCommonPrefix*2;
+        int commonPrefix = byteCommonPrefix * 2;
         if (commonPrefix < minOfTwoLength)
         {
             // check additional one nibble after the common prefix determined at byte level.

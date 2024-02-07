@@ -165,9 +165,9 @@ public class TreePathTests
 
         for (int startI = 0; startI < 64; startI++)
         {
-            for (int length = 0; length < 64-startI; length++)
+            for (int length = 0; length < 64 - startI; length++)
             {
-                TreePath indexed = path[startI..(startI+length)];
+                TreePath indexed = path[startI..(startI + length)];
 
                 indexed.Length.Should().Be(length);
 

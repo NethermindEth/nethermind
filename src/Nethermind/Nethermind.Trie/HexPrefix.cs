@@ -19,13 +19,13 @@ namespace Nethermind.Trie
             if (path.Length % 2 != 0)
             {
                 output[0] += (byte)(0x10 + path[0]);
-                path.Span[..((path.Length)/2)].CopyTo(output[1..]);
+                path.Span[..((path.Length) / 2)].CopyTo(output[1..]);
                 Bytes.ShiftLeft4(output[1..]);
                 output[path.Length / 2] |= path[^1];
             }
             else
             {
-                path.Span[..((path.Length+1)/2)].CopyTo(output[1..]);
+                path.Span[..((path.Length + 1) / 2)].CopyTo(output[1..]);
             }
         }
 
@@ -53,13 +53,13 @@ namespace Nethermind.Trie
 
             if (isEven)
             {
-                bytes[1..((nibblesCount/2)+1)].CopyTo(path.Span);
+                bytes[1..((nibblesCount / 2) + 1)].CopyTo(path.Span);
                 path.Length = nibblesCount;
             }
             else
             {
-                bytes[..(nibblesCount/2)].CopyTo(path.Span); // Note: last byte not copied as there might not be enough space.
-                Bytes.ShiftLeft4(path.Span[..(nibblesCount/2)]);
+                bytes[..(nibblesCount / 2)].CopyTo(path.Span); // Note: last byte not copied as there might not be enough space.
+                Bytes.ShiftLeft4(path.Span[..(nibblesCount / 2)]);
                 if (nibblesCount > 1)
                 {
                     path[^2] = (byte)(bytes[(nibblesCount / 2)] >> 4);

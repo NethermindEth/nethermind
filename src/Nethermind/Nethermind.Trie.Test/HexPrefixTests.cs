@@ -13,7 +13,7 @@ namespace Nethermind.Trie.Test
         [TestCase(true, (byte)3, (byte)51)]
         public void Encode_gives_correct_output_when_one(bool flag, byte nibble1, byte byte1)
         {
-            byte[] output = HexPrefix.ToBytes( TreePath.FromNibble(new[] { nibble1 }), flag);
+            byte[] output = HexPrefix.ToBytes(TreePath.FromNibble(new[] { nibble1 }), flag);
             Assert.That(output.Length, Is.EqualTo(1));
             Assert.That(output[0], Is.EqualTo(byte1));
         }

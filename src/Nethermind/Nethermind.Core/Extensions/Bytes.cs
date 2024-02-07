@@ -1163,7 +1163,7 @@ namespace Nethermind.Core.Extensions
             }
 
             if (bytes.Length == 0) return;
-            for (int i = 0; i < bytes.Length-1; i++)
+            for (int i = 0; i < bytes.Length - 1; i++)
             {
                 byte theByte = (byte)((bytes[i] << 4) | (bytes[i + 1] >> 4));
                 bytes[i] = theByte;
