@@ -142,7 +142,6 @@ namespace Nethermind.Sockets.Test
                 new WebSocketMessageStream(mock, Substitute.For<ILogManager>()),
                 RpcEndpoint.Ws,
                 processor,
-                service,
                 localStats,
                 Substitute.For<IJsonSerializer>(),
                 null,
