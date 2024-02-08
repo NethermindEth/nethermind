@@ -242,7 +242,9 @@ namespace Nethermind.Evm
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
         public Snapshot Snapshot { get; } // TODO: move to CallEnv
-        public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
+
+        private EvmPooledMemory _memory;
+        public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
 
         public void Dispose()
         {
@@ -254,15 +256,14 @@ namespace Nethermind.Evm
                 ReturnStack = null;
             }
             Restore(); // we are trying to restore when disposing
-            Memory?.Dispose();
-            Memory = null;
+            Memory.Dispose();
+            Memory = default;
         }
 
         public void InitStacks()
         {
             if (DataStack is null)
             {
-                Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
