@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -181,6 +182,7 @@ namespace Nethermind.Synchronization.Test
                     serializer,
                     statsManager,
                     syncServer,
+                    RunImmediatelyScheduler.Instance,
                     NoErrorLimboLogs.Instance)
             {
                 IsInitialized = initialized;
