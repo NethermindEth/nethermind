@@ -573,7 +573,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
                 }
             }
         }
