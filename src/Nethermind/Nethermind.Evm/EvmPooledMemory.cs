@@ -8,13 +8,13 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
-using Nethermind.Core.Buffers;
+using System.Threading;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm;
 
-public class EvmPooledMemory : IEvmMemory
+public sealed class EvmPooledMemory : IEvmMemory
 {
     public const int WordSize = 32;
 
@@ -239,10 +239,9 @@ public class EvmPooledMemory : IEvmMemory
 
     public void Dispose()
     {
-        var memory = _memory;
+        byte[] memory = Interlocked.Exchange(ref _memory, null);
         if (memory is not null)
         {
-            _memory = null;
             ArrayPool<byte>.Shared.Return(memory);
         }
     }
