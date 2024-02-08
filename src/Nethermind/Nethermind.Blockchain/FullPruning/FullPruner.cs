@@ -36,7 +36,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly ILogManager _logManager;
         private readonly IChainEstimations _chainEstimations;
         private readonly IDriveInfo? _driveInfo;
-        private readonly ITrieStore _trieStore;
+        private readonly IPruningTrieStore _trieStore;
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
@@ -52,7 +52,7 @@ namespace Nethermind.Blockchain.FullPruning
             IProcessExitSource processExitSource,
             IChainEstimations chainEstimations,
             IDriveInfo? driveInfo,
-            ITrieStore trieStore,
+            IPruningTrieStore trieStore,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
@@ -101,24 +101,18 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     e.Status = PruningStatus.Starting;
 
-#pragma warning disable CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
-                    RunFullPruning(_processExitSource.Token);
-#pragma warning restore CS4014 // Because this call is not awaited, execution of the current method continues before the call is completed
+                    _ = RunFullPruning(_processExitSource.Token);
                 }
             }
         }
 
-        private async Task WaitForMainChainChange(CancellationToken cancellationToken, Func<OnUpdateMainChainArgs, bool> handler)
+        private async Task WaitForMainChainChange(Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken)
         {
             await Wait.ForEventCondition<OnUpdateMainChainArgs>(
                 cancellationToken,
                 (h) => _blockTree.OnUpdateMainChain += h,
                 (h) => _blockTree.OnUpdateMainChain -= h,
-                (e) =>
-                {
-                    if (!e.WereProcessed) return false;
-                    return handler(e);
-                });
+                (e) => e.WereProcessed && handler(e));
         }
 
         protected virtual async Task RunFullPruning(CancellationToken cancellationToken)
@@ -126,7 +120,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningContext? pruningContext = null;
 
             // we don't want to start pruning in the middle of block processing, lets wait for new head.
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
@@ -134,7 +128,7 @@ namespace Nethermind.Blockchain.FullPruning
                 }
 
                 return true;
-            });
+            }, cancellationToken);
 
             if (pruningContext is null) return;
 
@@ -157,32 +151,32 @@ namespace Nethermind.Blockchain.FullPruning
             _trieStore.PersistCache(cancellationToken);
 
             long blockToWaitFor = 0;
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
-                if (e.Blocks == null || e.Blocks.Count == 0) return false;
+                if (e.Blocks.Count == 0) return false;
 
                 blockToWaitFor = e.Blocks[^1].Number;
                 if (_logger.IsInfo)
                     _logger.Info($"Full Pruning Ready to start: waiting for state {blockToWaitFor} to be ready.");
                 return true;
-            });
+            }, cancellationToken);
 
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_blockTree.BestPersistedState >= blockToWaitFor) return true;
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
                 return false;
-            });
+            }, cancellationToken);
 
             long stateToCopy = _blockTree.BestPersistedState.Value;
             long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
 
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_blockTree.Head?.Number > blockToPruneAfter) return true;
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for block: {blockToPruneAfter} in order to support reorganizations.");
                 return false;
-            });
+            }, cancellationToken);
 
             BlockHeader? header = _blockTree.FindHeader(stateToCopy);
             if (header is null)
@@ -258,7 +252,8 @@ namespace Nethermind.Blockchain.FullPruning
                     targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
                 }
 
-                using CopyTreeVisitor copyTreeVisitor = new(targetNodeStorage, cancellationToken, writeFlags, _logManager);
+                using CopyTreeVisitor copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
@@ -271,17 +266,17 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     copyTreeVisitor.Finish();
 
-                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
                     _nodeStorage.Scheme = targetNodeStorage.Scheme;
-                    await WaitForMainChainChange(cancellationToken, (e) =>
+                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
+                    await WaitForMainChainChange((e) =>
                     {
                         // The db swap happens here. We do it within the event handler of main chain change to block
                         // so that it does not happen during block processing.
                         pruning.Commit();
                         return true;
-                    });
+                    }, cancellationToken);
 
-                    _lastPruning = DateTime.Now;
+                    _lastPruning = DateTime.UtcNow;
                 }
             }
             catch (Exception e)

@@ -46,8 +46,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task can_prune()
         {
             TestContext test = CreateTest();
-            bool contextDisposed = await test.WaitForPruning();
-            contextDisposed.Should().BeTrue();
+            await test.RunFullPruning();
             test.ShouldCopyAllValues();
         }
 
@@ -68,8 +67,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 preferredKeyScheme: newKeyScheme);
 
             test.NodeStorage.Scheme.Should().Be(currentKeyScheme);
-            bool contextDisposed = await test.WaitForPruning();
-            contextDisposed.Should().BeTrue();
+            await test.RunFullPruning();
             test.ShouldCopyAllValuesWhenVisitingTrie();
             test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
         }
@@ -78,7 +76,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task pruning_deletes_old_db_on_success()
         {
             TestContext test = CreateTest(clearPrunedDb: true);
-            await test.WaitForPruning();
+            await test.RunFullPruning();
             test.TrieDb.Count.Should().Be(0);
         }
 
@@ -87,7 +85,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest(false);
             int count = test.TrieDb.Count;
-            await test.WaitForPruning();
+            await test.RunFullPruning();
             test.TrieDb.Count.Should().Be(count);
         }
 
@@ -95,7 +93,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task pruning_deletes_new_db_on_fail()
         {
             TestContext test = CreateTest(false);
-            await test.WaitForPruning();
+            await test.RunFullPruning();
             test.CopyDb.Count.Should().Be(0);
         }
 
@@ -104,8 +102,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             int count = test.TrieDb.Count;
-            bool result = await test.WaitForPruning();
-            result.Should().BeTrue();
+            await test.RunFullPruning();
             test.CopyDb.Count.Should().Be(count);
         }
 
@@ -119,7 +116,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
         {
             TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);
-            await test.WaitForPruning();
+            await test.RunFullPruning();
 
             if (expectedShutdown)
             {
@@ -137,7 +134,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
             TestContext test = CreateTest();
             test.FullPruningDb.CanStartPruning.Should().BeTrue();
 
-            var pruningContext = test.WaitForPruningStart();
+            test.TriggerPruningViaEvent();
+            TestFullPruningDb.TestPruningContext pruningContext = await test.WaitForPruningStart();
             test.FullPruningDb.CanStartPruning.Should().BeFalse();
             await test.WaitForPruningEnd(pruningContext);
 
@@ -148,8 +146,10 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task should_not_start_multiple_pruning()
         {
             TestContext test = CreateTest();
-            test.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-            await test.WaitForPruning();
+            test.TriggerPruningViaEvent();
+            TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
+            test.TriggerPruningViaEvent();
+            await test.WaitForPruningEnd(ctx);
             test.FullPruningDb.PruningStarted.Should().Be(1);
         }
 
@@ -157,12 +157,12 @@ namespace Nethermind.Blockchain.Test.FullPruning
         public async Task should_duplicate_writes_while_pruning()
         {
             TestContext test = CreateTest();
-            test.WaitForPruningStart();
+            TestFullPruningDb.TestPruningContext ctx = await test.WaitForPruningStart();
             byte[] key = { 1, 2, 3 };
             test.FullPruningDb[key] = key;
             test.FullPruningDb.Context.WaitForFinish.Set();
-            await test.FullPruningDb.Context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime), CancellationToken.None);
 
+            await test.WaitForPruningEnd(ctx);
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         {
             TestContext test = CreateTest();
             byte[] key = { 0, 1, 2 };
-            TestFullPruningDb.TestPruningContext context = test.WaitForPruningStart();
+            TestFullPruningDb.TestPruningContext context = await test.WaitForPruningStart();
 
             using (IWriteBatch writeBatch = test.FullPruningDb.StartWriteBatch())
             {
@@ -247,19 +247,18 @@ namespace Nethermind.Blockchain.Test.FullPruning
                         FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
                         FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
                         FullPruningCompletionBehavior = completionBehavior
-                    }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<ITrieStore>(), LimboLogs.Instance);
+                    }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<IPruningTrieStore>(), LimboLogs.Instance);
             }
 
-            public async Task<bool> WaitForPruning()
+            public async Task RunFullPruning()
             {
-                TestFullPruningDb.TestPruningContext context = WaitForPruningStart();
-                bool result = await WaitForPruningEnd(context);
-                if (result && _clearPrunedDb)
-                {
-                    await FullPruningDb.WaitForClearDb.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 3), CancellationToken.None);
-                }
+                TestFullPruningDb.TestPruningContext ctx = await WaitForPruningStart();
+                await WaitForPruningEnd(ctx);
+            }
 
-                return result;
+            public void TriggerPruningViaEvent()
+            {
+                PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
             }
 
             public async Task<bool> WaitForPruningEnd(TestFullPruningDb.TestPruningContext context)
@@ -272,11 +271,28 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 return await context.DisposeEvent.WaitOneAsync(TimeSpan.FromMilliseconds(Timeout.MaxWaitTime * 5), CancellationToken.None);
             }
 
-            public TestFullPruningDb.TestPruningContext WaitForPruningStart()
+            public async Task<TestFullPruningDb.TestPruningContext> WaitForPruningStart()
             {
-                PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
-                Thread.Sleep(10);
-                AddBlocks(Reorganization.MaxDepth + 2);
+                TriggerPruningViaEvent();
+                using CancellationTokenSource cts = new CancellationTokenSource();
+                Task addBlockTasks = Task.Run(() =>
+                {
+                    while (!cts.IsCancellationRequested)
+                    {
+                        AddBlocks(1);
+                    }
+                });
+
+                try
+                {
+                    Assert.That(() => FullPruningDb.Context, Is.Not.Null.After(1000, 1));
+                }
+                finally
+                {
+                    await cts.CancelAsync();
+                    await addBlockTasks;
+                }
+
                 TestFullPruningDb.TestPruningContext context = FullPruningDb.Context;
                 return context;
             }
@@ -291,7 +307,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     BlockTree.Head.Returns(head);
                     BlockTree.FindHeader(number).Returns(head.Header);
                     BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
-                    Thread.Sleep(10); // Need to add a little sleep as the wait for event in full pruner is async.
+                    Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
                 }
             }
 

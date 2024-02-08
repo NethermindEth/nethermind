@@ -75,7 +75,8 @@ public class InitializeStateDb : IStep
         }
 
         _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb.WitnessedBy(witnessCollector);
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
+            .WitnessedBy(witnessCollector);
         IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
@@ -167,7 +168,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore);
 
         return Task.CompletedTask;
     }
@@ -182,8 +183,8 @@ public class InitializeStateDb : IStep
         IInitConfig initConfig,
         INethermindApi api,
         IStateReader stateReader,
-        INodeStorage mainNodeStorage
-    )
+        INodeStorage mainNodeStorage,
+        IPruningTrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -224,7 +225,7 @@ public class InitializeStateDb : IStep
                     api.ProcessExit!,
                     ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
                     drive,
-                    api.TrieStore!,
+                    trieStore,
                     api.LogManager);
                 api.DisposeStack.Push(pruner);
             }

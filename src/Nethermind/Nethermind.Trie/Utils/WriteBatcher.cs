@@ -12,14 +12,14 @@ namespace Nethermind.Core.Utils;
 /// <summary>
 /// Batches writes into a set of concurrent batches. For cases where throughput matter, but not atomicity.
 /// </summary>
-public class WriteBatcher : INodeStorage.WriteBatch
+public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
 {
     private long _counter = 0;
     private readonly ConcurrentQueue<INodeStorage.WriteBatch> _batches = new();
     private readonly INodeStorage _underlyingDb;
     private bool _disposing = false;
 
-    public WriteBatcher(INodeStorage underlyingDb)
+    public ConcurrentNodeWriteBatcher(INodeStorage underlyingDb)
     {
         _underlyingDb = underlyingDb;
     }

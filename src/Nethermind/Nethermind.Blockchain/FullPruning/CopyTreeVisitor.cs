@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -31,19 +32,19 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
-        private WriteBatcher _writeBatcher;
+        private ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
 
         public CopyTreeVisitor(
             INodeStorage nodeStorage,
-            CancellationToken cancellationToken,
             WriteFlags writeFlags,
-            ILogManager logManager)
+            ILogManager logManager,
+            CancellationToken cancellationToken)
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
-            _writeBatcher = new WriteBatcher(nodeStorage);
+            _concurrentWriteBatcher = new ConcurrentNodeWriteBatcher(nodeStorage);
         }
 
         public bool IsFullDbScan => true;
@@ -58,6 +59,8 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
         public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
@@ -82,7 +85,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _writeBatcher.Set(trieVisitContext.Storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
+                _concurrentWriteBatcher.Set(trieVisitContext.Storage, path, node.Keccak, node.FullRlp.ToArray(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes
@@ -111,7 +114,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _finished = true;
             LogProgress("Finished");
-            _writeBatcher.Dispose();
+            _concurrentWriteBatcher.Dispose();
         }
     }
 }

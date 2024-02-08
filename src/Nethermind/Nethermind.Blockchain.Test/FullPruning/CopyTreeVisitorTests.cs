@@ -81,7 +81,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
             NodeStorage nodeStorage = new NodeStorage(pruningContext);
-            using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, cancellationToken, writeFlags, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             copyTreeVisitor.Finish();
             return pruningContext;

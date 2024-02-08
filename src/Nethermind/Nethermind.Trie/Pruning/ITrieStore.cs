@@ -39,4 +39,9 @@ namespace Nethermind.Trie.Pruning
 
         public void PersistCache(CancellationToken cancellationToken);
     }
+
+    public interface IPruningTrieStore
+    {
+        public void PersistCache(CancellationToken cancellationToken);
+    }
 }

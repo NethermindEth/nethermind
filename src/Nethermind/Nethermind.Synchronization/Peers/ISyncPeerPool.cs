@@ -105,10 +105,18 @@ namespace Nethermind.Synchronization.Peers
 
     public static class SyncPeerPoolExtensions
     {
-        public static async Task<T> AllocateAndRun<T>(this ISyncPeerPool syncPeerPool, Func<ISyncPeer, Task<T>> func, IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts,
+        public static async Task<T> AllocateAndRun<T>(
+            this ISyncPeerPool syncPeerPool,
+            Func<ISyncPeer, Task<T>> func,
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts,
             CancellationToken cancellationToken)
         {
-            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(peerAllocationStrategy, allocationContexts, cancellationToken: cancellationToken);
+            SyncPeerAllocation? allocation = await syncPeerPool.Allocate(
+                peerAllocationStrategy,
+                allocationContexts,
+                timeoutMilliseconds: int.MaxValue,
+                cancellationToken: cancellationToken);
             try
             {
                 if (allocation is null) return default;
@@ -121,16 +129,19 @@ namespace Nethermind.Synchronization.Peers
         }
 
 
-        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken)
+        public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
         {
             BlockHeader[]? headers = null;
             try
             {
+                using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
+
                 headers = await syncPeerPool.AllocateAndRun(
                     peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
                     BySpeedStrategy.FastestHeader,
                     AllocationContexts.Headers,
-                    cancellationToken);
+                    cts.Token);
             }
             catch (OperationCanceledException)
             {
