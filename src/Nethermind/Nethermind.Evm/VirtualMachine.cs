@@ -2131,7 +2131,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
-                EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+                EndInstructionTrace(gasAvailable, vmState.Memory.Size);
             }
         }
 
@@ -2139,7 +2139,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
     EmptyReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         EmptyReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
@@ -2149,7 +2149,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
         return CallResult.Empty;
     DataReturn:
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
@@ -2302,7 +2302,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (typeof(TTracingInstructions) == typeof(IsTracing))
             {
                 // very specific for Parity trace, need to find generalization - very peculiar 32 length...
-                ReadOnlyMemory<byte>? memoryTrace = vmState.Memory?.Inspect(in dataOffset, 32);
+                ReadOnlyMemory<byte>? memoryTrace = vmState.Memory.Inspect(in dataOffset, 32);
                 _txTracer.ReportMemoryChange(dataOffset, memoryTrace is null ? ReadOnlySpan<byte>.Empty : memoryTrace.Value.Span);
             }
 
@@ -2507,7 +2507,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory?.Size ?? 0);
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         // todo: === below is a new call - refactor / move
 
         long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
@@ -2784,11 +2784,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     private static bool UpdateMemoryCost(EvmState vmState, ref long gasAvailable, in UInt256 position, in UInt256 length)
     {
-        if (vmState.Memory is null)
-        {
-            ThrowNotInitialized();
-        }
-
         long memoryCost = vmState.Memory.CalculateMemoryCost(in position, length);
         if (memoryCost != 0L)
         {
@@ -2799,13 +2794,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         return true;
-
-        [DoesNotReturn]
-        [StackTraceHidden]
-        static void ThrowNotInitialized()
-        {
-            throw new InvalidOperationException("EVM memory has not been initialized properly.");
-        }
     }
 
     private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env, bool isSubroutine = false)
@@ -2836,8 +2824,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
-            _txTracer.SetOperationMemory(vmState.Memory?.GetTrace() ?? new TraceMemory());
-            _txTracer.SetOperationMemorySize(vmState.Memory?.Size ?? 0);
+            _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
+            _txTracer.SetOperationMemorySize(vmState.Memory.Size);
         }
 
         if (_txTracer.IsTracingStack)
