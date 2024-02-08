@@ -23,7 +23,7 @@ namespace Nethermind.JsonRpc
         {
             _recorderBaseFilePath = basePath ?? throw new ArgumentNullException(nameof(basePath));
             _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CreateNewRecorderFile();
         }
 

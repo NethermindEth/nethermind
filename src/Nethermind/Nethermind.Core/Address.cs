@@ -235,7 +235,7 @@ namespace Nethermind.Core
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
@@ -274,7 +274,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public AddressStructRef(Span<byte> bytes)
+        public AddressStructRef(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != ByteLength)
             {

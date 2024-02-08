@@ -25,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Source
 
         public UserOperationBroadcaster(ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
         }
 
         public void BroadcastOnce(UserOperationWithEntryPoint op)

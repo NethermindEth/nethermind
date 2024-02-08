@@ -17,6 +17,8 @@ public readonly struct CappedArray<T>
     private readonly static CappedArray<T> _empty = new CappedArray<T>(Array.Empty<T>());
     public static ref readonly CappedArray<T> Null => ref _null;
     public static ref readonly CappedArray<T> Empty => ref _empty;
+    public static object NullBoxed { get; } = _null;
+    public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
     private readonly int _length;
@@ -29,7 +31,7 @@ public readonly struct CappedArray<T>
 
     public CappedArray(T[]? array)
     {
-        if (array != null)
+        if (array is not null)
         {
             _array = array;
             _length = array.Length;
@@ -43,7 +45,7 @@ public readonly struct CappedArray<T>
 
     public static implicit operator CappedArray<T>(T[]? array)
     {
-        if (array == null) return default;
+        if (array is null) return default;
         return new CappedArray<T>(array);
     }
 
@@ -82,8 +84,11 @@ public readonly struct CappedArray<T>
 
     public readonly T[]? ToArray()
     {
-        if (_array is null) return null;
-        if (_length == _array?.Length) return _array;
+        T[]? array = _array;
+
+        if (array is null) return null;
+        if (array.Length == 0) return Array.Empty<T>();
+        if (_length == array.Length) return array;
         return AsSpan().ToArray();
     }
 }

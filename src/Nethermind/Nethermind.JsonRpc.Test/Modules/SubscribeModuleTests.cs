@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         private ISpecProvider _specProvider = null!;
         private IReceiptMonitor _receiptCanonicalityMonitor = null!;
         private ISyncConfig _syncConfig = null!;
+        private ISyncProgressResolver _syncProgressResolver = null!;
 
         [SetUp]
         public void Setup()
@@ -66,6 +67,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             _jsonSerializer = new EthereumJsonSerializer();
             _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
             _syncConfig = new SyncConfig();
+            _syncProgressResolver = Substitute.For<ISyncProgressResolver>();
 
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
 
@@ -75,7 +77,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig,
+                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager),
                 _specProvider,
                 jsonSerializer);
 
@@ -187,7 +190,8 @@ namespace Nethermind.JsonRpc.Test.Modules
             Block block = Build.A.Block.WithNumber(head).TestObject;
             _blockTree.Head.Returns(block);
 
-            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager);
+            EthSyncingInfo ethSyncingInfo = new(_blockTree, _receiptStorage, _syncConfig,
+                new StaticSelector(SyncMode.All), _syncProgressResolver, _logManager);
 
             SyncingSubscription syncingSubscription = new(_jsonRpcDuplexClient, _blockTree, ethSyncingInfo, _logManager);
 

@@ -2,11 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Text.Json.Serialization;
-
-using Nethermind.JsonRpc.Data;
-using Nethermind.JsonRpc.Modules.Eth;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Serialization.Json;
 
 using NUnit.Framework;
@@ -47,32 +44,23 @@ namespace Nethermind.JsonRpc.Test.Data
             TestRoundtrip(item, equalityComparer, null, description);
         }
 
-        protected void TestRoundtrip<T>(string json, JsonConverter? converter = null)
+        protected void TestRoundtrip<T>(string json, params JsonConverter[] converters)
         {
-            IJsonSerializer serializer = BuildSerializer();
+            IJsonSerializer serializer = BuildSerializer(converters);
 
             T deserialized = serializer.Deserialize<T>(json);
             string result = serializer.Serialize(deserialized);
             Assert.That(result, Is.EqualTo(json));
         }
 
-        private void TestToJson<T>(T item, JsonConverter<T>? converter, string expectedResult)
+        protected void TestToJson<T>(T item, string expectedResult, params JsonConverter[] converters)
         {
-            IJsonSerializer serializer = BuildSerializer();
+            IJsonSerializer serializer = BuildSerializer(converters);
 
             string result = serializer.Serialize(item);
             Assert.That(result, Is.EqualTo(expectedResult.Replace("+", "\\u002B")), result.Replace("\"", "\\\""));
         }
 
-        protected void TestToJson<T>(T item, string expectedResult)
-        {
-            TestToJson(item, null, expectedResult);
-        }
-
-        private static IJsonSerializer BuildSerializer()
-        {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            return serializer;
-        }
+        private static IJsonSerializer BuildSerializer(params JsonConverter[] converters) => new EthereumJsonSerializer(converters);
     }
 }
