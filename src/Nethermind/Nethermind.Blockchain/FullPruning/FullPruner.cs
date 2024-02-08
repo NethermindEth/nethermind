@@ -100,7 +100,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
         }
 
-        private async Task WaitForMainChainChange(CancellationToken cancellationToken, Func<OnUpdateMainChainArgs, bool> handler)
+        private async Task WaitForMainChainChange(Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken)
         {
             await Wait.ForEventCondition<OnUpdateMainChainArgs>(
                 cancellationToken,
@@ -114,7 +114,7 @@ namespace Nethermind.Blockchain.FullPruning
             IPruningContext? pruningContext = null;
 
             // we don't want to start pruning in the middle of block processing, lets wait for new head.
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
                 {
@@ -122,7 +122,7 @@ namespace Nethermind.Blockchain.FullPruning
                 }
 
                 return true;
-            });
+            }, cancellationToken);
 
             if (pruningContext is null) return;
 
@@ -145,7 +145,7 @@ namespace Nethermind.Blockchain.FullPruning
             _trieStore.PersistCache(cancellationToken);
 
             long blockToWaitFor = 0;
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (e.Blocks.Count == 0) return false;
 
@@ -153,24 +153,24 @@ namespace Nethermind.Blockchain.FullPruning
                 if (_logger.IsInfo)
                     _logger.Info($"Full Pruning Ready to start: waiting for state {blockToWaitFor} to be ready.");
                 return true;
-            });
+            }, cancellationToken);
 
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_blockTree.BestPersistedState >= blockToWaitFor) return true;
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
                 return false;
-            });
+            }, cancellationToken);
 
             long stateToCopy = _blockTree.BestPersistedState.Value;
             long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
 
-            await WaitForMainChainChange(cancellationToken, (e) =>
+            await WaitForMainChainChange((e) =>
             {
                 if (_blockTree.Head?.Number > blockToPruneAfter) return true;
                 if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for block: {blockToPruneAfter} in order to support reorganizations.");
                 return false;
-            });
+            }, cancellationToken);
 
             BlockHeader? header = _blockTree.FindHeader(stateToCopy);
             if (header is null)
@@ -232,7 +232,7 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags |= WriteFlags.LowPriority;
                 }
 
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, cancellationToken, writeFlags, _logManager);
+                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager, cancellationToken);
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
@@ -245,13 +245,13 @@ namespace Nethermind.Blockchain.FullPruning
                 {
                     copyTreeVisitor.Finish();
 
-                    await WaitForMainChainChange(cancellationToken, (e) =>
+                    await WaitForMainChainChange((e) =>
                     {
                         // The db swap happens here. We do it within the event handler of main chain change to block
                         // so that it does not happen during block processing.
                         pruning.Commit();
                         return true;
-                    });
+                    }, cancellationToken);
 
                     _lastPruning = DateTime.UtcNow;
                 }

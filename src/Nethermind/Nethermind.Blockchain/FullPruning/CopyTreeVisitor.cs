@@ -35,9 +35,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
-            CancellationToken cancellationToken,
             WriteFlags writeFlags,
-            ILogManager logManager)
+            ILogManager logManager,
+            CancellationToken cancellationToken)
         {
             _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;

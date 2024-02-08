@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
-            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, cancellationToken, writeFlags, logManager);
+            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, writeFlags, logManager, cancellationToken);
             stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             copyTreeVisitor.Finish();
             return pruningContext;
