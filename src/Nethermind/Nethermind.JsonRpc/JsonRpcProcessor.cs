@@ -11,6 +11,7 @@ using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -155,6 +156,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         // Increments failure metric and logs the exception, then stops processing.
                         Metrics.JsonRpcRequestDeserializationFailures++;
                         if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                        yield break;
+                    }
+                    catch (ConnectionResetException e)
+                    {
+                        // Logs exception, then stop processing.
+                        if (_logger.IsDebug) _logger.Debug($"Connection reset.{Environment.NewLine}{e}");
                         yield break;
                     }
                     catch (Exception ex)
