@@ -32,7 +32,7 @@ class ShutterCryptoTests
         Bytes32 h1 = ShutterCrypto.HashGTToBlock(p1);
         GT p2 = ShutterCrypto.GTExp(new GT(identity, eonKey), r);
         Bytes32 h2 = ShutterCrypto.HashGTToBlock(p2);
-        
+
         Assert.That(h1, Is.EqualTo(h2));
     }
 
