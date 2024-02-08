@@ -122,9 +122,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 
     internal byte[] Sign(byte[] message)
     {
-        Bls.PrivateKey sk;
+        BlsSigner.PrivateKey sk;
         sk.Bytes = _signer.Key!.KeyBytes;
-        return Bls.Sign(sk, message).Bytes;
+        return BlsSigner.Sign(sk, message).Bytes;
     }
 
     internal async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)

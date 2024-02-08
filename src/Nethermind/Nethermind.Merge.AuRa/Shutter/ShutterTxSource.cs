@@ -7,13 +7,13 @@ using System.Linq;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Abi;
+using Nethermind.Crypto;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using System.Runtime.CompilerServices;
-using Nethermind.Crypto.PairingCurves;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -99,9 +99,9 @@ public class ShutterTxSource : ITxSource
         public ulong Eon;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
-        public BlsCurve.G1 Identity;
+        public Bls.P1 Identity;
 
-        public SequencedTransaction(ulong eon, byte[] encryptedTransaction, UInt256 gasLimit, BlsCurve.G1 identity)
+        public SequencedTransaction(ulong eon, byte[] encryptedTransaction, UInt256 gasLimit, Bls.P1 identity)
         {
             Eon = eon;
             EncryptedTransaction = encryptedTransaction;

@@ -5,16 +5,16 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Crypto.PairingCurves;
 using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
+using Nethermind.Crypto;
 
 namespace Nethermind.Merge.AuRa.Test;
 
-using G1 = BlsCurve.G1;
-using G2 = BlsCurve.G2;
-using GT = BlsCurve.GT;
+using G1 = Bls.P1;
+using G2 = Bls.P2;
+using GT = Bls.PT;
 using EncryptedMessage = ShutterCrypto.EncryptedMessage;
 
 class ShutterCryptoTests
@@ -24,13 +24,16 @@ class ShutterCryptoTests
     {
         UInt256 sk = 123456789;
         UInt256 r = 4444444444;
-        G1 identity = G1.FromScalar(3261443);
-        G2 eonKey = G2.FromScalar(sk);
-        G1 key = sk * identity;
+        G1 identity = G1.generator().mult(3261443);
+        G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
+        G1 key = identity.dup().mult(sk.ToLittleEndian());
 
-        GT p1 = BlsCurve.Pairing(key, G2.FromScalar(r));
-        GT p2 = BlsCurve.Pairing(identity, eonKey) ^ r;
-        Assert.That(p1.X!, Is.EqualTo(p2.X!));
+        GT p1 = new(key, G2.generator().mult(r.ToLittleEndian()));
+        Bytes32 h1 = ShutterCrypto.HashGTToBlock(p1);
+        GT p2 = ShutterCrypto.GTExp(new GT(identity, eonKey), r);
+        Bytes32 h2 = ShutterCrypto.HashGTToBlock(p2);
+        
+        Assert.That(h1, Is.EqualTo(h2));
     }
 
     [Test]
@@ -42,12 +45,14 @@ class ShutterCryptoTests
         b.CopyTo(msg);
 
         UInt256 sk = 123456789;
-        G1 identity = G1.FromScalar(3261443);
-        G2 eonKey = G2.FromScalar(sk);
+        G1 identity = G1.generator().mult(3261443);
+        G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
         Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
         EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
 
-        G1 key = sk * identity;
+        G1 key = identity.dup().mult(sk.ToLittleEndian());
+        Assert.That(ShutterCrypto.RecoverSigma(c, key), Is.EqualTo(sigma));
+
         Span<byte> res = ShutterCrypto.Decrypt(c, key);
         Assert.That(res.SequenceEqual(msg));
     }
@@ -66,8 +71,8 @@ class ShutterCryptoTests
 
     private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
     {
-        GT p = BlsCurve.Pairing(identity, eonKey);
-        GT preimage = p ^ r;
+        GT p = new(identity, eonKey);
+        GT preimage = ShutterCrypto.GTExp(p, r);
         Bytes32 key = ShutterCrypto.HashGTToBlock(preimage);
         return ShutterCrypto.XorBlocks(sigma, key);
     }

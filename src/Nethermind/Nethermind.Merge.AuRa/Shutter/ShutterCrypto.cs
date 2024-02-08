@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
@@ -12,19 +11,20 @@ using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Crypto.PairingCurves;
 using Nethermind.Int256;
+using Nethermind.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
-using G1 = BlsCurve.G1;
-using G2 = BlsCurve.G2;
-using GT = BlsCurve.GT;
+using G1 = Bls.P1;
+using G2 = Bls.P2;
+using GT = Bls.PT;
 
 internal class ShutterCrypto
 {
+    internal static readonly BigInteger BlsSubgroupOrder = new([0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true, true);
     public struct EncryptedMessage
     {
         public G2 c1;
@@ -38,7 +38,7 @@ internal class ShutterCrypto
         identityPrefix.Unwrap().CopyTo(identity);
         sender.Bytes.CopyTo(identity[32..]);
         // todo: reverse?
-        return Keccak.Compute(identity).Bytes * G1.Generator;
+        return new G1(Keccak.Compute(identity).Bytes.ToArray());
     }
 
     public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
@@ -50,7 +50,7 @@ internal class ShutterCrypto
 
         UInt256 r = ComputeR(sigma, msg);
         G2 expectedC1 = ComputeC1(r);
-        if (expectedC1 != encryptedMessage.c1)
+        if (!expectedC1.is_equal(encryptedMessage.c1))
         {
             throw new Exception("Could not decrypt message.");
         }
@@ -60,7 +60,7 @@ internal class ShutterCrypto
 
     public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
-        GT p = BlsCurve.Pairing(decryptionKey, encryptedMessage.c1);
+        GT p = new(decryptionKey, encryptedMessage.c1);
         Bytes32 key = HashGTToBlock(p);
         Bytes32 sigma = XorBlocks(encryptedMessage.c2, key);
         return sigma;
@@ -73,7 +73,7 @@ internal class ShutterCrypto
 
     public static G2 ComputeC1(UInt256 r)
     {
-        return G2.FromScalar(r);
+        return G2.generator().mult(r.ToLittleEndian());
     }
 
     // helper functions
@@ -152,13 +152,30 @@ internal class ShutterCrypto
         }
 
         Span<byte> hash = Keccak.Compute(combinedBlocks).Bytes;
-        BigInteger v = new BigInteger(hash, true, true) % BlsCurve.SubgroupOrder;
+        BigInteger v = new BigInteger(hash, true, true) % BlsSubgroupOrder;
 
         return new(v.ToBigEndianByteArray(32));
     }
 
     public static Bytes32 HashGTToBlock(GT p)
     {
-        return HashBytesToBlock(p.ToBytes());
+        return HashBytesToBlock(p.final_exp().to_bendian());
+    }
+
+    public static GT GTExp(GT x, UInt256 exp)
+    {
+        GT a = x;
+        GT acc = GT.one();
+
+        for (; exp > 0; exp >>= 1)
+        {
+            if ((exp & 1) == 1)
+            {
+                acc.mul(a);
+            }
+            a.sqr();
+        }
+
+        return acc;
     }
 }

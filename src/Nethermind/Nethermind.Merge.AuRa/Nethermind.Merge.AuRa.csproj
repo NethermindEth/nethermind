@@ -17,6 +17,7 @@
 
   <ItemGroup>
     <PackageReference Include="Nethermind.Libp2p" />
+    <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>
 
   <ItemGroup>
