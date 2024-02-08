@@ -161,7 +161,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     catch (ConnectionResetException e)
                     {
                         // Logs exception, then stop processing.
-                        if (_logger.IsDebug) _logger.Debug($"Connection reset.{Environment.NewLine}{e}");
+                        if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
                         yield break;
                     }
                     catch (Exception ex)
