@@ -264,10 +264,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             BackgroundTaskScheduler.ScheduleTask((iList, 0), HandleSlow);
         }
 
-        private Task HandleSlow((IList<Transaction>, int) request, CancellationToken cancellationToken)
+        private Task HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
-            IList<Transaction> transactions = request.Item1;
-            int startIdx = request.Item2;
+            IList<Transaction> transactions = request.txs;
+            int startIdx = request.startIndex;
 
             bool isTrace = Logger.IsTrace;
             int count = transactions.Count;

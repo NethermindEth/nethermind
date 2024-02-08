@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Channels;
 using System.Threading.Tasks;
@@ -36,6 +37,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     private readonly ILogger _logger;
     private readonly IBlockProcessor _blockProcessor;
     private readonly ManualResetEvent _restartQueueSignal;
+    private readonly Task<Task>[] _tasksExecutors;
 
     public BackgroundTaskScheduler(IBlockProcessor blockProcessor, int concurrency, ILogManager logManager)
     {
@@ -51,10 +53,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         _blockProcessor.BlocksProcessing += BlockProcessorOnBlocksProcessing;
         _blockProcessor.BlockProcessed += BlockProcessorOnBlockProcessed;
 
-        for (int i = 0; i < concurrency; i++)
-        {
-            Task.Factory.StartNew(StartChannel, TaskCreationOptions.LongRunning);
-        }
+        _tasksExecutors = Enumerable.Range(0, concurrency).Select(_ => Task.Factory.StartNew(StartChannel)).ToArray();
     }
 
     private void BlockProcessorOnBlocksProcessing(object? sender, BlocksProcessingEventArgs e)
@@ -79,23 +78,23 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     {
         await foreach (IActivity activity in _taskQueue.Reader.ReadAllAsync(_mainCancellationTokenSource.Token))
         {
-            if (_blockProcessorCancellationTokenSource.IsCancellationRequested)
-            {
-                // In case of task that is suppose to run when a block is being processed, if there is some time left
-                // from its deadline, we re-queue it. We do this in case there are some task in the queue that already
-                // reached deadline during block processing in which case, it will need to execute in order to handle
-                // its cancellation.
-                if (DateTimeOffset.Now < activity.Deadline)
-                {
-                    await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
-                    // Throttle deque to prevent infinite loop.
-                    await _restartQueueSignal.WaitOneAsync(TimeSpan.FromMilliseconds(1), _mainCancellationTokenSource.Token);
-                    continue;
-                }
-            }
-
             try
             {
+                if (_blockProcessorCancellationTokenSource.IsCancellationRequested)
+                {
+                    // In case of task that is suppose to run when a block is being processed, if there is some time left
+                    // from its deadline, we re-queue it. We do this in case there are some task in the queue that already
+                    // reached deadline during block processing in which case, it will need to execute in order to handle
+                    // its cancellation.
+                    if (DateTimeOffset.Now < activity.Deadline)
+                    {
+                        await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
+                        // Throttle deque to prevent infinite loop.
+                        await _restartQueueSignal.WaitOneAsync(TimeSpan.FromMilliseconds(1), _mainCancellationTokenSource.Token);
+                        continue;
+                    }
+                }
+
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(
                     _blockProcessorCancellationTokenSource.Token,
                     _mainCancellationTokenSource.Token
@@ -133,11 +132,12 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
     public async ValueTask DisposeAsync()
     {
-        _blockProcessor.BlocksProcessing += BlockProcessorOnBlocksProcessing;
-        _blockProcessor.BlockProcessed += BlockProcessorOnBlockProcessed;
+        _blockProcessor.BlocksProcessing -= BlockProcessorOnBlocksProcessing;
+        _blockProcessor.BlockProcessed -= BlockProcessorOnBlockProcessed;
 
         _taskQueue.Writer.Complete();
         await _mainCancellationTokenSource.CancelAsync();
+        await Task.WhenAll(_tasksExecutors);
     }
 
     private readonly struct Activity<TReq> : IActivity
