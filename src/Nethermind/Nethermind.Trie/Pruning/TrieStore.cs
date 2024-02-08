@@ -349,7 +349,7 @@ namespace Nethermind.Trie.Pruning
         public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
         public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => TryLoadRlp(keccak, null, readFlags);
 
-        public bool IsPersisted(in ValueHash256 keccak)
+        public virtual bool IsPersisted(in ValueHash256 keccak)
         {
             byte[]? rlp = _keyValueStore[keccak.Bytes];
 

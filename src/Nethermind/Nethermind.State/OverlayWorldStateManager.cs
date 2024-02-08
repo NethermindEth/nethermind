@@ -9,17 +9,20 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State;
 
 public class OverlayWorldStateManager(
-    IWorldStateManager worldStateManager,
-    IReadOnlyDbProvider dbProvider,
+        IReadOnlyDbProvider dbProvider,
     OverlayTrieStore overlayTrieStore,
     ILogManager? logManager)
     : IWorldStateManager
 {
     private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 
-    public IWorldState GlobalWorldState => worldStateManager.GlobalWorldState;
+    private readonly WorldState _state = new WorldState(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
 
-    public IStateReader GlobalStateReader => worldStateManager.GlobalStateReader;
+    private readonly StateReader _reader = new StateReader(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+
+    public IWorldState GlobalWorldState => _state;
+
+    public IStateReader GlobalStateReader => _reader;
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 

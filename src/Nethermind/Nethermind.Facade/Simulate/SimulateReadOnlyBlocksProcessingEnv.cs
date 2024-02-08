@@ -18,6 +18,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
@@ -53,8 +54,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(emptyDbProvider, true);
 
         OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
-        OverlayWorldStateManager overlayWorldStateManager = new(worldStateManager, editableDbProvider, overlayTrieStore, logManager);
-
+        OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
 
         IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
         IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
@@ -117,6 +117,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         //var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
         //StateProvider = new WorldState(store, DbProvider.CodeDb, LimboLogs.Instance);
         StateProvider = WorldStateManager.GlobalWorldState;
+        StateReader = WorldStateManager.GlobalStateReader;
 
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 

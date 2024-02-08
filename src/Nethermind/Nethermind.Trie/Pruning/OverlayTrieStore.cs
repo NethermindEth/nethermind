@@ -17,14 +17,61 @@ public class OverlayTrieStore : TrieStore
         _store = store;
     }
 
-    public override TrieNode FindCachedOrUnknown(Hash256? hash) => _store.FindCachedOrUnknown(hash);
 
-    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
-        _store.TryLoadRlp(keccak, readFlags) ?? base.LoadRlp(keccak, readFlags);
 
-    public override byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
-        _store.TryLoadRlp(keccak, readFlags) ?? base.TryLoadRlp(keccak, readFlags);
 
-    public override byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
-        _store.GetByHash(key, flags) ?? base.GetByHash(key, flags);
+    public override bool IsPersisted(in ValueHash256 keccak)
+    {
+        var isPersisted = base.IsPersisted(in keccak);
+        if (!isPersisted)
+        {
+            isPersisted = _store.IsPersisted(in keccak);
+        }
+        return isPersisted;
+    }
+
+
+    public override TrieNode FindCachedOrUnknown(Hash256? hash)
+    {
+        TrieNode findCachedOrUnknown = base.FindCachedOrUnknown(hash);
+        if (findCachedOrUnknown.NodeType == NodeType.Unknown)
+        {
+            findCachedOrUnknown = _store.FindCachedOrUnknown(hash);
+        }
+
+        return findCachedOrUnknown;
+    }
+
+    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    {
+        var rlp = base.TryLoadRlp(keccak, readFlags);
+        if (rlp != null)
+        {
+            return rlp;
+        }
+
+        return _store.LoadRlp(keccak, readFlags);
+    }
+
+    public override byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    {
+        var rlp = base.TryLoadRlp(keccak, readFlags);
+        if (rlp != null)
+        {
+            return rlp;
+        }
+
+        return _store.TryLoadRlp(keccak, readFlags);
+    }
+
+    public override byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+    {
+        var hash = base.GetByHash(key, flags);
+        if (hash != null)
+        {
+            return hash;
+        }
+
+        return _store.GetByHash(key, flags);
+    }
 }
