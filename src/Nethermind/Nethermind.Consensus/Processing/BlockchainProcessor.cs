@@ -313,13 +313,13 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
+                string? error;
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out error);
 
                 if (processedBlock is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
+                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
                 }
                 else
                 {
@@ -359,6 +359,11 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
     {
+        return Process(suggestedBlock, options, tracer, out _);
+    }
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    {
+        error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
@@ -384,7 +389,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
         if (processedBlocks is null)
         {
             return null;
@@ -469,7 +474,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -494,10 +499,12 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 processingBranch.BlocksToProcess,
                 options,
                 tracer);
+            error = null;
         }
         catch (InvalidBlockException ex)
         {
             invalidBlockHash = ex.InvalidBlock.Hash;
+            error = ex.Message;            
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {

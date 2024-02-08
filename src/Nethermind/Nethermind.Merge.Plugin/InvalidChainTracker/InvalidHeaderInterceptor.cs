@@ -25,7 +25,12 @@ public class InvalidHeaderInterceptor : IHeaderValidator
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
     {
-        bool result = _baseValidator.Validate(header, parent, isUncle);
+        return Validate(header, parent, isUncle, out _);
+    }
+
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        bool result = _baseValidator.Validate(header, parent, isUncle, out error);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
@@ -42,7 +47,11 @@ public class InvalidHeaderInterceptor : IHeaderValidator
 
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
-        bool result = _baseValidator.Validate(header, isUncle);
+        return Validate(header, isUncle, out _);
+    }
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        bool result = _baseValidator.Validate(header, isUncle, out error);
         if (!result)
         {
             if (_logger.IsDebug) _logger.Debug($"Intercepted a bad header {header}");
@@ -61,4 +70,5 @@ public class InvalidHeaderInterceptor : IHeaderValidator
     {
         return !HeaderValidator.ValidateHash(header);
     }
+
 }

@@ -40,10 +40,18 @@ namespace Nethermind.Merge.Plugin
 
         public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle = false)
         {
-            return _poSSwitcher.IsPostMerge(header)
-                ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle)
-                : ValidatePoWTotalDifficulty(header) && _preMergeHeaderValidator.Validate(header, parent, isUncle);
+            return Validate(header, parent, isUncle, out _);
         }
+        public override bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+        {
+            error = null;
+            return _poSSwitcher.IsPostMerge(header)
+                ? ValidateTheMergeChecks(header) && base.Validate(header, parent, isUncle, out error)
+                : ValidatePoWTotalDifficulty(header) && _preMergeHeaderValidator.Validate(header, parent, isUncle, out error);
+        }
+
+        public override bool Validate(BlockHeader header, bool isUncle, out string? error) =>
+            Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle, out error);
 
         public override bool Validate(BlockHeader header, bool isUncle = false) =>
             Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
