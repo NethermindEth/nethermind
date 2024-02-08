@@ -6,10 +6,12 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
 using Nethermind.Network.Rlpx;
@@ -23,6 +25,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
+    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -34,10 +37,12 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         IMessageSerializationService serializer,
         INodeStatsManager statsManager,
         ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ILogManager logManager)
         : base(session, statsManager, serializer, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+        _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler)); ;
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
     }
     public override void Init()
@@ -70,7 +75,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
                 GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                 Metrics.GetNodeDataReceived++;
                 ReportIn(getNodeDataMessage, size);
-                Handle(getNodeDataMessage);
+                ScheduleSyncServe(getNodeDataMessage, Handle);
                 break;
             case NodeDataMessageCode.NodeData:
                 NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -81,21 +86,41 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         }
     }
 
-    private void Handle(GetNodeDataMessage getNodeDataMessage)
+    private Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
     {
-        Send(FulfillNodeDataRequest(getNodeDataMessage));
+        return Task.FromResult(FulfillNodeDataRequest(getNodeDataMessage, cancellationToken));
     }
 
-    private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
+    private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
     {
         if (msg.Hashes.Count > 4096)
         {
             throw new EthSyncException("NODEDATA protocol: Incoming node data request for more than 4096 nodes");
         }
 
-        byte[][] nodeData = _syncServer.GetNodeData(msg.Hashes);
+        byte[][] nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
 
         return new NodeDataMessage(nodeData);
+    }
+
+    protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
+    {
+        _backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
+    }
+
+    // I just don't want to create a closure.. so this happens.
+    private async Task BackgroundSyncSender<TReq, TRes>(
+        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+    {
+        try
+        {
+            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+            Send(response);
+        }
+        catch (EthSyncException e)
+        {
+            Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
+        }
     }
 
     private void Handle(NodeDataMessage msg, int size)

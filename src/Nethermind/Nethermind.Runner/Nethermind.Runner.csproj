@@ -108,4 +108,18 @@
     <Copy SourceFiles="@(PluginsForPublish)" DestinationFolder="$(PublishDir)\plugins" />
   </Target>
 
+  <Target Name="CommitFallback" AfterTargets="BeforeBuild" Condition="'$(Commit)' == ''">
+    <Exec Command="git describe --always --exclude=* --abbrev=40" ConsoleToMSBuild="True" IgnoreExitCode="False" StandardOutputImportance="low">
+      <Output PropertyName="Commit" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <PropertyGroup>
+      <SourceRevisionId>$(Commit.Substring(0, 8))</SourceRevisionId>
+    </PropertyGroup>
+    <ItemGroup>
+      <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+        <_Parameter1>Commit</_Parameter1>
+        <_Parameter2>$(Commit)</_Parameter2>
+      </AssemblyAttribute>
+    </ItemGroup>
+  </Target>
 </Project>
