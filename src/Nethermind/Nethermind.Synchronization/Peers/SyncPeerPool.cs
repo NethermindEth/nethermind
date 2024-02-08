@@ -314,10 +314,16 @@ namespace Nethermind.Synchronization.Peers
             }
         }
 
-        public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts = AllocationContexts.All, int timeoutMilliseconds = 0)
+        public async Task<SyncPeerAllocation> Allocate(
+            IPeerAllocationStrategy peerAllocationStrategy,
+            AllocationContexts allocationContexts = AllocationContexts.All,
+            int timeoutMilliseconds = 0,
+            CancellationToken cancellationToken = default)
         {
             int tryCount = 1;
             DateTime startTime = DateTime.UtcNow;
+
+            using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _refreshLoopCancellation.Token);
 
             SyncPeerAllocation allocation = new(peerAllocationStrategy, allocationContexts);
             while (true)
@@ -335,7 +341,7 @@ namespace Nethermind.Synchronization.Peers
 
                 if (!_signals.SafeWaitHandle.IsClosed)
                 {
-                    await _signals.WaitOneAsync(waitTime, _refreshLoopCancellation.Token);
+                    await _signals.WaitOneAsync(waitTime, cts.Token);
                     if (!_signals.SafeWaitHandle.IsClosed)
                     {
                         _signals.Reset(); // without this we have no delay
@@ -343,6 +349,7 @@ namespace Nethermind.Synchronization.Peers
                 }
             }
         }
+
 
         private bool TryAllocateOnce(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts allocationContexts, SyncPeerAllocation allocation)
         {

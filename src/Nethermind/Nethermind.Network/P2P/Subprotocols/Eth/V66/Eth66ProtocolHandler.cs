@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Logging;
@@ -39,13 +40,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IGossipPolicy gossipPolicy,
             ForkInfo forkInfo,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
@@ -71,7 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
                     Metrics.Eth66GetBlockHeadersReceived++;
                     ReportIn(getBlockHeadersMessage, size);
-                    Handle(getBlockHeadersMessage);
+                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case Eth66MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -83,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     Metrics.Eth66GetBlockBodiesReceived++;
                     ReportIn(getBodiesMsg, size);
-                    Handle(getBodiesMsg);
+                    ScheduleSyncServe(getBodiesMsg, Handle);
                     break;
                 case Eth66MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -96,7 +98,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     Metrics.Eth66GetPooledTransactionsReceived++;
                     ReportIn(getPooledTxMsg, size);
-                    Handle(getPooledTxMsg);
+                    ScheduleSyncServe(getPooledTxMsg, Handle);
                     break;
                 case Eth66MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
@@ -118,7 +120,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     Metrics.Eth66GetReceiptsReceived++;
                     ReportIn(getReceiptsMessage, size);
-                    Handle(getReceiptsMessage);
+                    ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case Eth66MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -130,7 +132,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                     Metrics.Eth66GetNodeDataReceived++;
                     ReportIn(getNodeDataMessage, size);
-                    Handle(getNodeDataMessage);
+                    ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 case Eth66MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -144,40 +146,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             }
         }
 
-        private void Handle(GetBlockHeadersMessage getBlockHeaders)
+        private async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage =
-                FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
-            Send(new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage));
+            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(getBlockHeaders.EthMessage, cancellationToken);
+            return new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage);
         }
 
-        private void Handle(GetBlockBodiesMessage getBlockBodies)
+        private async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage =
-                FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
-            Send(new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage));
+            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(getBlockBodies.EthMessage, cancellationToken);
+            return new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage);
         }
 
-        private void Handle(GetPooledTransactionsMessage getPooledTransactions)
+        private async Task<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
         {
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
-
-            Send(new PooledTransactionsMessage(getPooledTransactions.RequestId,
-                FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, txsToSend)));
+            return new PooledTransactionsMessage(getPooledTransactions.RequestId,
+                await FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, cancellationToken));
         }
 
-        private void Handle(GetReceiptsMessage getReceiptsMessage)
+        private async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            V63.Messages.ReceiptsMessage receiptsMessage =
-                FulfillReceiptsRequest(getReceiptsMessage.EthMessage);
-            Send(new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage));
+            V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(getReceiptsMessage.EthMessage, cancellationToken);
+            return new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage);
         }
 
-        private void Handle(GetNodeDataMessage getNodeDataMessage)
+        private async Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
         {
-            V63.Messages.NodeDataMessage nodeDataMessage =
-                FulfillNodeDataRequest(getNodeDataMessage.EthMessage);
-            Send(new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage));
+            V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(getNodeDataMessage.EthMessage, cancellationToken);
+            return new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage);
         }
 
         private void Handle(BlockHeadersMessage message, long size)
