@@ -111,16 +111,16 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
-            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+            public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool usePrunningAndPersistenceStrategies = false)
             {
-                return (T)(await _blockchain.Build(specProvider, initialValues));
+                return (T)(await _blockchain.Build(specProvider, initialValues, true, usePrunningAndPersistenceStrategies));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePrunningAndPersistenceStrategies = false)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues);
+            await base.Build(specProvider, initialValues, addBlockOnStart, usePrunningAndPersistenceStrategies);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
             var dbProvider = new ReadOnlyDbProvider(DbProvider, false);

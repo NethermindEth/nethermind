@@ -35,7 +35,7 @@ public class EthRpcSimulateTestsBase
         TestSpecProvider testSpecProvider = releaseSpec is not null
             ? new TestSpecProvider(releaseSpec)
             : new TestSpecProvider(London.Instance);
-        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
+        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider, null, true);
     }
 
 
