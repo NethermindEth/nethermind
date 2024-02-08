@@ -53,7 +53,7 @@ namespace Nethermind.JsonRpc
         public int? EnginePort { get; set; } = null;
         public string[] EngineEnabledModules { get; set; } = ModuleType.DefaultEngineModules.ToArray();
         public int MaxBatchSize { get; set; } = 1024;
-        public long? MaxBatchResponseBodySize { get; set; } = 32.MB();
+        public long? MaxBatchResponseBodySize { get; set; } = 32.MiB();
     };
 };
 
