@@ -16,8 +16,6 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
-      - name: Wait to ensure assets are uploaded
-        run: sleep 5m
       - name: Download Nethermind reference assemblies
         run: |
           json=$(curl -s ${{ github.event.release.assets_url }})
