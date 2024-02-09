@@ -48,24 +48,24 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
 
-        var emptyDbProvider = new DbProvider();
-        StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(emptyDbProvider, new MemDbFactory());
-        standardDbInitializer.InitStandardDbs(true);
-        IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(emptyDbProvider, true);
+        //var emptyDbProvider = new DbProvider();
+        //StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(emptyDbProvider, new MemDbFactory());
+        //standardDbInitializer.InitStandardDbs(true);
+        //IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(emptyDbProvider, true);
 
         OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
         OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
 
-        IBlockStore blockStore = new BlockStore(dbProvider.BlocksDb);
-        IHeaderStore headerStore = new HeaderStore(dbProvider.HeadersDb, dbProvider.BlockNumbersDb);
+        IBlockStore blockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IHeaderStore headerStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
         const int badBlocksStored = 1;
-        IBlockStore badBlockStore = new BlockStore(dbProvider.BadBlocksDb, badBlocksStored);
+        IBlockStore badBlockStore = new BlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
 
 
         BlockTree tmpBlockTree = new(blockStore,
             headerStore,
-            dbProvider.BlockInfosDb,
-            dbProvider.MetadataDb,
+            editableDbProvider.BlockInfosDb,
+            editableDbProvider.MetadataDb,
             badBlockStore,
             new ChainLevelInfoRepository(readOnlyDbProvider.BlockInfosDb),
             specProvider,
