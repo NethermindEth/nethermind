@@ -189,14 +189,14 @@ namespace Nethermind.Runner.Test
             Test<INetworkConfig, bool>(configWildcard, c => c.DiagTracerEnabled, false);
         }
 
-        [TestCase("mainnet", 2048)]
+        [TestCase("mainnet", 1024)]
         [TestCase("holesky", 1024)]
         [TestCase("sepolia", 1024)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
         [TestCase("chiado", 1024)]
-        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("^spaceneth ^volta ^energy ^poacore ^gnosis", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -338,7 +338,7 @@ namespace Nethermind.Runner.Test
         [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("mainnet", BlobsSupportMode.Disabled)]
+        [TestCase("mainnet", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {
