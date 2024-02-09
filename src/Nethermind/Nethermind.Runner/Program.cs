@@ -110,9 +110,6 @@ public static class Program
 
     private static void Run(string[] args)
     {
-        _logger.Info("Nethermind starting initialization.");
-        _logger.Info($"Client version: {ProductInfo.ClientId}");
-
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -131,28 +128,31 @@ public static class Program
         CommandOption loggerConfigSource = app.Option("-lcs|--loggerConfigSource <loggerConfigSource>", "Path to the NLog config file", CommandOptionType.SingleValue);
         _ = app.Option("-pd|--pluginsDirectory <pluginsDirectory>", "plugins directory", CommandOptionType.SingleValue);
 
-        IFileSystem fileSystem = new FileSystem();
-
-        string pluginsDirectoryPath = LoadPluginsDirectory(args);
-        PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
-            typeof(AuRaPlugin),
-            typeof(CliquePlugin),
-            typeof(EthashPlugin),
-            typeof(NethDevPlugin),
-            typeof(HivePlugin),
-            typeof(UPnPPlugin)
-        );
-
-        // leaving here as an example of adding Debug plugin
-        // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
-        // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
-        pluginLoader.Load(SimpleConsoleLogManager.Instance);
-        TypeDiscovery.Initialize(typeof(INethermindPlugin));
-
-        BuildOptionsFromConfigFiles(app);
-
         app.OnExecute(async () =>
         {
+            _logger.Info("Nethermind starting initialization.");
+            _logger.Info($"Client version: {ProductInfo.ClientId}");
+
+            IFileSystem fileSystem = new FileSystem();
+
+            string pluginsDirectoryPath = LoadPluginsDirectory(args);
+            PluginLoader pluginLoader = new(pluginsDirectoryPath, fileSystem,
+                typeof(AuRaPlugin),
+                typeof(CliquePlugin),
+                typeof(EthashPlugin),
+                typeof(NethDevPlugin),
+                typeof(HivePlugin),
+                typeof(UPnPPlugin)
+            );
+
+            // leaving here as an example of adding Debug plugin
+            // IPluginLoader mevLoader = SinglePluginLoader<MevPlugin>.Instance;
+            // CompositePluginLoader pluginLoader = new (pluginLoader, mevLoader);
+            pluginLoader.Load(SimpleConsoleLogManager.Instance);
+            TypeDiscovery.Initialize(typeof(INethermindPlugin));
+
+            BuildOptionsFromConfigFiles(app);
+
             IConfigProvider configProvider = BuildConfigProvider(app, loggerConfigSource, logLevelOverride, configsDirectory, configFile);
             IInitConfig initConfig = configProvider.GetConfig<IInitConfig>();
             IKeyStoreConfig keyStoreConfig = configProvider.GetConfig<IKeyStoreConfig>();
