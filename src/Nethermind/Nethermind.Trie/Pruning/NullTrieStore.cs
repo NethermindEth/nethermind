@@ -43,8 +43,9 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public void PersistCache(CancellationToken cancellationToken)
+        public bool HasRoot(Hash256 stateRoot)
         {
+            return stateRoot == Keccak.EmptyTreeHash;
         }
     }
 }
