@@ -387,7 +387,7 @@ public partial class EngineModuleTests
     }
 
     [Test]
-    public async Task ForkChoiceUpdated_should_return_invalid_params_but_change_latest_block()
+    public async Task ForkChoiceUpdated_should_return_invalid_attributes_but_change_latest_block()
     {
         (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
             await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
@@ -408,7 +408,7 @@ public partial class EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(ErrorCodes.InvalidAttributes));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
         });
     }

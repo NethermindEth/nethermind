@@ -222,7 +222,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (setHeadErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
+            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidAttributes);
         }
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
@@ -307,7 +307,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return payloadAttributes?.Validate(_specProvider, version, out error) switch
         {
             PayloadAttributesValidationResult.InvalidParams =>
-                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidAttributes),
             PayloadAttributesValidationResult.UnsupportedFork =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork),
             _ => null,

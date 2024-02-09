@@ -91,5 +91,10 @@ namespace Nethermind.JsonRpc
         /// Unsupported fork error
         /// </summary>
         public const int UnsupportedFork = -38005;
+
+        /// <summary>
+        /// Invalid attributes
+        /// </summary>
+        public const int InvalidAttributes = -38003;
     }
 }
