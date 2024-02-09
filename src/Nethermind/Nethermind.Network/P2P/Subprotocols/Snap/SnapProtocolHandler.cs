@@ -3,20 +3,25 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
 {
@@ -31,6 +36,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             lowerWatermark: LowerLatencyThreshold,
             upperWatermark: UpperLatencyThreshold
         );
+
+        protected ISnapServer? SyncServer { get; }
+        protected IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
+        protected bool ServingEnabled { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -50,6 +59,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
+            ISnapServer? snapServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ILogManager logManager)
             : base(session, nodeStats, serializer, logManager)
         {
@@ -57,6 +68,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getStorageRangeRequests = new(Send);
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
+            SyncServer = snapServer;
+            BackgroundTaskScheduler = backgroundTaskScheduler;
+            ServingEnabled = SyncServer != null;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
@@ -82,9 +96,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                        if (Logger.IsDebug)
+                            Logger.Debug(
+                                $"Peer disconnected because of requesting Snap data (GetAccountRange). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
                     ReportIn(getAccountRangeMessage, size);
-                    Handle(getAccountRangeMessage);
+                    ScheduleSyncServe(getAccountRangeMessage, Handle);
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
@@ -92,9 +114,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                        if (Logger.IsDebug)
+                            Logger.Debug(
+                                $"Peer disconnected because of requesting Snap data (GetStorageRanges). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                     ReportIn(getStorageRangesMessage, size);
-                    Handle(getStorageRangesMessage);
+                    ScheduleSyncServe(getStorageRangesMessage, Handle);
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
@@ -102,9 +132,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                        if (Logger.IsDebug)
+                            Logger.Debug(
+                                $"Peer disconnected because of requesting Snap data (GetByteCodes). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
                     ReportIn(getByteCodesMessage, size);
-                    Handle(getByteCodesMessage);
+                    ScheduleSyncServe(getByteCodesMessage, Handle);
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
@@ -112,9 +150,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
+                    if (!ServingEnabled)
+                    {
+                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                        if (Logger.IsDebug)
+                            Logger.Debug(
+                                $"Peer disconnected because of requesting Snap data (GetTrieNodes). Peer: {Session.Node.ClientId}");
+                        break;
+                    }
                     GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                     ReportIn(getTrieNodesMessage, size);
-                    Handle(getTrieNodesMessage);
+                    ScheduleSyncServe(getTrieNodesMessage, Handle);
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
@@ -148,37 +194,81 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests.Handle(msg, size);
         }
 
-        private void Handle(GetAccountRangeMessage msg)
+        private Task<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetAccountRangeReceived++;
-            Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (AccountRange). Peer: {Session.Node.ClientId}");
+            AccountRangeMessage? response = FulfillAccountRangeMessage(getAccountRangeMessage, cancellationToken);
+            response.RequestId = getAccountRangeMessage.RequestId;
+            return Task.FromResult(response);
         }
 
-        private void Handle(GetStorageRangeMessage getStorageRangesMessage)
+        private Task<StorageRangeMessage> Handle(GetStorageRangeMessage getStorageRangesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetStorageRangesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (StorageRange). Peer: {Session.Node.ClientId}");
+            StorageRangeMessage? response = FulfillStorageRangeMessage(getStorageRangesMessage, cancellationToken);
+            response.RequestId = getStorageRangesMessage.RequestId;
+            return Task.FromResult(response);
         }
 
-        private void Handle(GetByteCodesMessage getByteCodesMessage)
+        private Task<ByteCodesMessage> Handle(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetByteCodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (ByteCodes). Peer: {Session.Node.ClientId}");
+            ByteCodesMessage? response = FulfillByteCodesMessage(getByteCodesMessage, cancellationToken);
+            response.RequestId = getByteCodesMessage.RequestId;
+            return Task.FromResult(response);
         }
 
-        private void Handle(GetTrieNodesMessage getTrieNodesMessage)
+        private Task<TrieNodesMessage> Handle(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetTrieNodesReceived++;
-            Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-            if (Logger.IsDebug) Logger.Debug($"Peer disconnected because of requesting Snap data (TrieNodes). Peer: {Session.Node.ClientId}");
+            TrieNodesMessage? response = FulfillTrieNodesMessage(getTrieNodesMessage, cancellationToken);
+            response.RequestId = getTrieNodesMessage.RequestId;
+            return Task.FromResult(response);
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
         {
             Dispose();
+        }
+
+        protected TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
+        {
+            if (SyncServer == null) return new TrieNodesMessage(Array.Empty<byte[]>());
+            var trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
+            return new TrieNodesMessage(trieNodes);
+        }
+
+        protected AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
+        {
+            if (SyncServer == null) return new AccountRangeMessage()
+            {
+                Proofs = Array.Empty<byte[]>(),
+                PathsWithAccounts = Array.Empty<PathWithAccount>(),
+            };
+            AccountRange? accountRange = getAccountRangeMessage.AccountRange;
+            (PathWithAccount[]? ranges, byte[][]? proofs) = SyncServer.GetAccountRanges(accountRange.RootHash, accountRange.StartingHash,
+                accountRange.LimitHash, getAccountRangeMessage.ResponseBytes, cancellationToken);
+            AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
+            return response;
+        }
+        protected StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
+        {
+            if (SyncServer == null) return new StorageRangeMessage()
+            {
+                Proofs = Array.Empty<byte[]>(),
+                Slots = Array.Empty<PathWithStorageSlot[]>(),
+            };
+            StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
+            (PathWithStorageSlot[][]? ranges, byte[][]? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+                storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
+            StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
+            return response;
+        }
+        protected ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
+        {
+            if (SyncServer == null) return new ByteCodesMessage(Array.Empty<byte[]>());
+            var byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
+            return new ByteCodesMessage(byteCodes);
         }
 
         public async Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
@@ -274,5 +364,26 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 static (request) => request.ToString(),
                 token);
         }
+
+        protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
+        {
+            BackgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
+        }
+
+        // I just don't want to create a closure.. so this happens.
+        private async Task BackgroundSyncSender<TReq, TRes>(
+            (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+        {
+            try
+            {
+                TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+                Send(response);
+            }
+            catch (EthSyncException e)
+            {
+                Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
+            }
+        }
+
     }
 }

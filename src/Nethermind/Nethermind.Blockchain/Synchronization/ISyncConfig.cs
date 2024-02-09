@@ -139,4 +139,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
+
+    [ConfigItem(Description = "Enable snap serving.", DefaultValue = "true", HiddenFromDocs = true)]
+    bool SnapServe { get; set; }
 }

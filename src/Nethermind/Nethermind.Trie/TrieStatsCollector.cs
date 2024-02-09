@@ -31,6 +31,11 @@ namespace Nethermind.Trie
             return true;
         }
 
+        public bool ShouldVisit(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        {
+            return true;
+        }
+
         public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext) { }
 
         public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)

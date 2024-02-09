@@ -388,6 +388,36 @@ public readonly struct EmptyContext : INodeContext<EmptyContext>
     public EmptyContext Add(byte nibble) => this;
 }
 
+public struct TreePathContext : INodeContext<TreePathContext>
+{
+    public TreePath Path = TreePath.Empty;
+
+    public TreePathContext()
+    {
+    }
+
+    public TreePathContext Add(byte[] nibblePath)
+    {
+        return new TreePathContext()
+        {
+            Path = Path.Append(nibblePath)
+        };
+    }
+
+    public TreePathContext Add(byte nibble)
+    {
+        return new TreePathContext()
+        {
+            Path = Path.Append(nibble)
+        };
+    }
+
+    public readonly TreePathContext AddStorage(in ValueHash256 storage)
+    {
+        return new TreePathContext();
+    }
+}
+
 public interface INodeContext<TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
     where TNodeContext : struct, INodeContext<TNodeContext>

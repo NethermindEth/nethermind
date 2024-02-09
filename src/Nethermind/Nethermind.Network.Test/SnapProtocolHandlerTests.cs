@@ -10,6 +10,7 @@ using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -55,6 +56,8 @@ public class SnapProtocolHandlerTests
                 Session,
                 NodeStatsManager,
                 MessageSerializationService,
+                null,
+                RunImmediatelyScheduler.Instance,
                 LimboLogs.Instance
             );
             set

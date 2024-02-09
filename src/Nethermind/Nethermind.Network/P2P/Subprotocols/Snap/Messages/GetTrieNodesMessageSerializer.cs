@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using DotNetty.Buffers;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Snap;
@@ -54,7 +55,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
-            message.Paths = stream.DecodeArray(DecodeGroup);
+            PathGroup defaultValue = new PathGroup() { Group = Array.Empty<byte[]>() };
+            message.Paths = stream.DecodeArray(DecodeGroup, defaultElement: defaultValue);
 
             message.Bytes = stream.DecodeLong();
 
@@ -64,7 +66,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         private PathGroup DecodeGroup(RlpStream stream)
         {
             PathGroup group = new PathGroup();
-            group.Group = stream.DecodeArray(s => stream.DecodeByteArray());
+            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: Array.Empty<byte>());
 
             return group;
         }

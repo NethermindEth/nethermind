@@ -267,7 +267,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 
             serializer.Register(new UserOperationsMessageSerializer());
             protocolsManager.AddProtocol(Protocol.AA,
-                session => new AaProtocolHandler(session, serializer, stats, _userOperationPools, peerManager, logManager));
+                (session, _) => new AaProtocolHandler(session, serializer, stats, _userOperationPools, peerManager, logManager));
             protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
 
             if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
