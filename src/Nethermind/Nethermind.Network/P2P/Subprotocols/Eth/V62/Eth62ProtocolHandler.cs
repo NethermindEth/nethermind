@@ -293,6 +293,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 NotifiedTransactions.Set(tx.Hash);
             }
 
+            BackgroundTaskScheduler.ScheduleTask((tx, isTrace), SubmitTx);
+        }
+
+        Task SubmitTx((Transaction tx, bool isTrace) inp, CancellationToken cancellationToken)
+        {
+            if (cancellationToken.IsCancellationRequested) return Task.CompletedTask;
+
+            Transaction tx = inp.tx;
+            bool isTrace = inp.isTrace;
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
             if (isTrace) Log(tx, accepted);
@@ -301,6 +310,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             {
                 Logger.Trace($"{Node:c} sent {tx.Hash} tx and it was {accepted} (chain ID = {tx.Signature?.ChainId})");
             }
+
+            return Task.CompletedTask;
         }
 
         private void Handle(NewBlockHashesMessage newBlockHashes)

@@ -365,5 +365,16 @@ namespace Nethermind.Core.Test
         {
             Bytes.NullableEqualityComparer.Equals(null, null).Should().BeTrue();
         }
+
+        [Test]
+        public void TestCompareGreater()
+        {
+            byte[] bytes1 = Bytes.FromHexString(
+                "04000f0f0e04030e0200000f080306080001060a0d000f010803040004020308030f060d080603020f0e080f0a0f06040c0c0a0b040904040905090f07030c03");
+            byte[] bytes2 = Bytes.FromHexString(
+                "0403020f000a0d09060c0606040704010e030c080d030d0b0c0804050b0b080d0a07080b0a0a0d0b03050d0309010800090004080d0703040f080c0106000f04");
+
+            Bytes.Comparer.CompareGreaterThan(bytes1, bytes2).Should().Be(-1);
+        }
     }
 }

@@ -130,6 +130,49 @@ namespace Nethermind.Core.Extensions
 
                 return y.Length > x.Length ? 1 : 0;
             }
+
+            public int CompareGreaterThan(Span<byte> x, Span<byte> y)
+            {
+                if (x.Length == 0)
+                {
+                    return y.Length == 0 ? 0 : 1;
+                }
+
+                /*
+                Span<ulong> ulongX = MemoryMarshal.Cast<byte, ulong>(x);
+                Span<ulong> ulongY = MemoryMarshal.Cast<byte, ulong>(y);
+
+                // TODO: This is broken. Likely due to endieness
+                for (int i = 0; i < ulongX.Length; i++)
+                {
+                    if (ulongX[i] > ulongY[i])
+                        return 1;
+
+                    if (ulongX[i] < ulongY[i])
+                        return -1;
+                }
+
+                for (int i = ulongX.Length * Unsafe.SizeOf<ulong>(); i < x.Length; i++)
+                {
+                    if (x[i] > y[i])
+                        return 1;
+
+                    if (x[i] < y[i])
+                        return -1;
+                }
+                */
+
+                for (int i = 0; i < x.Length; i++)
+                {
+                    if (x[i] > y[i])
+                        return 1;
+
+                    if (x[i] < y[i])
+                        return -1;
+                }
+
+                return y.Length > x.Length ? 1 : 0;
+            }
         }
 
         public static readonly byte[] Zero32 = new byte[32];

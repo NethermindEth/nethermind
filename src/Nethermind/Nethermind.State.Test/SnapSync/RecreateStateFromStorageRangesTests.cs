@@ -29,12 +29,13 @@ namespace Nethermind.Store.Test
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
         private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
+        private Hash256 _accountAddr;
 
         [OneTimeSetUp]
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            (_inputStateTree, _inputStorageTree, _accountAddr) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]

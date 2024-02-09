@@ -54,6 +54,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 
 namespace Nethermind.Api

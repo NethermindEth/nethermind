@@ -178,14 +178,14 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
-        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
+        public void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory)
         {
             if (_protocolFactories.ContainsKey(code))
             {
                 throw new InvalidOperationException($"Protocol {code} was already added.");
             }
 
-            _protocolFactories[code] = (session, _) => factory(session);
+            _protocolFactories[code] = (session, version) => factory(session, version);
         }
 
         private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
@@ -211,17 +211,6 @@ namespace Nethermind.Network
 
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
-                },
-                [Protocol.Snap] = (session, version) =>
-                {
-                    var handler = version switch
-                    {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
-                        _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
-                    };
-                    InitSatelliteProtocol(session, handler);
-
-                    return handler;
                 },
                 [Protocol.NodeData] = (session, version) =>
                 {
@@ -254,7 +243,7 @@ namespace Nethermind.Network
                 }
             };
 
-        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        public void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
