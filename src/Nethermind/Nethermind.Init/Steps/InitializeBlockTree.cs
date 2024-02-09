@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
@@ -15,6 +16,9 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.JsonRpc.Client;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -31,7 +35,7 @@ namespace Nethermind.Init.Steps
             (_get, _set) = api.ForInit;
         }
 
-        public Task Execute(CancellationToken cancellationToken)
+        public async Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
@@ -71,9 +75,9 @@ namespace Nethermind.Init.Steps
             if (_get.Config<IMiningConfig>().Enabled)
             {
                 Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
-                signer = signerAndStore;
+                signer = await ExternalSigner.Create(new BasicJsonRpcClient(new Uri("http://localhost:8550"), new EthereumJsonSerializer(), _get.LogManager));
                 signerStore = signerAndStore;
-            }
+            }                               
 
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;
@@ -109,7 +113,6 @@ namespace Nethermind.Init.Steps
                 new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
-            return Task.CompletedTask;
         }
     }
 }

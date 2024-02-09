@@ -53,6 +53,7 @@ public class ExternalSigner : ISigner
     {
         //TODO sort the list and validate
         var accounts = await rpcClient.Post<string[]>("account_list");
+        //TODO hardcoded!!
         Address = new Address(accounts[0]);
     }
 }
