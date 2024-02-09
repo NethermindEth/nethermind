@@ -315,7 +315,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 PatriciaTree trie = new PatriciaTree(new TrieStore(new NodeStorage(TrieDb), LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
                 TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
-                trie.Accept(visitor, BlockTree.Head!.StateRoot!);
+                trie.Accept(((ITreeVisitorWithPath)visitor).ToContextualTreeVisitor(), BlockTree.Head!.StateRoot!);
             }
 
             public void ShouldCopyAllValues()

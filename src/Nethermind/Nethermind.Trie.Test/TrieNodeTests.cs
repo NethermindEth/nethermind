@@ -327,7 +327,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Extension_can_accept_visitors()
         {
-            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
+            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new();
             TrieNode ignore = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("ccc"), Array.Empty<byte>());
             TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ignore);
@@ -335,20 +335,20 @@ namespace Nethermind.Trie.Test
             TreePath emptyPath = TreePath.Empty;
             node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-            visitor.Received().VisitExtension(TreePath.Empty, node, context);
+            visitor.Received().VisitExtension(node, context);
         }
 
         [Test]
         public void Unknown_node_with_missing_data_can_accept_visitor()
         {
-            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
+            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new();
             TrieNode node = new(NodeType.Unknown);
 
             TreePath emptyPath = TreePath.Empty;
             node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-            visitor.Received().VisitMissingNode(TreePath.Empty, node.Keccak, context);
+            visitor.Received().VisitMissingNode(node.Keccak, context);
         }
 
         [Test]
@@ -452,7 +452,7 @@ namespace Nethermind.Trie.Test
         [Test]
         public void Branch_can_accept_visitors()
         {
-            ITreeVisitorWithPath visitor = Substitute.For<ITreeVisitorWithPath>();
+            ITreeVisitor visitor = Substitute.For<ITreeVisitor>();
             TrieVisitContext context = new();
             TrieNode node = new(NodeType.Branch);
             for (int i = 0; i < 16; i++)
@@ -463,7 +463,7 @@ namespace Nethermind.Trie.Test
             TreePath emptyPath = TreePath.Empty;
             node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
-            visitor.Received().VisitBranch(TreePath.Empty, node, context);
+            visitor.Received().VisitBranch(node, context);
         }
 
         [Test]

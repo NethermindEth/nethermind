@@ -1153,12 +1153,11 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
-        {
-            Accept(ITreeVisitorWithPath.FromITreeVisitor(visitor), rootHash, visitingOptions);
-        }
+        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null) =>
+            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions);
 
-        public void Accept(ITreeVisitorWithPath visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+        public void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+            where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(rootHash);
@@ -1180,7 +1179,7 @@ namespace Nethermind.Trie
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(startingPath, rootHash);
                 if (!rootRef!.TryResolveNode(TrieStore, ref startingPath))
                 {
-                    visitor.VisitMissingNode(startingPath, rootHash, trieVisitContext);
+                    visitor.VisitMissingNode(default, rootHash, trieVisitContext);
                     return;
                 }
             }
@@ -1205,22 +1204,22 @@ namespace Nethermind.Trie
             if (!visitor.IsFullDbScan)
             {
                 TreePath emptyPath = TreePath.Empty;
-                rootRef?.Accept(visitor, resolver, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
                 return;
             }
 
-            visitor.VisitTree(rootHash, trieVisitContext);
+            visitor.VisitTree(default, rootHash, trieVisitContext);
 
             // Full db scan
             if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
-                BatchedTrieVisitor batchedTrieVisitor = new(visitor, resolver, visitingOptions);
+                BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else
             {
                 TreePath emptyPath = TreePath.Empty;
-                rootRef?.Accept(visitor, resolver, ref emptyPath, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }
 

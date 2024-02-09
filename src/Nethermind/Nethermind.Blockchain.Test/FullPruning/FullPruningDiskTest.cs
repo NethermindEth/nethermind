@@ -194,7 +194,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 Assert.That(
                     () => chain.PruningDb.InnerDbName,
-                    Is.EqualTo($"State{time + 1}").After(1000, 100)
+                    Is.EqualTo($"State{time + 1}").After(500, 100)
                     );
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);

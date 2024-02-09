@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie;
 
+// TODO: Break this.
 public interface ITreeVisitorWithPath
 {
     /// <summary>
@@ -30,54 +31,87 @@ public interface ITreeVisitorWithPath
 
     void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext);
 
-    public static ITreeVisitorWithPath FromITreeVisitor(ITreeVisitor treeVisitor)
+    public ITreeVisitor<PathCtx> ToContextualTreeVisitor()
     {
-        return new TreeVisitorAdaptor(treeVisitor);
+        return new TreeVisitorAdaptor(this);
     }
 
-    private class TreeVisitorAdaptor : ITreeVisitorWithPath
+    public struct PathCtx : INodeContext<PathCtx>
     {
-        private ITreeVisitor _treeVisitor;
-        public bool IsFullDbScan => _treeVisitor.IsFullDbScan;
+        public TreePath Path = TreePath.Empty;
 
-        internal TreeVisitorAdaptor(ITreeVisitor treeVisitor)
+        public PathCtx()
         {
-            _treeVisitor = treeVisitor;
         }
 
-        public bool ShouldVisit(Hash256 nextNode)
+        public PathCtx Add(byte[] nibblePath)
         {
-            return _treeVisitor.ShouldVisit(nextNode);
+            return new PathCtx()
+            {
+                Path = Path.Append(nibblePath)
+            };
         }
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public PathCtx Add(byte nibble)
         {
-            _treeVisitor.VisitTree(rootHash, trieVisitContext);
+            return new PathCtx()
+            {
+                Path = Path.Append(nibble)
+            };
         }
 
-        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public PathCtx AddStorage(in ValueHash256 storage)
         {
-            _treeVisitor.VisitMissingNode(nodeHash, trieVisitContext);
+            return new PathCtx();
+        }
+    }
+
+    private class TreeVisitorAdaptor : ITreeVisitor<PathCtx>
+    {
+        private ITreeVisitorWithPath _treeVisitorImplementation;
+
+        public TreeVisitorAdaptor(ITreeVisitorWithPath treeVisitorImplementation)
+        {
+            _treeVisitorImplementation = treeVisitorImplementation;
         }
 
-        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+        public bool IsFullDbScan => _treeVisitorImplementation.IsFullDbScan;
+
+        public ReadFlags ExtraReadFlag => _treeVisitorImplementation.ExtraReadFlag;
+
+        public bool ShouldVisit(in PathCtx nodeContext, Hash256 nextNode)
         {
-            _treeVisitor.VisitBranch(node, trieVisitContext);
+            return _treeVisitorImplementation.ShouldVisit(nextNode);
         }
 
-        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+        public void VisitTree(in PathCtx nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
-            _treeVisitor.VisitExtension(node, trieVisitContext);
+            _treeVisitorImplementation.VisitTree(rootHash, trieVisitContext);
         }
 
-        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        public void VisitMissingNode(in PathCtx nodeContext, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
-            _treeVisitor.VisitLeaf(node, trieVisitContext, value);
+            _treeVisitorImplementation.VisitMissingNode(in nodeContext.Path, nodeHash, trieVisitContext);
         }
 
-        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        public void VisitBranch(in PathCtx nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
         {
-            _treeVisitor.VisitCode(codeHash, trieVisitContext);
+            _treeVisitorImplementation.VisitBranch(in nodeContext.Path, node, trieVisitContext);
+        }
+
+        public void VisitExtension(in PathCtx nodeContext, TrieNode node, TrieVisitContext trieVisitContext)
+        {
+            _treeVisitorImplementation.VisitExtension(in nodeContext.Path, node, trieVisitContext);
+        }
+
+        public void VisitLeaf(in PathCtx nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+        {
+            _treeVisitorImplementation.VisitLeaf(in nodeContext.Path, node, trieVisitContext, value);
+        }
+
+        public void VisitCode(in PathCtx nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
+        {
+            _treeVisitorImplementation.VisitCode(in nodeContext.Path, codeHash, trieVisitContext);
         }
     }
 }
