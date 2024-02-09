@@ -82,7 +82,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             NodeStorage nodeStorage = new NodeStorage(pruningContext);
             using CopyTreeVisitor copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
-            stateReader.RunTreeVisitor(((ITreeVisitorWithPath)copyTreeVisitor).ToContextualTreeVisitor(), trie.RootHash, visitingOptions);
+            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
             copyTreeVisitor.Finish();
             return pruningContext;
         }

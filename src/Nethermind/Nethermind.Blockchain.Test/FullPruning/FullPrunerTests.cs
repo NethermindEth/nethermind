@@ -315,7 +315,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             {
                 PatriciaTree trie = new PatriciaTree(new TrieStore(new NodeStorage(TrieDb), LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
                 TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
-                trie.Accept(((ITreeVisitorWithPath)visitor).ToContextualTreeVisitor(), BlockTree.Head!.StateRoot!);
+                trie.Accept(visitor, BlockTree.Head!.StateRoot!);
             }
 
             public void ShouldCopyAllValues()
@@ -424,7 +424,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        class TrieCopiedNodeVisitor : ITreeVisitorWithPath
+        class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContext>
         {
             private INodeStorage _nodeStorageToCompareTo;
 
@@ -439,35 +439,32 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
 
             public bool IsFullDbScan => true;
-            public bool ShouldVisit(Hash256 nextNode)
-            {
-                return true;
-            }
+            public bool ShouldVisit(in TreePathContext ctx, Hash256 nextNode) => true;
 
-            public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+            public void VisitTree(in TreePathContext ctx, Hash256 rootHash, TrieVisitContext trieVisitContext)
             {
             }
 
-            public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+            public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
             {
             }
 
-            public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+            public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
             {
-                CheckNode(path, node, trieVisitContext);
+                CheckNode(ctx.Path, node, trieVisitContext);
             }
 
-            public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+            public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
             {
-                CheckNode(path, node, trieVisitContext);
+                CheckNode(ctx.Path, node, trieVisitContext);
             }
 
-            public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+            public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
             {
-                CheckNode(path, node, trieVisitContext);
+                CheckNode(ctx.Path, node, trieVisitContext);
             }
 
-            public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
+            public void VisitCode(in TreePathContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
             {
             }
         }

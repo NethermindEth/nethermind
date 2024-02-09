@@ -2,18 +2,15 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Utils;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -23,7 +20,7 @@ namespace Nethermind.Blockchain.FullPruning
     /// <remarks>
     /// During visiting of the state trie at specified state root it copies the existing trie into <see cref="IPruningContext"/>.
     /// </remarks>
-    public class CopyTreeVisitor : ITreeVisitorWithPath, IDisposable
+    public class CopyTreeVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
@@ -51,9 +48,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         public ReadFlags ExtraReadFlag => ReadFlags.SkipDuplicateRead;
 
-        public bool ShouldVisit(Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
+        public bool ShouldVisit(in TreePathContext context, Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             _stopwatch.Start();
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
@@ -61,7 +58,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         [DoesNotReturn]
         [StackTraceHidden]
-        public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
             {
@@ -72,13 +69,13 @@ namespace Nethermind.Blockchain.FullPruning
             throw new TrieException($"Trie {nodeHash} missing");
         }
 
-        public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(path, node, trieVisitContext);
+        public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Path, node, trieVisitContext);
 
-        public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(path, node, trieVisitContext);
+        public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Path, node, trieVisitContext);
 
-        public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(path, node, trieVisitContext);
+        public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(ctx.Path, node, trieVisitContext);
 
-        public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitCode(in TreePathContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
         private void PersistNode(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
         {

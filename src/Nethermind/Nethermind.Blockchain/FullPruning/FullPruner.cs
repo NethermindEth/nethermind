@@ -261,7 +261,7 @@ namespace Nethermind.Blockchain.FullPruning
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
-                _stateReader.RunTreeVisitor(((ITreeVisitorWithPath)copyTreeVisitor).ToContextualTreeVisitor(), stateRoot, visitingOptions);
+                _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {

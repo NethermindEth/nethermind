@@ -361,7 +361,7 @@ namespace Nethermind.Trie.Test
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
         }
@@ -376,7 +376,7 @@ namespace Nethermind.Trie.Test
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
         }
@@ -391,7 +391,7 @@ namespace Nethermind.Trie.Test
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
         }
@@ -406,7 +406,7 @@ namespace Nethermind.Trie.Test
             TrieNode node = TrieNodeFactory.CreateLeaf(Bytes.FromHexString("aa"), decoder.Encode(account).Bytes);
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitLeafReceived[(TreePath.Empty, node, context, node.Value.ToArray())].Should().Be(1);
         }
@@ -420,7 +420,7 @@ namespace Nethermind.Trie.Test
             TrieNode node = TrieNodeFactory.CreateExtension(Bytes.FromHexString("aa"), ctx.AccountLeaf);
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitExtensionReceived[(TreePath.Empty, node, context)].Should().Be(1);
             visitor.VisitLeafReceived[(new(new(Bytes.FromHexString("0xa000000000000000000000000000000000000000000000000000000000000000")), 1), ctx.AccountLeaf, context, ctx.AccountLeaf.Value.ToArray())].Should().Be(1);
@@ -439,7 +439,7 @@ namespace Nethermind.Trie.Test
             }
 
             TreePath emptyPath = TreePath.Empty;
-            node.Accept(visitor, NullTrieNodeResolver.Instance, ref emptyPath, context);
+            node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitBranchReceived[(TreePath.Empty, node, context)].Should().Be(1);
             for (byte i = 0; i < 16; i++)
@@ -1000,7 +1000,7 @@ namespace Nethermind.Trie.Test
             }
         }
 
-        private class TreeVisitorMock : ITreeVisitorWithPath
+        private class TreeVisitorMock : ITreeVisitor<TreePathContext>
         {
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitExtensionReceived = new();
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitBranchReceived = new();
@@ -1008,32 +1008,32 @@ namespace Nethermind.Trie.Test
 
             public bool IsFullDbScan => true;
 
-            public bool ShouldVisit(Hash256 nextNode) => true;
+            public bool ShouldVisit(in TreePathContext nodeContext, Hash256 nextNode) => true;
 
-            public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
+            public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
             {
             }
 
-            public void VisitMissingNode(in TreePath path, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+            public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
             {
             }
 
-            public void VisitBranch(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+            public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
             {
-                CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (path, node, trieVisitContext), out _) += 1;
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitBranchReceived, (ctx.Path, node, trieVisitContext), out _) += 1;
             }
 
-            public void VisitExtension(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext)
+            public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
             {
-                CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (path, node, trieVisitContext), out _) += 1;
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitExtensionReceived, (ctx.Path, node, trieVisitContext), out _) += 1;
             }
 
-            public void VisitLeaf(in TreePath path, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+            public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
             {
-                CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (path, node, trieVisitContext, value.ToArray()), out _) += 1;
+                CollectionsMarshal.GetValueRefOrAddDefault(VisitLeafReceived, (ctx.Path, node, trieVisitContext, value.ToArray()), out _) += 1;
             }
 
-            public void VisitCode(in TreePath path, Hash256 codeHash, TrieVisitContext trieVisitContext)
+            public void VisitCode(in TreePathContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
             {
             }
 

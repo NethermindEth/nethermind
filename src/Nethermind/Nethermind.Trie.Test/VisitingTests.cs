@@ -179,6 +179,11 @@ public class VisitingTests
 
                 return new PathGatheringContext(@new);
             }
+
+            public PathGatheringContext AddStorage(in ValueHash256 storage)
+            {
+                return this;
+            }
         }
 
         public bool IsFullDbScan => true;
