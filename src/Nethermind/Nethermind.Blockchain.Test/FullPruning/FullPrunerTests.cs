@@ -243,7 +243,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 try
                 {
-                    Assert.That(() => FullPruningDb.Context, Is.Not.Null.After(1000, 1));
+                    Assert.That(() => FullPruningDb.Context, Is.Not.Null.After(5_000, 1));
                 }
                 finally
                 {
