@@ -1146,20 +1146,20 @@ namespace Nethermind.Core.Extensions
             // Note to self. Always benchmark it.
             if (bytes.Length == 0) return;
             int i = 0;
-            for (; i < bytes.Length-8; i+=8)
+            for (; i < bytes.Length - 8; i += 8)
             {
-                ulong currentNum = BinaryPrimitives.ReadUInt64BigEndian(bytes[i..(i+8)]);
+                ulong currentNum = BinaryPrimitives.ReadUInt64BigEndian(bytes[i..(i + 8)]);
                 currentNum <<= 4;
-                currentNum |= (ulong)bytes[i+8] >> 4;
-                BinaryPrimitives.WriteUInt64BigEndian(bytes[i..(i+8)], currentNum);
+                currentNum |= (ulong)bytes[i + 8] >> 4;
+                BinaryPrimitives.WriteUInt64BigEndian(bytes[i..(i + 8)], currentNum);
             }
 
-            for (; i < bytes.Length-4; i+=4)
+            for (; i < bytes.Length - 4; i += 4)
             {
-                uint currentNum = BinaryPrimitives.ReadUInt32BigEndian(bytes[i..(i+4)]);
+                uint currentNum = BinaryPrimitives.ReadUInt32BigEndian(bytes[i..(i + 4)]);
                 currentNum <<= 4;
-                currentNum |= (uint)bytes[i+4] >> 4;
-                BinaryPrimitives.WriteUInt32BigEndian(bytes[i..(i+4)], currentNum);
+                currentNum |= (uint)bytes[i + 4] >> 4;
+                BinaryPrimitives.WriteUInt32BigEndian(bytes[i..(i + 4)], currentNum);
             }
 
             for (; i < bytes.Length - 1; i++)

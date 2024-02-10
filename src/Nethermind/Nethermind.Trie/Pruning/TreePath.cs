@@ -377,7 +377,7 @@ public struct TreePath
 
         if (minLength % 2 == 1)
         {
-            int result = this[minLength-1].CompareTo(otherTree[minLength-1]);
+            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
             if (result != 0) return result;
         }
 
