@@ -895,10 +895,7 @@ namespace Nethermind.Trie.Pruning
             TrieNode node = FindCachedOrUnknown(stateRoot, true);
             if (node.NodeType == NodeType.Unknown)
             {
-                if (TryLoadRlp(node.Keccak, ReadFlags.None) == null)
-                {
-                    return false;
-                }
+                return TryLoadRlp(node.Keccak, ReadFlags.None) is not null;
             }
 
             return true;
