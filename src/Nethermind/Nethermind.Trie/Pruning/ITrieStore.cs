@@ -26,6 +26,7 @@ namespace Nethermind.Trie.Pruning
 
         // Used by healing
         void Set(in ValueHash256 hash, byte[] rlp);
+        bool HasRoot(Hash256 stateRoot);
     }
 
     public interface IPruningTrieStore

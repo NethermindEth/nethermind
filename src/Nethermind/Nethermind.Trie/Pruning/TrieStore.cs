@@ -888,5 +888,17 @@ namespace Nethermind.Trie.Pruning
 
             public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _trieStore.GetByHash(key, flags);
         }
+
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            if (stateRoot == Keccak.EmptyTreeHash) return true;
+            TrieNode node = FindCachedOrUnknown(stateRoot, true);
+            if (node.NodeType == NodeType.Unknown)
+            {
+                return TryLoadRlp(node.Keccak, ReadFlags.None) is not null;
+            }
+
+            return true;
+        }
     }
 }
