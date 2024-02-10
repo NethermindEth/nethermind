@@ -1143,27 +1143,26 @@ namespace Nethermind.Core.Extensions
         /// <param name="bytes"></param>
         public static void ShiftLeft4(Span<byte> bytes)
         {
-            // TODO: Vector256/128
-            while (bytes.Length >= 8)
-            {
-                ulong currentNum = BinaryPrimitives.ReadUInt64BigEndian(bytes[0..]);
-                currentNum <<= 4;
-                if (bytes.Length > 8) currentNum |= (ulong)bytes[8] >> 4;
-                BinaryPrimitives.WriteUInt64BigEndian(bytes[0..], currentNum);
-                bytes = bytes[8..];
-            }
-
-            while (bytes.Length >= 4)
-            {
-                uint currentNum = BinaryPrimitives.ReadUInt32BigEndian(bytes[0..]);
-                currentNum <<= 4;
-                if (bytes.Length > 4) currentNum |= (uint)bytes[4] >> 4;
-                BinaryPrimitives.WriteUInt32BigEndian(bytes[0..], currentNum);
-                bytes = bytes[4..];
-            }
-
+            // Note to self. Always benchmark it.
             if (bytes.Length == 0) return;
-            for (int i = 0; i < bytes.Length - 1; i++)
+            int i = 0;
+            for (; i < bytes.Length-8; i+=8)
+            {
+                ulong currentNum = BinaryPrimitives.ReadUInt64BigEndian(bytes[i..(i+8)]);
+                currentNum <<= 4;
+                currentNum |= (ulong)bytes[i+8] >> 4;
+                BinaryPrimitives.WriteUInt64BigEndian(bytes[i..(i+8)], currentNum);
+            }
+
+            for (; i < bytes.Length-4; i+=4)
+            {
+                uint currentNum = BinaryPrimitives.ReadUInt32BigEndian(bytes[i..(i+4)]);
+                currentNum <<= 4;
+                currentNum |= (uint)bytes[i+4] >> 4;
+                BinaryPrimitives.WriteUInt32BigEndian(bytes[i..(i+4)], currentNum);
+            }
+
+            for (; i < bytes.Length - 1; i++)
             {
                 byte theByte = (byte)((bytes[i] << 4) | (bytes[i + 1] >> 4));
                 bytes[i] = theByte;

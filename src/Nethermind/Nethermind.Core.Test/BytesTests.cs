@@ -364,6 +364,7 @@ namespace Nethermind.Core.Test
         [TestCase("01", "10")]
         [TestCase("0120", "1200")]
         [TestCase("0123", "1230")]
+        [TestCase("012345", "123450")]
         [TestCase("0123456789abcdef", "123456789abcdef0")]
         [TestCase("0123456789abcdef0123456789abcdef", "123456789abcdef0123456789abcdef0")]
         [TestCase("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef", "123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef0")]
