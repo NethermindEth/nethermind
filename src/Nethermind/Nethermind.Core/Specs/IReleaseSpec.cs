@@ -284,11 +284,24 @@ namespace Nethermind.Core.Specs
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
         bool ValidateChainId => true;
 
+        /// <summary>
+        /// State - Verkle Trees
+        /// </summary>
+        bool IsVerkleTreeEipEnabled { get; }
+
+        /// <summary>
+        /// Store historical BlockHash in State
+        /// </summary>
+        bool IsEip2935Enabled { get; }
+        Address Eip2935ContractAddress { get; }
+
         public ulong WithdrawalTimestamp { get; }
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        public ulong Eip6800TransitionTimeStamp { get; }
+
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

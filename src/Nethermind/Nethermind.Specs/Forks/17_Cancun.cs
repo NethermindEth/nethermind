@@ -14,10 +14,10 @@ public class Cancun : Shanghai
     protected Cancun()
     {
         Name = "Cancun";
-        IsEip1153Enabled = true;
-        IsEip4788Enabled = true;
-        IsEip4844Enabled = true;
-        IsEip5656Enabled = true;
+        IsEip1153Enabled = false;
+        IsEip4788Enabled = false;
+        IsEip4844Enabled = false;
+        IsEip5656Enabled = false;
         IsEip6780Enabled = true;
         Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
     }

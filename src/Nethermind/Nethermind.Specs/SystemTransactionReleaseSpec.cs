@@ -119,6 +119,7 @@ namespace Nethermind.Specs
         public ulong WithdrawalTimestamp => _spec.WithdrawalTimestamp;
 
         public ulong Eip4844TransitionTimestamp => _spec.Eip4844TransitionTimestamp;
+        public ulong Eip6800TransitionTimeStamp => _spec.Eip6800TransitionTimeStamp;
 
         public Address Eip1559FeeCollector => _spec.Eip1559FeeCollector;
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
@@ -133,5 +134,8 @@ namespace Nethermind.Specs
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
+        public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
+        public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
     }
 }
