@@ -311,6 +311,15 @@ namespace Nethermind.TxPool.Collections
                     if (_cacheMap.Count > _capacity)
                     {
                         RemoveLast(out removed);
+
+                        // Self-recovery in case of exceeding collection's max capacity.
+                        // If capacity is exceeded by more than 1 (1 is normal situation), then remove one more item.
+                        // Every time when we will add 1 item, we will remove 2, until we will drop below max cap.
+                        if (_cacheMap.Count > _capacity)
+                        {
+                            RemoveLast(out removed);
+                        }
+
                         return true;
                     }
 

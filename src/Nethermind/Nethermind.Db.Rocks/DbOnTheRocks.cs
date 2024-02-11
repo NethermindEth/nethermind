@@ -163,24 +163,23 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             if (dbConfig.EnableMetricsUpdater)
             {
+                DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
+                metricUpdater.StartUpdating();
+                _metricsUpdaters.Add(metricUpdater);
+
                 if (columnFamilies is not null)
                 {
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
+                        if (columnFamily.Name == "default") continue;
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
-                            DbMetricsUpdater<ColumnFamilyOptions> metricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
+                            DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
                                 Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
-                            metricUpdater.StartUpdating();
-                            _metricsUpdaters.Add(metricUpdater);
+                            columnMetricUpdater.StartUpdating();
+                            _metricsUpdaters.Add(columnMetricUpdater);
                         }
                     }
-                }
-                else
-                {
-                    DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
-                    metricUpdater.StartUpdating();
-                    _metricsUpdaters.Add(metricUpdater);
                 }
             }
 
@@ -986,9 +985,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            // seems it has no performance impact
-            return _db.Get(key, cf, _defaultReadOptions) is not null;
-            // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+            return _db.HasKey(key, cf, _defaultReadOptions);
         }
         catch (RocksDbSharpException e)
         {

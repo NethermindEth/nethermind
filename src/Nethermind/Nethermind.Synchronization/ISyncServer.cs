@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -24,7 +25,7 @@ namespace Nethermind.Synchronization
         public CanonicalHashTrie? GetCHT();
         Hash256? FindHash(long number);
         BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
-        byte[]?[] GetNodeData(IReadOnlyList<Hash256> keys, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        byte[]?[] GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
