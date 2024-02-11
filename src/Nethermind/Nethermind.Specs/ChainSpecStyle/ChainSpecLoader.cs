@@ -143,6 +143,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6780TransitionTimestamp = chainSpecJson.Params.Eip6780TransitionTimestamp,
             Eip4788TransitionTimestamp = chainSpecJson.Params.Eip4788TransitionTimestamp,
             Eip4788ContractAddress = chainSpecJson.Params.Eip4788ContractAddress ?? Eip4788Constants.BeaconRootsAddress,
+            Eip6800TransitionTimestamp = chainSpecJson.Params.Eip6800TransitionTimestamp,
+            Eip2935TransitionTimestamp = chainSpecJson.Params.Eip2935TransitionTimestamp,
             TransactionPermissionContract = chainSpecJson.Params.TransactionPermissionContract,
             TransactionPermissionContractTransition = chainSpecJson.Params.TransactionPermissionContractTransition,
             ValidateChainIdTransition = chainSpecJson.Params.ValidateChainIdTransition,
@@ -226,6 +228,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         chainSpec.GrayGlacierBlockNumber = difficultyBombDelaysBlockNumbers?.Skip(5).FirstOrDefault();
         chainSpec.ShanghaiTimestamp = chainSpec.Parameters.Eip3651TransitionTimestamp;
         chainSpec.CancunTimestamp = chainSpec.Parameters.Eip4844TransitionTimestamp;
+        chainSpec.PragueTimestamp = chainSpec.Parameters.Eip6800TransitionTimestamp;
 
         // TheMerge parameters
         chainSpec.MergeForkIdBlockNumber = chainSpec.Parameters.MergeForkIdTransition;

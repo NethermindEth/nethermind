@@ -143,4 +143,7 @@ public class ChainParameters
     /// </summary>
     public ulong? Eip4844TargetBlobGasPerBlock { get; set; }
     #endregion
+
+    public ulong? Eip6800TransitionTimestamp { get; set; }
+    public ulong? Eip2935TransitionTimestamp { get; set; }
 }
