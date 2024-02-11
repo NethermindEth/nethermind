@@ -13,14 +13,14 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void peek_should_return_last_element()
         {
-            StackList stack = GetStackList();
+            StackList<int> stack = GetStackList();
             stack.Peek().Should().Be(stack[^1]);
         }
 
         [Test]
         public void try_peek_should_return_last_element()
         {
-            StackList stack = GetStackList();
+            StackList<int> stack = GetStackList();
             stack.TryPeek(out int item).Should().Be(true);
             item.Should().Be(stack[^1]);
         }
@@ -28,14 +28,14 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void try_peek_should_return_false_if_empty()
         {
-            StackList stack = new();
+            StackList<int> stack = new();
             stack.TryPeek(out _).Should().Be(false);
         }
 
         [Test]
         public void pop_should_remove_last_element()
         {
-            StackList stack = GetStackList();
+            StackList<int> stack = GetStackList();
             int expectedElement = stack[^1];
             int count = stack.Count;
             stack.Pop().Should().Be(expectedElement);
@@ -45,7 +45,7 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void try_pop_should_return_last_element()
         {
-            StackList stack = GetStackList();
+            StackList<int> stack = GetStackList();
             int expectedElement = stack[^1];
             int count = stack.Count;
             stack.TryPop(out int item).Should().Be(true);
@@ -56,10 +56,10 @@ namespace Nethermind.Core.Test.Collections
         [Test]
         public void try_pop_should_return_false_if_empty()
         {
-            StackList stack = new();
+            StackList<int> stack = new();
             stack.TryPop(out _).Should().Be(false);
         }
 
-        private static StackList GetStackList() => new() { 1, 2, 5 };
+        private static StackList<int> GetStackList() => new() { 1, 2, 5 };
     }
 }

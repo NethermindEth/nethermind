@@ -7,11 +7,12 @@ using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
-    public sealed class StackList : List<int>
+    public sealed class StackList<T> : List<T>
+        where T : struct, IComparable<T>
     {
-        public int Peek() => this[^1];
+        public T Peek() => this[^1];
 
-        public bool TryPeek(out int item)
+        public bool TryPeek(out T item)
         {
             if (Count > 0)
             {
@@ -25,14 +26,14 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public int Pop()
+        public T Pop()
         {
-            int value = this[^1];
+            T value = this[^1];
             RemoveAt(Count - 1);
             return value;
         }
 
-        public bool TryPop(out int item)
+        public bool TryPop(out T item)
         {
             if (Count > 0)
             {
@@ -46,14 +47,14 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public void Push(int item)
+        public void Push(T item)
         {
             Add(item);
         }
 
-        public bool TryGetSearchedItem(int activation, out int item)
+        public bool TryGetSearchedItem(T activation, out T item)
         {
-            Span<int> span = CollectionsMarshal.AsSpan(this);
+            Span<T> span = CollectionsMarshal.AsSpan(this);
             int index = span.BinarySearch(activation);
             bool result;
             if ((uint)index < (uint)span.Length)

@@ -77,7 +77,7 @@ namespace Nethermind.State
 
             if (_transactionChangesSnapshots.TryPeek(out int snapshot))
             {
-                if (_intraBlockCache.TryGetValue(storageCell, out StackList stack))
+                if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
                 {
                     if (stack.TryGetSearchedItem(snapshot, out int lastChangeIndexBeforeOriginalSnapshot))
                     {
@@ -252,7 +252,7 @@ namespace Nethermind.State
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
         {
-            StackList stack = SetupRegistry(cell);
+            StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
             stack.Push(_currentPosition);
             _originalValues[cell] = value;
