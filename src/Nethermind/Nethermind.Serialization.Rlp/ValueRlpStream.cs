@@ -17,7 +17,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
     private readonly ref readonly CappedArray<byte> _data = ref data;
     private int _position = 0;
 
-    internal string Description =>
+    internal readonly string Description =>
         Data.AsSpan(0, Math.Min(Rlp.DebugMessageContentLength, Length)).ToHexString() ?? "0x";
 
     public readonly ref readonly CappedArray<byte> Data => ref _data;
@@ -81,13 +81,13 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         SkipBytes(PeekPrefixAndContentLength().PrefixLength);
     }
 
-    public int PeekNextRlpLength()
+    public readonly int PeekNextRlpLength()
     {
         (int a, int b) = PeekPrefixAndContentLength();
         return a + b;
     }
 
-    public (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
+    public readonly (int PrefixLength, int ContentLength) PeekPrefixAndContentLength()
     {
         (int prefixLength, int contentLength) result;
         int prefix = PeekByte();
@@ -175,7 +175,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         return DeserializeLengthRef(ref firstElement, lengthOfLength);
     }
 
-    private int PeekDeserializeLength(int offset, int lengthOfLength)
+    private readonly int PeekDeserializeLength(int offset, int lengthOfLength)
     {
         if (lengthOfLength == 0 || (uint)lengthOfLength > 4)
         {
@@ -324,13 +324,13 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         return true;
     }
 
-    public Span<byte> PeekNextItem()
+    public readonly Span<byte> PeekNextItem()
     {
         int length = PeekNextRlpLength();
         return Peek(length);
     }
 
-    public Span<byte> Peek(int length)
+    public readonly Span<byte> Peek(int length)
     {
         return Peek(0, length);
     }

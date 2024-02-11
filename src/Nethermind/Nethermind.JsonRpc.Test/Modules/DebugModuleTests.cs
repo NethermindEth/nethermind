@@ -37,7 +37,7 @@ public class DebugModuleTests
     private readonly IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig();
     private readonly ISpecProvider specProvider = Substitute.For<ISpecProvider>();
     private readonly IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
-    private MemDb _blocksDb = new();
+    private readonly MemDb _blocksDb = new();
 
     [Test]
     public async Task Get_from_db()
