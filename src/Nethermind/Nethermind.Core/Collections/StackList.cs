@@ -6,11 +6,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Core.Collections
 {
-    public sealed class StackList<T> : List<T> where T : IComparable<T>
+    public sealed class StackList : List<int>
     {
-        public T Peek() => this[^1];
+        public int Peek() => this[^1];
 
-        public bool TryPeek(out T? item)
+        public bool TryPeek(out int item)
         {
             if (Count > 0)
             {
@@ -24,14 +24,14 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public T Pop()
+        public int Pop()
         {
-            T value = this[^1];
+            int value = this[^1];
             RemoveAt(Count - 1);
             return value;
         }
 
-        public bool TryPop(out T? item)
+        public bool TryPop(out int item)
         {
             if (Count > 0)
             {
@@ -45,12 +45,12 @@ namespace Nethermind.Core.Collections
             }
         }
 
-        public void Push(T item)
+        public void Push(int item)
         {
             Add(item);
         }
 
-        public bool TryGetSearchedItem(T activation, out T? item)
+        public bool TryGetSearchedItem(int activation, out int item)
         {
             int index = BinarySearch(activation);
             bool result;

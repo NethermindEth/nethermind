@@ -16,7 +16,7 @@ namespace Nethermind.State
     /// </summary>
     internal abstract class PartialStorageProviderBase
     {
-        protected readonly ResettableDictionary<StorageCell, StackList<int>> _intraBlockCache = new();
+        protected readonly ResettableDictionary<StorageCell, StackList> _intraBlockCache = new();
 
         protected readonly ILogger _logger;
 
@@ -96,7 +96,7 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                StackList<int> stack = _intraBlockCache[change!.StorageCell];
+                StackList stack = _intraBlockCache[change!.StorageCell];
                 if (stack.Count == 1)
                 {
                     if (_changes[stack.Peek()]!.ChangeType == ChangeType.JustCache)
@@ -217,7 +217,7 @@ namespace Nethermind.State
         /// <returns>True if value has been set</returns>
         protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
         {
-            if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
+            if (_intraBlockCache.TryGetValue(storageCell, out StackList stack))
             {
                 int lastChangeIndex = stack.Peek();
                 {
@@ -244,7 +244,7 @@ namespace Nethermind.State
         /// <param name="value">Value to set</param>
         private void PushUpdate(in StorageCell cell, byte[] value)
         {
-            StackList<int> stack = SetupRegistry(cell);
+            StackList stack = SetupRegistry(cell);
             IncrementChangePosition();
             stack.Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
@@ -262,12 +262,12 @@ namespace Nethermind.State
         /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
-        protected StackList<int> SetupRegistry(in StorageCell cell)
+        protected StackList SetupRegistry(in StorageCell cell)
         {
-            ref StackList<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
+            ref StackList? value = ref _intraBlockCache.GetValueRefOrAddDefault(cell, out bool exists);
             if (!exists)
             {
-                value = new StackList<int>();
+                value = new StackList();
             }
 
             return value;
@@ -281,7 +281,7 @@ namespace Nethermind.State
         {
             // We are setting cached values to zero so we do not use previously set values
             // when the contract is revived with CREATE2 inside the same block
-            foreach (KeyValuePair<StorageCell, StackList<int>> cellByAddress in _intraBlockCache)
+            foreach (KeyValuePair<StorageCell, StackList> cellByAddress in _intraBlockCache)
             {
                 if (cellByAddress.Key.Address == address)
                 {
