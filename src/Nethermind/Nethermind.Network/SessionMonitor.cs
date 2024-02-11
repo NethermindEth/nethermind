@@ -94,7 +94,7 @@ namespace Nethermind.Network
                             if (failures > 4 && failures > tasks.Length / 3)
                             {
                                 decimal percentage = (decimal)failures / tasksLength;
-                                if (_logger.IsInfo) _logger.Info($"{percentage:P0} of nodes did not respond to a Ping message - {failures}/{tasksLength}");
+                                if (_logger.IsInfo) _logger.Info($"{failures} of {tasksLength} checked nodes did not respond to a Ping message - {percentage:P0}");
                             }
                         }
                     }
