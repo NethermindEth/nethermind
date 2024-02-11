@@ -259,7 +259,7 @@ namespace Nethermind.State
         }
 
         /// <summary>
-        /// Initialize the StackList<int> at the storage cell position if needed
+        /// Initialize the StackList at the storage cell position if needed
         /// </summary>
         /// <param name="cell"></param>
         protected StackList<int> SetupRegistry(in StorageCell cell)
