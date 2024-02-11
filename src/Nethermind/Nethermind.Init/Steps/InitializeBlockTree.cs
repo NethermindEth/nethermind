@@ -16,7 +16,9 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
+using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -72,10 +74,14 @@ namespace Nethermind.Init.Steps
 
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
-            if (_get.Config<IMiningConfig>().Enabled)
+            IMiningConfig miningConfig = _get.Config<IMiningConfig>();
+            if (miningConfig.Enabled)
             {
                 Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
-                signer = await ExternalSigner.Create(new BasicJsonRpcClient(new Uri("http://localhost:8550"), new EthereumJsonSerializer(), _get.LogManager));
+                if (!string.IsNullOrEmpty(miningConfig.Signer))
+                    signer = await SetupExternalSigner(miningConfig.Signer, _get.SpecProvider!.ChainId, _get.Config<IKeyStoreConfig>().BlockAuthorAccount);
+                else
+                    signer = signerAndStore;
                 signerStore = signerAndStore;
             }                               
 
@@ -113,6 +119,12 @@ namespace Nethermind.Init.Steps
                 new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
+        }
+
+        private async Task<ISigner> SetupExternalSigner(string urlSigner, ulong chainId, string blockAuthorAccount)
+        {
+            Address? address = string.IsNullOrEmpty(blockAuthorAccount) ? null : new Address(blockAuthorAccount);   
+            return await RemoteSigner.Create(new BasicJsonRpcClient(new Uri(urlSigner), _get.EthereumJsonSerializer, _get.LogManager), chainId, address);
         }
     }
 }

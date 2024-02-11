@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -19,24 +20,37 @@ using NUnit.Framework;
 namespace Nethermind.Blockchain.Test.Consensus
 {
     [TestFixture]
-    public class ExternalSignerTests
+    public class RemoteSignerTests
     {
         [Test]
         public async Task Test_external_signing()
         {
             var client = new BasicJsonRpcClient(new Uri("http://localhost:8550"), new EthereumJsonSerializer(), new OneLoggerLogManager(new (new TestLogger())));
-            ExternalSigner signer = await ExternalSigner.Create(client);
+            RemoteSigner signer = await RemoteSigner.Create(client, 0);
 
             var result = signer.Sign(Keccak.Zero);
 
             Assert.That(result, Is.Not.Empty);
+
+        }
+
+        [Test]
+        public async Task Test_Tx_external_signing()
+        {
+            var client = new BasicJsonRpcClient(new Uri("http://localhost:8550"), new EthereumJsonSerializer(), new OneLoggerLogManager(new(new TestLogger())));
+            Transaction tx = Build.A.Transaction.WithTo(new Address("0xBaB1b2527eDB13AaC27A3982A89A61b8007C5Df1")).TestObject;
+            RemoteSigner signer = await RemoteSigner.Create(client, 0);
+
+            await signer.Sign(tx);
+
+            Assert.That(tx.Signature, Is.Not.Null);
         }
 
         [Test]
         public async Task Test_listing()
         {
             var client = new BasicJsonRpcClient(new Uri("http://localhost:8550"), new EthereumJsonSerializer(), new OneLoggerLogManager(new(new TestLogger())));
-            ExternalSigner signer = await ExternalSigner.Create(client);
+            RemoteSigner signer = await RemoteSigner.Create(client, 0);
 
         }
     }
