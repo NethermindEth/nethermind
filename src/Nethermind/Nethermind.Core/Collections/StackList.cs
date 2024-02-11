@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
@@ -52,19 +53,20 @@ namespace Nethermind.Core.Collections
 
         public bool TryGetSearchedItem(int activation, out int item)
         {
-            int index = BinarySearch(activation);
+            Span<int> span = CollectionsMarshal.AsSpan(this);
+            int index = span.BinarySearch(activation);
             bool result;
-            if (index >= 0)
+            if ((uint)index < (uint)span.Length)
             {
-                item = this[index];
+                item = span[index];
                 result = true;
             }
             else
             {
-                int largerIndex = ~index;
-                if (largerIndex != 0)
+                index = ~index - 1;
+                if ((uint)index < (uint)span.Length)
                 {
-                    item = this[largerIndex - 1];
+                    item = span[index];
                     result = true;
                 }
                 else
