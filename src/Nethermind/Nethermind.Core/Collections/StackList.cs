@@ -53,11 +53,11 @@ namespace Nethermind.Core.Collections
         public bool TryGetSearchedItem(T activation, out T? item)
         {
             int index = BinarySearch(activation);
-
+            bool result;
             if (index >= 0)
             {
                 item = this[index];
-                return true;
+                result = true;
             }
             else
             {
@@ -65,14 +65,16 @@ namespace Nethermind.Core.Collections
                 if (largerIndex != 0)
                 {
                     item = this[largerIndex - 1];
-                    return true;
+                    result = true;
                 }
                 else
                 {
                     item = default;
-                    return false;
+                    result = false;
                 }
             }
+
+            return result;
         }
     }
 }
