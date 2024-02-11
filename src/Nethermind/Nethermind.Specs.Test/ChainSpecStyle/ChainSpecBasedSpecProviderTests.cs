@@ -40,7 +40,7 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Timstamp_activation_equal_to_genesis_timestamp_test.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        ChainSpec chainSpec = loader.LoadFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
@@ -83,7 +83,7 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory,
             $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/Specs/Logs_warning_when_timestampActivation_happens_before_blockActivation_test.json");
-        ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+        ChainSpec chainSpec = loader.LoadFromFile(path);
         chainSpec.Parameters.Eip2537Transition.Should().BeNull();
         InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
         iLogger.IsWarn.Returns(true);
@@ -487,10 +487,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, $"../../../../Chains/{chain}.json");
-        using (FileStream stream = File.OpenRead(path))
-        {
-            return loader.Load(stream);
-        }
+        return loader.LoadFromFile(path);
     }
 
     [Test]

@@ -7,8 +7,6 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     public interface IChainSpecLoader
     {
-        ChainSpec Load(byte[] data);
-        ChainSpec Load(string jsonData);
         ChainSpec Load(Stream streamData);
     }
 }

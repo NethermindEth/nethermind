@@ -21,35 +21,13 @@ namespace Nethermind.Specs.ChainSpecStyle;
 /// <summary>
 /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
 /// </summary>
-public class ChainSpecLoader : IChainSpecLoader
+public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 {
-    private readonly IJsonSerializer _serializer;
-
-    public ChainSpecLoader(IJsonSerializer serializer)
-    {
-        _serializer = serializer;
-    }
-
-    public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
-
-    public ChainSpec Load(string jsonData)
-    {
-        try
-        {
-            ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-            return InitChainSpecFrom(chainSpecJson);
-        }
-        catch (Exception e)
-        {
-            throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
-        }
-    }
-
     public ChainSpec Load(Stream streamData)
     {
         try
         {
-            ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(streamData);
+            ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
             return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
@@ -94,20 +72,16 @@ public class ChainSpecLoader : IChainSpecLoader
 
         long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
-            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
-            {
-                return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
-            }
+            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) =>
+                o.Value.TryGetSubProperty(innerPath, out JsonElement value) && value.GetInt64() == expectedValue;
 
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
         long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
-            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
-            {
-                return o.Value.TryGetSubProperty(innerPath, out _);
-            }
+            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) =>
+                o.Value.TryGetSubProperty(innerPath, out _);
 
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }

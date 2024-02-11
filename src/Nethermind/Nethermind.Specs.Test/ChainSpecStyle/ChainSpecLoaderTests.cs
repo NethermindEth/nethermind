@@ -112,12 +112,9 @@ public class ChainSpecLoaderTests
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        using (Stream stream = File.OpenRead(path))
-        {
-            ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-            ChainSpec chainSpec = chainSpecLoader.Load(stream);
-            return chainSpec;
-        }
+        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
+        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
+        return chainSpec;
     }
 
     [Test]
