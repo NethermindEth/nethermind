@@ -196,7 +196,7 @@ public class VisitingTests
 
         public void VisitLeaf(in PathGatheringContext nodeContext, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
-            PathGatheringContext context = nodeContext.Add(node.Key!);
+            PathGatheringContext context = nodeContext.Add(node.Key.ToNibble());
             _paths.Enqueue(context.Nibbles);
         }
 
