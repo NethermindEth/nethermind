@@ -16,6 +16,8 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Benchmarks.Store
 {
+
+    [MemoryDiagnoser]
     public class PatriciaTreeBenchmarks
     {
         private static readonly Account _empty = Build.An.Account.WithBalance(0).TestObject;
