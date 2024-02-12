@@ -504,7 +504,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         catch (InvalidBlockException ex)
         {
             invalidBlockHash = ex.InvalidBlock.Hash;
-            error = ex.Message;            
+            error = ex.Message;
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {
