@@ -30,14 +30,14 @@ namespace Nethermind.Trie.Pruning
         // Used by healing
         void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
 
+        bool HasRoot(Hash256 stateRoot);
+
         IScopedTrieStore GetTrieStore(Hash256? address);
 
         TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
-
-        public void PersistCache(CancellationToken cancellationToken);
     }
 
     public interface IPruningTrieStore

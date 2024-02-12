@@ -394,7 +394,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 }
 
-public struct EmptyContext : INodeContext<EmptyContext>
+public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
     public EmptyContext Add(byte[] nibblePath) => this;
     public EmptyContext Add(byte nibble) => this;

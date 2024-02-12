@@ -29,7 +29,7 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
-        private ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
+        private readonly ConcurrentNodeWriteBatcher _concurrentWriteBatcher;
 
         public CopyTreeVisitor(
             INodeStorage nodeStorage,

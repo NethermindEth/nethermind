@@ -113,7 +113,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext ToVisitContext()
+        public readonly TrieVisitContext ToVisitContext()
         {
             return new TrieVisitContext()
             {

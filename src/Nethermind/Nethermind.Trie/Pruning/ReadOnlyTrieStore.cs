@@ -55,7 +55,6 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-
         public IScopedTrieStore GetTrieStore(Hash256? address)
         {
             return new ScopedReadOnlyTrieStore(this, address);
@@ -65,6 +64,11 @@ namespace Nethermind.Trie.Pruning
         public void PersistCache(CancellationToken cancellationToken)
         {
             _trieStore.PersistCache(cancellationToken);
+        }
+
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            return _trieStore.HasRoot(stateRoot);
         }
 
         public void Dispose() { }

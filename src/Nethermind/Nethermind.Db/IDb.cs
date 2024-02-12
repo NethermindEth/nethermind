@@ -27,7 +27,7 @@ namespace Nethermind.Db
         void Clear() { }
         void Compact() { }
 
-        struct DbMetric
+        readonly struct DbMetric
         {
             public long Size { get; init; }
             public long CacheSize { get; init; }
