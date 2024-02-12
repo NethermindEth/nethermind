@@ -68,7 +68,7 @@ namespace Nethermind.Trie
                         }
 
                         child.ResolveKey(nodeResolver, false);
-                        TNodeContext childContext = nodeContext.Add(Key!);
+                        TNodeContext childContext = nodeContext.Add(Key.ToNibble());
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
@@ -87,7 +87,7 @@ namespace Nethermind.Trie
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {
-                            TNodeContext childContext = nodeContext.Add(Key!);
+                            TNodeContext childContext = nodeContext.Add(Key!.ToNibble());
 
                             Account account = _accountDecoder.Decode(Value.AsRlpStream());
                             if (account.HasCode && visitor.ShouldVisit(childContext, account.CodeHash))
@@ -244,7 +244,7 @@ namespace Nethermind.Trie
                         }
 
                         child.ResolveKey(nodeResolver, false);
-                        TNodeContext childContext = nodeContext.Add(Key!);
+                        TNodeContext childContext = nodeContext.Add(Key!.ToNibble());
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
@@ -262,7 +262,7 @@ namespace Nethermind.Trie
 
                         trieVisitContext.AddVisited();
 
-                        TNodeContext leafContext = nodeContext.Add(Key!);
+                        TNodeContext leafContext = nodeContext.Add(Key!.ToNibble());
 
                         if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
                         {

@@ -492,6 +492,11 @@ public class BoxedTreePath
     {
         return TreePath.ToString();
     }
+
+    public byte[] ToNibble()
+    {
+        return TreePath.ToNibble();
+    }
 }
 
 public static class TreePathExtensions
