@@ -12,6 +12,7 @@ using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -112,6 +113,11 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .Channel<TcpServerSocketChannel>()
                     .ChildOption(ChannelOption.SoBacklog, 100)
+                    .ChildOption(ChannelOption.TcpNodelay, true)
+                    .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                    .ChildOption(ChannelOption.SoKeepalive, true)
+                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
@@ -164,11 +170,16 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
             Bootstrap clientBootstrap = new();
-            clientBootstrap.Group(_workerGroup);
-            clientBootstrap.Channel<TcpSocketChannel>();
-            clientBootstrap.Option(ChannelOption.TcpNodelay, true);
-            clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, _connectTimeout);
+            clientBootstrap
+                .Group(_workerGroup)
+                .Channel<TcpSocketChannel>()
+                .Option(ChannelOption.TcpNodelay, true)
+                .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                .Option(ChannelOption.SoKeepalive, true)
+                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
+                .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);

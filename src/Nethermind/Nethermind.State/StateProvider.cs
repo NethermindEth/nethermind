@@ -56,10 +56,10 @@ namespace Nethermind.State
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            if (visitor is RootCheckVisitor rootCheck)
-            {
-                rootCheck.HasRoot = _factory.HasRoot(stateRoot);
-            }
+            // if (visitor is RootCheckVisitor rootCheck)
+            // {
+            //     rootCheck.HasRoot = _factory.HasRoot(stateRoot);
+            // }
 
             throw new NotImplementedException($"The type of visitor {visitor.GetType()} is not handled now");
         }

@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -86,6 +88,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
+        TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -365,6 +368,31 @@ public partial class BlockProcessor : IBlockProcessor
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
+        }
+    }
+
+    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    {
+        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        {
+            // Memory has been reserved on the transactions to delay calculate the hashes
+            // We calculate the hashes in the background to release that memory
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Which occurs after the block has been processed; however the block is stored in cache and picked up
+            // from there so we can calculate the hashes now for that later use.
+            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
+            {
+                foreach (Transaction tx in block.Transactions)
+                {
+                    // Calculate the hashes to release the memory from the transactionSequence
+                    tx.CalculateHashInternal();
+                }
             }
         }
     }

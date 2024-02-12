@@ -51,25 +51,12 @@ namespace Nethermind.State
 
         public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
         {
-            if (treeVisitor is RootCheckVisitor rootCheck)
-            {
-                rootCheck.HasRoot = _factory.HasRoot(rootHash);
-                return;
-            }
-
             throw new NotImplementedException($"The type of visitor {treeVisitor.GetType()} is not handled now");
         }
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor visitor = new();
-            RunTreeVisitor(visitor, stateRoot);
-            return visitor.HasRoot;
-        }
-
-        public byte[]? GetCode(Hash256 stateRoot, Address address)
-        {
-            return TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();
+            return _factory.HasRoot(stateRoot);
         }
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];

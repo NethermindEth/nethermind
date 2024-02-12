@@ -11,17 +11,17 @@ using RocksDbSharp;
 
 namespace Nethermind.Db.Rocks.Statistics;
 
-public partial class DbMetricsUpdater
+public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
 {
     private readonly string _dbName;
-    private readonly DbOptions _dbOptions;
+    private readonly Options<T> _dbOptions;
     private readonly RocksDb _db;
     private readonly IDbConfig _dbConfig;
     private readonly ILogger _logger;
     private readonly ColumnFamilyHandle? _columnFamilyHandle;
     private Timer? _timer;
 
-    public DbMetricsUpdater(string dbName, DbOptions dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
+    public DbMetricsUpdater(string dbName, Options<T> dbOptions, RocksDb db, ColumnFamilyHandle? cf, IDbConfig dbConfig, ILogger logger)
     {
         _dbName = dbName;
         _dbOptions = dbOptions;
@@ -57,6 +57,7 @@ public partial class DbMetricsUpdater
             if (_dbConfig.EnableDbStatistics)
             {
                 var dbStatsString = _dbOptions.GetStatisticsString();
+                ProcessStatisticsString(dbStatsString);
                 // Currently we don't extract any DB statistics but we can do it here
             }
         }
@@ -64,6 +65,42 @@ public partial class DbMetricsUpdater
         {
             _logger.Error($"Error when updating metrics for {_dbName} database.", exc);
             // Maybe we would like to stop the _timer here to avoid logging the same error all over again?
+        }
+    }
+
+    public void ProcessStatisticsString(string dbStatsString)
+    {
+        foreach ((string Name, IDictionary<string, double> SubMetric) value in ExtractStatsFromStatisticString(dbStatsString))
+        {
+            // The metric can be of several type, usually just a counter, but sometime its a histogram,
+            // in which case we take both the sum and count.
+            if (value.SubMetric.TryGetValue("SUM", out var valueSum))
+            {
+                Metrics.DbStats[($"{_dbName}Db", $"{value.Name}.sum")] = valueSum;
+                Metrics.DbStats[($"{_dbName}Db", $"{value.Name}.count")] = value.SubMetric["COUNT"];
+            }
+            else
+            {
+                Metrics.DbStats[($"{_dbName}Db", value.Name)] = value.SubMetric["COUNT"];
+            }
+        }
+    }
+
+    private static IEnumerable<(string Name, IDictionary<string, double> Value)> ExtractStatsFromStatisticString(string statsStr)
+    {
+        var matches = ExtractStatsRegex2().Matches(statsStr);
+
+        foreach (Match match in matches)
+        {
+            string statName = match.Groups[1].Value;
+
+            IDictionary<string, double> metricDictionary = new Dictionary<string, double>();
+            foreach (Match metricMatch in ExtractSubStatsRegex().Matches(match.Groups[2].Value))
+            {
+                metricDictionary[metricMatch.Groups[1].Value] = double.Parse(metricMatch.Groups[2].Value);
+            }
+
+            yield return (statName, metricDictionary);
         }
     }
 
@@ -83,13 +120,13 @@ public partial class DbMetricsUpdater
         }
     }
 
-    private void UpdateMetricsFromList(List<(string Name, long Value)> levelStats)
+    private void UpdateMetricsFromList(List<(string Name, long Value)> stats)
     {
-        if (levelStats is not null)
+        if (stats is not null)
         {
-            foreach (var stat in levelStats)
+            foreach (var stat in stats)
             {
-                Metrics.DbStats[$"{_dbName}Db{stat.Name}"] = stat.Value;
+                Metrics.DbStats[($"{_dbName}Db", stat.Name)] = stat.Value;
             }
         }
     }
@@ -153,6 +190,12 @@ public partial class DbMetricsUpdater
 
     [GeneratedRegex("^Interval compaction: (\\d+)\\.\\d+.*GB write.*\\s+(\\d+)\\.\\d+.*MB\\/s write.*\\s+(\\d+)\\.\\d+.*GB read.*\\s+(\\d+)\\.\\d+.*MB\\/s read.*\\s+(\\d+)\\.\\d+.*seconds.*$", RegexOptions.Multiline)]
     private static partial Regex ExtractIntervalRegex();
+
+    [GeneratedRegex("^(\\S+)(.*)$", RegexOptions.Multiline)]
+    private static partial Regex ExtractStatsRegex2();
+
+    [GeneratedRegex("(\\S+) \\: (\\S+)", RegexOptions.Multiline)]
+    private static partial Regex ExtractSubStatsRegex();
 
     public void Dispose()
     {

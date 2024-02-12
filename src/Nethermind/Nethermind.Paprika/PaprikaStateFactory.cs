@@ -15,7 +15,9 @@ namespace Nethermind.Paprika;
 
 public class PaprikaStateFactory : IStateFactory
 {
-    private static readonly ulong _sepolia = (ulong)32.GiB();
+    private static readonly long _sepolia = 32.GiB();
+    private static readonly long _mainnet = 256.GiB();
+
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromSeconds(10);
 
     private readonly PagedDb _db;
@@ -25,9 +27,9 @@ public class PaprikaStateFactory : IStateFactory
 
     public PaprikaStateFactory(string directory)
     {
-        _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, true);
+        _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, true);
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000, 16));
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }

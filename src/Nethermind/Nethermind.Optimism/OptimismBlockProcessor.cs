@@ -18,7 +18,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
-    private Create2DeployerContractRewriter? _contractRewriter;
+    private readonly Create2DeployerContractRewriter? _contractRewriter;
 
     public OptimismBlockProcessor(
         ISpecProvider? specProvider,

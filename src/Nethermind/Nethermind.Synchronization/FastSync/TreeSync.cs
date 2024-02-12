@@ -967,7 +967,7 @@ namespace Nethermind.Synchronization.FastSync
         /// get persisted.
         /// </summary>
         /// <param name="dependency">Sync item that this item is dependent on.</param>
-        /// <param name="dependentItem">Item that can only be persisted if all its dependenies are persisted</param>
+        /// <param name="dependentItem">Item that can only be persisted if all its dependencies are persisted</param>
         private void AddDependency(Hash256 dependency, DependentItem dependentItem)
         {
             lock (_dependencies)

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.ComponentModel;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -94,7 +93,7 @@ namespace Nethermind.Trie
             get => _data?[0] as byte[];
             internal set
             {
-                InitData();
+                EnsureInitialized();
                 if (IsSealed)
                 {
                     if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
@@ -120,7 +119,7 @@ namespace Nethermind.Trie
         {
             get
             {
-                InitData();
+                EnsureInitialized();
                 if (IsLeaf)
                 {
                     object? data = _data![1];
@@ -172,7 +171,7 @@ namespace Nethermind.Trie
 
         private void SetValue(in CappedArray<byte> value, bool overrideSealed = false)
         {
-            InitData();
+            EnsureInitialized();
             var index = IsLeaf ? 1 : BranchesCount;
             ref var data = ref index >= _data.Length ? ref Unsafe.NullRef<object>() : ref _data[index];
             if (!overrideSealed && IsSealed)
@@ -450,31 +449,42 @@ namespace Nethermind.Trie
             // micro optimization to prevent searches beyond 3 items for branches (search up to three)
             int numberOfItems = itemsCount = rlpStream.PeekNumberOfItemsRemaining(null, 3);
 
-            if (numberOfItems > 2)
+            NodeType nodeType;
+            if (numberOfItems < 2)
             {
-                NodeType = NodeType.Branch;
+                return false;
             }
-            else if (numberOfItems == 2)
+            else if (numberOfItems > 2)
+            {
+                nodeType = NodeType.Branch;
+            }
+            else
             {
                 (byte[] key, bool isLeaf) = HexPrefix.FromBytes(rlpStream.DecodeByteArraySpan());
-
-                Initialize(isLeaf ? NodeType.Leaf : NodeType.Extension, key);
+                object[] data = [key, null];
                 if (isLeaf)
                 {
-                    NodeType = NodeType.Leaf;
-                    Key = key;
+                    nodeType = NodeType.Leaf;
 
                     ReadOnlySpan<byte> valueSpan = rlpStream.DecodeByteArraySpan();
                     CappedArray<byte> buffer = bufferPool.SafeRentBuffer(valueSpan.Length);
                     valueSpan.CopyTo(buffer.AsSpan());
-                    SetValue(in buffer, overrideSealed: true);
+                    data[1] = buffer.IsNull ? CappedArray<byte>.NullBoxed : buffer;
+                    // Overwriting both key and value so just replace the array.
+                    Volatile.Write(ref _data, data);
+                }
+                else
+                {
+                    nodeType = NodeType.Extension;
+
+                    object[] prev = Interlocked.CompareExchange(ref _data, data, null);
+                    // If already set, update the previous array.
+                    if (prev is not null) prev[0] = key;
                 }
             }
-            else
-            {
-                return false;
-            }
 
+            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+            NodeType = nodeType;
             return true;
         }
 
@@ -520,29 +530,6 @@ namespace Nethermind.Trie
             }
 
             return null;
-        }
-
-        public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Hash256? storageRootHash)
-        {
-            storageRootHash = null;
-
-            if (IsLeaf)
-            {
-                try
-                {
-                    storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootHash is not null && storageRootHash != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
-                    {
-                        return true;
-                    }
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-
-            return false;
         }
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ICappedArrayPool? bufferPool = null)
@@ -711,7 +698,7 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
             _data[index] = child;
         }
@@ -723,7 +710,7 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? _nullNode;
             Keccak = null;
@@ -813,7 +800,7 @@ namespace Nethermind.Trie
             object?[] data = _data;
             if (data is not null)
             {
-                trieNode.InitData();
+                trieNode.EnsureInitialized();
                 for (int i = 0; i < data.Length; i++)
                 {
                     trieNode._data[i] = data[i];
@@ -983,42 +970,34 @@ namespace Nethermind.Trie
 
         [MemberNotNull(nameof(_data))]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void InitData()
+        private void EnsureInitialized()
         {
             if (_data is null)
             {
                 Initialize(NodeType);
             }
-        }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void Initialize(NodeType nodeType, byte[]? key = null)
-        {
-            switch (nodeType)
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Initialize(NodeType nodeType)
             {
-                case NodeType.Unknown:
-                    ThrowCannotResolveException();
-                    return;
-                case NodeType.Branch:
-                    Interlocked.CompareExchange(ref _data, new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount], null);
-                    break;
-                default:
-                    Interlocked.CompareExchange(ref _data, new object[2], null);
-                    break;
-            }
+                var data = nodeType switch
+                {
+                    NodeType.Unknown => ThrowCannotResolveException(),
+                    NodeType.Branch => new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount],
+                    _ => new object[2],
+                };
 
-            if (key is not null)
-            {
-                _data[0] = key;
-            }
-            // Set NodeType after setting key as it alters code path to one that expects the key to be set
-            NodeType = nodeType;
+                // Only initialize the array if not already initialized.
+                Interlocked.CompareExchange(ref _data, data, null);
+                // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+                NodeType = nodeType;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static void ThrowCannotResolveException()
-            {
-                throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static object[] ThrowCannotResolveException()
+                {
+                    throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                }
             }
         }
 
@@ -1058,7 +1037,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                InitData();
+                EnsureInitialized();
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
