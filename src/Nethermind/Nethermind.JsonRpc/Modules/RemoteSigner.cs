@@ -52,10 +52,10 @@ public class RemoteSigner : ISigner
     public async ValueTask Sign(Transaction tx)
     {
         TransactionForRpc transactionModel = new(tx);
-        var signed = await rpcClient.Post<TransactionForRpc>("account_signTransaction", transactionModel);
+        var signed = await rpcClient.Post<RemoteTxSignResponse>("account_signTransaction", transactionModel);
         if (signed == null)
             ThrowInvalidOperation();
-        tx.Signature = new Signature(signed.R.Value!, signed.S.Value!, (ulong)signed.V);
+        tx.Signature = new Signature(signed.Tx.R.Value!, signed.Tx.S.Value!, (ulong)signed.Tx.V);
     }
 
     private async Task SetSignerAddress(Address? blockAuthorAccount)
@@ -81,6 +81,14 @@ public class RemoteSigner : ISigner
     [DoesNotReturn]
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ThrowInvalidOperation() =>
-        throw new InvalidOperationException("Remote signer failed to respond appropriately to signature request.");
+        throw new InvalidOperationException("Remote signer failed to sign the request.");
+
+    private class RemoteTxSignResponse
+    {
+        public string Raw { get; set;}
+        public TransactionForRpc Tx { get; set;}
+    }
 
 }
+
+
