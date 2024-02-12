@@ -71,7 +71,7 @@ namespace Nethermind.Consensus.Validators
             if (!hashAsExpected)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - invalid block hash");
-                error = $"InvalidHeaderHash: Header hash does not match.";
+                error = ErrorMessages.InvalidHeaderHash;
                 return false;
             }
 
@@ -79,7 +79,7 @@ namespace Nethermind.Consensus.Validators
             bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
             if (!extraDataValid)
             {
-                error = $"InvalidExtraData: Extra data in header is not valid.";
+                error = ErrorMessages.InvalidExtraData;
                 return false;
             }
 
@@ -91,20 +91,20 @@ namespace Nethermind.Consensus.Validators
                     if (!isGenesisValid)
                     {
                         if (_logger.IsWarn) _logger.Warn($"Invalid genesis block header ({header.Hash})");
-                        error = $"InvalidGenesisBlock: Genesis block could not be validated.";
+                        error = ErrorMessages.InvalidGenesisBlock;
                     }
                     return isGenesisValid;
                 }
 
                 if (_logger.IsDebug) _logger.Debug($"Orphan block, could not find parent ({header.ParentHash}) of ({header.Hash})");
-                error = $"InvalidAncestor: No valid ancestors could be found.";
+                error = ErrorMessages.InvalidAncestor;
                 return false;
             }
 
             bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
             if (!totalDifficultyCorrect)
             {
-                error = $"InvalidTotalDifficulty: Could not be validated.";
+                error = ErrorMessages.InvalidTotalDifficulty;
                 return false;
             }
 
@@ -112,7 +112,7 @@ namespace Nethermind.Consensus.Validators
             if (!sealParamsCorrect)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
-                error = $"InvalidSealParameters: Could not be validated.";
+                error = ErrorMessages.InvalidSealParameters;
                 return false;
             }
 
@@ -120,14 +120,14 @@ namespace Nethermind.Consensus.Validators
             if (!gasUsedBelowLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
-                error = $"ExceededGasLimit: Gas used exceeds gas limit.";
+                error = ErrorMessages.ExceededGasLimit;
                 return false;
             }
 
             bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
             if (!gasLimitInRange)
             {
-                error = $"InvalidGasLimit: Gas limit is not correct.";
+                error = ErrorMessages.InvalidGasLimit;
                 return false;
             }
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
@@ -138,7 +138,7 @@ namespace Nethermind.Consensus.Validators
             if (!numberIsParentPlusOne)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
-                error = $"InvalidBlockNumber: Block number does not match the parent.";
+                error = ErrorMessages.InvalidBlockNumber;
                 return false;
             }
 
@@ -152,7 +152,7 @@ namespace Nethermind.Consensus.Validators
                 if (expectedBaseFee != header.BaseFeePerGas)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.ToString(BlockHeader.Format.Short)}) incorrect base fee. Expected base fee: {expectedBaseFee}, Current base fee: {header.BaseFeePerGas} ");
-                    error = $"InvalidBaseFeePerGas: Does not match calculated.";
+                    error = ErrorMessages.InvalidBaseFeePerGas;
                     return false;
                 }
             }
@@ -336,14 +336,14 @@ namespace Nethermind.Consensus.Validators
                 if (header.BlobGasUsed is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field should not have value.");
-                    error = $"NotAllowedBlobGasUsed: Cannot be set.";
+                    error = ErrorMessages.NotAllowedBlobGasUsed;
                     return false;
                 }
 
                 if (header.ExcessBlobGas is not null)
                 {
                     if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field should not have value.");
-                    error = $"NotAllowedExcessBlobGas: Cannot be set.";
+                    error = ErrorMessages.NotAllowedExcessBlobGas;
                     return false;
                 }
                 error = null;
@@ -353,14 +353,14 @@ namespace Nethermind.Consensus.Validators
             if (header.BlobGasUsed is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"BlobGasUsed field is not set.");
-                error = $"MissingBlobGasUsed: Must be set in blob transaction.";
+                error = ErrorMessages.MissingBlobGasUsed;
                 return false;
             }
 
             if (header.ExcessBlobGas is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"ExcessBlobGas field is not set.");
-                error = $"MissingExcessBlobGas: Must be set in blob transaction.";
+                error = ErrorMessages.MissingExcessBlobGas;
                 return false;
             }
 
