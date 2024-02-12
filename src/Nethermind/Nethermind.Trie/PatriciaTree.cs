@@ -1119,7 +1119,11 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null) =>
+            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions);
+
+        public void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+            where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(rootHash);
@@ -1140,7 +1144,7 @@ namespace Nethermind.Trie
                 rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(rootHash);
                 if (!rootRef!.TryResolveNode(TrieStore))
                 {
-                    visitor.VisitMissingNode(rootHash, trieVisitContext);
+                    visitor.VisitMissingNode(default, rootHash, trieVisitContext);
                     return;
                 }
             }
@@ -1157,15 +1161,15 @@ namespace Nethermind.Trie
                 resolver = new TrieNodeResolverWithReadFlags(TrieStore, flags);
             }
 
-            visitor.VisitTree(rootHash, trieVisitContext);
+            visitor.VisitTree(default, rootHash, trieVisitContext);
             if (visitingOptions.FullScanMemoryBudget != 0)
             {
-                BatchedTrieVisitor batchedTrieVisitor = new(visitor, resolver, visitingOptions);
+                BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else
             {
-                rootRef?.Accept(visitor, resolver, trieVisitContext);
+                rootRef?.Accept(visitor, default, resolver, trieVisitContext);
             }
         }
 
