@@ -15,6 +15,8 @@ namespace Nethermind.State;
 /// </summary>
 public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 {
+    StateType StateType { get; }
+
     /// <summary>
     /// Return the original persistent storage value from the storage cell
     /// </summary>
@@ -110,4 +112,12 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="codeHash"></param>
     void TouchCode(in ValueHash256 codeHash);
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="codeOwner"></param>
+    /// <param name="chunkId"></param>
+    /// <returns></returns>
+    public byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId);
 }
