@@ -985,9 +985,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            // seems it has no performance impact
-            return _db.Get(key, cf, _defaultReadOptions) is not null;
-            // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+            return _db.HasKey(key, cf, _defaultReadOptions);
         }
         catch (RocksDbSharpException e)
         {

@@ -151,9 +151,9 @@ public class VisitingTests
 
         public struct PathGatheringContext(byte[]? nibbles) : INodeContext<PathGatheringContext>
         {
-            public byte[] Nibbles => nibbles ?? Array.Empty<byte>();
+            public readonly byte[] Nibbles => nibbles ?? Array.Empty<byte>();
 
-            public PathGatheringContext Add(byte[] nibblePath)
+            public readonly PathGatheringContext Add(byte[] nibblePath)
             {
                 var @new = new byte[Nibbles.Length + nibblePath.Length];
                 Nibbles.CopyTo(@new, 0);
@@ -162,7 +162,7 @@ public class VisitingTests
                 return new PathGatheringContext(@new);
             }
 
-            public PathGatheringContext Add(byte nibble)
+            public readonly PathGatheringContext Add(byte nibble)
             {
                 var @new = new byte[Nibbles.Length + 1];
                 Nibbles.CopyTo(@new, 0);
