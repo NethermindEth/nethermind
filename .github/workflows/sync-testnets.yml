@@ -88,7 +88,7 @@ jobs:
 
       - name: Wait for ${{ matrix.network }} to sync
         id: wait
-        timeout-minutes: 180
+        timeout-minutes: 2
         run: |
           set +e
 
@@ -138,3 +138,8 @@ jobs:
           done
 
           echo "Node is synced."
+          
+      - name: Get Consensus Logs
+        if: always()
+        run: |
+          docker logs sedge-consensus-client
