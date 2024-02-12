@@ -222,7 +222,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (setHeadErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid new head block {setHeadErrorMsg}. Request: {requestStr}.");
-            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidAttributes);
+            return ForkchoiceUpdatedV1Result.Error(setHeadErrorMsg, ErrorCodes.InvalidParams);
         }
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
