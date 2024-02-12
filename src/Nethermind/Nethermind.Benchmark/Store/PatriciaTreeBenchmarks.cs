@@ -30,10 +30,12 @@ namespace Nethermind.Benchmarks.Store
         private MemDb _backingMemory;
 
         // Full uncommitted tree with in memory node. Node should be fully deserialized.
+        private StateTree _uncommittedFullTree;
+
         private StateTree _fullTree;
 
         // All entries
-        private const int _entryCount = 1024;
+        private const int _entryCount = 1024 * 4;
         private (Hash256, Account)[] _entries;
         private (Hash256, Account)[] _entriesShuffled;
 
@@ -230,18 +232,24 @@ namespace Nethermind.Benchmarks.Store
             new Random(0).Shuffle(_entriesShuffled);
 
             _backingMemory = new MemDb();
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), LimboLogs.Instance);
+            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
             tempTree.Commit(0);
 
-            // Don't commit this time
             _fullTree = new StateTree();
             for (int i = 0; i < _entryCount; i++)
             {
                 _fullTree.Set(_entries[i].Item1, _entries[i].Item2);
+            }
+            _fullTree.Commit(0);
+
+            _uncommittedFullTree = new StateTree();
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
         }
 
@@ -266,9 +274,9 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
-        public void Insert()
+        public void InsertAndCommit()
         {
-            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), LimboLogs.Instance);
+            StateTree tempTree = new StateTree(new TrieStore(new MemDb(), NullLogManager.Instance), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
@@ -286,9 +294,18 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
+        public void ReadWithUncommittedFullTree()
+        {
+            for (int i = 0; i < _entryCount; i++)
+            {
+                _uncommittedFullTree.Get(_entriesShuffled[i].Item1);
+            }
+        }
+
+        [Benchmark]
         public void ReadAndDeserialize()
         {
-            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), LimboLogs.Instance);
+            StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Get(_entriesShuffled[i].Item1);
