@@ -73,7 +73,7 @@ namespace Nethermind.Trie
             Storage = trieVisitContext.Storage;
         }
 
-        public bool IsStorage => Storage != null;
+        public readonly bool IsStorage => Storage != null;
         public Hash256? Storage { get; internal set; }
         public byte Level { get; internal set; }
         private byte _branchChildIndex = 255;

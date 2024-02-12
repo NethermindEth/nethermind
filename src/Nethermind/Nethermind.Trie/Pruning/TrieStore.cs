@@ -227,7 +227,7 @@ namespace Nethermind.Trie.Pruning
                 public ConcurrentDictionaryLock<ValueHash256, TrieNode>.Lock _byHashLock;
                 public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
 
-                public void Dispose()
+                public readonly void Dispose()
                 {
                     if (_storeByHash)
                     {
