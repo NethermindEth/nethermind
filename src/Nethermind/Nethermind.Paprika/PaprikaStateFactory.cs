@@ -25,11 +25,13 @@ public class PaprikaStateFactory : IStateFactory
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized = 0;
 
-    public PaprikaStateFactory(string directory)
+    public PaprikaStateFactory(string directory, IPaprikaConfig config)
     {
+        var options = new CacheBudget.Options(config.CachePerBlock, config.CacheBeyond);
+
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, true);
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000, 16));
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, options);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }

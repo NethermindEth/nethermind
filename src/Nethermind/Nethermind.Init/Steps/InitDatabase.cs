@@ -39,6 +39,7 @@ namespace Nethermind.Init.Steps
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
             ITxPoolConfig txPoolConfig = _api.Config<ITxPoolConfig>();
+            IPaprikaConfig paprikaConfig = _api.Config<IPaprikaConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -49,7 +50,7 @@ namespace Nethermind.Init.Steps
             {
                 bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
-                InitDbApi(initConfig, dbConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                InitDbApi(initConfig, dbConfig, paprikaConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb
@@ -63,7 +64,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
+        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, IPaprikaConfig paprikaConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
             {
@@ -87,7 +88,7 @@ namespace Nethermind.Init.Steps
                     _api.DbProvider = new DbProvider();
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
 
-                    PaprikaStateFactory paprika = new(Path.Combine(initConfig.BaseDbPath, "state"));
+                    PaprikaStateFactory paprika = new(Path.Combine(initConfig.BaseDbPath, "state"), paprikaConfig);
                     _api.RegisterForBlockFinalized((_, e) =>
                     {
                         foreach (BlockHeader finalized in e.FinalizedBlocks)
