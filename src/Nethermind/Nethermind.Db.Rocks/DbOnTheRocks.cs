@@ -16,6 +16,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rocks.Statistics;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using RocksDbSharp;
 using IWriteBatch = Nethermind.Core.IWriteBatch;
@@ -824,6 +825,81 @@ public class DbOnTheRocks : IDb, ITunableDb
             CreateMarkerIfCorrupt(e);
             throw;
         }
+    }
+
+    private Iterator CreateIterator(byte[] start, byte[] end, bool ordered = false, ColumnFamilyHandle? ch = null)
+    {
+        ReadOptions readOptions = new();
+        readOptions.SetTailing(!ordered);
+        // TODO: does not work with SetIterateLowerBound (use seek instead) - have to figure out the reason behind this?
+        // readOptions.SetIterateLowerBound(start);
+        readOptions.SetIterateUpperBound(end);
+        try
+        {
+            Iterator? iterator = _db.NewIterator(ch, readOptions);
+            iterator.Seek(start);
+            return iterator;
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    private IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCoreBounded(Iterator iterator)
+    {
+        if (_isDisposing)
+        {
+            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
+        }
+
+        while (iterator.Valid())
+        {
+            yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
+
+            try
+            {
+                iterator.Next();
+            }
+            catch (RocksDbSharpException e)
+            {
+                CreateMarkerIfCorrupt(e);
+                throw;
+            }
+        }
+
+        try
+        {
+            iterator.Dispose();
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator()
+    {
+        Iterator iterator = CreateIterator(true);
+        return GetAllCore(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start)
+    {
+        Iterator iterator = CreateIterator(true);
+        iterator.Seek(start);
+        return GetAllCoreBounded(iterator);
+    }
+
+    public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
+    {
+        // TODO: another work around for rocksDb not having inclusive range.
+        UInt256 x = new (end, true);
+        if (x == UInt256.MaxValue) return GetIterator(start);
+        Iterator iterator = CreateIterator(start, x.ToBigEndian(), true);
+        return GetAllCoreBounded(iterator);
     }
 
     public IEnumerable<byte[]> GetAllKeys(bool ordered = false)

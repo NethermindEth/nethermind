@@ -20,44 +20,40 @@ namespace Nethermind.Db.Rocks
 
     public class VerkleDbFactory
     {
-        private static (IDbProvider DbProvider, RocksDbFactory RocksDbFactory, MemDbFactory MemDbFactory) InitDbApi(DbMode diagnosticMode, string baseDbPath, bool storeReceipts)
+        private static (IDbProvider DbProvider, IDbFactory dbFactory) InitDbApi(DbMode diagnosticMode, string baseDbPath, bool storeReceipts)
         {
             DbConfig dbConfig = new DbConfig();
             DisposableStack disposeStack = new DisposableStack();
             IDbProvider dbProvider;
-            RocksDbFactory rocksDbFactory;
-            MemDbFactory memDbFactory;
+            IDbFactory dbFactory;
             switch (diagnosticMode)
             {
                 case DbMode.ReadOnlyDb:
-                    DbProvider rocksDbProvider = new DbProvider(DbModeHint.Persisted);
+                    DbProvider rocksDbProvider = new DbProvider();
                     dbProvider = new ReadOnlyDbProvider(rocksDbProvider, storeReceipts); // ToDo storeReceipts as createInMemoryWriteStore - bug?
                     disposeStack.Push(rocksDbProvider);
-                    rocksDbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, Path.Combine(baseDbPath, "debug"));
-                    memDbFactory = new MemDbFactory();
+                    dbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, Path.Combine(baseDbPath, "debug"));
                     break;
                 case DbMode.MemDb:
-                    dbProvider = new DbProvider(DbModeHint.Mem);
-                    rocksDbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, Path.Combine(baseDbPath, "debug"));
-                    memDbFactory = new MemDbFactory();
+                    dbProvider = new DbProvider();
+                    dbFactory = new MemDbFactory();
                     break;
                 case DbMode.PersistantDb:
-                    dbProvider = new DbProvider(DbModeHint.Persisted);
-                    rocksDbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, baseDbPath);
-                    memDbFactory = new MemDbFactory();
+                    dbProvider = new DbProvider();
+                    dbFactory = new RocksDbFactory(dbConfig, NullLogManager.Instance, baseDbPath);
                     break;
                 default:
                     throw new ArgumentException();
 
             }
 
-            return (dbProvider, rocksDbFactory, memDbFactory);
+            return (dbProvider, dbFactory);
         }
 
         public static IDbProvider InitDatabase(DbMode dbMode, string? dbPath)
         {
-            (IDbProvider dbProvider, RocksDbFactory rocksDbFactory, MemDbFactory memDbFactory) = InitDbApi(dbMode, dbPath ?? "testDb", true);
-            StandardDbInitializer dbInitializer = new StandardDbInitializer(dbProvider, rocksDbFactory, memDbFactory, new FileSystem());
+            (IDbProvider dbProvider, IDbFactory dbFactory) = InitDbApi(dbMode, dbPath ?? "testDb", true);
+            var dbInitializer = new StandardDbInitializer(dbProvider, dbFactory, new FileSystem());
             dbInitializer.InitStandardDbs(true);
             return dbProvider;
         }

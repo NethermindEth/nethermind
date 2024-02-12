@@ -59,5 +59,20 @@ namespace Nethermind.Db
         public void Dispose()
         {
         }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator()
+        {
+            yield break;
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start)
+        {
+            yield break;
+        }
+
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetIterator(byte[] start, byte[] end)
+        {
+            yield break;
+        }
     }
 }
