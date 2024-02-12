@@ -12,7 +12,7 @@ namespace Nethermind.Trie.Pruning
     /// <summary>
     /// Full traditional trie store.
     /// </summary>
-    public interface ITrieStore : IDisposable
+    public interface ITrieStore : IDisposable, IStoreWithReorgBoundary
     {
         void CommitNode(long blockNumber, Hash256? address, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
@@ -21,8 +21,6 @@ namespace Nethermind.Trie.Pruning
         bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
 
         IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
-
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
@@ -38,6 +36,11 @@ namespace Nethermind.Trie.Pruning
         byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
         INodeStorage.KeyScheme Scheme { get; }
+    }
+
+    public interface IStoreWithReorgBoundary
+    {
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     }
 
     public interface IPruningTrieStore
