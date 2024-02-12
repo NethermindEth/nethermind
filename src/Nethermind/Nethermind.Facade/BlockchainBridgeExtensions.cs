@@ -10,8 +10,6 @@ public static class BlockchainBridgeExtensions
 {
     public static bool HasStateForBlock(this IBlockchainBridge blockchainBridge, BlockHeader header)
     {
-        RootCheckVisitor rootCheckVisitor = new();
-        blockchainBridge.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
-        return rootCheckVisitor.HasRoot;
+        return blockchainBridge.HasStateForRoot(header.StateRoot!);
     }
 }
