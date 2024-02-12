@@ -675,13 +675,23 @@ namespace Nethermind.Trie
         public TreePath GetChildPath(in TreePath currentPath, int childIndex)
         {
             TreePath copy = currentPath;
-            EnterChildPath(ref copy, childIndex);
+            AppendChildPath(ref copy, childIndex);
             return copy;
         }
 
-        public TreePath.AppendScope EnterChildPath(ref TreePath currentPath, int childIndex)
+        public int AppendChildPath(ref TreePath currentPath, int childIndex)
         {
-            return IsExtension ? currentPath.ScopedAppend(Key) : currentPath.ScopedAppend((byte)childIndex);
+            int previousLength = currentPath.Length;
+            if (IsExtension)
+            {
+                currentPath.AppendMut(Key);
+            }
+            else
+            {
+                currentPath.AppendMut((byte)childIndex);
+            }
+
+            return previousLength;
         }
 
         public TrieNode? GetChild(ITrieNodeResolver tree, ref TreePath currentPath, int childIndex)
@@ -703,10 +713,9 @@ namespace Nethermind.Trie
             }
             else if (childOrRef is Hash256 reference)
             {
-                using (EnterChildPath(ref currentPath, childIndex))
-                {
-                    child = tree.FindCachedOrUnknown(currentPath, reference);
-                }
+                int previousPathLength = AppendChildPath(ref currentPath, childIndex);
+                child = tree.FindCachedOrUnknown(currentPath, reference);
+                currentPath.TruncateMut(previousPathLength);
             }
             else
             {
@@ -916,10 +925,9 @@ namespace Nethermind.Trie
                         if (o is TrieNode child)
                         {
                             if (logger.IsTrace) logger.Trace($"Persist recursively on child {i} {child} of {this}");
-                            using (EnterChildPath(ref currentPath, i))
-                            {
-                                child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger);
-                            }
+                            int previousLength = AppendChildPath(ref currentPath, i);
+                            child.CallRecursively(action, storageAddress, ref currentPath, resolver, skipPersisted, logger);
+                            currentPath.TruncateMut(previousLength);
                         }
                     }
                 }
@@ -1126,16 +1134,15 @@ namespace Nethermind.Trie
                                 rlpStream.Position--;
                                 Hash256 keccak = rlpStream.DecodeKeccak();
 
-                                using (EnterChildPath(ref currentPath, i))
-                                {
-                                    TrieNode child = tree.FindCachedOrUnknown(currentPath, keccak);
-                                    _data![i] = childOrRef = child;
+                                int previousPathLength = AppendChildPath(ref currentPath, i);
+                                TrieNode child = tree.FindCachedOrUnknown(currentPath, keccak);
+                                _data![i] = childOrRef = child;
 
-                                    if (IsPersisted && !child.IsPersisted)
-                                    {
-                                        child.CallRecursively(_markPersisted, null, ref currentPath, tree, false, NullLogger.Instance);
-                                    }
+                                if (IsPersisted && !child.IsPersisted)
+                                {
+                                    child.CallRecursively(_markPersisted, null, ref currentPath, tree, false, NullLogger.Instance);
                                 }
+                                currentPath.TruncateMut(previousPathLength);
 
                                 break;
                             }

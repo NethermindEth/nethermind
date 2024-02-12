@@ -16,9 +16,11 @@ namespace Nethermind.Trie;
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
 public struct TreePath
 {
+    const int NoopLength = 255; // Length marking that the TreePath is a noop.
     public readonly ValueHash256 Path;
 
     public static TreePath Empty => new TreePath();
+    public static TreePath Noop => Empty;
 
     private readonly Span<byte> Span => Path.BytesAsSpan;
 
@@ -108,6 +110,7 @@ public struct TreePath
         }
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     internal void AppendMut(byte nib)
     {
         this[Length] = nib;
@@ -155,6 +158,7 @@ public struct TreePath
         return copy;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void TruncateMut(int pathLength)
     {
         if (pathLength > Length) throw new IndexOutOfRangeException("path length must be less than current length");

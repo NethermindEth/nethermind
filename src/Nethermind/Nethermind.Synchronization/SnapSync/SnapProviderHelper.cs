@@ -323,9 +323,14 @@ namespace Nethermind.Synchronization.SnapSync
                 return true;
             }
 
-            using (node.EnterChildPath(ref nodePath, childIndex))
+            int previousPathLength = node.AppendChildPath(ref nodePath, childIndex);
+            try
             {
                 return store.IsPersisted(nodePath, childKeccak);
+            }
+            finally
+            {
+                nodePath.TruncateMut(previousPathLength);
             }
         }
     }

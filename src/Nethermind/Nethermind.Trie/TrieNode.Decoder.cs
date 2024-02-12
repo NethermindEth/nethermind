@@ -81,10 +81,9 @@ namespace Nethermind.Trie
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
-                using (item.EnterChildPath(ref path, 0))
-                {
-                    nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
-                }
+                int previousLength = item.AppendChildPath(ref path, 0);
+                nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                path.TruncateMut(previousLength);
 
                 int contentLength = Rlp.LengthOf(keyBytes) + (nodeRef.Keccak is null ? nodeRef.FullRlp.Length : Rlp.LengthOfKeccakRlp);
                 int totalLength = Rlp.LengthOfSequence(contentLength);
@@ -206,10 +205,9 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)data;
-                            using (item.EnterChildPath(ref path, i))
-                            {
-                                childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
-                            }
+                            int previousPathLength = item.AppendChildPath(ref path, i);
+                            childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                            path.TruncateMut(previousPathLength);
                             totalLength += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
@@ -252,10 +250,9 @@ namespace Nethermind.Trie
                         else
                         {
                             TrieNode childNode = (TrieNode)data;
-                            using (item.EnterChildPath(ref path, i))
-                            {
-                                childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
-                            }
+                            int previousPathLength = item.AppendChildPath(ref path, i);
+                            childNode!.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
+                            path.TruncateMut(previousPathLength);
 
                             if (childNode.Keccak is null)
                             {

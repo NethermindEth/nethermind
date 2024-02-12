@@ -664,10 +664,9 @@ namespace Nethermind.Trie
                                     "Before updating branch should have had at least two non-empty children");
                             }
 
-                            using (node.EnterChildPath(ref path, childNodeIndex))
-                            {
-                                ResolveNode(childNode, in traverseContext, in path);
-                            }
+                            int previousPathLength = node.AppendChildPath(ref path, childNodeIndex);
+                            ResolveNode(childNode, in traverseContext, in path);
+                            path.TruncateMut(previousPathLength);
 
                             if (childNode.IsBranch)
                             {
@@ -881,11 +880,11 @@ namespace Nethermind.Trie
                 return ref traverseContext.UpdateValue;
             }
 
-            using (node.EnterChildPath(ref path, childIdx))
-            {
-                ResolveNode(childNode, in traverseContext, in path);
-                return ref TraverseNext(childNode, in traverseContext, ref path, 1);
-            }
+            int previousLength = node.AppendChildPath(ref path, (byte)childIdx);
+            ResolveNode(childNode, in traverseContext, in path);
+            ref readonly CappedArray<byte> response = ref TraverseNext(childNode, in traverseContext, ref path, 1);
+            path.TruncateMut(previousLength);
+            return ref response;
         }
 
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext)
@@ -1014,11 +1013,11 @@ namespace Nethermind.Trie
                     ThrowMissingChildException(node);
                 }
 
-                using (node.EnterChildPath(ref path, 0))
-                {
-                    ResolveNode(next, in traverseContext, in path);
-                    return ref TraverseNext(next, in traverseContext, ref path, extensionLength);
-                }
+                int previousPathLength = node.AppendChildPath(ref path, 0);
+                ResolveNode(next, in traverseContext, in path);
+                ref readonly CappedArray<byte> response = ref TraverseNext(next, in traverseContext, ref path, extensionLength);
+                path.TruncateMut(previousPathLength);
+                return ref response;
             }
 
             if (traverseContext.IsRead)

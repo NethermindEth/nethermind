@@ -52,18 +52,17 @@ namespace Nethermind.Trie
                             TrieNode child = GetChild(nodeResolver, ref path, i);
                             if (child is not null)
                             {
-                                using (EnterChildPath(ref path, i))
+                                int previousPathLength = AppendChildPath(ref path, i);
+                                child.ResolveKey(nodeResolver, ref path, false);
+                                TNodeContext childContext = nodeContext.Add((byte)i);
+                                if (visitor.ShouldVisit(childContext, child.Keccak!))
                                 {
-                                    child.ResolveKey(nodeResolver, ref path, false);
-                                    TNodeContext childContext = nodeContext.Add((byte)i);
-                                    if (visitor.ShouldVisit(childContext, child.Keccak!))
-                                    {
-                                        SmallTrieVisitContext childCtx = trieVisitContext; // Copy
-                                        childCtx.BranchChildIndex = (byte?)i;
+                                    SmallTrieVisitContext childCtx = trieVisitContext; // Copy
+                                    childCtx.BranchChildIndex = (byte?)i;
 
-                                        nextToVisit.Add((path, child, childContext, childCtx));
-                                    }
+                                    nextToVisit.Add((path, child, childContext, childCtx));
                                 }
+                                path.TruncateMut(previousPathLength);
 
                                 if (child.IsPersisted)
                                 {
@@ -84,18 +83,17 @@ namespace Nethermind.Trie
                             throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         }
 
-                        using (EnterChildPath(ref path, 0))
+                        int previousPathLength = AppendChildPath(ref path, 0);
+                        child.ResolveKey(nodeResolver, ref path, false);
+                        TNodeContext childContext = nodeContext.Add(Key!);
+                        if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
-                            child.ResolveKey(nodeResolver, ref path, false);
-                            TNodeContext childContext = nodeContext.Add(Key!);
-                            if (visitor.ShouldVisit(childContext, child.Keccak!))
-                            {
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
 
-                                nextToVisit.Add((path, child, childContext, trieVisitContext));
-                            }
+                            nextToVisit.Add((path, child, childContext, trieVisitContext));
                         }
+                        path.TruncateMut(previousPathLength);
 
                         break;
                     }
@@ -178,16 +176,15 @@ namespace Nethermind.Trie
                         {
                             if (child is not null)
                             {
-                                using (EnterChildPath(ref path, i))
+                                int previousPathLength = AppendChildPath(ref path, i);
+                                child.ResolveKey(resolver, ref path, false);
+                                TNodeContext childContext = nodeContext.Add((byte)i);
+                                if (v.ShouldVisit(childContext, child.Keccak!))
                                 {
-                                    child.ResolveKey(resolver, ref path, false);
-                                    TNodeContext childContext = nodeContext.Add((byte)i);
-                                    if (v.ShouldVisit(childContext, child.Keccak!))
-                                    {
-                                        context.BranchChildIndex = i;
-                                        child.Accept(v, childContext, resolver, ref path, context);
-                                    }
+                                    context.BranchChildIndex = i;
+                                    child.Accept(v, childContext, resolver, ref path, context);
                                 }
+                                path.TruncateMut(previousPathLength);
 
                                 if (child.IsPersisted)
                                 {
@@ -271,18 +268,17 @@ namespace Nethermind.Trie
                             throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         }
 
-                        using (EnterChildPath(ref path, 0))
+                        int previousPathLength = AppendChildPath(ref path, 0);
+                        child.ResolveKey(nodeResolver, ref path, false);
+                        TNodeContext childContext = nodeContext.Add(Key!);
+                        if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
-                            child.ResolveKey(nodeResolver, ref path, false);
-                            TNodeContext childContext = nodeContext.Add(Key!);
-                            if (visitor.ShouldVisit(childContext, child.Keccak!))
-                            {
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
-                                child.Accept(visitor, childContext, nodeResolver, ref path, trieVisitContext);
-                                trieVisitContext.Level--;
-                            }
+                            trieVisitContext.Level++;
+                            trieVisitContext.BranchChildIndex = null;
+                            child.Accept(visitor, childContext, nodeResolver, ref path, trieVisitContext);
+                            trieVisitContext.Level--;
                         }
+                        path.TruncateMut(previousPathLength);
 
                         break;
                     }
