@@ -13,7 +13,7 @@ namespace Nethermind.Evm.Test
 {
     public class Eip3860Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         private readonly long _transactionCallCost = GasCostOf.Transaction + 100 + 7 * GasCostOf.VeryLow;

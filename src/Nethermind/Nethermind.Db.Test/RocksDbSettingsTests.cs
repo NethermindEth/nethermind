@@ -15,8 +15,6 @@ namespace Nethermind.Db.Test
             DbSettings settings = new("name", "path")
             {
                 BlockCacheSize = 1,
-                UpdateReadMetrics = () => { },
-                UpdateWriteMetrics = () => { },
                 WriteBufferNumber = 5,
                 WriteBufferSize = 10,
                 CacheIndexAndFilterBlocks = true
