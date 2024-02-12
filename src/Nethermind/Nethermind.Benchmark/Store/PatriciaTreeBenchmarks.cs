@@ -26,6 +26,8 @@ namespace Nethermind.Benchmarks.Store
 
         private StateTree _tree;
 
+        private Hash256 _rootHash;
+
         // Just the backing KV. Used for benchmarking that include deserialization overhead.
         private MemDb _backingMemory;
 
@@ -238,6 +240,7 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
             tempTree.Commit(0);
+            _rootHash = tempTree.RootHash;
 
             _fullTree = new StateTree();
             for (int i = 0; i < _entryCount; i++)
@@ -306,6 +309,7 @@ namespace Nethermind.Benchmarks.Store
         public void ReadAndDeserialize()
         {
             StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
             for (int i = 0; i < _entryCount; i++)
             {
                 tempTree.Get(_entriesShuffled[i].Item1);
