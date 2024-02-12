@@ -11,7 +11,7 @@ namespace Nethermind.Db
 
         public IDb CreateDb(DbSettings dbSettings)
         {
-            return new MemDb(dbSettings.DbName);
+            return new MemDb(dbSettings.DbName, true);
         }
 
         public IColumnsDb<T> CreateColumnsDb<T>(DbSettings dbSettings) where T : struct, Enum

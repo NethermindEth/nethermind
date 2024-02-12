@@ -19,5 +19,12 @@ namespace Nethermind.Db
         public const string CHT = "canonicalHashTrie";
         public const string Metadata = "metadata";
         public const string BlobTransactions = "blobTransactions";
+        public const string Leaf = "leaf";
+        public const string InternalNodes = "internalNodes";
+        public const string ForwardDiff = "forwardDiff";
+        public const string ReverseDiff = "reverseDiff";
+        public const string Preimages = "preimages";
+        public const string StateRootToBlock = "stateRoots";
+        public const string HistoryOfAccounts = "historyOfAccounts";
     }
 }

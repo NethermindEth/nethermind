@@ -67,6 +67,14 @@ namespace Nethermind.Db
             {
                 RegisterColumnsDb<BlobTxsColumns>(BuildDbSettings(DbNames.BlobTransactions));
             }
+            RegisterDb(BuildDbSettings(DbNames.Leaf));
+            RegisterDb(BuildDbSettings(DbNames.InternalNodes));
+
+            RegisterDb(BuildDbSettings(DbNames.ForwardDiff));
+            RegisterDb(BuildDbSettings(DbNames.ReverseDiff));
+            RegisterDb(BuildDbSettings(DbNames.StateRootToBlock));
+            RegisterDb(BuildDbSettings(DbNames.Preimages));
+            RegisterDb(BuildDbSettings(DbNames.HistoryOfAccounts));
         }
 
         private static DbSettings BuildDbSettings(string dbName, bool deleteOnStart = false)
