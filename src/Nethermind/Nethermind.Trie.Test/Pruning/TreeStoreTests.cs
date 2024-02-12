@@ -790,9 +790,8 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
         }
 
-<<<<<<< HEAD
         private long ExpectedPerNodeKeyMemorySize => _scheme == INodeStorage.KeyScheme.Hash ? 0 : TrieStore.DirtyNodesCache.Key.MemoryUsage;
-=======
+
         [Test]
         public void After_commit_should_have_has_root()
         {
@@ -812,6 +811,5 @@ namespace Nethermind.Trie.Test.Pruning
             stateTree.Commit(0);
             trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
         }
->>>>>>> origin/master
     }
 }
