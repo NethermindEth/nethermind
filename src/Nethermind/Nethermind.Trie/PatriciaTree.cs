@@ -866,6 +866,17 @@ namespace Nethermind.Trie
                 ThrowMissingPrefixException();
             }
 
+            // Shortcut for read.
+            if (traverseContext.IsRead)
+            {
+                if (traverseContext.UpdatePath.IsEqualToStarting(node.Key.TreePath, traverseContext.CurrentIndex))
+                {
+                    return ref node.ValueRef;
+                }
+
+                return ref CappedArray<byte>.Null;
+            }
+
             BoxedTreePath remaining = new BoxedTreePath(traverseContext.GetRemainingUpdatePath());
             BoxedTreePath shorterPath;
             BoxedTreePath longerPath;

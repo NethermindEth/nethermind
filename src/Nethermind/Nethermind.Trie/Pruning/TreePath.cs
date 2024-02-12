@@ -145,7 +145,7 @@ public struct TreePath
         else
         {
             // Append one nib first.
-            AppendMut(otherTreePath[0]);
+            AppendMut((byte)otherTreePath[0]);
 
             int byteToCopy = otherTreePath.Length / 2;
             otherTreePath.Span[..byteToCopy].CopyTo(Span[(Length / 2)..]);
@@ -160,7 +160,7 @@ public struct TreePath
                 // 01 23 34 56 + 8 (no space for last)
                 // 01 23 45 60 + 8 (after shift4, need to add last manually)
                 Length += otherTreePath.Length - 2;
-                AppendMut(otherTreePath[^1]);
+                AppendMut((byte)otherTreePath[^1]);
             }
             else
             {
@@ -382,6 +382,35 @@ public struct TreePath
         }
 
         return Length.CompareTo(otherTree.Length);
+    }
+
+    /// <summary>
+    /// Check if other path is equal to this path starting from startingIndex (at this path)
+    /// </summary>
+    /// <param name="otherPath"></param>
+    /// <param name="startingIndex"></param>
+    /// <returns></returns>
+    public readonly bool IsEqualToStarting(in TreePath otherPath, int startingIndex)
+    {
+        int compareLength = Length - startingIndex;
+        if (Length - startingIndex != otherPath.Length) return false;
+
+        if (startingIndex % 2 == 1)
+        {
+            // Ah great. So we'll need to try to shift first.
+            Span<byte> buffer = stackalloc byte[(compareLength + 1) / 2];
+            Span[(startingIndex / 2)..((Length + 1) / 2)].CopyTo(buffer);
+            Bytes.ShiftLeft4(buffer);
+
+            Span<byte> thisSpan2 = buffer[..((compareLength + 1) / 2)];
+            Span<byte> otherSpan2 = otherPath.Span[..((compareLength + 1) / 2)];
+
+            return Bytes.SpanEqualityComparer.Equals(thisSpan2, otherSpan2);
+        }
+
+        Span<byte> thisSpan = Span[(startingIndex / 2)..((Length + 1) / 2)];
+        Span<byte> otherSpan = otherPath.Span[..((compareLength + 1) / 2)];
+        return Bytes.SpanEqualityComparer.Equals(thisSpan, otherSpan);
     }
 }
 
