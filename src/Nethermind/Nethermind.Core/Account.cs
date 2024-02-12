@@ -53,6 +53,16 @@ namespace Nethermind.Core
             Version = 0;
         }
 
+        public Account(in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, in UInt256 version, Hash256 storageRoot, Hash256 codeHash)
+        {
+            _codeHash = codeHash == Keccak.OfAnEmptyString ? null : codeHash;
+            _storageRoot = storageRoot == Keccak.EmptyTreeHash ? null : storageRoot;
+            Nonce = nonce;
+            Balance = balance;
+            CodeSize = codeSize;
+            Version = version;
+        }
+
         private Account(Account account, Hash256? storageRoot)
         {
             _codeHash = account._codeHash;
