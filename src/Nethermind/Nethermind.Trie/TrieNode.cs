@@ -688,7 +688,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                currentPath.AppendMut((byte)childIndex);
+                currentPath.AppendMut(childIndex);
             }
 
             return previousLength;

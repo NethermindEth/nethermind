@@ -70,7 +70,7 @@ public struct TreePath
         return copy;
     }
 
-    public readonly TreePath Append(byte nib)
+    public readonly TreePath Append(int nib)
     {
         TreePath copy = this;
         copy.AppendMut(nib);
@@ -111,42 +111,41 @@ public struct TreePath
     }
 
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
-    internal void AppendMut(byte nib)
+    internal void AppendMut(int nib)
     {
         this[Length] = nib;
         Length++;
     }
 
-    public readonly byte this[int childPathLength]
+    public readonly int this[int index]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         get
         {
-            if (childPathLength >= 64) throw new IndexOutOfRangeException();
-            if (childPathLength % 2 == 0)
+            if (index >= 64) throw new IndexOutOfRangeException();
+            if (index % 2 == 0)
             {
-                return (byte)((Span[childPathLength / 2] & 0xf0) >> 4);
+                return (Span[index / 2] & 0xf0) >> 4;
             }
             else
             {
-                return (byte)(Span[childPathLength / 2] & 0x0f);
+                return (Span[index / 2] & 0x0f);
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         set
         {
-            if (childPathLength >= 64) throw new IndexOutOfRangeException();
-            if (childPathLength % 2 == 0)
+            if (index >= 64) throw new IndexOutOfRangeException();
+            Span<byte> theSpan = Span;
+            if (index % 2 == 0)
             {
-                Span[childPathLength / 2] =
-                    (byte)((Span[childPathLength / 2] & 0x0f) |
-                           (value & 0x0f) << 4);
+                theSpan[index / 2] =
+                    (byte)((theSpan[index / 2] & 0x0f) | (value & 0x0f) << 4);
             }
             else
             {
-                Span[childPathLength / 2] =
-                    (byte)((Span[childPathLength / 2] & 0xf0) |
-                           ((value & 0x0f)));
+                theSpan[index / 2] =
+                    (byte)((theSpan[index / 2] & 0xf0) | (value & 0x0f));
             }
         }
     }
@@ -244,10 +243,4 @@ public static class TreePathExtensions
         return new TreePath.AppendScope(previousLength, ref path);
     }
 
-    public static TreePath.AppendScope ScopedAppend(this ref TreePath path, byte nibble)
-    {
-        int previousLength = path.Length;
-        path.AppendMut(nibble);
-        return new TreePath.AppendScope(previousLength, ref path);
-    }
 }

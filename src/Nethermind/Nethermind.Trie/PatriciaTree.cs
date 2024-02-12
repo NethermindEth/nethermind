@@ -880,7 +880,7 @@ namespace Nethermind.Trie
                 return ref traverseContext.UpdateValue;
             }
 
-            int previousLength = node.AppendChildPath(ref path, (byte)childIdx);
+            int previousLength = node.AppendChildPath(ref path, childIdx);
             ResolveNode(childNode, in traverseContext, in path);
             ref readonly CappedArray<byte> response = ref TraverseNext(childNode, in traverseContext, ref path, 1);
             path.TruncateMut(previousLength);
