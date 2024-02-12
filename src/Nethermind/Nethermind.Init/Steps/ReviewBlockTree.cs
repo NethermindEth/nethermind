@@ -59,19 +59,18 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                // TODO: no fixer now
-                // StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.WorldStateManager!.GlobalStateReader, _logger!);
-                // await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
-                // {
-                //     if (t.IsFaulted)
-                //     {
-                //         if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
-                //     }
-                //     else if (t.IsCanceled)
-                //     {
-                //         if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
-                //     }
-                // });
+                StartupBlockTreeFixer fixer = new(syncConfig, _api.BlockTree, _api.StateReader!, _logger!);
+                await _api.BlockTree.Accept(fixer, cancellationToken).ContinueWith(t =>
+                {
+                    if (t.IsFaulted)
+                    {
+                        if (_logger.IsError) _logger.Error("Fixing gaps in DB failed.", t.Exception);
+                    }
+                    else if (t.IsCanceled)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Fixing gaps in DB canceled.");
+                    }
+                });
             }
         }
     }
