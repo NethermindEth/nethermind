@@ -114,10 +114,10 @@ public struct TreePath
         Length++;
     }
 
-    public byte this[int childPathLength]
+    public readonly byte this[int childPathLength]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        readonly get
+        get
         {
             if (childPathLength >= 64) throw new IndexOutOfRangeException();
             if (childPathLength % 2 == 0)
@@ -179,7 +179,7 @@ public struct TreePath
         Length = pathLength;
     }
 
-    public override string ToString()
+    public override readonly string ToString()
     {
         return $"{Length} {Path}";
     }

@@ -12,7 +12,7 @@ namespace Nethermind.Trie;
 public class NodeStorage : INodeStorage
 {
     private readonly IKeyValueStore _keyValueStore;
-    private static byte[] EmptyTreeHashBytes = { 128 };
+    private static readonly byte[] EmptyTreeHashBytes = { 128 };
     private const int StoragePathLength = 74;
 
     public INodeStorage.KeyScheme Scheme { get; set; }

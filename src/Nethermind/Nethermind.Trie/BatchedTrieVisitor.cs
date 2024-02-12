@@ -425,7 +425,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
         };
     }
 
-    public TreePathContext AddStorage(in ValueHash256 storage)
+    public readonly TreePathContext AddStorage(in ValueHash256 storage)
     {
         return new TreePathContext();
     }
