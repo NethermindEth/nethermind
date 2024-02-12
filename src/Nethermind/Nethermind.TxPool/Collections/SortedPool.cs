@@ -310,7 +310,12 @@ namespace Nethermind.TxPool.Collections
 
                     if (_cacheMap.Count > _capacity)
                     {
-                        RemoveLast(out removed);
+                        if (!RemoveLast(out removed) || _cacheMap.Count > _capacity)
+                        {
+                            UpdateWorstValue();
+                            RemoveLast(out removed);
+                        }
+
                         return true;
                     }
 
@@ -325,16 +330,17 @@ namespace Nethermind.TxPool.Collections
 
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
-        private void RemoveLast(out TValue? removed)
+        private bool RemoveLast(out TValue? removed)
         {
             TKey? key = _worstValue.GetValueOrDefault().Value;
             if (key is not null)
             {
-                TryRemoveNonLocked(key, true, out removed, out _);
+                return TryRemoveNonLocked(key, true, out removed, out _);
             }
             else
             {
                 removed = default;
+                return false;
             }
         }
 

@@ -20,11 +20,13 @@ namespace Nethermind.State
         private readonly ILogger _logger;
         private readonly StateTree _state;
         private readonly StorageTree _storage;
+        private readonly ITrieStore _trieStore;
 
         public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _trieStore = trieStore;
             _state = new StateTree(trieStore, logManager);
             _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
         }
@@ -64,9 +66,7 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor visitor = new();
-            RunTreeVisitor(visitor, stateRoot);
-            return visitor.HasRoot;
+            return _trieStore.HasRoot(stateRoot);
         }
 
         public byte[]? GetCode(Hash256 stateRoot, Address address)
