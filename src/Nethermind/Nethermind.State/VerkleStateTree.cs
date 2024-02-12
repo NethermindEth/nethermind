@@ -22,7 +22,7 @@ namespace Nethermind.State;
 public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager) : VerkleTree(stateStore, logManager)
 {
     [DebuggerStepThrough]
-    public Account? Get(Address address, Hash256? stateRoot = null)
+    public AccountStruct? Get(Address address, Hash256? stateRoot = null)
     {
         Span<byte> key = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
 
@@ -37,7 +37,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
         key[31] = AccountHeader.CodeSize;
         UInt256 codeSize = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
 
-        return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
+        return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
     }
 
     public void Set(Address address, Account? account)

@@ -131,7 +131,7 @@ namespace Nethermind.Core
             return new Account(newCodeHash, this) { Code = code, CodeSize = new UInt256((ulong)(code?.Length ?? 0)) };
         }
 
-        public AccountStruct ToStruct() => new(Nonce, Balance, CodeSize, StorageRoot, CodeHash);
+        public AccountStruct ToStruct() => new(Nonce, Balance, CodeSize, Version, StorageRoot, CodeHash);
     }
 
     public readonly struct AccountStruct
@@ -156,14 +156,14 @@ namespace Nethermind.Core
             _version = 0;
         }
 
-        public AccountStruct(in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, in ValueHash256 storageRoot, in ValueHash256 codeHash)
+        public AccountStruct(in UInt256 nonce, in UInt256 balance, in UInt256 codeSize, in UInt256 version, in ValueHash256 storageRoot, in ValueHash256 codeHash)
         {
             _codeHash = codeHash;
             _storageRoot = storageRoot;
             _nonce = nonce;
             _balance = balance;
             _codeSize = codeSize;
-            _version = 0;
+            _version = version;
         }
 
         public AccountStruct(in UInt256 nonce, in UInt256 balance)
