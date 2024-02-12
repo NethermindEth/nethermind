@@ -3,6 +3,8 @@
 
 using System.IO;
 using System.Reflection;
+using System.Text;
+using System.Text.Unicode;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -93,7 +95,7 @@ public class ForkInfoTests
     public void Fork_id_and_hash_as_expected_with_merge_fork_id(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-        ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/foundation.json"));
+        ChainSpec spec = loader.LoadFromFile("../../../../Chains/foundation.json");
         spec.Parameters.MergeForkIdTransition = 21_000_000L;
         spec.MergeForkIdBlockNumber = 21_000_000L;
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
@@ -158,7 +160,7 @@ public class ForkInfoTests
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-        ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/gnosis.json"));
+        ChainSpec spec = loader.LoadFromFile("../../../../Chains/gnosis.json");
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
         Test(head, headTimestamp, KnownHashes.GnosisGenesis, forkHashHex, next, description, provider);
     }
@@ -170,7 +172,7 @@ public class ForkInfoTests
     public void Fork_id_and_hash_as_expected_on_chiado(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-        ChainSpec spec = loader.Load(File.ReadAllText("../../../../Chains/chiado.json"));
+        ChainSpec spec = loader.LoadFromFile("../../../../Chains/chiado.json");
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
         Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
     }
@@ -317,8 +319,7 @@ public class ForkInfoTests
         if (UseTimestampSpec)
         {
             ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-            ChainSpec spec = loader.Load(File.ReadAllText(
-                $"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/TimestampForkIdTest.json"));
+            ChainSpec spec = loader.LoadFromFile($"../../../../{Assembly.GetExecutingAssembly().GetName().Name}/TimestampForkIdTest.json");
             specProvider = new ChainSpecBasedSpecProvider(spec);
         }
 
@@ -336,7 +337,9 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
 
-        ChainSpec spec = loader.Load($"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}");
+        string chainspec = $"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}";
+        using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(chainspec));
+        ChainSpec spec = loader.Load(memoryStream);
         ChainSpecBasedSpecProvider provider = new(spec);
 
         spec.ChainId.Should().Be(expectedChainId);
@@ -354,7 +357,7 @@ public class ForkInfoTests
     private static void Test(long head, ulong headTimestamp, Hash256 genesisHash, string forkHashHex, ulong next, string description, string chainSpec, string path = "../../../../Chains")
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
-        ChainSpec spec = loader.Load(File.ReadAllText(Path.Combine(path, chainSpec)));
+        ChainSpec spec = loader.LoadFromFile(Path.Combine(path, chainSpec));
         ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);
     }

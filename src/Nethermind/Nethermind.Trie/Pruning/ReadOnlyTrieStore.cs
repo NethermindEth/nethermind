@@ -56,6 +56,11 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            return _trieStore.HasRoot(stateRoot);
+        }
+
         public void Dispose() { }
     }
 }
