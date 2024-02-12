@@ -29,6 +29,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -178,6 +179,42 @@ public partial class EngineModuleTests
 
         Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
         result.Data.Status.Should().Be(expectedPayloadStatus);
+    }
+
+    [Test]
+    public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithCorrectErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.BlockNumber = 2;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_WrongStateRoot_CorrectErrorIsReturnedAfterProcessing()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.StateRoot = Keccak.Zero;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
     }
 
     [Test]
@@ -605,7 +642,7 @@ public partial class EngineModuleTests
         IReleaseSpec spec, int transactionCount = 0)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
         Transaction[] txs = Array.Empty<Transaction>();
 
         if (transactionCount is not 0)

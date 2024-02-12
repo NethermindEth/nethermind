@@ -8,6 +8,8 @@ namespace Nethermind.Blockchain;
 
 public class InvalidBlockException : BlockchainException
 {
+    public InvalidBlockException(Block block, string message)
+    : base(message) => InvalidBlock = block;
     public InvalidBlockException(Block block, Exception? innerException = null)
         : base($"Invalid block: {block}", innerException) => InvalidBlock = block;
 
