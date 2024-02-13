@@ -3,6 +3,7 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
@@ -102,7 +103,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         else if (prefix < 192)
         {
             int lengthOfLength = prefix - 183;
-            if (lengthOfLength > 4)
+            if ((uint)lengthOfLength > 4)
             {
                 // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
                 throw new RlpException("Expected length of length less or equal 4");
@@ -340,57 +341,107 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         return Data.AsSpan(_position + offset, length);
     }
 
-    public byte[] DecodeByteArray() => DecodeByteArraySpan().ToArray();
+    public byte[] DecodeByteArray()
+    {
+        var span = DecodeByteArraySpan();
+        if (span.Length == 0)
+        {
+            return Array.Empty<byte>();
+        }
+
+        if (span.Length == 1)
+        {
+            int value = span[0];
+            var arrays = RlpStream.SingleByteArrays;
+            if ((uint)value < (uint)arrays.Length)
+            {
+                return arrays[value];
+            }
+        }
+
+        return span.ToArray();
+    }
 
     public ReadOnlySpan<byte> DecodeByteArraySpan()
     {
         int prefix = ReadByte();
-        if (prefix == 0)
+        ReadOnlySpan<byte> span = RlpStream.SingleBytes;
+        if ((uint)prefix < (uint)span.Length)
         {
-            return Bytes.ZeroByte.Span;
-        }
-
-        if (prefix < 128)
-        {
-            return new[] { (byte)prefix };
+            return span.Slice(prefix, 1);
         }
 
         if (prefix == 128)
         {
-            return Array.Empty<byte>();
+            return default;
         }
 
         if (prefix <= 183)
         {
             int length = prefix - 128;
-            Span<byte> buffer = Read(length);
-            if (length == 1 && buffer[0] < 128)
+            ReadOnlySpan<byte> buffer = Read(length);
+            if (buffer.Length == 1 && buffer[0] < 128)
             {
-                throw new RlpException($"Unexpected byte value {buffer[0]}");
+                ThrowUnexpectedValue(buffer[0]);
             }
 
             return buffer;
         }
 
+        return DecodeLargerByteArraySpan(prefix);
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowUnexpectedValue(int buffer0)
+        {
+            throw new RlpException($"Unexpected byte value {buffer0}");
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix)
+    {
         if (prefix < 192)
         {
             int lengthOfLength = prefix - 183;
             if (lengthOfLength > 4)
             {
                 // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                throw new RlpException("Expected length of length less or equal 4");
+                ThrowUnexpectedLengthOfLength();
             }
 
             int length = DeserializeLength(lengthOfLength);
             if (length < 56)
             {
-                throw new RlpException($"Expected length greater or equal 56 and was {length}");
+                ThrowUnexpectedLength(length);
             }
 
             return Read(length);
         }
 
-        throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+        ThrowUnexpectedPrefix(prefix);
+        return default;
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowUnexpectedPrefix(int prefix)
+        {
+            throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowUnexpectedLength(int length)
+        {
+            throw new RlpException($"Expected length greater or equal 56 and was {length}");
+        }
+
+        [DoesNotReturn]
+        [StackTraceHidden]
+        static void ThrowUnexpectedLengthOfLength()
+        {
+            throw new RlpException("Expected length of length less or equal 4");
+        }
     }
 
     public void SkipItem()
