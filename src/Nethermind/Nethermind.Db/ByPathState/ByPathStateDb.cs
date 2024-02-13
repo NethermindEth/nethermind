@@ -2,13 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections;
 using System.Collections.Generic;
-using System.Linq;
-using System.Runtime;
-using System.Text;
-using System.Threading.Tasks;
-using Nethermind.Core;
 using Nethermind.Logging;
 
 namespace Nethermind.Db.ByPathState;
@@ -86,6 +80,11 @@ public class ByPathStateDb : IByPathStateDb
         return _currentDb.StartWriteBatch();
     }
     #endregion
+
+    public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false)
+    {
+        return _currentDb.GatherMetric(includeSharedCache);
+    }
 }
 
 public interface IByPathStateDb : IColumnsDb<StateColumns>
