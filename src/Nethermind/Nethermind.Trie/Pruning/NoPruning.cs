@@ -15,5 +15,7 @@ namespace Nethermind.Trie.Pruning
         {
             return false;
         }
+
+        public int TrackedPastKeyCount => 0;
     }
 }

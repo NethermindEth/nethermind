@@ -90,7 +90,8 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()) // TODO: memory hint should define this
+                .TrackingPastKeys(pruningConfig.TrackedPastKeyCount);
         }
         else
         {
