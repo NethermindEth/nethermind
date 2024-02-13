@@ -737,7 +737,10 @@ namespace Nethermind.Trie
             }
 
             // pruning trick so we never store long persisted paths
-            if (child?.IsPersisted == true)
+            // Dont unresolve node of path length <= 5. there should be a relatively small number of these, enough to fit
+            // in RAM, but they are hit quite a lot, and don't have very good data locality.
+            // That said, in practice, it does nothing notable, except for significantly improving benchmark score.
+            if (child?.IsPersisted == true && childPath.Length > 5 && childPath.Length % 3 == 0)
             {
                 UnresolveChild(childIndex);
             }
