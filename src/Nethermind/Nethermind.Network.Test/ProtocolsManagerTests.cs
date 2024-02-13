@@ -105,6 +105,7 @@ namespace Nethermind.Network.Test
                     _syncPeerPool,
                     _syncServer,
                     RunImmediatelyScheduler.Instance,
+                    null,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,

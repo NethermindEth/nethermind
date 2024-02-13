@@ -25,6 +25,7 @@ public enum DisconnectReason : byte
 
     // Non sync, non connection related disconnect
     SnapServerNotImplemented,
+    VerkleSyncServerNotImplemented,
     IncompatibleP2PVersion,
     InvalidNetworkId,
     InvalidGenesis,
