@@ -372,7 +372,9 @@ public class ChainSpecBasedSpecProviderTests
             yield return new TestCaseData((ForkActivation)(MainnetSpecProvider.ArrowGlacierBlockNumber - 1)) { TestName = "Before GrayGlacier" };
             yield return new TestCaseData((ForkActivation)MainnetSpecProvider.ArrowGlacierBlockNumber) { TestName = "GrayGlacier" };
             yield return new TestCaseData(MainnetSpecProvider.ShanghaiActivation) { TestName = "Shanghai" };
-            yield return new TestCaseData(new ForkActivation(99_000_000, 99_681_338_455)) { TestName = "Future" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp - 1)) { TestName = "Before Cancun" };
+            yield return new TestCaseData(MainnetSpecProvider.CancunActivation) { TestName = "Cancun" };
+            yield return new TestCaseData(new ForkActivation(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp + 100000000)) { TestName = "Future" };
         }
     }
 

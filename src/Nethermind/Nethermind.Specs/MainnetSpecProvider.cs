@@ -24,7 +24,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestamp = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
-    public const ulong CancunBlockTimestamp = ulong.MaxValue - 3;
+    public const ulong CancunBlockTimestamp = 0x65F1B057;
     public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 

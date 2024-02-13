@@ -45,10 +45,12 @@ public class ForkInfoTests
     [TestCase(13_772_999, 0ul, "0xb715077d", 13_773_000ul, "Last London")]
     [TestCase(13_773_000, 0ul, "0x20c327fc", 15_050_000ul, "First Arrow Glacier")]
     [TestCase(15_049_999, 0ul, "0x20c327fc", 15_050_000ul, "Last Arrow Glacier")]
-    [TestCase(15_050_000, 0ul, "0xf0afd0e3", 1681338455ul, "First Gray Glacier")]
-    [TestCase(15_051_000, 0ul, "0xf0afd0e3", 1681338455ul, "Future Gray Glacier")]
-    [TestCase(15_051_000, 1681338455ul, "0xdce96c2d", 0ul, "First Shanghai timestamp")]
-    [TestCase(15_051_000, 9981338455ul, "0xdce96c2d", 0ul, "Future Shanghai timestamp")]
+    [TestCase(15_050_000, 0ul, "0xf0afd0e3", 1_681_338_455ul, "First Gray Glacier")]
+    [TestCase(15_051_000, 0ul, "0xf0afd0e3", 1_681_338_455ul, "Future Gray Glacier")]
+    [TestCase(15_051_000, 1_681_338_455ul, "0xdce96c2d", 1_710_338_135ul, "First Shanghai timestamp")]
+    [TestCase(15_051_000, 1_710_338_134ul, "0xdce96c2d", 1_710_338_135ul, "Future Shanghai timestamp")]
+    [TestCase(15_051_000, 1_710_338_135ul, "0x9f3d2254", 0ul, "First Cancun timestamp")]
+    [TestCase(15_051_000, 1_810_338_135ul, "0x9f3d2254", 0ul, "Future Cancun timestamp")]
     public void Fork_id_and_hash_as_expected(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, MainnetSpecProvider.Instance, "foundation.json");

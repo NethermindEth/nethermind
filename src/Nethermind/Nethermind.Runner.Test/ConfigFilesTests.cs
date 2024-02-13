@@ -195,7 +195,7 @@ namespace Nethermind.Runner.Test
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
         [TestCase("chiado", 1024)]
-        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -331,8 +331,9 @@ namespace Nethermind.Runner.Test
         [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("mainnet", BlobsSupportMode.Disabled)]
-        [TestCase("gnosis", BlobsSupportMode.Disabled)]
+        [TestCase("mainnet", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("gnosis", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("^goerli ^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {
             Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
