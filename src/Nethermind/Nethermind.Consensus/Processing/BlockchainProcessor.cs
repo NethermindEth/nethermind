@@ -319,7 +319,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 if (processedBlock is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
                 }
                 else
                 {
@@ -353,7 +353,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     }
 
     public event EventHandler? ProcessingQueueEmpty;
-    public event EventHandler<BlockHashEventArgs>? BlockRemoved;
+    public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
 
     int IBlockProcessingQueue.Count => _queueCount;
 
