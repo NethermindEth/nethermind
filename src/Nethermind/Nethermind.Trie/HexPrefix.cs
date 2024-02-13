@@ -21,7 +21,7 @@ namespace Nethermind.Trie
                 output[0] += (byte)(0x10 + path[0]);
                 path.Span[..((path.Length) / 2)].CopyTo(output[1..]);
                 Bytes.ShiftLeft4(output[1..]);
-                output[path.Length / 2] |= path[^1];
+                output[path.Length / 2] |= (byte)path[^1];
             }
             else
             {
