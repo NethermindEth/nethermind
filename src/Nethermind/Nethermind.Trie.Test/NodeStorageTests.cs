@@ -127,8 +127,8 @@ public class NodeStorageTests
         NodeStorage.GetHalfPathNodeStoragePath(address, path, hash).ToHexString().Should().Be(expectedKey);
     }
 
-    [TestCase(false, 10, ReadFlags.HintReadAhead)]
-    [TestCase(false, 3, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead2)]
+    [TestCase(false, 3, ReadFlags.HintReadAhead)]
+    [TestCase(false, 10, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead2)]
     [TestCase(true, 3, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead3)]
     public void Test_WhenReadaheadUseDifferentReadaheadOnDifferentSection(bool hasAddress, int pathLength, ReadFlags expectedReadFlags)
     {
