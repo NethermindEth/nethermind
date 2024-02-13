@@ -106,13 +106,13 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             if (lengthOfLength > 4)
             {
                 // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                throw new RlpException("Expected length of length less or equal 4");
+                ThrowSequenceLengthTooLong();
             }
 
             int length = PeekDeserializeLength(1, lengthOfLength);
             if (length < 56)
             {
-                throw new RlpException($"Expected length greater or equal 56 and was {length}");
+                ThrowLengthTooLong(length);
             }
 
             result = (lengthOfLength + 1, length);
@@ -127,7 +127,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
             int contentLength = PeekDeserializeLength(1, lengthOfContentLength);
             if (contentLength < 56)
             {
-                throw new RlpException($"Expected length greater or equal 56 and got {contentLength}");
+                ThrowLengthTooLong(contentLength);
             }
 
 
@@ -135,6 +135,16 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         }
 
         return result;
+
+        static void ThrowSequenceLengthTooLong()
+        {
+            throw new RlpException("Expected length of length less or equal 4");
+        }
+
+        static void ThrowLengthTooLong(int length)
+        {
+            throw new RlpException($"Expected length greater or equal 56 and was {length}");
+        }
     }
 
     public int ReadSequenceLength()
