@@ -77,11 +77,11 @@ namespace Nethermind.Trie
 
                 HexPrefix.CopyToSpan(hexPrefix, isLeaf: false, keyBytes);
 
-                TrieNode nodeRef = item.GetChild(tree, ref path, 0);
+                int previousLength = item.AppendChildPath(ref path, 0);
+                TrieNode nodeRef = item.GetChildWithChildPath(tree, ref path, 0);
                 Debug.Assert(nodeRef is not null,
                     "Extension child is null when encoding.");
 
-                int previousLength = item.AppendChildPath(ref path, 0);
                 nodeRef.ResolveKey(tree, ref path, false, bufferPool: bufferPool);
                 path.TruncateMut(previousLength);
 

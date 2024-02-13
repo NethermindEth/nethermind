@@ -656,7 +656,8 @@ namespace Nethermind.Trie
                                 }
                             }
 
-                            TrieNode childNode = node.GetChild(TrieStore, ref path, childNodeIndex);
+                            int previousPathLength = node.AppendChildPath(ref path, childNodeIndex);
+                            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childNodeIndex);
                             if (childNode is null)
                             {
                                 /* potential corrupted trie data state when we find a branch that has only one child */
@@ -664,7 +665,6 @@ namespace Nethermind.Trie
                                     "Before updating branch should have had at least two non-empty children");
                             }
 
-                            int previousPathLength = node.AppendChildPath(ref path, childNodeIndex);
                             ResolveNode(childNode, in traverseContext, in path);
                             path.TruncateMut(previousPathLength);
 
@@ -848,7 +848,8 @@ namespace Nethermind.Trie
             }
 
             int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
-            TrieNode childNode = node.GetChild(TrieStore, ref path, childIdx);
+            int previousLength = node.AppendChildPath(ref path, childIdx);
+            TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childIdx);
             if (traverseContext.IsUpdate)
             {
                 PushToNodeStack(new StackedNode(node, traverseContext.CurrentIndex, childIdx));
@@ -880,7 +881,6 @@ namespace Nethermind.Trie
                 return ref traverseContext.UpdateValue;
             }
 
-            int previousLength = node.AppendChildPath(ref path, childIdx);
             ResolveNode(childNode, in traverseContext, in path);
             ref readonly CappedArray<byte> response = ref TraverseNext(childNode, in traverseContext, ref path, 1);
             path.TruncateMut(previousLength);
@@ -1007,13 +1007,13 @@ namespace Nethermind.Trie
                     PushToNodeStack(new StackedNode(node, traverseContext.CurrentIndex, 0));
                 }
 
-                TrieNode next = node.GetChild(TrieStore, ref path, 0);
+                int previousPathLength = node.AppendChildPath(ref path, 0);
+                TrieNode next = node.GetChildWithChildPath(TrieStore, ref path, 0);
                 if (next is null)
                 {
                     ThrowMissingChildException(node);
                 }
 
-                int previousPathLength = node.AppendChildPath(ref path, 0);
                 ResolveNode(next, in traverseContext, in path);
                 ref readonly CappedArray<byte> response = ref TraverseNext(next, in traverseContext, ref path, extensionLength);
                 path.TruncateMut(previousPathLength);
