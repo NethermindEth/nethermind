@@ -93,7 +93,7 @@ jobs:
           set +e
           
           declare -A bad_logs
-          bad_logs["Invalid"]=1
+          bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
 
           declare -A good_logs
