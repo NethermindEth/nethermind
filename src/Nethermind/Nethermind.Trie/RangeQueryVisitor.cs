@@ -108,7 +108,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             compResult = path.CompareTo(_truncatedStartHashes[path.Length]);
             if (compResult < 0)
             {
-                Console.Out.WriteLine($"Start bad {compResult}");
                 return false;
             }
         }
@@ -118,7 +117,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             compResult = path.Path.CompareTo(_limitHash.Value);
             if (compResult > 0)
             {
-                Console.Out.WriteLine($"Limit bad {compResult}");
                 StoppedEarly = true;
                 return false;
             }
