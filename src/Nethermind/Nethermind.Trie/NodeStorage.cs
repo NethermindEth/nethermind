@@ -14,6 +14,7 @@ public class NodeStorage : INodeStorage
     private readonly IKeyValueStore _keyValueStore;
     private static readonly byte[] EmptyTreeHashBytes = { 128 };
     private const int StoragePathLength = 74;
+    private const int TopStateBoundary = 5;
 
     public INodeStorage.KeyScheme Scheme { get; set; }
     public bool RequirePath { get; }
@@ -78,7 +79,7 @@ public class NodeStorage : INodeStorage
             // the space of other things, hopefully we can cache them by key somehow. Separating by the path length 4
             // does improve cache hit and processing time a little bit, until a few hundreds prune persist where it grew
             // beyond block cache size.
-            if (path.Length <= 5)
+            if (path.Length <= TopStateBoundary)
             {
                 pathSpan[0] = 0;
             }
@@ -120,6 +121,18 @@ public class NodeStorage : INodeStorage
         if (keccak == Keccak.EmptyTreeHash)
         {
             return EmptyTreeHashBytes;
+        }
+
+        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        {
+            if (address == null && path.Length <= TopStateBoundary)
+            {
+                readFlags |= ReadFlags.HintReadAhead2;
+            }
+            else if (address != null)
+            {
+                readFlags |= ReadFlags.HintReadAhead3;
+            }
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];

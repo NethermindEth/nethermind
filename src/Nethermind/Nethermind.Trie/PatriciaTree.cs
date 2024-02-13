@@ -1191,7 +1191,14 @@ namespace Nethermind.Trie
             ReadFlags flags = visitor.ExtraReadFlag;
             if (visitor.IsFullDbScan)
             {
-                flags |= ReadFlags.HintCacheMiss;
+                if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash)
+                {
+                    flags |= ReadFlags.HintCacheMiss;
+                }
+                else
+                {
+                    flags |= ReadFlags.HintReadAhead;
+                }
             }
 
             if (visitor.ExtraReadFlag != ReadFlags.None)

@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.Trie.Test;
 
@@ -123,5 +125,28 @@ public class NodeStorageTests
         Hash256? hash = new Hash256("3333333333333333333333333333333333333333333333333333333333333333");
 
         NodeStorage.GetHalfPathNodeStoragePath(address, path, hash).ToHexString().Should().Be(expectedKey);
+    }
+
+    [TestCase(false, 10, ReadFlags.HintReadAhead)]
+    [TestCase(false, 3, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead2)]
+    [TestCase(true, 3, ReadFlags.HintReadAhead | ReadFlags.HintReadAhead3)]
+    public void Test_WhenReadaheadUseDifferentReadaheadOnDifferentSection(bool hasAddress, int pathLength, ReadFlags expectedReadFlags)
+    {
+        if (_currentKeyScheme == INodeStorage.KeyScheme.Hash) return;
+
+        TestMemDb testDb = new TestMemDb();
+        NodeStorage nodeStorage = new NodeStorage(testDb, _currentKeyScheme);
+
+        Hash256? address = null;
+        if (hasAddress)
+        {
+            address = new Hash256("1111111111111111111111111111111111111111111111111111111111111111");
+        }
+
+        TreePath path = new TreePath(new Hash256("2222222222222222222222222222222222222222222222222222222222222222"), 64);
+        path.TruncateMut(pathLength);
+
+        nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);
+        testDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(address, path, Keccak.Zero), expectedReadFlags);
     }
 }

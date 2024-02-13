@@ -72,6 +72,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private readonly List<IDisposable> _metricsUpdaters = new();
 
     private readonly ManagedIterators _readaheadIterators = new();
+    private readonly ManagedIterators _readaheadIterators2 = new();
+    private readonly ManagedIterators _readaheadIterators3 = new();
 
     internal long _allocatedSpan = 0;
     private long _totalReads;
@@ -657,7 +659,17 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return GetWithColumnFamily(key, null, _readaheadIterators, flags);
+        ManagedIterators iterators = _readaheadIterators;
+        if ((flags & ReadFlags.HintReadAhead2) != 0)
+        {
+            iterators = _readaheadIterators2;
+        }
+        else if ((flags & ReadFlags.HintReadAhead3) != 0)
+        {
+            iterators = _readaheadIterators3;
+        }
+
+        return GetWithColumnFamily(key, null, iterators, flags);
     }
 
     internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
@@ -1229,6 +1241,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         _readaheadIterators.DisposeAll();
+        _readaheadIterators2.DisposeAll();
+        _readaheadIterators3.DisposeAll();
 
         _db.Dispose();
 
