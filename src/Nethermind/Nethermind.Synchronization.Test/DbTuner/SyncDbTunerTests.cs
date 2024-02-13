@@ -7,6 +7,7 @@ using Nethermind.Synchronization.DbTuner;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.VerkleSync;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -18,6 +19,7 @@ public class SyncDbTunerTests
     private readonly ITunableDb.TuneType _blocksTuneType = ITunableDb.TuneType.AggressiveHeavyWrite;
     private SyncConfig _syncConfig = null!;
     private ISyncFeed<SnapSyncBatch> _snapSyncFeed = null!;
+    private ISyncFeed<VerkleSyncBatch> _verkleSyncFeed = null!;
     private ISyncFeed<BodiesSyncBatch> _bodiesSyncFeed = null!;
     private ISyncFeed<ReceiptsSyncBatch> _receiptSyncFeed = null!;
     private ITunableDb _stateDb = null!;
@@ -35,6 +37,7 @@ public class SyncDbTunerTests
             BlocksDbTuneDbMode = _blocksTuneType,
         };
         _snapSyncFeed = Substitute.For<ISyncFeed<SnapSyncBatch>>();
+        _verkleSyncFeed = Substitute.For<ISyncFeed<VerkleSyncBatch>>();
         _bodiesSyncFeed = Substitute.For<ISyncFeed<BodiesSyncBatch>>();
         _receiptSyncFeed = Substitute.For<ISyncFeed<ReceiptsSyncBatch>>();
         _stateDb = Substitute.For<ITunableDb>();
@@ -45,6 +48,7 @@ public class SyncDbTunerTests
         SyncDbTuner _ = new SyncDbTuner(
             _syncConfig,
             _snapSyncFeed,
+            _verkleSyncFeed,
             _bodiesSyncFeed,
             _receiptSyncFeed,
             _stateDb,

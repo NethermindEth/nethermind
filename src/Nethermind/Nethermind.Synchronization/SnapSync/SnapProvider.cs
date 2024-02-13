@@ -26,21 +26,21 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
-        private readonly ProgressTracker _progressTracker;
+        private readonly SnapProgressTracker _snapProgressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(SnapProgressTracker snapProgressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
+            _snapProgressTracker = snapProgressTracker ?? throw new ArgumentNullException(nameof(snapProgressTracker));
             _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
         }
 
-        public bool CanSync() => _progressTracker.CanSync();
+        public bool CanSync() => _snapProgressTracker.CanSync();
 
-        public (SnapSyncBatch request, bool finished) GetNextRequest() => _progressTracker.GetNextRequest();
+        public (SnapSyncBatch request, bool finished) GetNextRequest() => _snapProgressTracker.GetNextRequest();
 
         public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
@@ -62,7 +62,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
+            _snapProgressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
 
             return result;
         }
@@ -83,11 +83,11 @@ namespace Nethermind.Synchronization.SnapSync
                 {
                     foreach (PathWithAccount item in CollectionsMarshal.AsSpan(accountsWithStorage))
                     {
-                        _progressTracker.EnqueueAccountStorage(item);
+                        _snapProgressTracker.EnqueueAccountStorage(item);
                     }
 
-                    _progressTracker.EnqueueCodeHashes(CollectionsMarshal.AsSpan(codeHashes));
-                    _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
+                    _snapProgressTracker.EnqueueCodeHashes(CollectionsMarshal.AsSpan(codeHashes));
+                    _snapProgressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
@@ -115,7 +115,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Length}), {request.StartingHash}");
 
-                _progressTracker.ReportStorageRangeRequestFinished(request);
+                _snapProgressTracker.ReportStorageRangeRequestFinished(request);
 
                 return AddRangeResult.ExpiredRootHash;
             }
@@ -142,11 +142,11 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (requestLength > responses.Length)
                 {
-                    _progressTracker.ReportFullStorageRequestFinished(request.Accounts.AsSpan(responses.Length, requestLength - responses.Length));
+                    _snapProgressTracker.ReportFullStorageRequestFinished(request.Accounts.AsSpan(responses.Length, requestLength - responses.Length));
                 }
                 else
                 {
-                    _progressTracker.ReportFullStorageRequestFinished();
+                    _snapProgressTracker.ReportFullStorageRequestFinished();
                 }
 
                 if (result == AddRangeResult.OK && slotCount > 0)
@@ -176,20 +176,20 @@ namespace Nethermind.Synchronization.SnapSync
                             StartingHash = slots[^1].Path
                         };
 
-                        _progressTracker.EnqueueStorageRange(range);
+                        _snapProgressTracker.EnqueueStorageRange(range);
                     }
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
                     _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _snapProgressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
                     _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
-                    _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
+                    _snapProgressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
 
                 return result;
@@ -237,11 +237,11 @@ namespace Nethermind.Synchronization.SnapSync
                                     StartingHash = requestedPath.StorageStartingHash
                                 };
 
-                                _progressTracker.EnqueueStorageRange(range);
+                                _snapProgressTracker.EnqueueStorageRange(range);
                             }
                             else
                             {
-                                _progressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
+                                _snapProgressTracker.EnqueueAccountStorage(requestedPath.PathAndAccount);
                             }
                         }
                         catch (Exception exc)
@@ -256,7 +256,7 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
 
-                _progressTracker.ReportAccountRefreshFinished();
+                _snapProgressTracker.ReportAccountRefreshFinished();
             }
             finally
             {
@@ -266,7 +266,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private void RetryAccountRefresh(AccountWithStorageStartingHash requestedPath)
         {
-            _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
+            _snapProgressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
         public void AddCodes(ValueHash256[] requestedHashes, byte[][] codes)
@@ -290,34 +290,34 @@ namespace Nethermind.Synchronization.SnapSync
 
             Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
 
-            _progressTracker.ReportCodeRequestFinished(set.ToArray());
+            _snapProgressTracker.ReportCodeRequestFinished(set.ToArray());
         }
 
         public void RetryRequest(SnapSyncBatch batch)
         {
             if (batch.AccountRangeRequest is not null)
             {
-                _progressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash.Value);
+                _snapProgressTracker.ReportAccountRangePartitionFinished(batch.AccountRangeRequest.LimitHash.Value);
             }
             else if (batch.StorageRangeRequest is not null)
             {
-                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
+                _snapProgressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
             }
             else if (batch.CodesRequest is not null)
             {
-                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
+                _snapProgressTracker.ReportCodeRequestFinished(batch.CodesRequest);
             }
             else if (batch.AccountsToRefreshRequest is not null)
             {
-                _progressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
+                _snapProgressTracker.ReportAccountRefreshFinished(batch.AccountsToRefreshRequest);
             }
         }
 
-        public bool IsSnapGetRangesFinished() => _progressTracker.IsSnapGetRangesFinished();
+        public bool IsSnapGetRangesFinished() => _snapProgressTracker.IsGetRangesFinished();
 
         public void UpdatePivot()
         {
-            _progressTracker.UpdatePivot();
+            _snapProgressTracker.UpdatePivot();
         }
 
         private class TrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
