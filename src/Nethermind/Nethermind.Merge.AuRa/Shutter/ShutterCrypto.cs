@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -38,7 +38,7 @@ internal class ShutterCrypto
         identityPrefix.Unwrap().CopyTo(identity);
         sender.Bytes.CopyTo(identity[32..]);
         // todo: reverse?
-        return new G1(Keccak.Compute(identity).Bytes.ToArray());
+        return G1.generator().mult(Keccak.Compute(identity).Bytes.ToArray());
     }
 
     public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
@@ -56,6 +56,23 @@ internal class ShutterCrypto
         }
 
         return msg;
+    }
+
+    public static EncryptedMessage DecodeEncryptedMessage(ReadOnlySpan<byte> bytes)
+    {
+        ReadOnlySpan<byte> c3Bytes = bytes[(96 + 32)..];
+        List<Bytes32> c3 = [];
+        for (int i = 0; i < c3Bytes.Length / 32; i++)
+        {
+            c3.Add(new(c3Bytes[(i * 32)..((i + 1) * 32)]));
+        }
+
+        return new()
+        {
+            c1 = new G2(bytes[..96].ToArray()),
+            c2 = new Bytes32(bytes[96..(96 + 32)]),
+            c3 = c3
+        };
     }
 
     public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)

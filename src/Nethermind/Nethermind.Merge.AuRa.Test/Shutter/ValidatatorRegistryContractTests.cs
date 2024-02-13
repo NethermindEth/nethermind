@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -126,11 +126,5 @@ class ValidatorRegistryContractTests
         ValidatorRegistryContract contract = new(_transactionProcessor, AbiEncoder.Instance, _contractAddress, _signer, _txSender, _txSealer, _validatorContract, _blockHeader);
         ulong nonce = contract.GetNonce(_blockHeader);
         nonce.Should().Be(1001);
-    }
-
-    [Test]
-    public void Can_register()
-    {
-        // ValidatorRegistryContract contract = new(_transactionProcessor, _abiEncoder, _contractAddress, _signer, _txSender, _txSealer, _blockchainBridge, _blockHeader);
     }
 }

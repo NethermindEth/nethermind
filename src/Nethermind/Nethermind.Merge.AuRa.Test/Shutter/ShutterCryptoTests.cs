@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -57,7 +57,7 @@ class ShutterCryptoTests
         Assert.That(res.SequenceEqual(msg));
     }
 
-    private static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
+    internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
     {
         UInt256 r = ShutterCrypto.ComputeR(sigma, msg);
         EncryptedMessage c = new()

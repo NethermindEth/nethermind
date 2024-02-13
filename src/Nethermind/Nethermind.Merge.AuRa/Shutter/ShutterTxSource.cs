@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -14,17 +14,19 @@ using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using System.Runtime.CompilerServices;
+using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
+using G1 = Bls.P1;
+
 public class ShutterTxSource : ITxSource
 {
-
+    public DecryptionKeys decryptionKeys = new();
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
-    private static readonly Address SequencerAddress = Address.Zero;
     private static readonly UInt256 EncryptedGasLimit = 300;
     internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
@@ -37,36 +39,55 @@ public class ShutterTxSource : ITxSource
         ]
     );
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore)
+    public ShutterTxSource(string sequencerAddress, ILogFinder logFinder, IFilterStore filterStore)
         : base()
     {
         IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
         _logFinder = logFinder;
-        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, SequencerAddress.ToString(), topics);
+        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, sequencerAddress, topics);
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        // todo: get eon and txpointer
-        ulong eon = 0;
-        int txPointer = 0;
+        // todo: cache? check changes in header?
 
-        // get encrypted transactions from event logs
-        IEnumerable<SequencedTransaction> encryptedTransactions = GetNextTransactions(eon, txPointer);
-
-        // todo: get decryption key from gossip layer and decrypt transactions
-
-        return Enumerable.Empty<Transaction>();
+        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(decryptionKeys.Eon, (int)decryptionKeys.TxPointer);
+        return sequencedTransactions.Zip(decryptionKeys.Keys).Select((x) => DecryptSequencedTransaction(x.Item1, x.Item2));
     }
 
+    // todo: how / where will libp2p set this?
+    public struct DecryptionKeys
+    {
+        public ulong InstanceId;
+        public ulong Eon;
+        public ulong Slot;
+        public ulong TxPointer;
+        public IEnumerable<(byte[], byte[])> Keys; // (identity, key)
+        public IEnumerable<ulong> SignerIndices;
+        public IEnumerable<byte> Signatures;
+    }
 
-    private IEnumerable<TransactionSubmittedEvent> GetEvents()
+    internal IEnumerable<TransactionSubmittedEvent> GetEvents()
     {
         IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
         return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
     }
 
-    internal IEnumerable<SequencedTransaction> GetNextTransactions(UInt64 eon, int txPointer)
+    internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (byte[], byte[]) decryptionKey)
+    {
+        ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
+        (byte[] identity, byte[] key) = decryptionKey;
+
+        if (!new G1(identity).is_equal(sequencedTransaction.Identity))
+        {
+            throw new Exception("Transaction identity did not match decryption key.");
+        }
+
+        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, new G1(key));
+        return Rlp.Decode<Transaction>(new Rlp(transaction), RlpBehaviors.AllowUnsigned);
+    }
+
+    internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, int txPointer)
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
         events = events.Where(e => e.Eon == eon).Skip(txPointer);
@@ -81,12 +102,14 @@ public class ShutterTxSource : ITxSource
                 break;
             }
 
-            txs.Add(new SequencedTransaction(
-                eon,
-                e.EncryptedTransaction,
-                e.GasLimit,
-                ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
-            ));
+            SequencedTransaction sequencedTransaction = new()
+            {
+                Eon = eon,
+                EncryptedTransaction = e.EncryptedTransaction,
+                GasLimit = e.GasLimit,
+                Identity = ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
+            };
+            txs.Add(sequencedTransaction);
 
             totalGas += e.GasLimit;
         }
@@ -94,20 +117,12 @@ public class ShutterTxSource : ITxSource
         return txs;
     }
 
-    internal class SequencedTransaction
+    internal struct SequencedTransaction
     {
         public ulong Eon;
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
-        public Bls.P1 Identity;
-
-        public SequencedTransaction(ulong eon, byte[] encryptedTransaction, UInt256 gasLimit, Bls.P1 identity)
-        {
-            Eon = eon;
-            EncryptedTransaction = encryptedTransaction;
-            GasLimit = gasLimit;
-            Identity = identity;
-        }
+        public G1 Identity;
     }
 
     internal class TransactionSubmittedEvent

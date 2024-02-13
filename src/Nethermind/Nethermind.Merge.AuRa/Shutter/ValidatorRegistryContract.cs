@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -84,6 +84,20 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         }
 
         return res;
+    }
+
+    public bool IsRegistered(BlockHeader blockHeader)
+    {
+        UInt256 update = GetNumUpdates(blockHeader);
+        for (UInt256 i = 0; i < update; i += 1)
+        {
+            Message m = GetUpdateMessage(blockHeader, update - i - 1);
+            if (m.Sender == ContractAddress! && m.IsRegistration)
+            {
+                return true;
+            }
+        }
+        return false;
     }
 
     internal ulong GetNonce(BlockHeader blockHeader)

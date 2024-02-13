@@ -26,4 +26,12 @@ public interface IAuraConfig : IConfig
 
     [ConfigItem(Description = "Whether to enable shuttering.", DefaultValue = "false")]
     bool UseShutter { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter sequencer contract.",
+        DefaultValue = "null")]
+    string ShutterSequencerContractAddress { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter validator registry contract.",
+        DefaultValue = "null")]
+    string ShutterValidatorRegistryContractAddress { get; set; }
 }

@@ -86,9 +86,13 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
+            // todo: sign up to validator register contract where?
+            // need a blockheader
+            // link to libp2p
+
             LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
             ITxSource? shutterTxSource = _auraConfig!.UseShutter
-                ? new ShutterTxSource(logFinder, _api.FilterStore!)
+                ? new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!)
                 : null;
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
