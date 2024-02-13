@@ -153,8 +153,9 @@ public class ForkInfoTests
     [TestCase(19039999, 0ul, "0x069a83d9", 19040000ul, "Last Berlin block")]
     [TestCase(19040000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First London block")]
     [TestCase(21735000, 0ul, "0x018479d3", GnosisSpecProvider.ShanghaiTimestamp, "First GIP-31 block")]
-    [TestCase(31735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", 0ul, "First Shanghai timestamp")]
-    [TestCase(91735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", 0ul, "Future Shanghai timestamp")]
+    [TestCase(31735000, GnosisSpecProvider.ShanghaiTimestamp, "0x2efe91ba", GnosisSpecProvider.CancunTimestamp, "First Shanghai timestamp")]
+    [TestCase(41735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", 0ul, "First Cancun timestamp")]
+    [TestCase(91735000, GnosisSpecProvider.CancunTimestamp, "0x1384dfc1", 0ul, "Future Cancun timestamp")]
     public void Fork_id_and_hash_as_expected_on_gnosis(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
