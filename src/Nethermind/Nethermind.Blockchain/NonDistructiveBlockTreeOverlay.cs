@@ -20,6 +20,7 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     {
         _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
         _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
+        _overlayTree.UpdateMainChain(new[] { _baseTree.Head }, true, true);
     }
 
     public ulong NetworkId => _baseTree.NetworkId;
