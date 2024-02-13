@@ -8,6 +8,7 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockHashInState;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
@@ -40,6 +41,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IWitnessCollector _witnessCollector;
     protected readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
+    private readonly IBlockHashInStateHandler _blockHashInStateHandlerHandler;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     protected readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
@@ -81,6 +83,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
 
         ExecutionTracer = new BlockExecutionTracer(true, true);
     }
@@ -289,6 +292,7 @@ public partial class BlockProcessor : IBlockProcessor
         ExecutionTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+        _blockHashInStateHandlerHandler.AddBlockHashToState(block, spec, _stateProvider);
         _stateProvider.Commit(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ExecutionTracer, spec);
