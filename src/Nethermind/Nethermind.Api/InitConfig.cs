@@ -37,6 +37,11 @@ namespace Nethermind.Api
         public long? ExitOnBlockNumber { get; set; } = null;
         public int BackgroundTaskConcurrency { get; set; } = 1;
 
+        public bool StatelessProcessingEnabled { get; set; } = false;
+        public bool ProofsInBlock { get; set; } = false;
+        public bool VerifyProofsInBlock { get; set; } = false;
+        public bool GenerateVerkleProofsForBlock { get; set; } = false;
+
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb
         {

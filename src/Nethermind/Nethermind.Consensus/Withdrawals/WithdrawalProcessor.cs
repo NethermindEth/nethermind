@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -22,7 +23,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
     }
 
-    public void ProcessWithdrawals(Block block, IReleaseSpec spec)
+    public void ProcessWithdrawals(Block block, IBlockTracer blockTracer, IReleaseSpec spec)
     {
         if (!spec.WithdrawalsEnabled)
             return;

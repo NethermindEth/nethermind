@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Contracts;
@@ -50,7 +51,7 @@ public class AuraWithdrawalProcessorTests
             Arg.Do<IList<ulong>>(a => values = a.ToArray()),
             Arg.Do<IList<Address>>(a => addresses = a.ToArray()));
 
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, NullBlockTracer.Instance, spec);
 
         contract
             .Received(1)
@@ -72,7 +73,7 @@ public class AuraWithdrawalProcessorTests
 
         spec.WithdrawalsEnabled.Returns(false);
 
-        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        withdrawalProcessor.ProcessWithdrawals(block, NullBlockTracer.Instance, spec);
 
         contract
             .Received(0)
