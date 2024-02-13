@@ -189,6 +189,16 @@ public struct TreePath
         }
     }
 
+    /// <summary>
+    /// Truncate just one. Used for Branch, which is a hot code path.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void TruncateOne()
+    {
+        this[Length - 1] = 0;
+        Length--;
+    }
+
     public override readonly string ToString()
     {
         return $"{Length} {Path}";

@@ -192,7 +192,8 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            Commit(new NodeCommitInfo(node.GetChild(TrieStore, ref path, i)!, node, node.GetChildPath(nodeCommitInfo.Path, i), i));
+                            TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, i);
+                            Commit(new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
                         }
                         else
                         {
@@ -210,7 +211,8 @@ namespace Nethermind.Trie
                     {
                         if (node.IsChildDirty(i))
                         {
-                            nodesToCommit.Add(new NodeCommitInfo(node.GetChild(TrieStore, ref path, i)!, node, node.GetChildPath(nodeCommitInfo.Path, i), i));
+                            TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, i);
+                            nodesToCommit.Add(new NodeCommitInfo(node.GetChildWithChildPath(TrieStore, ref childPath, i)!, node, childPath, i));
                         }
                         else
                         {
@@ -252,7 +254,8 @@ namespace Nethermind.Trie
             }
             else if (node.NodeType == NodeType.Extension)
             {
-                TrieNode extensionChild = node.GetChild(TrieStore, ref path, 0);
+                TreePath childPath = node.GetChildPath(nodeCommitInfo.Path, 0);
+                TrieNode extensionChild = node.GetChildWithChildPath(TrieStore, ref childPath, 0);
                 if (extensionChild is null)
                 {
                     ThrowInvalidExtension();
@@ -260,7 +263,7 @@ namespace Nethermind.Trie
 
                 if (extensionChild.IsDirty)
                 {
-                    Commit(new NodeCommitInfo(extensionChild, node, node.GetChildPath(nodeCommitInfo.Path, 0), 0));
+                    Commit(new NodeCommitInfo(extensionChild, node, childPath, 0));
                 }
                 else
                 {
@@ -656,7 +659,7 @@ namespace Nethermind.Trie
                                 }
                             }
 
-                            int previousPathLength = node.AppendChildPath(ref path, childNodeIndex);
+                            node.AppendChildPathBranch(ref path, childNodeIndex);
                             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childNodeIndex);
                             if (childNode is null)
                             {
@@ -666,7 +669,7 @@ namespace Nethermind.Trie
                             }
 
                             ResolveNode(childNode, in traverseContext, in path);
-                            path.TruncateMut(previousPathLength);
+                            path.TruncateOne();
 
                             if (childNode.IsBranch)
                             {
@@ -848,7 +851,7 @@ namespace Nethermind.Trie
             }
 
             int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
-            int previousLength = node.AppendChildPath(ref path, childIdx);
+            node.AppendChildPathBranch(ref path, childIdx);
             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childIdx);
             if (traverseContext.IsUpdate)
             {
@@ -883,7 +886,7 @@ namespace Nethermind.Trie
 
             ResolveNode(childNode, in traverseContext, in path);
             ref readonly CappedArray<byte> response = ref TraverseNext(childNode, in traverseContext, ref path, 1);
-            path.TruncateMut(previousLength);
+            path.TruncateOne();
             return ref response;
         }
 

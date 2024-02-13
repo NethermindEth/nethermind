@@ -695,6 +695,11 @@ namespace Nethermind.Trie
             return previousLength;
         }
 
+        public void AppendChildPathBranch(ref TreePath currentPath, int childIndex)
+        {
+            currentPath.AppendMut(childIndex);
+        }
+
         public TrieNode? GetChild(ITrieNodeResolver tree, ref TreePath path, int childIndex)
         {
             int originalLength = path.Length;
@@ -1108,14 +1113,6 @@ namespace Nethermind.Trie
             {
                 rlpStream.SkipItem();
             }
-        }
-
-        private object? ResolveChild(ITrieNodeResolver tree, ref TreePath currentPath, int i)
-        {
-            int originalLength = currentPath.Length;
-            object? returnVal = ResolveChildWithChildPath(tree, ref currentPath, i);
-            currentPath.TruncateMut(originalLength);
-            return returnVal;
         }
 
         private object? ResolveChildWithChildPath(ITrieNodeResolver tree, ref TreePath childPath, int i)
