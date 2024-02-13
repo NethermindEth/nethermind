@@ -186,7 +186,7 @@ public class SnapServer : ISnapServer
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
 
-        (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, bool _) = GetNodesFromTrieVisitor(rootHash, startingHash,
+        (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
             limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, cancellationToken);
         StateTree tree = new(_store, _logManager);
 
@@ -200,7 +200,6 @@ public class SnapServer : ISnapServer
 
 
         if (nodes.Length == 0) return (nodes, Array.Empty<byte[]>());
-        byte[][] proofs = GenerateRangeProof(tree, startingHash, nodes[^1].Path, rootHash, null);
         return (nodes, proofs);
     }
 
@@ -244,7 +243,7 @@ public class SnapServer : ISnapServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            (IDictionary<ValueHash256, byte[]>? requiredNodes, long innerResponseSize, bool stopped) = GetNodesFromTrieVisitor(
+            (IDictionary<ValueHash256, byte[]>? requiredNodes, long innerResponseSize, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
                 limitHash1,
@@ -266,9 +265,8 @@ public class SnapServer : ISnapServer
                 index += 1;
             }
             responseNodes.Add(nodes);
-            if (stopped || startingHash1 != Keccak.Zero)
+            if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
-                byte[][]? proofs = GenerateRangeProof(tree, nodes[0].Path, nodes[^1].Path, rootHash, storagePath);
                 return (responseNodes.ToArray(), proofs);
             }
             responseSize += innerResponseSize;
@@ -276,7 +274,7 @@ public class SnapServer : ISnapServer
         return (responseNodes.ToArray(), Array.Empty<byte[]>());
     }
 
-    private (IDictionary<ValueHash256, byte[]>?, long, bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
+    private (IDictionary<ValueHash256, byte[]>?, long, byte[][], bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
         long byteLimit, long hardByteLimit, in ValueHash256? storage, CancellationToken cancellationToken)
     {
         bool isStorage = storage != null;
@@ -284,8 +282,12 @@ public class SnapServer : ISnapServer
         using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment());
+
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-        return (requiredNodes, responseSize, visitor.StoppedEarly);
+        byte[][] proofs = Array.Empty<byte[]>();
+        if (startingHash != Keccak.Zero || visitor.StoppedEarly) proofs = visitor.GetProofs();
+
+        return (requiredNodes, responseSize, proofs, visitor.StoppedEarly);
     }
 
     private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
@@ -301,22 +303,5 @@ public class SnapServer : ISnapServer
             TrackTrieNodeException(rootHash);
             return null;
         }
-    }
-
-    private byte[][] GenerateRangeProof(PatriciaTree tree, in ValueHash256 start, in ValueHash256 end, in ValueHash256 rootHash, in ValueHash256? storageAddr)
-    {
-        VisitingOptions opt = new() { ExpectAccounts = false };
-        ProofCollector accountProofCollector = new(start.Bytes.ToArray());
-        tree.Accept(accountProofCollector, rootHash.ToCommitment(), opt, storageAddr: storageAddr?.ToCommitment());
-        byte[][]? firstProof = accountProofCollector.BuildResult();
-
-        accountProofCollector = new ProofCollector(end.Bytes.ToArray());
-        tree.Accept(accountProofCollector, rootHash.ToCommitment(), opt, storageAddr: storageAddr?.ToCommitment());
-        byte[][]? lastProof = accountProofCollector.BuildResult();
-
-        HashSet<byte[]> proofs = new();
-        proofs.AddRange(firstProof);
-        proofs.AddRange(lastProof);
-        return proofs.ToArray();
     }
 }
