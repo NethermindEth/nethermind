@@ -18,14 +18,13 @@ public interface IBlockHashInStateHandler
 
 public class BlockHashInStateHandler: IBlockHashInStateHandler
 {
-    private static readonly Address DefaultHistoryStorageAddress = new("0xfffffffffffffffffffffffffffffffffffffffe");
 
     public void AddBlockHashToState(Block block, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsEip2935Enabled ||
             block.IsGenesis ||
             block.Header.ParentHash is null) return;
-        Address? eip2935Account = DefaultHistoryStorageAddress;
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
         Hash256 parentBlockHash = block.Header.ParentHash;
         var blockIndex = new UInt256((ulong)block.Number - 1);

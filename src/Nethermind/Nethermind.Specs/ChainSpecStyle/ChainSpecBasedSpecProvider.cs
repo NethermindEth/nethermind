@@ -256,6 +256,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsVerkleTreeEipEnabled = (chainSpec.Parameters.Eip6800TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip2935TransitionTimestamp = chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue;
             releaseSpec.IsEip2935Enabled = (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip2935ContractAddress = chainSpec.Parameters.Eip2935ContractAddress;
 
             return releaseSpec;
         }

@@ -146,4 +146,5 @@ public class ChainParameters
 
     public ulong? Eip6800TransitionTimestamp { get; set; }
     public ulong? Eip2935TransitionTimestamp { get; set; }
+    public Address Eip2935ContractAddress { get; set; }
 }
