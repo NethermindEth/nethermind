@@ -308,7 +308,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         TaskCompletionSource<ValidationResult?> blockProcessedTaskCompletionSource = new();
         Task<ValidationResult?> blockProcessed = blockProcessedTaskCompletionSource.Task;
 
-        void GetProcessingQueueOnBlockRemoved(object? o, BlockHashEventArgs e)
+        void GetProcessingQueueOnBlockRemoved(object? o, BlockRemovedEventArgs e)
         {
             if (e.BlockHash == block.Hash)
             {

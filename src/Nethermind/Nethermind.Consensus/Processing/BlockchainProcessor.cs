@@ -134,7 +134,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, ProcessingResult.QueueException, e));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
                 if (e is not InvalidOperationException || !_recoveryQueue.IsAddingCompleted)
                 {
                     throw;
@@ -209,7 +209,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
         {
             Interlocked.Decrement(ref _queueCount);
-            BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, processingResult, exception));
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, processingResult, exception));
             FireProcessingQueueEmpty();
         }
 
@@ -305,7 +305,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                     throw new InvalidOperationException("Processing loop expects only resolved blocks");
                 }
 
@@ -313,8 +313,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-                string? error;
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out error);
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
                 if (processedBlock is null)
                 {
@@ -324,13 +323,13 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 else
                 {
                     if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
             }
             finally
             {
@@ -401,7 +400,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             lastProcessed = processedBlocks[^1];
             if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
             lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
-        }
+        }   
         else
         {
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
