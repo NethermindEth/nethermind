@@ -26,7 +26,7 @@ namespace Nethermind.Synchronization.SnapSync
         public Pivot(IBlockTree blockTree, ILogManager logManager)
         {
             _blockTree = blockTree;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public BlockHeader GetPivotHeader()

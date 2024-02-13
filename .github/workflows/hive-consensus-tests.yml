@@ -25,12 +25,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref }}
+        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ github.event.workflow_run.head_branch || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
         echo "cleanRef=$CLEAN_REF" >> $GITHUB_OUTPUT
@@ -41,18 +41,17 @@ jobs:
         echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
         echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
         
-    - name: Check if master branch
+    - name: Check if master or release branch
       id: check_conditions
       run: |
-        ref="${{ github.ref }}"
+        ref="${{ github.event.workflow_run.head_branch || github.ref }}"
 
         # Append "refs/heads/" prefix if it's not already there
         if [[ $ref != refs/heads/* ]]; then
           ref="refs/heads/$ref"
         fi
 
-        if 
-        [[ "$ref" == "refs/heads/master" ]]; then
+        if [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
         else
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
@@ -69,8 +68,8 @@ jobs:
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
-              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
+              "dockerfile": "Dockerfile",
+              "build-config": "release"
            }'
         
     - name: Wait for Docker Build Action to complete
@@ -165,3 +164,12 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+      - name: Send results to dashboard
+        uses: appleboy/scp-action@master
+        with:
+          host: ${{ secrets.HIVE_HOST }}
+          username: ${{ secrets.HIVE_USERNAME }}
+          key: ${{ secrets.HIVE_KEY }}
+          port: ${{ secrets.HIVE_PORT }}
+          source: hive/workspace/logs/*
+          target: ${{ secrets.HIVE_DIR }}/

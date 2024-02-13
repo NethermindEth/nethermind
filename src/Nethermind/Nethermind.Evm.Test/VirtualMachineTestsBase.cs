@@ -338,7 +338,7 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
+        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
         byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
     }
@@ -347,7 +347,7 @@ public class VirtualMachineTestsBase
     {
         byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
 
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address));
+        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
         Assert.That(actualValue, Is.EqualTo(bytes), "storage");
     }
 
@@ -362,7 +362,7 @@ public class VirtualMachineTestsBase
         }
         else
         {
-            byte[] actualValue = TestState.Get(storageCell);
+            byte[] actualValue = TestState.Get(storageCell).ToArray();
             Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
         }
     }

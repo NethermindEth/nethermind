@@ -159,8 +159,10 @@ public class InitializeNetwork : IStep
         }
 
         _api.SyncModeSelector = _api.Synchronizer.SyncModeSelector;
+        _api.SyncProgressResolver = _api.Synchronizer.SyncProgressResolver;
 
-        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig, _api.SyncModeSelector, _api.LogManager);
+        _api.EthSyncingInfo = new EthSyncingInfo(_api.BlockTree, _api.ReceiptStorage!, _syncConfig,
+            _api.SyncModeSelector, _api.SyncProgressResolver, _api.LogManager);
         _api.TxGossipPolicy.Policies.Add(new SyncedTxGossipPolicy(_api.SyncModeSelector));
         _api.DisposeStack.Push(_api.SyncModeSelector);
         _api.DisposeStack.Push(_api.Synchronizer);
@@ -511,6 +513,7 @@ public class InitializeNetwork : IStep
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
+            _api.BackgroundTaskScheduler,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

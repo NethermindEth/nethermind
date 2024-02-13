@@ -35,6 +35,7 @@ namespace Nethermind.Api
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
         public long? ExitOnBlockNumber { get; set; } = null;
+        public int BackgroundTaskConcurrency { get; set; } = 1;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

@@ -21,13 +21,13 @@ namespace Nethermind.Network.P2P
             TimeSpan sendLatency)
         {
             _messageSerializationService = messageSerializationService ?? throw new ArgumentNullException(nameof(messageSerializationService));
-            _logger = logManager.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<PacketSender>() ?? throw new ArgumentNullException(nameof(logManager));
             _sendLatency = sendLatency;
         }
 
         public int Enqueue<T>(T message) where T : P2PMessage
         {
-            if (!_context.Channel.Active)
+            if (!_context.Channel.IsWritable || !_context.Channel.Active)
             {
                 return 0;
             }

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -25,7 +26,7 @@ public class TotalDifficultyFixMigrationTest
     [TestCase(3, 3, 10)]
     [TestCase(3, 4, -1)]
     [TestCase(4, 1, -1)]
-    public void Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
+    public async Task Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
     {
         long numberOfBlocks = 10;
         long firstBlock = 3;
@@ -71,8 +72,7 @@ public class TotalDifficultyFixMigrationTest
         levels[brokenLevel].BlockInfos[0].TotalDifficulty = 9999;
 
         // Run
-        migration.Run();
-        Thread.Sleep(300);
+        await migration.Run(CancellationToken.None);
 
         // Check level fixed
         for (long i = 0; i < numberOfBlocks; ++i)
@@ -89,7 +89,7 @@ public class TotalDifficultyFixMigrationTest
     }
 
     [Test]
-    public void should_fix_non_canonical()
+    public async Task should_fix_non_canonical()
     {
         Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
         BlockHeader g = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
@@ -146,8 +146,7 @@ public class TotalDifficultyFixMigrationTest
         TotalDifficultyFixMigration migration = new(chainLevelInfoRepository, blockTree, syncConfig, new TestLogManager());
 
         // Run
-        migration.Run();
-        Thread.Sleep(3000);
+        await migration.Run(CancellationToken.None);
 
         persistedLevels[0].Should().BeNull();
         persistedLevels[1].Should().BeNull();

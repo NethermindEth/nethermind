@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
+        public static readonly ReceiptMessageDecoder Instance = new();
+
         static ReceiptMessageDecoder()
         {
             Rlp.Decoders[typeof(TxReceipt)] = new ReceiptMessageDecoder();
@@ -59,12 +61,6 @@ namespace Nethermind.Serialization.Rlp
             }
             txReceipt.Logs = entries;
 
-            if (txReceipt.TxType == TxType.DepositTx && rlpStream.Position != lastCheck)
-            {
-                txReceipt.DepositNonce = rlpStream.DecodeUlong();
-                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
-            }
-
             return txReceipt;
         }
 
@@ -89,12 +85,6 @@ namespace Nethermind.Serialization.Rlp
                 contentLength += isEip658Receipts
                     ? Rlp.LengthOf(item.StatusCode)
                     : Rlp.LengthOf(item.PostTransactionState);
-            }
-
-            if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
-            {
-                contentLength += Rlp.LengthOf(item.DepositNonce ?? 0);
-                contentLength += Rlp.LengthOf(item.DepositReceiptVersion.Value);
             }
 
             return (contentLength, logsLength);
@@ -184,12 +174,6 @@ namespace Nethermind.Serialization.Rlp
             for (var i = 0; i < item.Logs.Length; i++)
             {
                 rlpStream.Encode(item.Logs[i]);
-            }
-
-            if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
-            {
-                rlpStream.Encode(item.DepositNonce!.Value);
-                rlpStream.Encode(item.DepositReceiptVersion.Value);
             }
         }
     }
