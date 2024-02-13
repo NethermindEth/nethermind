@@ -34,5 +34,8 @@ public interface IBlocksConfig : IConfig
     [ConfigItem(Description = "The block time slot, in seconds.", DefaultValue = "12")]
     ulong SecondsPerSlot { get; set; }
 
+    [ConfigItem(Description = "Should process block stateless if possible.", DefaultValue = "false")]
+    bool StatelessProcessing { get; set; }
+
     byte[] GetExtraDataBytes();
 }

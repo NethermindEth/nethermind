@@ -4,6 +4,7 @@
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -12,6 +13,7 @@ namespace Nethermind.Evm.Tracing
         private readonly IBlockTracer _innerTracer;
         private readonly CancellationToken _token;
         private bool _isTracingRewards;
+        private bool _isTracingVerkleWitness;
 
         public CancellationBlockTracer(IBlockTracer innerTracer, CancellationToken token = default)
         {
@@ -25,12 +27,28 @@ namespace Nethermind.Evm.Tracing
             set => _isTracingRewards = value;
         }
 
+        public bool IsTracingAccessWitness
+        {
+            get => _isTracingVerkleWitness || _innerTracer.IsTracingAccessWitness;
+            set => _isTracingVerkleWitness = value;
+        }
+
+
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingRewards)
             {
                 _innerTracer.ReportReward(author, rewardType, rewardValue);
+            }
+        }
+
+        public void ReportAccessWitness(VerkleWitness witness)
+        {
+            _token.ThrowIfCancellationRequested();
+            if (_innerTracer.IsTracingRewards)
+            {
+                _innerTracer.ReportAccessWitness(witness);
             }
         }
 

@@ -32,22 +32,27 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockExecutionTracer executionTracer, IReleaseSpec spec)
             {
                 Evm.Metrics.ResetBlockStats();
                 BlockExecutionContext blkCtx = new(block.Header);
                 for (int i = 0; i < block.Transactions.Length; i++)
                 {
                     Transaction currentTx = block.Transactions[i];
-                    ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
+                    ProcessTransaction(in blkCtx, currentTx, i, executionTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+                return executionTracer.TxReceipts.ToArray();
             }
 
-            private void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+            private void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockExecutionTracer executionTracerr, ProcessingOptions processingOptions)
             {
-                _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, executionTracerr, processingOptions, _stateProvider);
+                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, executionTracerr.TxReceipts[index]));
+            }
+
+            public IBlockProcessor.IBlockTransactionsExecutor WithNewStateProvider(IWorldState worldState)
+            {
+                return new BlockValidationTransactionsExecutor(_transactionProcessor, worldState);
             }
         }
     }

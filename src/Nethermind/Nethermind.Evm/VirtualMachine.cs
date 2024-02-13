@@ -586,11 +586,53 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         gasAvailable += refund;
     }
 
-    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec, bool chargeForWarm = true)
+    private bool ChargeAccountAccessGas(ref long gasAvailable, EvmState vmState, Address address, IReleaseSpec spec,
+        bool chargeForWarm = true, bool valueTransfer = false, Instruction opCode = Instruction.STOP)
     {
-        // Console.WriteLine($"Accessing {address}");
 
         bool result = true;
+
+        if (spec.IsVerkleTreeEipEnabled)
+        {
+            bool isAddressPreCompile = address.IsPrecompile(spec);
+            switch (opCode)
+            {
+                case Instruction.BALANCE:
+                {
+                    result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                    break;
+                }
+                case Instruction.EXTCODESIZE:
+                case Instruction.EXTCODECOPY:
+                case Instruction.CALL:
+                case Instruction.CALLCODE:
+                case Instruction.DELEGATECALL:
+                case Instruction.STATICCALL:
+                {
+                    if (!isAddressPreCompile)
+                    {
+                        result = vmState.Env.Witness.AccessAndChargeForCodeOpCodes(address, ref gasAvailable);
+                        if (!result) break;
+                    }
+                    if (valueTransfer) result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                    break;
+                }
+                case Instruction.EXTCODEHASH:
+                {
+                    result = vmState.Env.Witness.AccessAndChargeForCodeHash(address, ref gasAvailable);
+                    break;
+                }
+                case Instruction.SELFDESTRUCT:
+                    result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                    break;
+            }
+
+            // we still use the UseHotAndColdStorage costs - we should be removing the Cold costs as it's being replaced
+            // by the witness access costs. We should still be keeping the Hot costs - to avoid free repeated access and
+            // cause a DDOS attack.
+            if (!result) return false;
+        }
+
         if (spec.UseHotAndColdStorage)
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
@@ -627,7 +669,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
 
-        bool result = true;
+        bool result = vmState.Env.Witness.AccessAndChargeForStorage(storageCell.Address, storageCell.Index,
+            storageAccessType == StorageAccessType.SSTORE, ref gasAvailable);
+
+        if (!result) return false;
+
         if (spec.UseHotAndColdStorage)
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
@@ -724,10 +770,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingInstructions : struct, IIsTracing
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
+        long gasAvailable = vmState.GasAvailable;
         if (!vmState.IsContinuation)
         {
             if (!_state.AccountExists(env.ExecutingAccount))
             {
+                // TODO: have to cross check what is the use case of this here
+                if (vmState.ExecutionType == ExecutionType.TRANSACTION && env.TransferValue.IsZero)
+                {
+                    if (!env.Witness.AccessAndChargeForAbsentAccount(env.ExecutingAccount, ref gasAvailable)) goto OutOfGas;
+                }
                 _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
             }
             else
@@ -752,7 +804,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         vmState.InitStacks();
         EvmStack<TTracingInstructions> stack = new(vmState.DataStack.AsSpan(), vmState.DataStackHead, _txTracer);
-        long gasAvailable = vmState.GasAvailable;
 
         if (previousCallResult is not null)
         {
@@ -823,7 +874,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            Instruction instruction = (Instruction)code[programCounter];
+
+            if (!vmState.IsContractDeployment)
+            {
+                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To, programCounter, false,
+                        ref gasAvailable)) goto OutOfGas;
+            }
+
+            var instruction = (Instruction)code[programCounter];
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1254,7 +1312,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction)) goto OutOfGas;
 
                         result = _state.GetBalance(address);
                         stack.PushUInt256(in result);
@@ -1329,18 +1387,38 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.CODECOPY:
                     {
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;  // memOffset
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow; // codeOffset
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow; // codeLength
                         gasAvailable -= GasCostOf.VeryLow + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
                         if (!result.IsZero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            slice = code.SliceWithZeroPadding(in b, (int)result);
+                            int codeSizeToUse = (int)result;
+                            slice = code.SliceWithZeroPadding(in b, codeSizeToUse);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)a, in slice);
+
+                            int actualCodeLength = code.Length;
+
+                            int startIncluded;
+                            int endNotIncluded;
+                            if (b >= actualCodeLength)
+                            {
+                                startIncluded = endNotIncluded = code.Length;
+                            }
+                            else
+                            {
+                                startIncluded = (int)b;
+                                endNotIncluded = startIncluded + codeSizeToUse;
+                                if (endNotIncluded > actualCodeLength) endNotIncluded = actualCodeLength;
+                            }
+
+                            if (!vmState.IsContractDeployment)
+                                env.Witness.AccessAndChargeForCodeSlice(vmState.To, startIncluded, endNotIncluded,
+                                    false, ref gasAvailable);
                         }
 
                         break;
@@ -1360,7 +1438,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction)) goto OutOfGas;
 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
@@ -1424,19 +1502,36 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         gasAvailable -= spec.GetExtCodeCost() + GasCostOf.Memory * EvmPooledMemory.Div32Ceiling(in result);
 
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction)) goto OutOfGas;
 
                         if (!result.IsZero)
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
                             ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
-                            slice = externalCode.SliceWithZeroPadding(b, (int)result);
+                            int codeSizeToUse = (int)result;
+                            slice = externalCode.SliceWithZeroPadding(b, codeSizeToUse);
                             vmState.Memory.Save(in a, in slice);
                             if (typeof(TTracingInstructions) == typeof(IsTracing))
                             {
                                 _txTracer.ReportMemoryChange((long)a, in slice);
                             }
+
+                            int actualCodeLength = code.Length;
+
+                            int startIncluded;
+                            int endNotIncluded;
+                            if (b >= actualCodeLength)
+                            {
+                                startIncluded = endNotIncluded = code.Length;
+                            }
+                            else
+                            {
+                                startIncluded = (int)b;
+                                endNotIncluded = startIncluded + codeSizeToUse;
+                                if (endNotIncluded > actualCodeLength) endNotIncluded = actualCodeLength;
+                            }
+                            env.Witness.AccessAndChargeForCodeSlice(vmState.To, startIncluded, endNotIncluded, false, ref gasAvailable);
                         }
 
                         break;
@@ -1733,6 +1828,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         else
                         {
                             stack.PushByte(code[programCounterInt]);
+                            // just a optimization - because if it is not the first element of the chunk
+                            // it means that that it was already included as witness due to code execution
+
+                            if (!vmState.IsContractDeployment && programCounterInt % 31 == 0)
+                            {
+                                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To, programCounterInt + 1,
+                                        false, ref gasAvailable)) goto OutOfGas;
+                            }
                         }
 
                         programCounter++;
@@ -1772,9 +1875,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         gasAvailable -= GasCostOf.VeryLow;
 
-                        int length = instruction - Instruction.PUSH1 + 1;
+                        int length = instruction - Instruction.PUSH0;
                         int usedFromCode = Math.Min(code.Length - programCounter, length);
                         stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
+
+                        int endNotIncluded = programCounter + usedFromCode;
+                        // this is a change done to support a use case I dont believe in - should be removed before fork
+                        // the idea for this was to add proof of absence in case where we dont have all the required bytes
+                        // for PUSHX, but this can already be inferred using codeSize - no need for proof of absence
+                        if (endNotIncluded == code.Length) endNotIncluded++;
+                        if (!vmState.IsContractDeployment)
+                        {
+                            if (!env.Witness.AccessAndChargeForCodeSlice(vmState.To, programCounter,
+                                    endNotIncluded, false, ref gasAvailable)) goto OutOfGas;
+                        }
 
                         programCounter += length;
                         break;
@@ -1979,7 +2093,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Address address = stack.PopAddress();
                         if (address is null) goto StackUnderflow;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec, opCode: instruction)) goto OutOfGas;
 
                         if (!_state.AccountExists(address) || _state.IsDeadAccount(address))
                         {
@@ -2202,7 +2316,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec, opCode: instruction)) return EvmExceptionType.OutOfGas;
 
         UInt256 callValue;
         switch (instruction)
@@ -2314,7 +2428,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec),
+            witness: env.Witness
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2388,7 +2503,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, false)) return EvmExceptionType.OutOfGas;
+
+        // TODO: charging access cost for the inheritor
+        //       but when the inheritor is same as the executing contract and that contract was create in the same transaction
+        //       we should not be charging the access cost?
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false, opCode: Instruction.SELFDESTRUCT)) return EvmExceptionType.OutOfGas;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         bool createInSameTx = vmState.CreateList.Contains(executingAccount);
@@ -2501,6 +2620,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
+        if(!env.Witness.AccessAndChargeForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+
         if (spec.UseHotAndColdStorage)
         {
             // EIP-2929 assumes that warm-up cost is included in the costs of CREATE and CREATE2
@@ -2524,11 +2645,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (accountExists)
         {
-            _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+            if (!spec.IsVerkleTreeEipEnabled) _state.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
         }
         else if (_state.IsDeadAccount(contractAddress))
         {
-            _state.ClearStorage(contractAddress);
+            if (!spec.IsVerkleTreeEipEnabled) _state.ClearStorage(contractAddress);
         }
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
@@ -2538,17 +2659,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
 
+        if(!env.Witness.AccessAndChargeForContractCreated(contractAddress, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
             callDepth: env.CallDepth + 1,
             caller: env.ExecutingAccount,
             executingAccount: contractAddress,
-            codeSource: null,
+            codeSource: contractAddress,
             codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
-            value: value
+            value: value,
+            witness: env.Witness
         );
         EvmState callState = new(
             callGas,
@@ -2687,7 +2811,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 Span<byte> originalValue = _state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero();
 
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                bool currentSameAsOriginal = originalValue.WithoutLeadingZeros().SequenceEqual(currentValue.WithoutLeadingZeros()) || originalValue.Length == 0 && currentIsZero;
+
                 if (currentSameAsOriginal)
                 {
                     if (currentIsZero)

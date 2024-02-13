@@ -12,7 +12,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Tracing
 {
     [TestFixture]
-    public class BlockReceiptsTracerTests
+    public class BlockExecutionTracerTests
     {
         [Test]
         public void Sets_state_root_if_provided_on_success()

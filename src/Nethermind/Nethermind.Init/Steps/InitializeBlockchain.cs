@@ -1,18 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO.Abstractions;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Services;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
@@ -22,24 +17,10 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Db;
-using Nethermind.Db.FullPruning;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
-using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.JsonRpc.Modules.Trace;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.Trie;
-using Nethermind.Synchronization.Witness;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 
@@ -216,17 +197,44 @@ namespace Nethermind.Init.Steps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
 
-            IWorldState worldState = _api.WorldState!;
+            IInitConfig initConfig = _api.Config<IInitConfig>();
+            BlockProcessor processor;
+            if (initConfig.StatelessProcessingEnabled)
+            {
+                processor = new StatelessBlockProcessor(_api.SpecProvider,
+                    _api.BlockValidator,
+                    _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                    new BlockProcessor.BlockStatelessValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
+                    _api.WorldState,
+                    _api.ReceiptStorage,
+                    _api.WitnessCollector,
+                    _api.LogManager);
+            }
+            else
+            {
+                processor = new(
+                    _api.SpecProvider,
+                    _api.BlockValidator,
+                    _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+                    new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
+                    _api.WorldState,
+                    _api.ReceiptStorage,
+                    _api.WitnessCollector,
+                    _api.LogManager);
 
-            return new BlockProcessor(
-                _api.SpecProvider,
-                _api.BlockValidator,
-                _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
-                new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, worldState),
-                worldState,
-                _api.ReceiptStorage,
-                _api.WitnessCollector,
-                _api.LogManager);
+                if (initConfig.StatelessProcessingEnabled)
+                {
+                    processor.StatelessBlockTransactionsExecutor =
+                        new BlockProcessor.BlockStatelessValidationTransactionsExecutor(_api.TransactionProcessor,
+                            _api.WorldState!);
+                    processor.ShouldDoStatelessStuff = true;
+                }
+
+                processor.ShouldGenerateWitness = initConfig.GenerateVerkleProofsForBlock;
+                processor.ShouldVerifyIncomingWitness = initConfig.VerifyProofsInBlock;
+            }
+
+            return processor;
         }
 
         // TODO: remove from here - move to consensus?
