@@ -165,16 +165,19 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             }
         }
 
-        TreePath rightmostPath = _rightmostLeafPath.Value;
-        for (int i = 64; i >= 0; i--)
+        if (StoppedEarly)
         {
-            if (!_rightmostNodes[i].HasValue) continue;
+            TreePath rightmostPath = _rightmostLeafPath.Value;
+            for (int i = 64; i >= 0; i--)
+            {
+                if (!_rightmostNodes[i].HasValue) continue;
 
-            (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
-            rightmostPath.TruncateMut(i);
-            if (rightmostPath != path) continue;
+                (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
+                rightmostPath.TruncateMut(i);
+                if (rightmostPath != path) continue;
 
-            proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp.ToArray());
+            }
         }
 
         return proofs.ToArray();
