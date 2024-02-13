@@ -92,13 +92,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
         {
-            if (_logger.IsWarn) _logger.Warn($"Invalid block. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn($"Invalid request. Result of {requestStr}.");
             return NewPayloadV1Result.Invalid(null, $"Block {request} could not be parsed as a block");
         }
 
         if (!HeaderValidator.ValidateHash(block!.Header))
         {
-            if (_logger.IsWarn) _logger.Warn($"InvalidBlockHash. Result of {requestStr}.");
+            if (_logger.IsWarn) _logger.Warn(ErrorMessages.BadBlock(block, "invalid block hash"));
             return NewPayloadV1Result.Invalid(null, $"Invalid block hash {request.BlockHash}");
         }
 

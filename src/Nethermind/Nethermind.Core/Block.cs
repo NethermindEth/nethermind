@@ -115,6 +115,7 @@ public class Block
     {
         Format.Full => ToFullString(),
         Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
+        Format.FullHashNumberAndExtraData => Hash is null ? $"{Number} null, ExtraData {ExtraData?.ToHexString()}" : $"{Number} ({Hash})",
         Format.HashNumberAndTx => Hash is null
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
@@ -157,6 +158,7 @@ public class Block
     {
         Full,
         FullHashAndNumber,
+        FullHashNumberAndExtraData,
         HashNumberAndTx,
         HashNumberDiffAndTx,
         Short
