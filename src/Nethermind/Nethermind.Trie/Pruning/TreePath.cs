@@ -35,12 +35,18 @@ public struct TreePath
         Length = length;
     }
 
-    public int Length { get; private set; }
+    public int Length { get; internal set; }
 
     public static TreePath FromPath(ReadOnlySpan<byte> pathHash)
     {
-        if (pathHash.Length != 32) throw new InvalidOperationException("Path must be 32 byte");
-        return new TreePath(new ValueHash256(pathHash), 64);
+        if (pathHash.Length > 32) throw new InvalidOperationException("Path must be at most 32 byte");
+        if (pathHash.Length == 32) return new TreePath(new ValueHash256(pathHash), 64);
+
+        // Some of the test passes path directly to PatriciaTrie, but its not 32 byte.
+        TreePath newTreePath = new TreePath();
+        pathHash.CopyTo(newTreePath.Span);
+        newTreePath.Length = pathHash.Length * 2;
+        return newTreePath;
     }
 
     public static TreePath FromNibble(ReadOnlySpan<byte> pathNibbles)
@@ -65,7 +71,7 @@ public struct TreePath
         }
     }
 
-    public readonly TreePath Append(Span<byte> nibbles)
+    public readonly TreePath Append(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return this;
         if (nibbles.Length == 1) return Append(nibbles[0]);
@@ -82,7 +88,7 @@ public struct TreePath
         return copy;
     }
 
-    internal void AppendMut(Span<byte> nibbles)
+    internal void AppendMut(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return;
         if (nibbles.Length == 1)

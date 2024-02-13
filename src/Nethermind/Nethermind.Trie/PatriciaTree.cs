@@ -561,7 +561,7 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     return ref TraverseExtension(node, in traverseContext, ref path);
                 case NodeType.Leaf:
-                    return ref TraverseLeaf(node, in traverseContext);
+                    return ref TraverseLeaf(node, in traverseContext, ref path);
                 case NodeType.Unknown:
                     return ref TraverseUnknown(node);
                 default:
@@ -589,9 +589,9 @@ namespace Nethermind.Trie
             }
         }
 
-        private void ConnectNodes(TrieNode? node, in TraverseContext traverseContext)
+        private void ConnectNodes(ref TreePath path, TrieNode? node, in TraverseContext traverseContext)
         {
-            TreePath path = TreePath.FromNibble(traverseContext.UpdatePath);
+            int bottomMostPathLength = path.Length;
 
             bool isRoot = IsNodeStackEmpty();
             TrieNode nextNode = node;
@@ -813,6 +813,8 @@ namespace Nethermind.Trie
                 }
             }
 
+             // its fine that the value is zero. Its here to prevent exception on truncate mut when returning.
+            path.Length = bottomMostPathLength;
             RootRef = nextNode;
         }
 
@@ -835,7 +837,7 @@ namespace Nethermind.Trie
                         return ref CappedArray<byte>.Null;
                     }
 
-                    ConnectNodes(null, in traverseContext);
+                    ConnectNodes(ref path, null, in traverseContext);
                 }
                 else if (Bytes.AreEqual(traverseContext.UpdateValue, node.Value))
                 {
@@ -844,7 +846,7 @@ namespace Nethermind.Trie
                 else
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(in traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue, in traverseContext);
+                    ConnectNodes(ref path, withUpdatedValue, in traverseContext);
                 }
 
                 return ref traverseContext.UpdateValue;
@@ -879,7 +881,7 @@ namespace Nethermind.Trie
                 byte[] leafPath = traverseContext.UpdatePath[
                     currentIndex..].ToArray();
                 TrieNode leaf = TrieNodeFactory.CreateLeaf(leafPath, in traverseContext.UpdateValue);
-                ConnectNodes(leaf, in traverseContext);
+                ConnectNodes(ref path, leaf, in traverseContext);
 
                 return ref traverseContext.UpdateValue;
             }
@@ -890,7 +892,7 @@ namespace Nethermind.Trie
             return ref response;
         }
 
-        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext)
+        private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
         {
             if (node.Key is null)
             {
@@ -934,14 +936,14 @@ namespace Nethermind.Trie
 
                 if (traverseContext.IsDelete)
                 {
-                    ConnectNodes(null, in traverseContext);
+                    ConnectNodes(ref path, null, in traverseContext);
                     return ref traverseContext.UpdateValue;
                 }
 
                 if (!Bytes.AreEqual(node.Value, traverseContext.UpdateValue))
                 {
                     TrieNode withUpdatedValue = node.CloneWithChangedValue(in traverseContext.UpdateValue);
-                    ConnectNodes(withUpdatedValue, in traverseContext);
+                    ConnectNodes(ref path, withUpdatedValue, in traverseContext);
                     return ref traverseContext.UpdateValue;
                 }
 
@@ -968,6 +970,7 @@ namespace Nethermind.Trie
                 ReadOnlySpan<byte> extensionPath = longerPath[..extensionLength];
                 TrieNode extension = TrieNodeFactory.CreateExtension(extensionPath.ToArray());
                 PushToNodeStack(new StackedNode(extension, traverseContext.CurrentIndex, 0));
+                path.AppendMut(extensionPath);
             }
 
             TrieNode branch = TrieNodeFactory.CreateBranch();
@@ -987,7 +990,8 @@ namespace Nethermind.Trie
                 leafPath.ToArray(), longerPathValue);
 
             PushToNodeStack(new StackedNode(branch, traverseContext.CurrentIndex, longerPath[extensionLength]));
-            ConnectNodes(withUpdatedKeyAndValue, in traverseContext);
+            path.AppendMut(longerPath[extensionLength]);
+            ConnectNodes(ref path, withUpdatedKeyAndValue, in traverseContext);
 
             return ref traverseContext.UpdateValue;
         }
@@ -1044,6 +1048,7 @@ namespace Nethermind.Trie
                 byte[] extensionPath = node.Key.Slice(0, extensionLength);
                 node = node.CloneWithChangedKey(extensionPath);
                 PushToNodeStack(new StackedNode(node, traverseContext.CurrentIndex, 0));
+                path.AppendMut(node.Key);
             }
 
             // The node from extension become a branch
@@ -1078,7 +1083,7 @@ namespace Nethermind.Trie
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes(branch, in traverseContext);
+            ConnectNodes(ref path, branch, in traverseContext);
             return ref traverseContext.UpdateValue;
         }
 
