@@ -102,8 +102,6 @@ jobs:
           required_count["Synced Chain Head"]=20
           required_count["Processed"]=20
 
-          declare -a log_buffer
-          extra_logs_count=100
           counter=0
           found_bad_log=false
 
@@ -114,6 +112,7 @@ jobs:
             if [[ $found_bad_log == true ]]; then
               ((counter++))
               if [ $counter -ge 100 ]; then
+                echo "Exiting after capturing extra logs due to error."
                 exit 1
               else
                 continue
@@ -123,7 +122,7 @@ jobs:
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
-                found_bad_log=true
+                $found_bad_log=true
                 continue 2
               fi
             done
