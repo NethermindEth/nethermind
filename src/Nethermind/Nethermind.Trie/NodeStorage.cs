@@ -125,7 +125,7 @@ public class NodeStorage : INodeStorage
 
         if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
         {
-            if (address == null && path.Length <= TopStateBoundary)
+            if (address == null && path.Length > TopStateBoundary)
             {
                 readFlags |= ReadFlags.HintReadAhead2;
             }

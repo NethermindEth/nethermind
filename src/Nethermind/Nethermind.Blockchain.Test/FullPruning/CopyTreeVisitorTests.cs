@@ -56,7 +56,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Values.Should().BeEquivalentTo(values);
 
             clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
-            trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintCacheMiss);
+            trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
