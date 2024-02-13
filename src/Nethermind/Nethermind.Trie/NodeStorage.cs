@@ -138,12 +138,6 @@ public class NodeStorage : INodeStorage
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            if (address == null && path.Length <= 5 && (readFlags & ReadFlags.HintReadAhead) != 0)
-            {
-                // Disable ReadAhead at the top of state tree. This is because they are stored at a separate place.
-                readFlags &= ~ReadFlags.HintReadAhead;
-            }
-
             return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
                    ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }

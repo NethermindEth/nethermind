@@ -397,7 +397,8 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = nibbles.Length;
-                CappedArray<byte> result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                TreePath updateTreePath = TreePath.Empty; // Used only for update
+                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updateTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
                     isNodeRead: true);
                 return result.ToArray() ?? Array.Empty<byte>();
             }
@@ -419,7 +420,8 @@ namespace Nethermind.Trie
                     ? stackalloc byte[nibblesCount]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
-                CappedArray<byte> result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
+                TreePath updateTreePath = TreePath.Empty; // Used only for update
+                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updateTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
                     isNodeRead: true);
                 return result.ToArray() ?? Array.Empty<byte>();
             }

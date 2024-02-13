@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -13,26 +15,18 @@ public class TreePathTests
     [Test]
     public void TestAppend()
     {
-        TreePath path = new TreePath();
-        for (int i = 0; i < 64; i++)
-        {
-            path = path.Append((byte)(i % 16));
-        }
+        TreePath path = CreateFullTreePath();
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
     [Test]
     public void TestIndexWrite()
     {
-        TreePath path = new TreePath(Keccak.Zero, 64);
-        for (int i = 0; i < 64; i++)
-        {
-            path[i] = (byte)(i % 16);
-        }
+        TreePath path = CreateFullTreePath();
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -59,7 +53,7 @@ public class TreePathTests
 
         path.Length.Should().Be(0);
         newPath.Length.Should().Be(64);
-        string asHex = newPath.Path.Bytes.ToHexString();
+        string asHex = newPath.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -81,7 +75,7 @@ public class TreePathTests
         path = path.Append(nibbles[partition..]);
         path.Length.Should().Be(64);
 
-        string asHex = path.Path.Bytes.ToHexString();
+        string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");
     }
 
@@ -117,7 +111,26 @@ public class TreePathTests
 
         TreePath path = TreePath.FromNibble(nibbles);
         path.Length.Should().Be(expectedLength);
-        path.Path.BytesAsSpan.ToHexString().Should().Be(expectedHashHex);
+        path.Span.ToHexString().Should().Be(expectedHashHex);
+    }
+
+    [TestCase("", "", 0)]
+    [TestCase("00", "00", 0)]
+    [TestCase("01", "01", 0)]
+    [TestCase("01", "02", -1)]
+    [TestCase("02", "01", 1)]
+    [TestCase("01", "010", -1)]
+    [TestCase("010", "01", 1)]
+    [TestCase("012", "0120", -1)]
+    [TestCase("0120", "012", 1)]
+    public void TestCompareTo(string nibbleHex1, string nibbleHex2, int expectedResult)
+    {
+        TreePath path1 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex1));
+        TreePath path2 = TreePath.FromNibble(Bytes.FromHexString(nibbleHex2));
+
+        if (expectedResult == -1) path1.CompareTo(path2).Should().BeLessThan(0);
+        if (expectedResult == 0) path1.CompareTo(path2).Should().Be(0);
+        if (expectedResult == 1) path1.CompareTo(path2).Should().BeGreaterThan(0);
     }
 
     [TestCase]
@@ -140,5 +153,16 @@ public class TreePathTests
             path.Path.ToString().Should().Be("0x1234000000000000000000000000000000000000000000000000000000000000");
         }
         path.Length.Should().Be(0);
+    }
+
+    private static TreePath CreateFullTreePath()
+    {
+        TreePath path = new TreePath();
+        for (int i = 0; i < 64; i++)
+        {
+            path = path.Append((byte)(i % 16));
+        }
+
+        return path;
     }
 }

@@ -29,8 +29,9 @@ namespace Nethermind.Trie;
 
 public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 {
-    private byte[]? _startHash;
-    private readonly byte[]? _limitHash;
+    private ValueHash256? _startHash;
+    private TreePath[] _truncatedStartHashes;
+    private readonly ValueHash256? _limitHash;
 
     private readonly bool _isAccountVisitor;
 
@@ -52,14 +53,12 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
         if (startHash != ValueKeccak.Zero)
         {
-            _startHash = ArrayPool<byte>.Shared.Rent(64);
-            Nibbles.BytesToNibbleBytes(startHash.Bytes, _startHash);
+            _startHash = startHash;
         }
 
         if (limitHash != ValueKeccak.MaxValue)
         {
-            _limitHash = ArrayPool<byte>.Shared.Rent(64);
-            Nibbles.BytesToNibbleBytes(limitHash.Bytes, _limitHash);
+            _limitHash = limitHash;
         }
 
         _cancellationToken = cancellationToken;
@@ -67,10 +66,17 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
         _hardByteLimit = hardByteLimit;
+
+        TreePath startHashPath = new TreePath(startHash, 64);
+        _truncatedStartHashes = new TreePath[65];
+        for (int i = 0; i < 65; i++)
+        {
+            _truncatedStartHashes[i] = startHashPath.Truncate(i);
+        }
     }
 
     // to check if the node should be visited on the based of its path and limitHash
-    private bool ShouldVisit(Span<byte> path)
+    private bool ShouldVisit(in TreePath path)
     {
         if (_cancellationToken.IsCancellationRequested)
         {
@@ -97,21 +103,22 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
 
         int compResult = 0;
-        // The comparator is a bit special. If startHash > path, it would still return 1.
         if (_startHash != null)
         {
-            compResult = Bytes.Comparer.CompareGreaterThan(path, _startHash);
+            compResult = path.CompareTo(_truncatedStartHashes[path.Length]);
             if (compResult < 0)
             {
+                Console.Out.WriteLine($"Start bad {compResult}");
                 return false;
             }
         }
 
         if (_limitHash != null)
         {
-            compResult = path.SequenceCompareTo(_limitHash);
+            compResult = path.Path.CompareTo(_limitHash.Value);
             if (compResult > 0)
             {
+                Console.Out.WriteLine($"Limit bad {compResult}");
                 StoppedEarly = true;
                 return false;
             }
@@ -122,7 +129,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public bool ShouldVisit(in TreePathContext ctx, Hash256 nextNode)
     {
-        return ShouldVisit(ctx.Path.ToNibbles());
+        return ShouldVisit(ctx.Path);
     }
 
 
@@ -151,12 +158,11 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         TreePath path = ctx.Path.Append(node.Key);
-        if (!ShouldVisit(path.ToNibbles())) return;
+        if (!ShouldVisit(path)) return;
         CollectNode(path, node.Value);
         // We found at least one leaf, don't compare with startHash anymore
         if (_startHash != null)
         {
-            ArrayPool<byte>.Shared.Return(_startHash);
             _startHash = null;
         }
     }
@@ -184,7 +190,5 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void Dispose()
     {
-        if (_startHash != null) ArrayPool<byte>.Shared.Return(_startHash);
-        if (_limitHash != null) ArrayPool<byte>.Shared.Return(_limitHash);
     }
 }

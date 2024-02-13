@@ -41,8 +41,8 @@ public class TrieNodeResolverWithReadFlagsTests
         memDb[NodeStorage.GetHalfPathNodeStoragePath(null, new TreePath(TestItem.KeccakA, 64), theKeccak)] = TestItem.KeccakA.BytesToArray();
         resolver.LoadRlp(TreePath.Empty, theKeccak, ReadFlags.HintReadAhead);
         resolver.LoadRlp(new TreePath(TestItem.KeccakA, 64), theKeccak, ReadFlags.HintReadAhead);
-        memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, theKeccak), theFlags);
-        memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(null, new TreePath(TestItem.KeccakA, 64), theKeccak), theFlags | ReadFlags.HintReadAhead);
+        memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(null, TreePath.Empty, theKeccak), theFlags | ReadFlags.HintReadAhead);
+        memDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(null, new TreePath(TestItem.KeccakA, 64), theKeccak), theFlags | ReadFlags.HintReadAhead | ReadFlags.HintReadAhead2);
     }
 
     [Test]
