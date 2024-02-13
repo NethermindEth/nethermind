@@ -988,7 +988,7 @@ namespace Nethermind.Trie
                 leafPath.ToArray(), longerPathValue);
 
             PushToNodeStack(new StackedNode(branch, traverseContext.CurrentIndex, longerPath[extensionLength]));
-            ConnectNodes( withUpdatedKeyAndValue, in traverseContext);
+            ConnectNodes(withUpdatedKeyAndValue, in traverseContext);
 
             return ref traverseContext.UpdateValue;
         }
@@ -1077,7 +1077,7 @@ namespace Nethermind.Trie
                 branch.SetChild(pathBeforeUpdate[extensionLength], childNode);
             }
 
-            ConnectNodes( branch, in traverseContext);
+            ConnectNodes(branch, in traverseContext);
             return ref traverseContext.UpdateValue;
         }
 
