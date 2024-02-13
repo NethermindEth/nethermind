@@ -865,6 +865,7 @@ namespace Nethermind.Trie.Test
             child.Seal();
 
             TrieNode trieNode = new(NodeType.Extension);
+            trieNode.Key = Bytes.FromHexString("000102030506");
             trieNode.SetChild(0, child);
             trieNode.Seal();
 
@@ -973,7 +974,11 @@ namespace Nethermind.Trie.Test
 
             TrieNode restoredNode = new(NodeType.Branch, rlp);
 
-            Parallel.For(0, 32, (index, _) => restoredNode.GetChild(NullTrieNodeResolver.Instance, ref emptyPath, index % 3));
+            Parallel.For(0, 32, (index, _) =>
+            {
+                TreePath emptyPathParallel = TreePath.Empty;
+                restoredNode.GetChild(NullTrieNodeResolver.Instance, ref emptyPathParallel, index % 3);
+            });
         }
 
         private class Context

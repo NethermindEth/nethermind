@@ -703,6 +703,7 @@ namespace Nethermind.Trie
         public TrieNode? GetChild(ITrieNodeResolver tree, ref TreePath path, int childIndex)
         {
             int originalLength = path.Length;
+            AppendChildPath(ref path, childIndex);
             TrieNode? childNode = GetChildWithChildPath(tree, ref path, childIndex);
             path.TruncateMut(originalLength);
             return childNode;
