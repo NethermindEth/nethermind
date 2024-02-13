@@ -488,6 +488,26 @@ namespace Nethermind.Synchronization.Test
                 error = null;
                 return true;
             }
+
+            public bool ValidateSuggestedBlock(Block block, out string? error)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+            {
+                throw new NotImplementedException();
+            }
+
+            public bool Validate(BlockHeader header, bool isUncle, out string? error)
+            {
+                throw new NotImplementedException();
+            }
         }
 
         [Test, MaxTime(7000)]

@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -30,17 +32,45 @@ namespace Nethermind.Consensus.Validators
            just before the execution of the block / tx. */
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec)
         {
+            return IsWellFormed(transaction, releaseSpec, out _);
+        }
+        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
+        {
             // validate type before calculating intrinsic gas to avoid exception
-            return ValidateTxType(transaction, releaseSpec) &&
-                   /* This is unnecessarily calculated twice - at validation and execution times. */
-                   transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec) &&
-                   /* if it is a call or a transfer then we require the 'To' field to have a value
-                      while for an init it will be empty */
-                   ValidateSignature(transaction, releaseSpec) &&
-                   ValidateChainId(transaction) &&
-                   Validate1559GasFields(transaction, releaseSpec) &&
-                   Validate3860Rules(transaction, releaseSpec) &&
-                   Validate4844Fields(transaction);
+            if (!ValidateTxType(transaction, releaseSpec))
+            {
+                error = TxErrorMessages.InvalidTxType(releaseSpec.Name);
+                return false;
+            }
+            /* This is unnecessarily calculated twice - at validation and execution times. */
+            if (transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec))
+            {
+                error = TxErrorMessages.IntrinsicGasTooLow;
+                return false;
+            }
+            /* if it is a call or a transfer then we require the 'To' field to have a value
+               while for an init it will be empty */
+            if (!ValidateSignature(transaction, releaseSpec))
+            {
+                error = TxErrorMessages.InvalidTxSignature;
+                return false;
+            }
+            if (!ValidateChainId(transaction))
+            {
+                error = TxErrorMessages.InvalidTxChainId(_chainIdValue, transaction.ChainId);
+                return false;
+            }
+            if (!Validate1559GasFields(transaction, releaseSpec))
+            {
+                error = TxErrorMessages.InvalidMaxPriorityFeePerGas;
+                return false;
+            }
+            if (!Validate3860Rules(transaction, releaseSpec))
+            {
+                error = TxErrorMessages.ContractSizeTooBig;
+                return false;
+            }
+            return Validate4844Fields(transaction, out error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
@@ -55,6 +85,7 @@ namespace Nethermind.Consensus.Validators
                 TxType.Blob => releaseSpec.IsEip4844Enabled,
                 _ => false
             };
+
 
         private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
         {
@@ -106,22 +137,58 @@ namespace Nethermind.Consensus.Validators
             return !spec.ValidateChainId;
         }
 
-        private static bool Validate4844Fields(Transaction transaction)
+        private static bool Validate4844Fields(Transaction transaction, out string? error)
         {
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)
             {
-                return transaction.MaxFeePerBlobGas is null &&
-                       transaction.BlobVersionedHashes is null &&
-                       transaction is not { NetworkWrapper: ShardBlobNetworkWrapper };
+                if (transaction.MaxFeePerBlobGas is not null)
+                {
+                    error = TxErrorMessages.NotAllowedMaxFeePerBlobGas;
+                    return false;
+                }
+                if (transaction.BlobVersionedHashes is not null)
+                {
+                    error = TxErrorMessages.NotAllowedBlobVersionedHashes;
+                    return false;
+                }
+                if (transaction is { NetworkWrapper: ShardBlobNetworkWrapper })
+                {
+                    //This must be an internal issue?
+                    error = TxErrorMessages.InvalidTransaction;
+                    return false;
+                }
+                error = null;
+                return true;
             }
 
-            if (transaction.To is null ||
-                transaction.MaxFeePerBlobGas is null ||
-                transaction.BlobVersionedHashes is null ||
-                BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length) > Eip4844Constants.MaxBlobGasPerTransaction ||
-                transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
+            if (transaction.To is null)
             {
+                error = TxErrorMessages.TxMissingTo;
+                return false;
+            }
+
+            if (transaction.MaxFeePerBlobGas is null)
+            {
+                error = TxErrorMessages.BlobTxMissingMaxFeePerBlobGas;
+                return false;
+            }
+
+            if (transaction.BlobVersionedHashes is null)
+            {
+                error = TxErrorMessages.BlobTxMissingBlobVersionedHashes;
+                return false;
+            }
+
+            var totalDataGas = BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length);
+            if (totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction)
+            {
+                error = TxErrorMessages.BlobTxGasLimitExceeded;
+                return false;
+            }
+            if (transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
+            {
+                error = TxErrorMessages.BlobTxMissingBlobs;
                 return false;
             }
 
@@ -129,11 +196,20 @@ namespace Nethermind.Consensus.Validators
 
             for (int i = 0; i < blobCount; i++)
             {
-                if (transaction.BlobVersionedHashes[i] is null ||
-                    transaction.BlobVersionedHashes![i].Length !=
-                    KzgPolynomialCommitments.BytesPerBlobVersionedHash ||
-                    transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                if (transaction.BlobVersionedHashes[i] is null)
                 {
+                    error = TxErrorMessages.MissingBlobVersionedHash;
+                    return false;
+                }
+                if (transaction.BlobVersionedHashes![i].Length !=
+                KzgPolynomialCommitments.BytesPerBlobVersionedHash)
+                {
+                    error = TxErrorMessages.InvalidBlobVersionedHashSize;
+                    return false;
+                }
+                if (transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+                {
+                    error = TxErrorMessages.InvalidBlobVersionedHashVersion;
                     return false;
                 }
             }
@@ -141,19 +217,37 @@ namespace Nethermind.Consensus.Validators
             // Mempool version verification if presents
             if (transaction.NetworkWrapper is ShardBlobNetworkWrapper wrapper)
             {
-                if (wrapper.Blobs.Length != blobCount ||
-                    wrapper.Commitments.Length != blobCount ||
-                    wrapper.Proofs.Length != blobCount)
+                if (wrapper.Blobs.Length != blobCount)
                 {
+                    error = TxErrorMessages.InvalidBlobData();
+                    return false;
+                }
+                if (wrapper.Commitments.Length != blobCount)
+                {
+                    error = TxErrorMessages.InvalidBlobData();
+                    return false;
+                }
+                if (wrapper.Proofs.Length != blobCount)
+                {
+                    error = TxErrorMessages.InvalidBlobData();
                     return false;
                 }
 
                 for (int i = 0; i < blobCount; i++)
                 {
-                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob ||
-                        wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment ||
-                        wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                    if (wrapper.Blobs[i].Length != Ckzg.Ckzg.BytesPerBlob)
                     {
+                        error = TxErrorMessages.ExceededBlobSize;
+                        return false;
+                    }
+                    if (wrapper.Commitments[i].Length != Ckzg.Ckzg.BytesPerCommitment)
+                    {
+                        error = TxErrorMessages.ExceededBlobCommitmentSize;
+                        return false;
+                    }
+                    if (wrapper.Proofs[i].Length != Ckzg.Ckzg.BytesPerProof)
+                    {
+                        error = TxErrorMessages.InvalidBlobProofSize;
                         return false;
                     }
                 }
@@ -165,14 +259,20 @@ namespace Nethermind.Consensus.Validators
                             wrapper.Commitments[i].AsSpan(), hash) ||
                         !hash.SequenceEqual(transaction.BlobVersionedHashes[i]))
                     {
+                        error = TxErrorMessages.InvalidBlobCommitmentHash;
                         return false;
                     }
                 }
 
-                return KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
-                    wrapper.Commitments, wrapper.Proofs);
-            }
+                if (!KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
+                    wrapper.Commitments, wrapper.Proofs))
+                {
+                    error = TxErrorMessages.InvalidBlobProof;
+                    return false;
+                }
 
+            }
+            error = null;
             return true;
         }
     }

@@ -213,11 +213,12 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void ValidateProcessedBlock(Block suggestedBlock, ProcessingOptions options, Block block, TxReceipt[] receipts)
     {
-        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
+        string? error = null;
+        if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock, out error))
         {
             if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
             if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
-            throw new InvalidBlockException(suggestedBlock, "invalid hash after block processing");
+            throw new InvalidBlockException(suggestedBlock, error);
         }
     }
 

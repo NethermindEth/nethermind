@@ -30,5 +30,10 @@ namespace Nethermind.Blockchain.Test.Validators
         {
             return _alwaysSameResult ?? _validationResults.Dequeue();
         }
+        public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? errorMessage)
+        {
+            errorMessage = null;
+            return _alwaysSameResult ?? _validationResults.Dequeue();
+        }
     }
 }
