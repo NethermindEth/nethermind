@@ -103,7 +103,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         else if (prefix < 192)
         {
             int lengthOfLength = prefix - 183;
-            if (lengthOfLength > 4)
+            if ((uint)lengthOfLength > 4)
             {
                 // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
                 throw new RlpException("Expected length of length less or equal 4");

@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Reflection;
 using System.Text;
@@ -969,11 +971,16 @@ namespace Nethermind.Serialization.Rlp
 
                 if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
+                    ThrowInvalidPrefix(ref this, prefix);
                 }
 
                 byte[] buffer = Read(20).ToArray();
                 return new Address(buffer);
+
+                static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
+                {
+                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
+                }
             }
 
             public void DecodeAddressStructRef(out AddressStructRef address)
@@ -982,15 +989,21 @@ namespace Nethermind.Serialization.Rlp
                 if (prefix == 128)
                 {
                     address = new AddressStructRef(Address.Zero.Bytes);
+                    return;
                 }
                 else if (prefix != 128 + 20)
                 {
-                    throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {Position} in the message of length {Data.Length} starting with {Data[..Math.Min(DebugMessageContentLength, Data.Length)].ToHexString()}");
+                    ThrowInvalidPrefix(ref this, prefix);
                 }
-                else
-                {
-                    address = new AddressStructRef(Read(20));
-                }
+
+                address = new AddressStructRef(Read(20));
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            private static void ThrowInvalidPrefix(ref ValueDecoderContext ctx, int prefix)
+            {
+                throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
             }
 
             public UInt256 DecodeUInt256(int length = -1)
@@ -998,23 +1011,35 @@ namespace Nethermind.Serialization.Rlp
                 ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
                 if (byteSpan.Length > 32)
                 {
-                    throw new RlpException("UInt256 cannot be longer than 32 bytes");
+                    ThrowDataTooLong();
                 }
 
                 if (length == -1)
                 {
                     if (byteSpan.Length > 1 && byteSpan[0] == 0)
                     {
-                        throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {Position}");
+                        ThrowNonCanonicalUInt256(Position);
                     }
                 }
                 else if (byteSpan.Length != length)
                 {
-                    throw new RlpException($"Invalid length at position {Position}");
+                    ThrowInvalidLength(Position);
                 }
 
 
                 return new UInt256(byteSpan, true);
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowDataTooLong() => throw new RlpException("UInt256 cannot be longer than 32 bytes");
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowNonCanonicalUInt256(int position) => throw new RlpException($"Non-canonical UInt256 (leading zero bytes) at position {position}");
+
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static void ThrowInvalidLength(int position) => throw new RlpException($"Invalid length at position {position}");
             }
 
             public BigInteger DecodeUBigInt()
