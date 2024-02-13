@@ -1580,8 +1580,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         Hash256 GetBlockHashFromState(ulong blockNumber)
                         {
-                            StorageCell blockHashStoreCell =
-                                new(new Address("0xfffffffffffffffffffffffffffffffffffffffe"), blockNumber);
+                            StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockNumber);
+                            // TODO: find a better way to access without charging
+                            long fakeGas = 1000000;
+                            vmState.Env.Witness.AccessAndChargeForStorage(storageCell.Address, storageCell.Index,
+                                false, ref fakeGas);
                             return new Hash256(_worldState.Get(blockHashStoreCell));
                         }
 
@@ -1590,8 +1593,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-                        // TODO: change this before mainnet - we need to enable this only after
-                        //       blockNumber >  FORK_BLKNUM + 256;
                         Hash256 blockHash = spec.IsEip2935Enabled
                             ? GetBlockHashFromState((ulong)number)
                             : _blockhashProvider.GetBlockhash(blkCtx.Header, number);

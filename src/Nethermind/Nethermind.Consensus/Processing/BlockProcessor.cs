@@ -45,6 +45,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     protected readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+    private readonly IBlockhashProvider _blockhashProvider;
 
     // TODO: will be removed in future
     public IBlockProcessor.IBlockTransactionsExecutor StatelessBlockTransactionsExecutor;
@@ -68,6 +69,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockTree? blockTree,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null)
@@ -84,6 +86,8 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
+        _blockhashProvider =
+            new BlockhashProvider(blockTree ?? throw new ArgumentNullException(nameof(blockTree)), logManager);
 
         ExecutionTracer = new BlockExecutionTracer(true, true);
     }
@@ -292,6 +296,7 @@ public partial class BlockProcessor : IBlockProcessor
         ExecutionTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+
         _blockHashInStateHandlerHandler.AddBlockHashToState(block, spec, _stateProvider);
         _stateProvider.Commit(spec);
 
