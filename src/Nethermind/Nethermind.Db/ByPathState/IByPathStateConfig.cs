@@ -6,7 +6,7 @@ using Nethermind.Config;
 namespace Nethermind.Db.ByPathState;
 public interface IByPathStateConfig : IConfig
 {
-    [ConfigItem(Description = "Enables experimental path based storage. Requires fresh sync", DefaultValue = "false")]
+    [ConfigItem(Description = "Enables experimental path based storage. Requires fresh sync", DefaultValue = "true")]
     public bool Enabled { get; set; }
 
     [ConfigItem(Description = "Minimal number of blocks which history state is kept in memory until they are persisted to DB. Maximum is 'InMemHistoryBlocks' + 'PersistenceInterval'.", DefaultValue = "128")]

@@ -4,7 +4,7 @@
 namespace Nethermind.Db.ByPathState;
 public class ByPathStateConfig : IByPathStateConfig
 {
-    public bool Enabled { get; set; } = false;
+    public bool Enabled { get; set; } = true;
     public int InMemHistoryBlocks { get; set; } = 128;
     public int PersistenceInterval { get; set; } = 64;
 }
