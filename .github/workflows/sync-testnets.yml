@@ -90,6 +90,8 @@ jobs:
         id: wait
         timeout-minutes: 180
         run: |
+          set +e
+          
           declare -A bad_logs
           bad_logs["Invalid"]=1
           bad_logs["Exception"]=1
