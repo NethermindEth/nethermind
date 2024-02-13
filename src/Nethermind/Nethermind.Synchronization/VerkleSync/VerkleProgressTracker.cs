@@ -20,7 +20,7 @@ using Nethermind.Verkle.Tree.TreeStore;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>
+public class VerkleProgressTracker : IRangeProgressTracker<VerkleSyncBatch>
 {
     private const string NO_REQUEST = "NO REQUEST";
     private readonly byte[] SYNC_PROGRESS_KEY = "VerkleSyncProgressKey"u8.ToArray();
@@ -136,7 +136,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>
             LogRequest($"LeafsToRefresh:{LeafsToRefresh.Count}");
 
             int queueLength = LeafsToRefresh.Count;
-            byte[][] paths = new  byte[queueLength][];
+            byte[][] paths = new byte[queueLength][];
 
             for (int i = 0; i < queueLength && LeafsToRefresh.TryDequeue(out var acc); i++)
             {

@@ -19,7 +19,7 @@ using Nethermind.Verkle.Curve;
 
 namespace Nethermind.Consensus.Processing;
 
-public class StatelessBlockProcessor: BlockProcessor
+public class StatelessBlockProcessor : BlockProcessor
 {
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
@@ -45,7 +45,7 @@ public class StatelessBlockProcessor: BlockProcessor
             logManager,
             withdrawalProcessor)
     {
-        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));;
+        _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager)); ;
         _logger = _logManager.GetClassLogger<StatelessBlockProcessor>();
     }
 

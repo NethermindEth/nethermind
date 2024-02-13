@@ -102,7 +102,7 @@ public static class VerkleTestUtils
         183, 72, 25, 6, 8, 210, 159, 31, 1,
     };
 
-    public static readonly Hash256 KeyNonce = (Hash256) new byte[]
+    public static readonly Hash256 KeyNonce = (Hash256)new byte[]
     {
         121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229, 224,
         183, 72, 25, 6, 8, 210, 159, 31, 2,
@@ -114,7 +114,7 @@ public static class VerkleTestUtils
         183, 72, 25, 6, 8, 210, 159, 31, 3,
     };
 
-    public static readonly Hash256 KeyCodeSize =(Hash256) new byte[]
+    public static readonly Hash256 KeyCodeSize = (Hash256)new byte[]
     {
         121, 85, 7, 198, 131, 230, 143, 90, 165, 129, 173, 81, 186, 89, 19, 191, 13, 107, 197, 120, 243, 229, 224,
         183, 72, 25, 6, 8, 210, 159, 31, 4,
@@ -128,7 +128,7 @@ public static class VerkleTestUtils
     }
 
     public static IVerkleTreeStore GetVerkleStoreForTest<TCache>(DbMode dbMode)
-    where TCache: struct, IPersistenceStrategy
+    where TCache : struct, IPersistenceStrategy
     {
         IDbProvider provider;
         switch (dbMode)
@@ -148,7 +148,7 @@ public static class VerkleTestUtils
     }
 
     public static VerkleTree GetVerkleTreeForTest<TCache>(DbMode dbMode, string? path = null)
-    where TCache: struct, IPersistenceStrategy
+    where TCache : struct, IPersistenceStrategy
     {
         IDbProvider provider;
         IVerkleTreeStore store;

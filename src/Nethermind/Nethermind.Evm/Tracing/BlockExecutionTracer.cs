@@ -16,7 +16,7 @@ namespace Nethermind.Evm.Tracing;
 public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
     : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
-     protected Block Block = null!;
+    protected Block Block = null!;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
     public bool IsTracingOpLevelStorage => _currentTxTracer.IsTracingOpLevelStorage;
     public bool IsTracingMemory => _currentTxTracer.IsTracingMemory;
@@ -296,7 +296,7 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
 
     public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys)
     {
-        if(traceWitness)
+        if (traceWitness)
             _witnessKeys.Add(verkleWitnessKeys);
 
         // hacky way to support nested witness tracers

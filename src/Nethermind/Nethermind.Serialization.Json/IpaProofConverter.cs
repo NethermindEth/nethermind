@@ -24,7 +24,7 @@ public class IpaProofConverter : System.Text.Json.Serialization.JsonConverter<Ip
             for (int i = 0; i < 2; i++)
             {
                 reader.Read();
-                if(reader.ValueTextEquals("cl"u8))
+                if (reader.ValueTextEquals("cl"u8))
                 {
                     reader.Read();
                     cl = JsonSerializer.Deserialize<Banderwagon[]>(ref reader, options) ??
@@ -71,7 +71,7 @@ public class IpaProofConverter : System.Text.Json.Serialization.JsonConverter<Ip
         writer.WriteEndArray();
 
         writer.WritePropertyName("finalEvaluation");
-        ByteArrayConverter.Convert(writer,  value.A.ToBytesBigEndian(), skipLeadingZeros: false);
+        ByteArrayConverter.Convert(writer, value.A.ToBytesBigEndian(), skipLeadingZeros: false);
 
         writer.WriteEndObject();
     }

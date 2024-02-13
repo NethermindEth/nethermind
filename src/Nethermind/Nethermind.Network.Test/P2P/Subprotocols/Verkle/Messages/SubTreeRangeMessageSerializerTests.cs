@@ -73,7 +73,7 @@ public class SubTreeRangeMessageSerializerTests
         {
             RequestId = MessageConstants.Random.NextLong(),
             PathsWithSubTrees = new[] { new PathWithSubTree(TestItem.Stem2, acc01.ToVerkleDict()) },
-            Proofs =  TestItem.RandomDataB
+            Proofs = TestItem.RandomDataB
         };
 
         SubTreeRangeMessageSerializer serializer = new();

@@ -15,7 +15,7 @@ public partial class VerkleTree
 {
     private void UpdateTreeCommitments(Span<byte> stem, LeafUpdateDelta leafUpdateDelta, bool forSync = false)
     {
-        if(_logger.IsTrace) _logger.Trace($"Updating Tree Commitments Stem:{stem.ToHexString()} forSync:{forSync}");
+        if (_logger.IsTrace) _logger.Trace($"Updating Tree Commitments Stem:{stem.ToHexString()} forSync:{forSync}");
         TraverseContext context = new(stem, leafUpdateDelta) { ForSync = forSync };
         Banderwagon rootDelta = TraverseBranch(context);
         if (_logger.IsTrace) _logger.Trace($"RootDelta To Apply: {rootDelta.ToBytes().ToHexString()}");

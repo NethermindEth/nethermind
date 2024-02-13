@@ -11,7 +11,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Verkle;
 
 [TestFixture]
-public class OpCodesGasTests: VerkleVirtualMachineTestsBase
+public class OpCodesGasTests : VerkleVirtualMachineTestsBase
 {
 
     [Test]

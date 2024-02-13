@@ -21,7 +21,7 @@ public class NodeSerializerTests
         byte[] commitment = new byte[32];
         _rand.NextBytes(commitment);
         _rand.NextBytes(commitment);
-        InternalNode node = new (VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytes(commitment)!.Value));
+        InternalNode node = new(VerkleNodeType.BranchNode, new Commitment(Banderwagon.FromBytes(commitment)!.Value));
         AssertEncodeDecodeEqual(node);
     }
 

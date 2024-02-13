@@ -28,7 +28,7 @@ namespace Nethermind.Evm.TransactionProcessing
     public class TransactionProcessor : ITransactionProcessor
     {
         protected EthereumEcdsa Ecdsa { get; private init; }
-        protected  ILogManager LogManager { get; private init; }
+        protected ILogManager LogManager { get; private init; }
         protected ILogger Logger { get; private init; }
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
@@ -213,7 +213,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
             }
 
-            if(tracer.IsTracingAccessWitness) tracer.ReportAccessWitness(env.Witness.GetAccessedKeys());
+            if (tracer.IsTracingAccessWitness) tracer.ReportAccessWitness(env.Witness.GetAccessedKeys());
         }
 
         protected void QuickFail(Transaction tx, BlockHeader block, IReleaseSpec spec, ITxTracer txTracer, string? reason)
@@ -662,7 +662,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 }
 
                 // we clean any existing storage (in case of a previously called self destruct)
-                if (!spec.IsVerkleTreeEipEnabled)  WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
+                if (!spec.IsVerkleTreeEipEnabled) WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
             }
         }
 

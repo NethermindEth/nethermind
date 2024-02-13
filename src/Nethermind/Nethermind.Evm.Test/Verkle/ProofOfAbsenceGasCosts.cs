@@ -3,7 +3,7 @@
 
 namespace Nethermind.Evm.Test.Verkle;
 
-public class ProofOfAbsenceGasCosts: VerkleVirtualMachineTestsBase
+public class ProofOfAbsenceGasCosts : VerkleVirtualMachineTestsBase
 {
 
 }

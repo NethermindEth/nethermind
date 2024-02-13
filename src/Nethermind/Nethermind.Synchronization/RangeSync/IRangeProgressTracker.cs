@@ -3,7 +3,7 @@
 
 namespace Nethermind.Synchronization.RangeSync;
 
-public interface IRangeProgressTracker<T>: IRangeFinishTracker
+public interface IRangeProgressTracker<T> : IRangeFinishTracker
 {
     public bool CanSync();
     public void UpdatePivot();

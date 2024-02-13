@@ -8,7 +8,7 @@ using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleSyncAllocationStrategyFactory: StaticPeerAllocationStrategyFactory<VerkleSyncBatch>
+public class VerkleSyncAllocationStrategyFactory : StaticPeerAllocationStrategyFactory<VerkleSyncBatch>
 {
     private static readonly IPeerAllocationStrategy DefaultStrategy =
         new SatelliteProtocolPeerAllocationStrategy<IVerkleSyncPeer>(new TotalDiffStrategy(new BySpeedStrategy(TransferSpeedType.VerkleSyncRanges, true), TotalDiffStrategy.TotalDiffSelectionType.CanBeSlightlyWorse), "verkle");

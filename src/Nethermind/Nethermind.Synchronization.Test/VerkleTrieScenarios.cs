@@ -110,7 +110,7 @@ public class VerkleTrieScenarios
         tree.Set(address, account);
         if (account.Code is not null) tree.SetCode(address, account.Code);
 
-        if(!setStorage) return;
+        if (!setStorage) return;
         tree.SetStorage(new StorageCell(address, 1), new byte[] { 1 });
         tree.SetStorage(new StorageCell(address, 2), new byte[] { 2 });
         tree.SetStorage(new StorageCell(address, 3), new byte[] { 3 });

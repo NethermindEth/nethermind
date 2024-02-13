@@ -180,7 +180,7 @@ public partial class VerkleTreeStore<TPersistence>
 
         foreach ((var key, InternalNode? node) in internalStore)
         {
-            if(node!.IsStem && node.IsStateless) continue;
+            if (node!.IsStem && node.IsStateless) continue;
             batch.SetInternalNode(key, node);
         }
     }

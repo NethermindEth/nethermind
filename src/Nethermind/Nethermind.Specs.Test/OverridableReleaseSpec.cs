@@ -164,12 +164,12 @@ namespace Nethermind.Specs.Test
         private ulong? _overridenEip6800TransitionTimeStamp;
         public ulong Eip6800TransitionTimeStamp
         {
-            get =>_overridenEip6800TransitionTimeStamp ?? _spec.Eip6800TransitionTimeStamp;
+            get => _overridenEip6800TransitionTimeStamp ?? _spec.Eip6800TransitionTimeStamp;
             set => _overridenEip6800TransitionTimeStamp = value;
         }
 
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
-        public Address Eip2935ContractAddress  => _spec.Eip2935ContractAddress;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
     }
 }

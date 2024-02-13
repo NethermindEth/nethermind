@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleSyncFeed: SyncFeed<VerkleSyncBatch?>, IDisposable
+public class VerkleSyncFeed : SyncFeed<VerkleSyncBatch?>, IDisposable
 {
     private readonly object _syncLock = new();
 

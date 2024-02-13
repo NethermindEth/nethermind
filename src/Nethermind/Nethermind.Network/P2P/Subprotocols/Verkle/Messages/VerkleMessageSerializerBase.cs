@@ -6,7 +6,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public abstract class VerkleMessageSerializerBase<T>: IZeroInnerMessageSerializer<T> where T: MessageBase
+public abstract class VerkleMessageSerializerBase<T> : IZeroInnerMessageSerializer<T> where T : MessageBase
 {
     public abstract void Serialize(IByteBuffer byteBuffer, T message);
     protected abstract T Deserialize(RlpStream rlpStream);

@@ -8,7 +8,7 @@ using Nethermind.Core.Verkle;
 
 namespace Nethermind.Serialization.Json;
 
-public class StemConverter: JsonConverter<Stem>
+public class StemConverter : JsonConverter<Stem>
 {
     public override Stem Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {

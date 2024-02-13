@@ -6,7 +6,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Verkle;
 
-public class ChunkedCodeExecutionGasTests: VerkleVirtualMachineTestsBase
+public class ChunkedCodeExecutionGasTests : VerkleVirtualMachineTestsBase
 {
     [Test]
     public void TestBeforeVerkle()
@@ -30,7 +30,7 @@ public class ChunkedCodeExecutionGasTests: VerkleVirtualMachineTestsBase
             (byte)Instruction.PUSH1, 0, (byte)Instruction.PUSH1, 1, (byte)Instruction.ADD,
         };
         TestAllTracerWithOutput receipt = Execute(BlockNumber - 1, 100000, code);
-        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 45 ));
+        Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 45));
     }
 
     [Test]

@@ -23,7 +23,7 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForTransactionWithValue()
     {
-        VerkleWitness calculator = new ();
+        VerkleWitness calculator = new();
         long gas = calculator.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true);
         Console.WriteLine(gas);
     }

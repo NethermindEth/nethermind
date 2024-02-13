@@ -29,7 +29,7 @@ using Nethermind.Verkle.Tree.TreeStore;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle;
 
-public class VerkleProtocolHandler: ZeroProtocolHandlerBase, IVerkleSyncPeer
+public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
 {
 
     public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
@@ -61,7 +61,7 @@ public class VerkleProtocolHandler: ZeroProtocolHandlerBase, IVerkleSyncPeer
         VerkleSyncServer? server,
         INodeStatsManager nodeStats,
         IMessageSerializationService serializer,
-        ILogManager logManager): base(session, nodeStats, serializer, logManager)
+        ILogManager logManager) : base(session, nodeStats, serializer, logManager)
     {
         _syncServer = server;
         _getLeafNodesRequests = new(Send);
@@ -225,7 +225,7 @@ public class VerkleProtocolHandler: ZeroProtocolHandlerBase, IVerkleSyncPeer
         }
 
         SubTreeRange? accountRange = getAccountRangeMessage.SubTreeRange;
-        (List<PathWithSubTree>, VerkleProof)  data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
+        (List<PathWithSubTree>, VerkleProof) data = _syncServer.GetSubTreeRanges(accountRange.RootHash, accountRange.StartingStem,
             accountRange.LimitStem, getAccountRangeMessage.ResponseBytes, out _);
         SubTreeRangeMessage? response = new();
         response.PathsWithSubTrees = data.Item1.ToArray();

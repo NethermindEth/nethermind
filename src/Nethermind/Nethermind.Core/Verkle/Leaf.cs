@@ -120,7 +120,7 @@ public readonly struct Leaf : IEquatable<Leaf>, IComparable<Leaf>
     public static bool operator <=(Leaf left, Leaf right) => left.CompareTo(right) <= 0;
 }
 
-public readonly struct LeafKey:  IEquatable<LeafKey>, IComparable<LeafKey>
+public readonly struct LeafKey : IEquatable<LeafKey>, IComparable<LeafKey>
 {
     public byte[] Bytes { get; }
 

@@ -17,7 +17,7 @@ using Nethermind.Synchronization.RangeSync;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class SnapProgressTracker: IRangeProgressTracker<SnapSyncBatch>
+    public class SnapProgressTracker : IRangeProgressTracker<SnapSyncBatch>
     {
         private const string NO_REQUEST = "Skipped Request";
 

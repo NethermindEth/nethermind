@@ -275,7 +275,7 @@ public partial class BlockProcessor : IBlockProcessor
                 Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
                 try
                 {
-                    VerkleWorldState? incomingWorldState = new (block.ExecutionWitness, stateRoot, LimboLogs.Instance);
+                    VerkleWorldState? incomingWorldState = new(block.ExecutionWitness, stateRoot, LimboLogs.Instance);
                     _logger.Info($"Incoming Witness - VerkleWorldState StateRoot:{incomingWorldState.StateRoot}");
                 }
                 catch (Exception e)

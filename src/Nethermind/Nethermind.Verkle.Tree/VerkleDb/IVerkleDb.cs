@@ -7,12 +7,12 @@ using Nethermind.Verkle.Tree.TreeNodes;
 
 namespace Nethermind.Verkle.Tree.VerkleDb;
 
-public interface IVerkleDbWithBatching: IVerkleDb
+public interface IVerkleDbWithBatching : IVerkleDb
 {
     public VerkleKeyValueBatch StartWriteBatch();
 }
 
-public interface IVerkleDb: IVerkleWriteOnlyDb, IVerkleReadOnlyDb
+public interface IVerkleDb : IVerkleWriteOnlyDb, IVerkleReadOnlyDb
 {
 }
 

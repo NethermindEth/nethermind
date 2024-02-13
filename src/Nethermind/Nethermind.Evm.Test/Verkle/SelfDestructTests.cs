@@ -17,7 +17,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Verkle;
 
 [TestFixture]
-public class SelfDestructTests: VerkleVirtualMachineTestsBase
+public class SelfDestructTests : VerkleVirtualMachineTestsBase
 {
 
     private readonly Address _contractAddress = ContractAddress.From(TestItem.PrivateKeyA.Address, 0);

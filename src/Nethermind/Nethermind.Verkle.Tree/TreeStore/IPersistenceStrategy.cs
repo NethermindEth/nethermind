@@ -21,7 +21,7 @@ public readonly struct ReorgCache : IPersistenceStrategy
     public static int CacheSize => 64;
 }
 
-public readonly struct PersistEveryBlock: IPersistenceStrategy
+public readonly struct PersistEveryBlock : IPersistenceStrategy
 {
     public static bool IsUsingCache => false;
     public static int CacheSize => 0;

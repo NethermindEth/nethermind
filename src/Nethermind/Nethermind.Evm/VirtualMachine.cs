@@ -598,30 +598,30 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             switch (opCode)
             {
                 case Instruction.BALANCE:
-                {
-                    result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
-                    break;
-                }
+                    {
+                        result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                        break;
+                    }
                 case Instruction.EXTCODESIZE:
                 case Instruction.EXTCODECOPY:
                 case Instruction.CALL:
                 case Instruction.CALLCODE:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
-                {
-                    if (!isAddressPreCompile)
                     {
-                        result = vmState.Env.Witness.AccessAndChargeForCodeOpCodes(address, ref gasAvailable);
-                        if (!result) break;
+                        if (!isAddressPreCompile)
+                        {
+                            result = vmState.Env.Witness.AccessAndChargeForCodeOpCodes(address, ref gasAvailable);
+                            if (!result) break;
+                        }
+                        if (valueTransfer) result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                        break;
                     }
-                    if (valueTransfer) result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
-                    break;
-                }
                 case Instruction.EXTCODEHASH:
-                {
-                    result = vmState.Env.Witness.AccessAndChargeForCodeHash(address, ref gasAvailable);
-                    break;
-                }
+                    {
+                        result = vmState.Env.Witness.AccessAndChargeForCodeHash(address, ref gasAvailable);
+                        break;
+                    }
                 case Instruction.SELFDESTRUCT:
                     result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
                     break;
@@ -2620,7 +2620,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
-        if(!env.Witness.AccessAndChargeForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+        if (!env.Witness.AccessAndChargeForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2659,7 +2659,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
 
-        if(!env.Witness.AccessAndChargeForContractCreated(contractAddress, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+        if (!env.Witness.AccessAndChargeForContractCreated(contractAddress, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         ExecutionEnvironment callEnv = new
         (

@@ -896,7 +896,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
     {
         // TODO: another work around for rocksDb not having inclusive range.
-        UInt256 x = new (end, true);
+        UInt256 x = new(end, true);
         if (x == UInt256.MaxValue) return GetIterator(start);
         Iterator iterator = CreateIterator(start, x.ToBigEndian(), true);
         return GetAllCoreBounded(iterator);

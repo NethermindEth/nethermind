@@ -6,7 +6,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Verkle;
 
 [TestFixture]
-public class PushNGasTests: VerkleVirtualMachineTestsBase
+public class PushNGasTests : VerkleVirtualMachineTestsBase
 {
     [Test]
     public void TestGasCostUpdateForPush1()

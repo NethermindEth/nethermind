@@ -100,7 +100,8 @@ public class EliasFanoTests
         EliasFanoBuilder efb = new(_efCaseError[^1] + 1, _efCaseError.Length);
         efb.Extend(_efCaseError);
         EliasFano ef = efb.Build();
-        ef.GetEnumerator(0).ToArray().Should().BeEquivalentTo(_efCaseError);    }
+        ef.GetEnumerator(0).ToArray().Should().BeEquivalentTo(_efCaseError);
+    }
 
 
     private static void AssertEfForCase1(EliasFano ef)

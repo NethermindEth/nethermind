@@ -34,12 +34,12 @@ public class VerkleSyncServer
     public (List<PathWithSubTree>, VerkleProof) GetSubTreeRanges(Hash256 rootHash, Stem startingStem, Stem? limitStem, long byteLimit, out Banderwagon rootPoint)
     {
         rootPoint = default;
-        if(_logger.IsDebug) _logger.Debug($"Getting SubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
-        var nodes = _store.GetLeafRangeIterator(startingStem, limitStem?? Stem.MaxValue, rootHash, byteLimit).ToList();
-        if(_logger.IsDebug) _logger.Debug($"Nodes Count - {nodes.Count}");
+        if (_logger.IsDebug) _logger.Debug($"Getting SubTreeRanges - RH:{rootHash} S:{startingStem} L:{limitStem} Bytes:{byteLimit}");
+        var nodes = _store.GetLeafRangeIterator(startingStem, limitStem ?? Stem.MaxValue, rootHash, byteLimit).ToList();
+        if (_logger.IsDebug) _logger.Debug($"Nodes Count - {nodes.Count}");
         if (nodes.Count == 0) return (new List<PathWithSubTree>(), new VerkleProof());
 
-        VerkleTree tree = new (_store, _logManager);
+        VerkleTree tree = new(_store, _logManager);
         VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
         TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
         return (nodes, vProof);
@@ -47,7 +47,7 @@ public class VerkleSyncServer
 
     private void TestIsGeneratedProofValid(VerkleProof vProof, Banderwagon rootPoint, Stem startingStem, PathWithSubTree[] nodes)
     {
-        VerkleTreeStore<PersistEveryBlock>? stateStore = new (new MemDb(), new MemDb(), new MemDb(), LimboLogs.Instance);
+        VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemDb(), new MemDb(), new MemDb(), LimboLogs.Instance);
         VerkleTree localTree = new VerkleTree(stateStore, LimboLogs.Instance);
         var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint, startingStem, nodes[^1].Path, nodes);
         _logger.Info(!isCorrect

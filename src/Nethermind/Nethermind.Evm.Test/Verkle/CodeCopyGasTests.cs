@@ -10,7 +10,7 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Verkle;
 
 [TestFixture]
-public class CodeCopyGasTests: VerkleVirtualMachineTestsBase
+public class CodeCopyGasTests : VerkleVirtualMachineTestsBase
 {
     [Test]
     public void TestCodeCopyUpdatedGas()

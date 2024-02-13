@@ -31,9 +31,11 @@ public class VerkleRangeProofTests
 
         byte[][] values =
         [
-            VerkleTestUtils.KeyVersion.BytesToArray(), VerkleTestUtils.KeyBalance.BytesToArray(),
+            VerkleTestUtils.KeyVersion.BytesToArray(),
+            VerkleTestUtils.KeyBalance.BytesToArray(),
             VerkleTestUtils.KeyNonce.BytesToArray(),
-            VerkleTestUtils.KeyCodeCommitment.BytesToArray(), VerkleTestUtils.KeyCodeSize.BytesToArray()
+            VerkleTestUtils.KeyCodeCommitment.BytesToArray(),
+            VerkleTestUtils.KeyCodeSize.BytesToArray()
         ];
 
         foreach (byte[] stem in stems)
@@ -84,9 +86,11 @@ public class VerkleRangeProofTests
 
         byte[][] values =
         [
-            VerkleTestUtils.KeyVersion.BytesToArray(), VerkleTestUtils.KeyBalance.BytesToArray(),
+            VerkleTestUtils.KeyVersion.BytesToArray(),
+            VerkleTestUtils.KeyBalance.BytesToArray(),
             VerkleTestUtils.KeyNonce.BytesToArray(),
-            VerkleTestUtils.KeyCodeCommitment.BytesToArray(), VerkleTestUtils.KeyCodeSize.BytesToArray()
+            VerkleTestUtils.KeyCodeCommitment.BytesToArray(),
+            VerkleTestUtils.KeyCodeSize.BytesToArray()
         ];
 
 
@@ -136,9 +140,11 @@ public class VerkleRangeProofTests
 
         byte[][] values =
         [
-            VerkleTestUtils.KeyVersion.BytesToArray(), VerkleTestUtils.KeyBalance.BytesToArray(),
+            VerkleTestUtils.KeyVersion.BytesToArray(),
+            VerkleTestUtils.KeyBalance.BytesToArray(),
             VerkleTestUtils.KeyNonce.BytesToArray(),
-            VerkleTestUtils.KeyCodeCommitment.BytesToArray(), VerkleTestUtils.KeyCodeSize.BytesToArray()
+            VerkleTestUtils.KeyCodeCommitment.BytesToArray(),
+            VerkleTestUtils.KeyCodeSize.BytesToArray()
         ];
 
         foreach (byte[] stem in stems)

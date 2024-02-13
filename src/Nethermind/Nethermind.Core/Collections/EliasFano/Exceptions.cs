@@ -9,22 +9,22 @@ namespace Nethermind.Core.Collections.EliasFano;
 
 public class EliasFanoExceptions : Exception
 {
-    protected EliasFanoExceptions(){}
+    protected EliasFanoExceptions() { }
     protected EliasFanoExceptions(string message, Exception? inner = null) : base(message, inner) { }
 }
 
-public class EliasFanoBuilderException: EliasFanoExceptions
+public class EliasFanoBuilderException : EliasFanoExceptions
 {
     public List<ulong>? Shard { get; set; }
 
-    public EliasFanoBuilderException(){}
+    public EliasFanoBuilderException() { }
     public EliasFanoBuilderException(string message, Exception? inner = null) : base(message, inner) { }
 }
 
-public class EliasFanoQueryException: EliasFanoExceptions
+public class EliasFanoQueryException : EliasFanoExceptions
 {
     public List<ulong>? Shard { get; set; }
 
-    public EliasFanoQueryException(){}
+    public EliasFanoQueryException() { }
     public EliasFanoQueryException(string message, Exception? inner = null) : base(message, inner) { }
 }

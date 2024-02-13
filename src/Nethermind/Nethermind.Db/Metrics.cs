@@ -146,7 +146,7 @@ namespace Nethermind.Db
         [Description("_Deprecated._ Number of BlobTransactions DB writes.")]
         public static long BlobTransactionsDbWrites { get; set; }
 
-         [CounterMetric]
+        [CounterMetric]
         [Description("Number of Leaf DB reads.")]
         public static long LeafDbReads { get; set; }
 

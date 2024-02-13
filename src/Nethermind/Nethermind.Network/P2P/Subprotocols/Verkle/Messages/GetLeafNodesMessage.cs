@@ -7,7 +7,7 @@ using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class GetLeafNodesMessage: VerkleMessageBase
+public class GetLeafNodesMessage : VerkleMessageBase
 {
     public override int PacketType => VerkleMessageCode.GetLeafNodes;
 
