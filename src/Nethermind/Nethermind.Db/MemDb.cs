@@ -131,7 +131,7 @@ namespace Nethermind.Db
             }
         }
 
-        private  IEnumerable<byte[]> GetAllValuesSortedIterator()
+        private IEnumerable<byte[]> GetAllValuesSortedIterator()
         {
             if (_sortedKeys is null) throw new ArgumentException($"cannot get ordered data");
             using SortedSet<byte[]>.Enumerator iterator = _sortedKeys.GetEnumerator();

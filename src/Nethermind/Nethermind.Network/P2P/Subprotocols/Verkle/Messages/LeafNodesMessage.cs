@@ -5,7 +5,7 @@ using System;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class LeafNodesMessage: VerkleMessageBase
+public class LeafNodesMessage : VerkleMessageBase
 {
     public LeafNodesMessage() { }
     public LeafNodesMessage(byte[][]? data)

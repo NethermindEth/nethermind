@@ -5,7 +5,7 @@ using Nethermind.Verkle.Tree.Sync;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class GetSubTreeRangeMessage: VerkleMessageBase
+public class GetSubTreeRangeMessage : VerkleMessageBase
 {
     public override int PacketType => VerkleMessageCode.GetSubTreeRange;
 

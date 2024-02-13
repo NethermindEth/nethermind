@@ -7,7 +7,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class GetLeafNodesMessageSerializer: IZeroMessageSerializer<GetLeafNodesMessage>
+public class GetLeafNodesMessageSerializer : IZeroMessageSerializer<GetLeafNodesMessage>
 {
     public void Serialize(IByteBuffer byteBuffer, GetLeafNodesMessage message)
     {

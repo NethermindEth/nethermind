@@ -5,7 +5,7 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public abstract class VerkleMessageBase: P2PMessage
+public abstract class VerkleMessageBase : P2PMessage
 {
     public override string Protocol => Contract.P2P.Protocol.Verkle;
     /// <summary>

@@ -8,7 +8,8 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Prague: Cancun {
+public class Prague : Cancun
+{
 
     private static IReleaseSpec _instance;
 

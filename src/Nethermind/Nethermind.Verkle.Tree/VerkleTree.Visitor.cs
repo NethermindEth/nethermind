@@ -78,40 +78,40 @@ public partial class VerkleTree
         switch (node.NodeType)
         {
             case VerkleNodeType.BranchNode:
-            {
-                visitor.VisitBranchNode(node, trieVisitContext);
-                trieVisitContext.Level++;
-                for (var i = 0; i < 256; i++)
                 {
-                    trieVisitContext.AbsolutePathIndex.Add((byte)i);
-                    InternalNode? childNode =
-                        _verkleStateStore.GetInternalNode(trieVisitContext.AbsolutePathIndex.ToArray());
-                    if (childNode is not null && visitor.ShouldVisit(trieVisitContext.AbsolutePathIndex.ToArray()))
-                        RecurseNodes(visitor, childNode!, trieVisitContext);
-                    trieVisitContext.AbsolutePathIndex.RemoveAt(trieVisitContext.AbsolutePathIndex.Count - 1);
-                }
+                    visitor.VisitBranchNode(node, trieVisitContext);
+                    trieVisitContext.Level++;
+                    for (var i = 0; i < 256; i++)
+                    {
+                        trieVisitContext.AbsolutePathIndex.Add((byte)i);
+                        InternalNode? childNode =
+                            _verkleStateStore.GetInternalNode(trieVisitContext.AbsolutePathIndex.ToArray());
+                        if (childNode is not null && visitor.ShouldVisit(trieVisitContext.AbsolutePathIndex.ToArray()))
+                            RecurseNodes(visitor, childNode!, trieVisitContext);
+                        trieVisitContext.AbsolutePathIndex.RemoveAt(trieVisitContext.AbsolutePathIndex.Count - 1);
+                    }
 
-                trieVisitContext.Level--;
-                break;
-            }
+                    trieVisitContext.Level--;
+                    break;
+                }
             case VerkleNodeType.StemNode:
-            {
-                visitor.VisitStemNode(node, trieVisitContext);
-                Stem stemKey = node.Stem;
-                Span<byte> childKey = stackalloc byte[32];
-                stemKey.Bytes.CopyTo(childKey);
-                trieVisitContext.Level++;
-                for (var i = 0; i < 256; i++)
                 {
-                    childKey[31] = (byte)i;
-                    var childNode = _verkleStateStore.GetLeaf(childKey.ToArray());
-                    if (childNode is not null && visitor.ShouldVisit(childKey.ToArray()))
-                        visitor.VisitLeafNode(childKey.ToArray(), trieVisitContext, childNode);
-                }
+                    visitor.VisitStemNode(node, trieVisitContext);
+                    Stem stemKey = node.Stem;
+                    Span<byte> childKey = stackalloc byte[32];
+                    stemKey.Bytes.CopyTo(childKey);
+                    trieVisitContext.Level++;
+                    for (var i = 0; i < 256; i++)
+                    {
+                        childKey[31] = (byte)i;
+                        var childNode = _verkleStateStore.GetLeaf(childKey.ToArray());
+                        if (childNode is not null && visitor.ShouldVisit(childKey.ToArray()))
+                            visitor.VisitLeafNode(childKey.ToArray(), trieVisitContext, childNode);
+                    }
 
-                trieVisitContext.Level--;
-                break;
-            }
+                    trieVisitContext.Level--;
+                    break;
+                }
             default:
                 throw new ArgumentOutOfRangeException();
         }

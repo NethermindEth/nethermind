@@ -47,7 +47,8 @@ public class HistoryOfAccounts
         {
             throw new EliasFanoBuilderException(
                 $"trying to create from shard and failed key:{key} shard:[{string.Join(", ", shard)}]",
-                e) { Shard = shard };
+                e)
+            { Shard = shard };
         }
 
         RlpStream streamNew = new(_decoder.GetLength(ef, RlpBehaviors.None));

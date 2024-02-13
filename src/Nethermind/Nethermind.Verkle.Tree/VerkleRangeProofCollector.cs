@@ -96,18 +96,18 @@ public class VerkleRangeProofCollector : IVerkleTreeVisitor
                     // if path < _startHash[:path.Count] - return and check for the next node.
                     return;
                 case 0:
-                {
-                    // this is a important case - here the path == _startHash[:path.Count]
-                    // the index of child should be _startHash[path.Count]
-                    var index = _startStem[path.Count];
-                    for (int i = index; i < 256; i++)
-                        using (trieVisitContext.AbsolutePathNext((byte)i))
-                        {
-                            NodeToVisitFilter.Add(trieVisitContext.AbsolutePathIndex.ToArray());
-                        }
+                    {
+                        // this is a important case - here the path == _startHash[:path.Count]
+                        // the index of child should be _startHash[path.Count]
+                        var index = _startStem[path.Count];
+                        for (int i = index; i < 256; i++)
+                            using (trieVisitContext.AbsolutePathNext((byte)i))
+                            {
+                                NodeToVisitFilter.Add(trieVisitContext.AbsolutePathIndex.ToArray());
+                            }
 
-                    return;
-                }
+                        return;
+                    }
                 case -1:
                     // if path > _startHash[:path.Count] -> found the first element after the start range.
                     // continue visiting and collecting next nodes and set _findFirstNodeInRange = false

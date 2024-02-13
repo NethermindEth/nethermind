@@ -45,14 +45,14 @@ public class StatelessTreeTest
         VerkleTree initTree = VerkleTestUtils.GetVerkleTreeForTest<VerkleSyncCache>(dbMode);
 
         Hash256[] pathPool = new Hash256[pathCount];
-        byte[][] leaf1 = new  byte[pathCount][];
-        byte[][] leaf2 = new  byte[pathCount][];
+        byte[][] leaf1 = new byte[pathCount][];
+        byte[][] leaf2 = new byte[pathCount][];
 
         for (int i = 0; i < pathCount; i++)
         {
             byte[] key = new byte[32];
             ((UInt256)i).ToBigEndian(key);
-            Hash256 keccak = new (key);
+            Hash256 keccak = new(key);
             pathPool[i] = keccak;
 
             byte[] valueOld = new byte[32];

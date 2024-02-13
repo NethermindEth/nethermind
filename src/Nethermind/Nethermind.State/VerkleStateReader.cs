@@ -32,7 +32,7 @@ public class VerkleStateReader : IStateReader
     {
         _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        _state = new VerkleStateTree(verkleTree, logManager);;
+        _state = new VerkleStateTree(verkleTree, logManager); ;
     }
 
     public AccountStruct? GetAccount(Hash256 stateRoot, Address address)

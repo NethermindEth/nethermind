@@ -23,7 +23,7 @@ namespace Nethermind.Verkle.Tree.Test;
 
 public class HistoryTests
 {
-    public readonly struct PersistWithCacheSize3: IPersistenceStrategy
+    public readonly struct PersistWithCacheSize3 : IPersistenceStrategy
     {
         public static bool IsUsingCache => true;
         public static int CacheSize => 3;

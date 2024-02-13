@@ -11,7 +11,7 @@ using Nethermind.Synchronization.Peers;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleSyncDownloader: ISyncDownloader<VerkleSyncBatch>
+public class VerkleSyncDownloader : ISyncDownloader<VerkleSyncBatch>
 {
     private ILogger Logger;
 

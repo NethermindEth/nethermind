@@ -9,7 +9,7 @@ using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class GetSubTreeRangeMessageSerializer: VerkleMessageSerializerBase<GetSubTreeRangeMessage>
+public class GetSubTreeRangeMessageSerializer : VerkleMessageSerializerBase<GetSubTreeRangeMessage>
 {
     public override void Serialize(IByteBuffer byteBuffer, GetSubTreeRangeMessage message)
     {

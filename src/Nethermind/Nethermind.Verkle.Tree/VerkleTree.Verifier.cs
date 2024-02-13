@@ -369,7 +369,7 @@ public partial class VerkleTree
         SortedDictionary<(byte[], byte), FrE> ysByPathAndZ = new(new ListWithByteComparer());
         foreach ((byte[] path, var z) in allPathsAndZs)
         {
-            byte[] childPath = [..path.ToArray(), z];
+            byte[] childPath = [.. path.ToArray(), z];
 
             if (!leafValuesByPathAndZ.TryGetValue((path, z), out FrE y))
                 y = !commByPath.TryGetValue(childPath, out Banderwagon yPoint) ? FrE.Zero : yPoint.MapToScalarField();

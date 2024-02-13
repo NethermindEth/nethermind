@@ -15,7 +15,7 @@ using Nethermind.Verkle.Tree.VerkleDb;
 namespace Nethermind.Verkle.Tree.TreeStore;
 
 public partial class VerkleTreeStore<TPersistence> : IVerkleTreeStore
-    where TPersistence: struct, IPersistenceStrategy
+    where TPersistence : struct, IPersistenceStrategy
 {
     private static Span<byte> RootNodeKey => Array.Empty<byte>();
     private readonly ILogger _logger;

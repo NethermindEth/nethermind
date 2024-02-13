@@ -44,7 +44,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         SetTransactions(block.Transactions);
     }
 
-    public ExecutionWitness ExecutionWitness { get; set; } = new ();
+    public ExecutionWitness ExecutionWitness { get; set; } = new();
     public UInt256 BaseFeePerGas { get; set; }
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;

@@ -107,7 +107,7 @@ public class TestSyncRangesInAHugeVerkleTree
                     // Console.WriteLine($"blockNumber:{blockNumber} uKey:{path} uValue:{leafValue.ToHexString()}");
                     tree.Insert(path, leafValue);
                     leafs[path] = leafValue;
-                    if(blockToGetIteratorFrom >= blockNumber) leafsForSync[path] = leafValue;
+                    if (blockToGetIteratorFrom >= blockNumber) leafsForSync[path] = leafValue;
                     // Console.WriteLine("new values");
                 }
                 else
@@ -115,7 +115,7 @@ public class TestSyncRangesInAHugeVerkleTree
                     // Console.WriteLine($"blockNumber:{blockNumber} nKey:{path} nValue:{leafValue.ToHexString()}");
                     tree.Insert(path, leafValue);
                     leafs[path] = leafValue;
-                    if(blockToGetIteratorFrom >= blockNumber) leafsForSync[path] = leafValue;
+                    if (blockToGetIteratorFrom >= blockNumber) leafsForSync[path] = leafValue;
                 }
             }
 
@@ -199,7 +199,7 @@ public class TestSyncRangesInAHugeVerkleTree
             tree._verkleStateStore
                 .GetLeafRangeIterator(
                     startStem,
-                    limitStem, stateRootToUse,10000000)
+                    limitStem, stateRootToUse, 10000000)
                 .ToArray();
 
         Stem endStem = range[^1].Path;
@@ -288,8 +288,8 @@ public class TestSyncRangesInAHugeVerkleTree
                 PathWithSubTree[] range =
                     remoteTree._verkleStateStore
                         .GetLeafRangeIterator(
-                            pathPool[startingHashIndex].Bytes.Slice(0,31).ToArray(),
-                            pathPool[endHashIndex].Bytes.Slice(0,31).ToArray(),
+                            pathPool[startingHashIndex].Bytes.Slice(0, 31).ToArray(),
+                            pathPool[endHashIndex].Bytes.Slice(0, 31).ToArray(),
                             remoteTree.StateRoot, 10000000)
                         .ToArray();
                 ProcessSubTreeRange(remoteTree, localStore, blockNumber, remoteTree.StateRoot, range);
@@ -344,8 +344,8 @@ public class TestSyncRangesInAHugeVerkleTree
             Console.WriteLine($"{startingHashIndex} {endHashIndex}");
 
             PathWithSubTree[] range = remoteTree._verkleStateStore.GetLeafRangeIterator(
-                pathPool[startingHashIndex].Bytes.Slice(0,31).ToArray(),
-                pathPool[endHashIndex].Bytes.Slice(0,31).ToArray(),
+                pathPool[startingHashIndex].Bytes.Slice(0, 31).ToArray(),
+                pathPool[endHashIndex].Bytes.Slice(0, 31).ToArray(),
                 remoteTree.StateRoot, 100000000).ToArray();
             ProcessSubTreeRange(remoteTree, localStore, numBlocks1 + numBlocks2, remoteTree.StateRoot, range);
 
@@ -467,7 +467,7 @@ public class TestSyncRangesInAHugeVerkleTree
             DateTime check5 = DateTime.Now;
             Random.NextBytes(key);
             Random.NextBytes(value);
-            for (int j = (i-10); j < i; j += 1)
+            for (int j = (i - 10); j < i; j += 1)
             {
                 Random.NextBytes(key);
                 Random.NextBytes(value);

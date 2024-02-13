@@ -37,7 +37,7 @@ public class OptimismBlockProcessor : BlockProcessor
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;
-        ReceiptsTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
+        ExecutionTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
     }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)

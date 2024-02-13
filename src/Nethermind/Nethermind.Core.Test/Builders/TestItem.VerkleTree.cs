@@ -54,7 +54,7 @@ public static partial class TestItem
     }
 
     public static IVerkleTreeStore GetVerkleStore<TCache>(DbMode dbMode)
-    where TCache: struct, IPersistenceStrategy
+    where TCache : struct, IPersistenceStrategy
     {
         IDbProvider provider;
         switch (dbMode)

@@ -9,7 +9,7 @@ using Nethermind.Verkle.Tree.TreeStore;
 
 namespace Nethermind.State;
 
-public class ReadOnlyVerkleWorldStateManager: IWorldStateManager
+public class ReadOnlyVerkleWorldStateManager : IWorldStateManager
 {
     private IReadOnlyDbProvider _readOnlyDbProvider;
     private IReadOnlyVerkleTreeStore? _readOnlyTrieStore;

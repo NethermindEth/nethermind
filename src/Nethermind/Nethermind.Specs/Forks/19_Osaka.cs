@@ -7,7 +7,8 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Specs.Forks;
 
-public class Osaka: Prague {
+public class Osaka : Prague
+{
 
     private static IReleaseSpec _instance;
 

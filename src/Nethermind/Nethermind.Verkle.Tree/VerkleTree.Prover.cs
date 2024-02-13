@@ -57,7 +57,7 @@ public partial class VerkleTree
         foreach (KeyValuePair<byte[], List<SuffixStateDiff>> stemStateDiffData in stemStateDiff)
         {
             stemStateDiffList[i++] = new StemStateDiff
-                { Stem = stemStateDiffData.Key, SuffixDiffs = stemStateDiffData.Value };
+            { Stem = stemStateDiffData.Key, SuffixDiffs = stemStateDiffData.Value };
         }
 
         return new ExecutionWitness(stemStateDiffList, proof);

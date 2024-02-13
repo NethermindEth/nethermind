@@ -510,11 +510,11 @@ public class VerkleWorldState : IWorldState
         headerTreeKey[31] = AccountHeader.Balance;
         UInt256 balance = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
         headerTreeKey[31] = AccountHeader.Nonce;
-        UInt256 nonce = new ((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
+        UInt256 nonce = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
         headerTreeKey[31] = AccountHeader.CodeHash;
         byte[]? codeHash = (_tree.Get(headerTreeKey) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
         headerTreeKey[31] = AccountHeader.CodeSize;
-        UInt256 codeSize = new ((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
+        UInt256 codeSize = new((_tree.Get(headerTreeKey) ?? Array.Empty<byte>()).ToArray());
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
     }
@@ -604,7 +604,7 @@ public class VerkleWorldState : IWorldState
         {
             // this is to make sure that ChangeType for new account stays ChangeType.New so that we can handle Eip158 properly
             // for new account - we dont save Empty accounts, but for old accounts we can save empty accounts
-            if (stack.Count > 0 && _changes[stack.Peek()]?.ChangeType == ChangeType.New )
+            if (stack.Count > 0 && _changes[stack.Peek()]?.ChangeType == ChangeType.New)
             {
                 changeType = ChangeType.New;
             }

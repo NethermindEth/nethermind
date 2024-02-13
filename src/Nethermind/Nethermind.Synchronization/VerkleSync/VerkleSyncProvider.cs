@@ -18,7 +18,7 @@ using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
-public class VerkleSyncProvider: IVerkleSyncProvider
+public class VerkleSyncProvider : IVerkleSyncProvider
 {
     private readonly ObjectPool<IVerkleTreeStore> _trieStorePool;
     private readonly ILogManager _logManager;
@@ -44,7 +44,7 @@ public class VerkleSyncProvider: IVerkleSyncProvider
 
         if (response.SubTrees.Length == 0 && response.Proofs.Length == 0)
         {
-            if(_logger.IsTrace) _logger.Trace($"VERKLE_SYNC - GetSubTreeRange - requested expired RootHash:{request.RootHash}");
+            if (_logger.IsTrace) _logger.Trace($"VERKLE_SYNC - GetSubTreeRange - requested expired RootHash:{request.RootHash}");
 
             result = AddRangeResult.ExpiredRootHash;
         }
@@ -120,7 +120,7 @@ public class VerkleSyncProvider: IVerkleSyncProvider
     public bool HealTheTreeFromExecutionWitness(ExecutionWitness execWitness, Banderwagon root)
     {
         IVerkleTreeStore store = _trieStorePool.Get();
-        VerkleTree tree = new (store, LimboLogs.Instance);
+        VerkleTree tree = new(store, LimboLogs.Instance);
         return tree.InsertIntoStatelessTree(execWitness, root, false);
     }
 

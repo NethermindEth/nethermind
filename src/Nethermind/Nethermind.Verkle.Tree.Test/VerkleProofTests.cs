@@ -226,7 +226,7 @@ public class VerkleProofTest
 
         sw.Stop();
 
-        Console.WriteLine("Elapsed={0}",sw.Elapsed/iteration);
+        Console.WriteLine("Elapsed={0}", sw.Elapsed / iteration);
     }
 
     [Test]
@@ -249,7 +249,7 @@ public class VerkleProofTest
 
         for (int i = 0; i < 1000; i++)
         {
-            tree.Insert((Hash256)keys[i],  values[i]);
+            tree.Insert((Hash256)keys[i], values[i]);
             tree.Commit();
         }
         tree.CommitTree(0);

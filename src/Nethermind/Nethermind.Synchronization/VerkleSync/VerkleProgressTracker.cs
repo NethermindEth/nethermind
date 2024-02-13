@@ -135,7 +135,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
             LogRequest($"LeafsToRefresh:{LeafsToRefresh.Count}");
 
             int queueLength = LeafsToRefresh.Count;
-            byte[][] paths = new  byte[queueLength][];
+            byte[][] paths = new byte[queueLength][];
 
             for (int i = 0; i < queueLength && LeafsToRefresh.TryDequeue(out var acc); i++)
             {

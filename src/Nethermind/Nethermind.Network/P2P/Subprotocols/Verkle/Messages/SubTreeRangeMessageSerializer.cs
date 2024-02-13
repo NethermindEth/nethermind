@@ -8,7 +8,7 @@ using Nethermind.Verkle.Tree.Sync;
 
 namespace Nethermind.Network.P2P.Subprotocols.Verkle.Messages;
 
-public class SubTreeRangeMessageSerializer: IZeroMessageSerializer<SubTreeRangeMessage>
+public class SubTreeRangeMessageSerializer : IZeroMessageSerializer<SubTreeRangeMessage>
 {
 
     private readonly Func<RlpStream, PathWithSubTree> _decodeSubTree;
@@ -88,7 +88,7 @@ public class SubTreeRangeMessageSerializer: IZeroMessageSerializer<SubTreeRangeM
     {
         stream.ReadSequenceLength();
         byte[] path = stream.DecodeByteArray();
-        LeafInSubTree[]? subTrees = stream.DecodeArray(_decodeLeaf);;
+        LeafInSubTree[]? subTrees = stream.DecodeArray(_decodeLeaf); ;
         PathWithSubTree data = new(path, subTrees);
         return data;
     }

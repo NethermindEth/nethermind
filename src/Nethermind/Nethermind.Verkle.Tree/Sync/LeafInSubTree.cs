@@ -42,7 +42,7 @@ public readonly struct LeafInSubTree(byte suffixByte, byte[]? leaf)
     }
 
     public override int GetHashCode() => throw new NotImplementedException();
-    public static bool operator ==(LeafInSubTree left, LeafInSubTree right)=> left.Equals(in right);
+    public static bool operator ==(LeafInSubTree left, LeafInSubTree right) => left.Equals(in right);
 
-    public static bool operator !=(LeafInSubTree left, LeafInSubTree right)=> !left.Equals(in right);
+    public static bool operator !=(LeafInSubTree left, LeafInSubTree right) => !left.Equals(in right);
 }
