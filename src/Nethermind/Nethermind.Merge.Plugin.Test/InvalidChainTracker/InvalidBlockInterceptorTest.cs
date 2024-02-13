@@ -84,8 +84,8 @@ public class InvalidBlockInterceptorTest
         Block block = Build.A.Block.TestObject;
         block.Header.StateRoot = Keccak.Zero;
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
@@ -102,7 +102,7 @@ public class InvalidBlockInterceptorTest
             block.Transactions.Take(9).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
@@ -120,7 +120,7 @@ public class InvalidBlockInterceptorTest
             block.Withdrawals!.Take(8).ToArray()
         ));
 
-        _baseValidator.ValidateSuggestedBlock(block).Returns(false);
+        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
         _invalidBlockInterceptor.ValidateSuggestedBlock(block);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);

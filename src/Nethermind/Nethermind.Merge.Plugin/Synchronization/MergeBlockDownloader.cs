@@ -214,7 +214,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     }
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {
                         string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
                         if (_logger.IsWarn) _logger.Warn(message);

@@ -104,4 +104,7 @@ public static class BlockErrorMessages
 
     public const string HeaderBlobGasMismatch =
         "HeaderBlobGasMismatch: Blob gas in header does not match calculated.";
+
+    public const string InvalidTimestamp =
+        "InvalidTimestamp: Timestamp in header cannot be lower than ancestor.";
 }

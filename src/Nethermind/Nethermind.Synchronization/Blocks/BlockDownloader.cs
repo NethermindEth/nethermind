@@ -340,7 +340,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {
                         throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }

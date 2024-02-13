@@ -41,16 +41,19 @@ public class BlockValidator : IBlockValidator
 
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle)
     {
-        return _headerValidator.Validate(header, parent, isUncle);
+        return _headerValidator.Validate(header, parent, isUncle, out _);
     }
+
     public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
     {
         return _headerValidator.Validate(header, parent, isUncle, out error);
     }
+
     public bool Validate(BlockHeader header, bool isUncle)
     {
-        return _headerValidator.Validate(header, isUncle);
+        return _headerValidator.Validate(header, isUncle, out _);
     }
+
     public bool Validate(BlockHeader header, bool isUncle, out string? error)
     {
         return _headerValidator.Validate(header, isUncle, out error);

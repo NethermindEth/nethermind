@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Microsoft.Extensions.Options;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus.Messages;
@@ -76,8 +77,7 @@ namespace Nethermind.Consensus.Validators
             }
 
             IReleaseSpec spec = _specProvider.GetSpec(header);
-            bool extraDataValid = ValidateExtraData(header, parent, spec, isUncle);
-            if (!extraDataValid)
+            if (!ValidateExtraData(header, parent, spec, isUncle))
             {
                 error = BlockErrorMessages.InvalidExtraData;
                 return false;
@@ -101,41 +101,40 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            bool totalDifficultyCorrect = ValidateTotalDifficulty(parent, header);
-            if (!totalDifficultyCorrect)
+            if (!ValidateTotalDifficulty(parent, header))
             {
                 error = BlockErrorMessages.InvalidTotalDifficulty;
                 return false;
             }
 
-            bool sealParamsCorrect = _sealValidator.ValidateParams(parent, header, isUncle);
-            if (!sealParamsCorrect)
+            if (!_sealValidator.ValidateParams(parent, header, isUncle))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - seal parameters incorrect");
                 error = BlockErrorMessages.InvalidSealParameters;
                 return false;
             }
 
-            bool gasUsedBelowLimit = header.GasUsed <= header.GasLimit;
-            if (!gasUsedBelowLimit)
+            if (header.GasUsed > header.GasLimit)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - gas used above gas limit");
                 error = BlockErrorMessages.ExceededGasLimit;
                 return false;
             }
 
-            bool gasLimitInRange = ValidateGasLimitRange(header, parent, spec);
-            if (!gasLimitInRange)
+            if (!ValidateGasLimitRange(header, parent, spec))
             {
                 error = BlockErrorMessages.InvalidGasLimit;
                 return false;
             }
             // bool gasLimitAboveAbsoluteMinimum = header.GasLimit >= 125000; // described in the YellowPaper but not followed
 
-            bool timestampValid = ValidateTimestamp(parent, header);
+            if (!ValidateTimestamp(parent, header))
+            {
+                error = BlockErrorMessages.InvalidTimestamp;
+                return false;
+            }
 
-            bool numberIsParentPlusOne = header.Number == parent.Number + 1;
-            if (!numberIsParentPlusOne)
+            if (header.Number != parent.Number + 1)
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid block header ({header.Hash}) - block number is not parent + 1");
                 error = BlockErrorMessages.InvalidBlockNumber;
@@ -157,19 +156,7 @@ namespace Nethermind.Consensus.Validators
                 }
             }
 
-            bool eip4844Valid = ValidateBlobGasFields(header, parent, spec, out error);
-
-            return
-                totalDifficultyCorrect &&
-                gasUsedBelowLimit &&
-                gasLimitInRange &&
-                sealParamsCorrect &&
-                // gasLimitAboveAbsoluteMinimum && // described in the YellowPaper but not followed
-                timestampValid &&
-                numberIsParentPlusOne &&
-                hashAsExpected &&
-                extraDataValid &&
-                eip4844Valid;
+            return ValidateBlobGasFields(header, parent, spec, out error);
         }
 
         private bool ValidateFieldLimit(BlockHeader blockHeader, out string? error)
