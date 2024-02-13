@@ -323,6 +323,17 @@ namespace Nethermind.Benchmarks.Store
         }
 
         [Benchmark]
+        public void ReadWithMemoryTrieStoreReadOnly()
+        {
+            StateTree tempTree = new StateTree(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entries[i].Item1);
+            }
+        }
+
+        [Benchmark]
         public void ReadAndDeserialize()
         {
             StateTree tempTree = new StateTree(new TrieStore(_backingMemory, NullLogManager.Instance), NullLogManager.Instance);
