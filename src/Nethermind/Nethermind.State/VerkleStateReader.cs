@@ -40,6 +40,27 @@ public class VerkleStateReader : IStateReader
         return GetState(stateRoot, address);
     }
 
+    public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account)
+    {
+        if (stateRoot == Keccak.EmptyTreeHash)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
+
+        Metrics.StateTreeReads++;
+        AccountStruct? accountX = GetAccount(stateRoot, address);
+        if (accountX is null)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
+
+        account = accountX.Value;
+        return true;
+
+    }
+
     public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index) => _state.Get(address, index, stateRoot);
     public byte[]? GetCode(Hash256 codeHash)
     {
@@ -64,6 +85,11 @@ public class VerkleStateReader : IStateReader
     public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
     {
         _state.Accept(treeVisitor, rootHash, visitingOptions);
+    }
+
+    public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
+    {
+        throw new NotImplementedException();
     }
 
     public bool HasStateForRoot(Hash256 stateRoot)

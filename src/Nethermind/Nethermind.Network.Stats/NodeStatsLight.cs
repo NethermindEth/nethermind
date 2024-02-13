@@ -31,6 +31,7 @@ namespace Nethermind.Stats
         private decimal? _averageBodiesTransferSpeed;
         private decimal? _averageReceiptsTransferSpeed;
         private decimal? _averageSnapRangesTransferSpeed;
+        private decimal? _averageVerkleRangesTransferSpeed;
         private decimal? _averageLatency;
 
         private readonly int[] _statCountersArray;
@@ -189,6 +190,9 @@ namespace Nethermind.Stats
                     case TransferSpeedType.SnapRanges:
                         UpdateValue(ref _averageSnapRangesTransferSpeed, bytesPerMillisecond);
                         break;
+                    case TransferSpeedType.VerkleSyncRanges:
+                        UpdateValue(ref _averageVerkleRangesTransferSpeed, bytesPerMillisecond);
+                        break;
                     default:
                         throw new ArgumentOutOfRangeException(nameof(transferSpeedType), transferSpeedType, null);
                 }
@@ -210,6 +214,7 @@ namespace Nethermind.Stats
                 TransferSpeedType.Bodies => _averageBodiesTransferSpeed,
                 TransferSpeedType.Receipts => _averageReceiptsTransferSpeed,
                 TransferSpeedType.SnapRanges => _averageSnapRangesTransferSpeed,
+                TransferSpeedType.VerkleSyncRanges => _averageVerkleRangesTransferSpeed,
                 _ => throw new ArgumentOutOfRangeException()
             });
         }

@@ -143,11 +143,6 @@ public class VerkleWorldState : IWorldState
 
     public bool HasStateForRoot(Hash256 stateRoot) => _tree.HasStateForStateRoot(stateRoot);
 
-    AccountStruct IAccountStateProvider.GetAccount(Address address)
-    {
-        return GetAccount(address).ToStruct();
-    }
-
     public Account GetAccount(Address address)
     {
         return GetThroughCache(address) ?? Account.TotallyEmpty;
@@ -157,6 +152,12 @@ public class VerkleWorldState : IWorldState
     {
         Account? account = GetThroughCache(address);
         return account?.IsEmpty ?? true;
+    }
+
+    public bool TryGetAccount(Address address, out AccountStruct account)
+    {
+        account = GetAccount(address).ToStruct();
+        return !account.IsTotallyEmpty;
     }
 
     public UInt256 GetNonce(Address address)

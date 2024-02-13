@@ -92,6 +92,19 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
     int BackgroundTaskConcurrency { get; set; }
+
+    [ConfigItem(Description = "If 'true' then the node processes the block in a stateless fashion", DefaultValue = "false")]
+    bool StatelessProcessingEnabled { get; set; }
+
+    [ConfigItem(Description = "If 'true' then the verkle proof in included in the block", DefaultValue = "true")]
+    bool ProofsInBlock { get; set; }
+
+    [ConfigItem(Description = "If 'true' then the verkle proof in blocks are verified while block processing", DefaultValue = "false")]
+    bool VerifyProofsInBlock { get; set; }
+
+    [ConfigItem(Description = "If 'true' then the verkle proof in blocks are verified while block processing", DefaultValue = "false")]
+    bool GenerateVerkleProofsForBlock { get; set; }
+
 }
 
 public enum DiagnosticMode

@@ -1,0 +1,54 @@
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
+using Nethermind.Logging;
+using Nethermind.Synchronization.VerkleSync;
+using NSubstitute;
+using NUnit.Framework;
+
+namespace Nethermind.Synchronization.Test.VerkleSync;
+
+public class VerkleProgressTrackerTest
+{
+    [Test]
+    public void Will_create_multiple_get_address_range_request()
+    {
+        var database = new MemDb();
+        IDbProvider dbProvider = Substitute.For<IDbProvider>();
+        dbProvider.InternalNodesDb.Returns(database);
+        BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
+        VerkleProgressTracker progressTracker = new(blockTree, dbProvider, LimboLogs.Instance, 4);
+
+        bool finished = progressTracker.IsFinished(out VerkleSyncBatch? request);
+        request!.SubTreeRangeRequest.Should().NotBeNull();
+        request.SubTreeRangeRequest!.StartingStem.Bytes[0].Should().Be(0);
+        request.SubTreeRangeRequest.LimitStem!.Bytes[0].Should().Be(64);
+        finished.Should().BeFalse();
+
+        finished = progressTracker.IsFinished(out request);
+        request!.SubTreeRangeRequest.Should().NotBeNull();
+        request.SubTreeRangeRequest!.StartingStem.Bytes[0].Should().Be(64);
+        request.SubTreeRangeRequest.LimitStem!.Bytes[0].Should().Be(128);
+        finished.Should().BeFalse();
+
+        finished = progressTracker.IsFinished(out request);
+        request!.SubTreeRangeRequest.Should().NotBeNull();
+        request.SubTreeRangeRequest!.StartingStem.Bytes[0].Should().Be(128);
+        request.SubTreeRangeRequest.LimitStem!.Bytes[0].Should().Be(192);
+        finished.Should().BeFalse();
+
+        finished = progressTracker.IsFinished(out request);
+        request!.SubTreeRangeRequest.Should().NotBeNull();
+        request.SubTreeRangeRequest!.StartingStem.Bytes[0].Should().Be(192);
+        request.SubTreeRangeRequest.LimitStem!.Bytes[0].Should().Be(255);
+        finished.Should().BeFalse();
+
+        finished = progressTracker.IsFinished(out request);
+        request.Should().BeNull();
+        finished.Should().BeFalse();
+    }
+}

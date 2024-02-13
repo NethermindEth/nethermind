@@ -172,7 +172,7 @@ public class InitDatabaseSnapshot : InitDatabase
         long totalBytesRead = snapshotFileStream.Length;
         long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
 
-        using ProgressTracker progressTracker = new(
+        using SnapProgressTracker snapProgressTracker = new(
             _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
 
         byte[] buffer = new byte[BufferSize];
@@ -183,7 +183,7 @@ public class InitDatabaseSnapshot : InitDatabase
                 break;
             await snapshotFileStream.WriteAsync(buffer.AsMemory(0, bytesRead), cancellationToken);
 
-            progressTracker.AddProgress(bytesRead);
+            snapProgressTracker.AddProgress(bytesRead);
         }
 
         if (_logger.IsInfo)

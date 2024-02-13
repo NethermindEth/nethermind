@@ -15,10 +15,11 @@ using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
+using Nethermind.Synchronization.RangeSync;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class ProgressTracker : IDisposable
+    public class SnapProgressTracker: IRangeProgressTracker<SnapSyncBatch>, IDisposable
     {
         private const string NO_REQUEST = "Skipped Request";
 
@@ -55,14 +56,14 @@ namespace Nethermind.Synchronization.SnapSync
         private ConcurrentQueue<AccountWithStorageStartingHash> AccountsToRefresh { get; set; } = new();
 
 
-        private readonly Pivot _pivot;
+        private readonly RangeSync.Pivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
+        public SnapProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
-            _pivot = new Pivot(blockTree, logManager);
+            _pivot = new RangeSync.Pivot(blockTree, logManager);
 
             if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
                 throw new ArgumentException("Account range partition must be between 1 to 256.");
@@ -173,7 +174,7 @@ namespace Nethermind.Synchronization.SnapSync
             else
             {
                 nextBatch = null;
-                bool rangePhaseFinished = IsSnapGetRangesFinished();
+                bool rangePhaseFinished = IsGetRangesFinished();
                 if (rangePhaseFinished)
                 {
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
@@ -182,7 +183,7 @@ namespace Nethermind.Synchronization.SnapSync
 
                 LogRequest(NO_REQUEST);
 
-                return IsSnapGetRangesFinished();
+                return IsGetRangesFinished();
             }
 
             return false;
@@ -362,7 +363,7 @@ namespace Nethermind.Synchronization.SnapSync
             partition.MoreAccountsToRight = moreChildrenToRight && nextPath < hashLimit;
         }
 
-        public bool IsSnapGetRangesFinished()
+        public bool IsGetRangesFinished()
         {
             return AccountRangeReadyForRequest.IsEmpty
                 && StoragesToRetrieve.IsEmpty

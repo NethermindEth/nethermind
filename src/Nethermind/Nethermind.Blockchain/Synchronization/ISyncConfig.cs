@@ -146,4 +146,10 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
     int MultiSyncModeSelectorLoopTimerMs { get; set; }
+
+    [ConfigItem(Description = "[EXPERIMENTAL] Enables Verkle Sync protocol.", DefaultValue = "false")]
+    public bool VerkleSync { get; set; }
+
+    [ConfigItem(Description = "Number of account range partition to create. Increase verkle sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
+    public int VerkleSyncAccountRangePartitionCount { get; set; }
 }

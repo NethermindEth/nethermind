@@ -8,14 +8,14 @@ using ITimer = Nethermind.Core.Timers.ITimer;
 
 namespace Nethermind.Init.Snapshot;
 
-public class ProgressTracker : IDisposable
+public class SnapProgressTracker : IDisposable
 {
     private readonly ILogger _logger;
     private readonly ITimer _timer;
     private readonly long? _total;
     private long _current;
 
-    public ProgressTracker(ILogManager logManager, ITimerFactory timerFactory, TimeSpan interval, long current = 0,
+    public SnapProgressTracker(ILogManager logManager, ITimerFactory timerFactory, TimeSpan interval, long current = 0,
         long? total = null)
     {
         _total = total;

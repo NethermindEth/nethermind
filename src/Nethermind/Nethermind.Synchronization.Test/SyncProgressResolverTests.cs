@@ -11,6 +11,7 @@ using Nethermind.State;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.VerkleSync;
 using NSubstitute;
 using NSubstitute.ReturnsExtensions;
 using NUnit.Framework;
@@ -183,6 +184,7 @@ namespace Nethermind.Synchronization.Test
                 Substitute.For<ISyncFeed<BodiesSyncBatch?>>(),
                 receiptFeed,
                 Substitute.For<ISyncFeed<SnapSyncBatch?>>(),
+                Substitute.For<ISyncFeed<VerkleSyncBatch?>>(),
                 limboLogs
             );
         }

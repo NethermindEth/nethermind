@@ -6,6 +6,7 @@ using Nethermind.Db;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Synchronization.VerkleSync;
 
 namespace Nethermind.Synchronization.DbTuner;
 
@@ -22,6 +23,7 @@ public class SyncDbTuner
     public SyncDbTuner(
         ISyncConfig syncConfig,
         ISyncFeed<SnapSyncBatch>? snapSyncFeed,
+        ISyncFeed<VerkleSyncBatch>? verkleSyncFeed,
         ISyncFeed<BodiesSyncBatch>? bodiesSyncFeed,
         ISyncFeed<ReceiptsSyncBatch>? receiptSyncFeed,
         ITunableDb? stateDb,
@@ -48,6 +50,11 @@ public class SyncDbTuner
             receiptSyncFeed.StateChanged += ReceiptsStateChanged;
         }
 
+        if (verkleSyncFeed is not null)
+        {
+            verkleSyncFeed.StateChanged += VerkleStateChanged;
+        }
+
         _stateDb = stateDb;
         _codeDb = codeDb;
         _blockDb = blockDb;
@@ -58,6 +65,20 @@ public class SyncDbTuner
     }
 
     private void SnapStateChanged(object? sender, SyncFeedStateEventArgs e)
+    {
+        if (e.NewState == SyncFeedState.Active)
+        {
+            _stateDb?.Tune(_tuneType);
+            _codeDb?.Tune(_tuneType);
+        }
+        else if (e.NewState == SyncFeedState.Finished)
+        {
+            _stateDb?.Tune(ITunableDb.TuneType.Default);
+            _codeDb?.Tune(ITunableDb.TuneType.Default);
+        }
+    }
+
+    private void VerkleStateChanged(object? sender, SyncFeedStateEventArgs e)
     {
         if (e.NewState == SyncFeedState.Active)
         {

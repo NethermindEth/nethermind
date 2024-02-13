@@ -17,14 +17,14 @@ using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
 
-public class ProgressTrackerTests
+public class SnapProgressTrackerTests
 {
     [Test]
     [Repeat(3)]
     public async Task Did_not_have_race_issue()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -45,7 +45,7 @@ public class ProgressTrackerTests
         {
             for (int i = 0; i < loopIteration; i++)
             {
-                progressTracker.IsSnapGetRangesFinished().Should().BeFalse();
+                progressTracker.IsGetRangesFinished().Should().BeFalse();
             }
         });
 
@@ -57,7 +57,7 @@ public class ProgressTrackerTests
     public void Will_create_multiple_get_address_range_request()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
+        using SnapProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
 
         bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -96,9 +96,9 @@ public class ProgressTrackerTests
     public void Will_deque_code_request_if_high_even_if_storage_queue_is_not_empty()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new SnapProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
 
-        for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
+        for (int i = 0; i < SnapProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
         {
             progressTracker.EnqueueAccountStorage(new PathWithAccount()
             {
@@ -106,7 +106,7 @@ public class ProgressTrackerTests
             });
         }
 
-        for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
+        for (int i = 0; i < SnapProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
             progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
@@ -121,9 +121,9 @@ public class ProgressTrackerTests
     public void Will_deque_storage_request_if_high()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using SnapProgressTracker progressTracker = new SnapProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
 
-        for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
+        for (int i = 0; i < SnapProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
         {
             progressTracker.EnqueueAccountStorage(new PathWithAccount()
             {
@@ -131,7 +131,7 @@ public class ProgressTrackerTests
             });
         }
 
-        for (int i = 0; i < ProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
+        for (int i = 0; i < SnapProgressTracker.HIGH_CODES_QUEUE_SIZE; i++)
         {
             progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
@@ -149,7 +149,7 @@ public class ProgressTrackerTests
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
         TestMemDb memDb = new();
-        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+        using SnapProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -160,6 +160,6 @@ public class ProgressTrackerTests
         finished.Should().BeTrue();
 
         memDb.WasFlushed.Should().BeTrue();
-        memDb[ProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
+        memDb[SnapProgressTracker.ACC_PROGRESS_KEY].Should().BeEquivalentTo(Keccak.MaxValue.BytesToArray());
     }
 }
