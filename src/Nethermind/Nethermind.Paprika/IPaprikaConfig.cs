@@ -8,20 +8,24 @@ namespace Nethermind.Paprika;
 [ConfigCategory(HiddenFromDocs = true)]
 public interface IPaprikaConfig : IConfig
 {
-    [ConfigItem(Description = "The depths of reads that should be cached by Paprika. If a read takes more than this number blocks to traverse, try to cache it", DefaultValue = PaprikaConfig.DefaultCacheReadsBeyond)]
-    public ushort CacheBeyond { get; set; }
+    [ConfigItem(Description = "The depths of reads that should be cached for State data. If a read takes more than this number blocks to traverse, try to cache it", DefaultValue = "8")]
+    public ushort CacheStateBeyond { get; set; }
 
-    [ConfigItem(Description = "The total budget of entries to be used per block", DefaultValue  = PaprikaConfig.DefaultCacheEntriesPerBlock)]
-    public int CachePerBlock { get; set; }
+    [ConfigItem(Description = "The total budget of entries to be used per block for state", DefaultValue  = "2000")]
+    public int CacheStatePerBlock { get; set; }
+
+    [ConfigItem(Description = "The depths of reads that should be cached for Merkle data. If a read takes more than this number blocks to traverse, try to cache it", DefaultValue = "8")]
+    public ushort CacheMerkleBeyond { get; set; }
+
+    [ConfigItem(Description = "The total budget of entries to be used per block", DefaultValue  = "2000")]
+    public int CacheMerklePerBlock { get; set; }
 }
 
 public class PaprikaConfig : IPaprikaConfig
 {
-    public const string DefaultCacheReadsBeyond = "16";
+    public ushort CacheStateBeyond { get; set; } = 16;
+    public int CacheStatePerBlock { get; set; } = 2000;
 
-    public ushort CacheBeyond { get; set; } = ushort.Parse(DefaultCacheReadsBeyond);
-
-    public const string DefaultCacheEntriesPerBlock = "2000";
-
-    public int CachePerBlock { get; set; } = int.Parse(DefaultCacheEntriesPerBlock);
+    public ushort CacheMerkleBeyond { get; set; } = 16;
+    public int CacheMerklePerBlock { get; set; } = 2000;
 }

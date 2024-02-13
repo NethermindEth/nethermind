@@ -27,11 +27,12 @@ public class PaprikaStateFactory : IStateFactory
 
     public PaprikaStateFactory(string directory, IPaprikaConfig config)
     {
-        var options = new CacheBudget.Options(config.CachePerBlock, config.CacheBeyond);
+        var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
+        var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, true);
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, options);
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }
