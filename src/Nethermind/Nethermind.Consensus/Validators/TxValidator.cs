@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Validators
             // validate type before calculating intrinsic gas to avoid exception
             return ValidateTxType(transaction, releaseSpec, ref error)
                    // This is unnecessarily calculated twice - at validation and execution times.
-                   && ValidateWithError(transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec), TxErrorMessages.IntrinsicGasTooLow, ref error)
+                   && ValidateWithError(transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec), TxErrorMessages.IntrinsicGasTooLow, ref error)
                    // if it is a call or a transfer then we require the 'To' field to have a value while for an init it will be empty
                    && ValidateWithError(ValidateSignature(transaction, releaseSpec), TxErrorMessages.InvalidTxSignature, ref error)
                    && ValidateChainId(transaction, ref error)
