@@ -34,12 +34,12 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(RlpStream rlpStream)
+        public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
         {
-            rlpStream.SkipLength();
-            rlpStream.SkipItem();
-            rlpStream.SkipItem();
-            Hash256 storageRoot = DecodeStorageRoot(rlpStream);
+            context.SkipLength();
+            context.SkipItem();
+            context.SkipItem();
+            Hash256 storageRoot = DecodeStorageRoot(context);
             return storageRoot;
         }
 
@@ -184,11 +184,28 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = rlpStream.DecodeKeccak();
+                storageRoot = rlpStream.DecodeKeccak()!;
             }
 
             return storageRoot;
         }
+
+        private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
+        {
+            Hash256 storageRoot;
+            if (_slimFormat && context.IsNextItemEmptyArray())
+            {
+                context.ReadByte();
+                storageRoot = Keccak.EmptyTreeHash;
+            }
+            else
+            {
+                storageRoot = context.DecodeKeccak()!;
+            }
+
+            return storageRoot;
+        }
+
 
         private Hash256 DecodeCodeHash(RlpStream rlpStream)
         {

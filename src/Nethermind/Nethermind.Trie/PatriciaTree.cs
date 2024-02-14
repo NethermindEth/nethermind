@@ -1232,7 +1232,8 @@ namespace Nethermind.Trie
                 else
                 {
                     ReadOnlySpan<byte> bytes = Get(storageAddr.Bytes, rootHash);
-                    rootHash = AccountDecoder.Instance.DecodeStorageRootOnly(new RlpStream(bytes.ToArray()));
+                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
+                    rootHash = AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
                 }
             }
 
