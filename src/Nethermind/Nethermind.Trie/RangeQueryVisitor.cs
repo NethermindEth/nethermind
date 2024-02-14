@@ -56,9 +56,17 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private readonly AccountDecoder _slimDecoder = new AccountDecoder(slimFormat: true);
     private readonly CancellationToken _cancellationToken;
 
+    public ReadFlags ExtraReadFlag { get; }
 
-    public ReadFlags ExtraReadFlag => ReadFlags.HintReadAhead;
-    public RangeQueryVisitor(in ValueHash256 startHash, in ValueHash256 limitHash, bool isAccountVisitor, long byteLimit = -1, long hardByteLimit = 200000, int nodeLimit = 10000, CancellationToken cancellationToken = default)
+    public RangeQueryVisitor(
+        in ValueHash256 startHash,
+        in ValueHash256 limitHash,
+        bool isAccountVisitor,
+        long byteLimit = -1,
+        long hardByteLimit = 200000,
+        int nodeLimit = 10000,
+        ReadFlags readFlags = ReadFlags.None,
+        CancellationToken cancellationToken = default)
     {
         if (startHash != ValueKeccak.Zero)
         {
@@ -75,6 +83,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
         _hardByteLimit = hardByteLimit;
+        ExtraReadFlag = readFlags;
 
         TreePath startHashPath = new TreePath(startHash, 64);
         _truncatedStartHashes = new TreePath[65];

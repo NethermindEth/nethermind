@@ -37,10 +37,15 @@ namespace Nethermind.Synchronization.SnapSync;
 public class SnapServer : ISnapServer
 {
     private readonly IReadOnlyTrieStore _store;
-    private readonly TrieStoreWithReadFlags _storeWithReadahead;
+    private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
+
+    // On flatdb/halfpath, using ReadAhead flag significantly reduce IOPs by reading a larger chunk of sequential data.
+    // It also skip the block cache, which reduces impact on block processing.
+    // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
+    private readonly ReadFlags _optimizedReadFlags = ReadFlags.None;
 
     // Some cache to make sure we don't accidentally serve blocks with missing trie node.
     // We don't know for sure if a tree was pruned with just the root hash.
@@ -54,7 +59,7 @@ public class SnapServer : ISnapServer
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        _storeWithReadahead = new TrieStoreWithReadFlags(_store, ReadFlags.HintReadAhead);
+        _storeWithReadFlag = new TrieStoreWithReadFlags(_store, _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
@@ -116,7 +121,6 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
-                        Hash256 thePath = new Hash256(requestedPath[0]);
                         Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
                         if (account is null)
                         {
@@ -209,7 +213,7 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
 
         long responseSize = 0;
-        StateTree tree = new(_storeWithReadahead, _logManager);
+        StateTree tree = new(_storeWithReadFlag, _logManager);
 
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
         ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
@@ -281,7 +285,7 @@ public class SnapServer : ISnapServer
     {
         bool isStorage = storage != null;
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
