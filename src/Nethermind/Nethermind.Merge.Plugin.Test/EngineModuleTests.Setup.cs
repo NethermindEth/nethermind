@@ -235,6 +235,7 @@ public partial class EngineModuleTests
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
+                BlockTree,
                 LogManager,
                 WithdrawalProcessor);
 

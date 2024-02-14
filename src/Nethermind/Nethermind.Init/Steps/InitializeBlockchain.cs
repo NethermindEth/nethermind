@@ -210,6 +210,7 @@ namespace Nethermind.Init.Steps
                     _api.WorldState,
                     _api.ReceiptStorage,
                     _api.WitnessCollector,
+                    _api.BlockTree,
                     _api.LogManager);
             }
             else
@@ -222,6 +223,7 @@ namespace Nethermind.Init.Steps
                     _api.WorldState,
                     _api.ReceiptStorage,
                     _api.WitnessCollector,
+                    _api.BlockTree,
                     _api.LogManager);
 
                 if (initConfig.StatelessProcessingEnabled)

@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -32,6 +33,7 @@ public class StatelessBlockProcessor : BlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockTree? blockTree,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(
@@ -42,6 +44,7 @@ public class StatelessBlockProcessor : BlockProcessor
             stateProvider,
             receiptStorage,
             witnessCollector,
+            blockTree,
             logManager,
             withdrawalProcessor)
     {

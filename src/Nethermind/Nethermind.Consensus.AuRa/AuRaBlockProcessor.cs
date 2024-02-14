@@ -51,6 +51,7 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                blockTree,
                 logManager,
                 withdrawalProcessor)
         {
