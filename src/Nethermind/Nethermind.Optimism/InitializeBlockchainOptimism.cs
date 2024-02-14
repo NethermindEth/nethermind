@@ -102,6 +102,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.WorldState,
             _api.ReceiptStorage,
             _api.WitnessCollector,
+            _api.BlockTree,
             _api.LogManager,
             _api.SpecHelper,
             contractRewriter);
