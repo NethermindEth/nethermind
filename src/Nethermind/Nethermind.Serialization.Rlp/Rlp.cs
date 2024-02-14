@@ -407,7 +407,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (value < 1 << 16)
             {
-                BinaryPrimitives.WriteInt16BigEndian(buffer.Slice(position), (short)value);
+                BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(position), (ushort)value);
                 return position + 2;
             }
 
