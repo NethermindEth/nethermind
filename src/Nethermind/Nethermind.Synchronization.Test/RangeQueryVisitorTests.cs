@@ -49,23 +49,18 @@ public class RangeQueryVisitorTests
         var limitHash = new Hash256("0000000000000000000000000000000000000000000000000000000001123458");
 
         using RangeQueryVisitor visitor = new(startHash, limitHash, false);
-        VisitingOptions opt = new()
-        {
-            ExpectAccounts = false,
-            MaxDegreeOfParallelism = 1,
-        };
-        _inputTree.Accept(visitor, _inputTree.RootHash, opt);
+        _inputTree.Accept(visitor, _inputTree.RootHash, CreateVisitingOptions());
         (IDictionary<ValueHash256, byte[]> nodes, long _) = visitor.GetNodesAndSize();
 
         nodes.Count.Should().Be(4);
 
         int k = 0;
-        foreach (KeyValuePair<ValueHash256, byte[]> pair in nodes)
-        {
-            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k + 2].Account).Bytes.Should().BeEquivalentTo(pair.Value);
-            k += 1;
-        }
+        nodes.Should().AllSatisfy(pair =>
+            Rlp.Encode(TestItem.Tree.AccountsWithPaths[k++ + 2].Account).Bytes.Should().BeEquivalentTo(pair.Value)
+        );
     }
+
+    private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
 
     [Test]
     public void RangeFetchPartialLimit()
@@ -86,36 +81,21 @@ public class RangeQueryVisitorTests
         var limitHash = new Hash256("0x4500000000000000000000000000000000000000000000000000000000000000");
 
         using RangeQueryVisitor visitor = new(startHash, limitHash, false);
-        VisitingOptions opt = new()
-        {
-            ExpectAccounts = false,
-            MaxDegreeOfParallelism = 1,
-        };
-        stateTree.Accept(visitor, stateTree.RootHash, opt);
-        (IDictionary<ValueHash256, byte[]> nodes, long _) = visitor.GetNodesAndSize();
-        nodes.Count.Should().Be(2);
+        stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
+        visitor.GetNodesAndSize().Item1.Count.Should().Be(2);
     }
 
     [Test]
     public void StorageRangeFetchVisitor()
     {
         TrieStore store = new TrieStore(new MemDb(), LimboLogs.Instance);
-        (StateTree inputStateTree, StorageTree inputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store);
-
+        (StateTree inputStateTree, StorageTree _, Hash256 account) = TestItem.Tree.GetTrees(store);
         using RangeQueryVisitor visitor = new(Keccak.Zero, Keccak.MaxValue, false);
-        VisitingOptions opt = new()
-        {
-            ExpectAccounts = false,
-        };
-        inputStateTree.Accept(visitor, inputStateTree.RootHash, opt, storageAddr: account);
-        (var nodes, long _) = visitor.GetNodesAndSize();
+        inputStateTree.Accept(visitor, inputStateTree.RootHash, CreateVisitingOptions(), storageAddr: account);
+        (Dictionary<ValueHash256, byte[]> nodes, long _) = visitor.GetNodesAndSize();
         nodes.Count.Should().Be(6);
 
         int k = 0;
-        foreach (KeyValuePair<ValueHash256, byte[]> pair in nodes)
-        {
-            pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k + 0].SlotRlpValue);
-            k += 1;
-        }
+        nodes.Should().AllSatisfy(pair => pair.Value.Should().BeEquivalentTo(TestItem.Tree.SlotsWithPaths[k++ + 0].SlotRlpValue));
     }
 }
