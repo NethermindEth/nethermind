@@ -32,7 +32,7 @@ jobs:
   run-posdao-tests:
     name: Run Nethermind POSDAO tests
     needs: prepare-branches
-    runs-on: 24-7
+    runs-on: [ubuntu-lowchad]
     strategy:
       fail-fast: false
       matrix: ${{ fromJson(needs.prepare-branches.outputs.matrix) }}
