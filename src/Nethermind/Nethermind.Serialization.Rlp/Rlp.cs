@@ -1260,7 +1260,7 @@ namespace Nethermind.Serialization.Rlp
                     case < 128:
                         return Memory.Value.Slice(Position - 1, 1);
                     case 128:
-                        return default;
+                        return Array.Empty<byte>();
                     case <= 183:
                         {
                             int length = prefix - 128;
