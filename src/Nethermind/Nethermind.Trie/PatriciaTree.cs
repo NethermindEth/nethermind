@@ -1225,67 +1225,57 @@ namespace Nethermind.Trie
 
             if (storageAddr is not null)
             {
-                if (storageRoot is not null)
+                Hash256 DecodeStorageRoot(Hash256 root, Hash256 address)
                 {
-                    rootHash = storageRoot;
-                }
-                else
-                {
-                    ReadOnlySpan<byte> bytes = Get(storageAddr.Bytes, rootHash);
+                    ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
                     Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
-                    rootHash = AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
                 }
+
+                rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);
             }
 
-            ReadFlags flags = visitor.ExtraReadFlag;
-            if (visitor.IsFullDbScan)
-            {
-                flags |= ReadFlags.HintCacheMiss;
-            }
+            ReadFlags flags = visitor.IsFullDbScan
+                ? visitor.ExtraReadFlag | ReadFlags.HintCacheMiss
+                : visitor.ExtraReadFlag;
 
-            ITrieNodeResolver resolver = TrieStore;
-            if (flags != ReadFlags.None)
+            ITrieNodeResolver resolver = flags != ReadFlags.None
+                ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
+                : TrieStore;
+
+            bool TryGetRootRef(out TrieNode? rootRef)
             {
-                resolver = new TrieNodeResolverWithReadFlags(resolver, flags);
+                rootRef = null;
+                if (rootHash != Keccak.EmptyTreeHash)
+                {
+                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(rootHash);
+                    if (!rootRef!.TryResolveNode(resolver))
+                    {
+                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             if (!visitor.IsFullDbScan)
             {
                 visitor.VisitTree(default, rootHash, trieVisitContext);
-                TrieNode rootRef = null;
-                if (rootHash != Keccak.EmptyTreeHash)
+                if (TryGetRootRef(out TrieNode rootRef))
                 {
-                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(rootHash);
-                    if (!rootRef!.TryResolveNode(resolver))
-                    {
-                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
-                        return;
-                    }
+                    rootRef?.Accept(visitor, default, resolver, trieVisitContext);
                 }
-                rootRef?.Accept(visitor, default, resolver, trieVisitContext);
-                return;
             }
-
             // Full db scan
-            if (visitingOptions.FullScanMemoryBudget != 0)
+            else if (visitingOptions.FullScanMemoryBudget != 0)
             {
                 visitor.VisitTree(default, rootHash, trieVisitContext);
-
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
-            else
+            else if (TryGetRootRef(out TrieNode rootRef))
             {
-                TrieNode rootRef = null;
-                if (rootHash != Keccak.EmptyTreeHash)
-                {
-                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(rootHash);
-                    if (!rootRef!.TryResolveNode(resolver))
-                    {
-                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
-                        return;
-                    }
-                }
                 visitor.VisitTree(default, rootHash, trieVisitContext);
                 rootRef?.Accept(visitor, default, resolver, trieVisitContext);
             }
