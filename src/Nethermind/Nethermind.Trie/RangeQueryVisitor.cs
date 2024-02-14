@@ -121,7 +121,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
 
         int compResult = 0;
-        if (!_skipStarthashComparison && _startHash != null)
+        if (!_skipStarthashComparison && _startHash is not null)
         {
             compResult = path.CompareTo(_truncatedStartHashes[path.Length]);
             if (compResult < 0)
@@ -130,7 +130,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             }
         }
 
-        if (_limitHash != null)
+        if (_limitHash is not null)
         {
             compResult = path.Path.CompareTo(_limitHash.Value);
             if (compResult > 0)
@@ -156,7 +156,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public byte[][] GetProofs()
     {
-        if (_leftmostLeafPath == null) return Array.Empty<byte[]>();
+        if (_leftmostLeafPath is null) return Array.Empty<byte[]>();
 
         HashSet<byte[]> proofs = new();
         if (_startHash != Keccak.Zero)
@@ -219,7 +219,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         if (!ShouldVisit(path)) return;
         CollectNode(path, node.Value);
         // We found at least one leaf, don't compare with startHash anymore
-        if (_startHash != null)
+        if (_startHash is not null)
         {
             _skipStarthashComparison = true;
         }
@@ -240,7 +240,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     private void CollectNode(TreePath path, CappedArray<byte> value)
     {
-        if (_leftmostLeafPath == null)
+        if (_leftmostLeafPath is null)
         {
             _leftmostLeafPath = path;
         }

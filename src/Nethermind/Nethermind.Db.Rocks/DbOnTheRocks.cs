@@ -148,11 +148,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                     if (columnFamily == "Default") columnFamily = "default";
 
                     ColumnFamilyOptions options = new();
-                    IntPtr? cacheForColumn = sharedCache;
-                    if (_cache != null)
-                    {
-                        cacheForColumn = _cache;
-                    }
+                    IntPtr? cacheForColumn = _cache ?? sharedCache;
                     BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, cacheForColumn);
                     columnFamilies.Add(columnFamily, options);
                 }
@@ -284,7 +280,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            if (_cache == null && !includeSharedCache)
+            if (_cache is null && !includeSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;

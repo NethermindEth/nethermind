@@ -230,14 +230,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer == null) return new TrieNodesMessage(Array.Empty<byte[]>());
+            if (SyncServer is null) return new TrieNodesMessage(Array.Empty<byte[]>());
             var trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
         private AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer == null) return new AccountRangeMessage()
+            if (SyncServer is null) return new AccountRangeMessage()
             {
                 Proofs = Array.Empty<byte[]>(),
                 PathsWithAccounts = Array.Empty<PathWithAccount>(),
@@ -251,7 +251,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer == null) return new StorageRangeMessage()
+            if (SyncServer is null) return new StorageRangeMessage()
             {
                 Proofs = Array.Empty<byte[]>(),
                 Slots = Array.Empty<PathWithStorageSlot[]>(),
@@ -265,7 +265,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer == null) return new ByteCodesMessage(Array.Empty<byte[]>());
+            if (SyncServer is null) return new ByteCodesMessage(Array.Empty<byte[]>());
             var byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
             return new ByteCodesMessage(byteCodes);
         }

@@ -418,7 +418,7 @@ namespace Nethermind.Trie
             }
             finally
             {
-                if (array != null) ArrayPool<byte>.Shared.Return(array);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
             }
         }
 
@@ -1220,12 +1220,12 @@ namespace Nethermind.Trie
                 // but we know that we have multiple optimizations and assumptions on trees
                 ExpectAccounts = visitingOptions.ExpectAccounts,
                 MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
-                IsStorage = storageAddr != null
+                IsStorage = storageAddr is not null
             };
 
-            if (storageAddr != null)
+            if (storageAddr is not null)
             {
-                if (storageRoot != null)
+                if (storageRoot is not null)
                 {
                     rootHash = storageRoot;
                 }
