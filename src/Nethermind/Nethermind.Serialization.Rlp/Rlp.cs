@@ -1594,74 +1594,28 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(long value)
         {
-            // everything has a length prefix
-            if (value < 0)
+            if ((ulong)value < 128)
             {
-                return 9;
+                return 1;
             }
-
-            if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
+            else
             {
-                if (value < 256L * 256L * 256L * 256L * 256L * 256L)
-                {
-                    if (value < 256L * 256L * 256L * 256L * 256L)
-                    {
-                        if (value < 256L * 256L * 256L * 256L)
-                        {
-                            if (value < 256 * 256 * 256)
-                            {
-                                if (value < 256 * 256)
-                                {
-                                    if (value < 128)
-                                    {
-                                        return 1;
-                                    }
-
-                                    return value < 256 ? 2 : 3;
-                                }
-
-                                return 4;
-                            }
-
-                            return 5;
-                        }
-
-                        return 6;
-                    }
-
-                    return 7;
-                }
-
-                return 8;
+                // everything has a length prefix
+                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)(value | 1)) / 8);
             }
-
-            return 9;
         }
 
         public static int LengthOf(int value)
         {
-            // everything has a length prefix
-            if (value < 0)
+            if ((uint)value < 128)
             {
-                return 9; // we cast it to long now
+                return 1;
             }
-
-            if (value < 256 * 256 * 256)
+            else
             {
-                if (value < 256 * 256)
-                {
-                    if (value < 128)
-                    {
-                        return 1;
-                    }
-
-                    return value < 256 ? 2 : 3;
-                }
-
-                return 4;
+                // everything has a length prefix
+                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value | 1) / 8);
             }
-
-            return 5;
         }
 
         public static int LengthOf(Hash256? item)
