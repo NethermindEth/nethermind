@@ -37,10 +37,8 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, ITrieStore
         return _baseImplementation.IsPersisted(in keccak);
     }
 
-    public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
-    {
-        return _baseImplementation.AsReadOnly(keyValueStore);
-    }
+    public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) =>
+        _baseImplementation.AsReadOnly(keyValueStore);
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

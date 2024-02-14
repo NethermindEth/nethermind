@@ -231,7 +231,7 @@ public class InitializeNetwork : IStep
         {
             if (_syncConfig.SnapServe)
             {
-                ISnapServer snapServer = new SnapServer(_api.TrieStore.AsReadOnly(null), _api.DbProvider.CodeDb,
+                ISnapServer snapServer = new SnapServer(_api.TrieStore.AsReadOnly(), _api.DbProvider.CodeDb,
                     _api.LogManager);
                 RegisterSnapProtocol(snapServer);
                 _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
