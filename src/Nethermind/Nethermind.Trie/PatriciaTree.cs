@@ -1222,8 +1222,22 @@ namespace Nethermind.Trie
         public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null, Hash256? storageAddr = null) =>
             Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions, storageAddr);
 
-        public void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null, Hash256 storageAddr = null)
-            where TNodeContext : struct, INodeContext<TNodeContext>
+        /// <summary>
+        /// Run tree visitor
+        /// </summary>
+        /// <param name="visitor">The visitor</param>
+        /// <param name="rootHash">State root hash (not storage root)</param>
+        /// <param name="visitingOptions">Options</param>
+        /// <param name="storageAddr">Address of storage, if it should visit storage. </param>
+        /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
+        /// <typeparam name="TNodeContext"></typeparam>
+        public void Accept<TNodeContext>(
+            ITreeVisitor<TNodeContext> visitor,
+            Hash256 rootHash,
+            VisitingOptions? visitingOptions = null,
+            Hash256 storageAddr = null,
+            Hash256 storageRoot = null
+        ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(rootHash);
@@ -1239,30 +1253,19 @@ namespace Nethermind.Trie
                 Storage = storageAddr
             };
 
-            TrieNode rootRef = null;
-            TreePath startingPath = TreePath.Empty;
             ITrieNodeResolver resolver = TrieStore;
-            if (!rootHash.Equals(Keccak.EmptyTreeHash))
-            {
-                rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(startingPath, rootHash);
-                if (!rootRef!.TryResolveNode(resolver, ref startingPath))
-                {
-                    visitor.VisitMissingNode(default, rootHash, trieVisitContext);
-                    return;
-                }
-            }
-
             if (storageAddr != null)
             {
-                ReadOnlySpan<byte> bytes = Get(storageAddr.Bytes, rootHash);
-                rootHash = AccountDecoder.Instance.DecodeStorageRootOnly(new RlpStream(bytes.ToArray()));
-                resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
-                rootRef = resolver.FindCachedOrUnknown(startingPath, rootHash);
-                if (!rootRef!.TryResolveNode(resolver, ref startingPath))
+                if (storageRoot != null)
                 {
-                    visitor.VisitMissingNode(default, rootHash, trieVisitContext);
-                    return;
+                    rootHash = storageRoot;
                 }
+                else
+                {
+                    ReadOnlySpan<byte> bytes = Get(storageAddr.Bytes, rootHash);
+                    rootHash = AccountDecoder.Instance.DecodeStorageRootOnly(new RlpStream(bytes.ToArray()));
+                }
+                resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }
 
             ReadFlags flags = visitor.ExtraReadFlag;
@@ -1291,21 +1294,42 @@ namespace Nethermind.Trie
             if (!visitor.IsFullDbScan)
             {
                 TreePath emptyPath = TreePath.Empty;
+                TrieNode rootRef = null;
+                if (rootHash != Keccak.EmptyTreeHash)
+                {
+                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    {
+                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        return;
+                    }
+                }
                 rootRef?.Accept<TNodeContext>(visitor, default, resolver, ref emptyPath, trieVisitContext);
                 return;
             }
 
-            visitor.VisitTree(default, rootHash, trieVisitContext);
-
             // Full db scan
             if (resolver.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
+                visitor.VisitTree(default, rootHash, trieVisitContext);
+
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
             else
             {
                 TreePath emptyPath = TreePath.Empty;
+                TrieNode rootRef = null;
+                if (rootHash != Keccak.EmptyTreeHash)
+                {
+                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    {
+                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        return;
+                    }
+                }
+                visitor.VisitTree(default, rootHash, trieVisitContext);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }
