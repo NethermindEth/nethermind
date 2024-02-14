@@ -59,9 +59,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
             IMessageSerializationService serializer,
-            ISnapServer? snapServer,
             IBackgroundTaskScheduler backgroundTaskScheduler,
-            ILogManager logManager)
+            ILogManager logManager,
+            ISnapServer? snapServer = null)
             : base(session, nodeStats, serializer, logManager)
         {
             _getAccountRangeRequests = new(Send);
@@ -70,7 +70,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
             BackgroundTaskScheduler = backgroundTaskScheduler;
-            ServingEnabled = SyncServer != null;
+            ServingEnabled = SyncServer is not null;
         }
 
         public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;

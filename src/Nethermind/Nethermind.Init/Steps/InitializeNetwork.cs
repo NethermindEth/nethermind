@@ -218,7 +218,7 @@ public class InitializeNetwork : IStep
             {
                 var handler = version switch
                 {
-                    1 => new SnapProtocolHandler(session, _api.NodeStatsManager!, _api.MessageSerializationService, snapServer, _api.BackgroundTaskScheduler, _api.LogManager),
+                    1 => new SnapProtocolHandler(session, _api.NodeStatsManager!, _api.MessageSerializationService, _api.BackgroundTaskScheduler, _api.LogManager, snapServer),
                     _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
                 };
                 _api.ProtocolsManager.InitSatelliteProtocol(session, handler);

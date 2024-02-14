@@ -49,17 +49,15 @@ public class SnapProtocolHandlerTests
         public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
 
 
-        private SnapProtocolHandler _snapProtocolHandler;
+        private SnapProtocolHandler? _snapProtocolHandler;
         public SnapProtocolHandler SnapProtocolHandler
         {
             get => _snapProtocolHandler ??= new SnapProtocolHandler(
                 Session,
                 NodeStatsManager,
                 MessageSerializationService,
-                null,
                 RunImmediatelyScheduler.Instance,
-                LimboLogs.Instance
-            );
+                LimboLogs.Instance);
             set
             {
                 _snapProtocolHandler = value;
