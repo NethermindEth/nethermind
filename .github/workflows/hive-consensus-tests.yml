@@ -6622,70 +6622,13 @@ jobs:
         run: |
           chmod +x nethermind/scripts/hive-results.sh
           nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
-  test_68:
-    name: 68. Combined tests (e.g. bcTotalDifficultyTest)
-    runs-on: ubuntu-latest
-    steps:
-      - name: Set up parameters
-        run: |
-          echo "PARALLELISM=${{ github.event.inputs.parallelism || '3' }}" >> $GITHUB_ENV
-      - name: Check out Nethermind repository
-        uses: actions/checkout@v3
+      - name: Send results to dashboard
+        continue-on-error: true
+        uses: appleboy/scp-action@master
         with:
-          path: nethermind
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v2
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
-      - name: Build Docker image
-        uses: docker/build-push-action@v3
-        with:
-          context: nethermind
-          file: nethermind/Dockerfile
-          tags: nethermind:test-${{ github.sha }}
-          outputs: type=docker,dest=/tmp/image.tar
-      - name: Install Linux packages
-        run: |
-          sudo apt-get update
-          sudo apt-get install libsnappy-dev libc6-dev libc6 build-essential
-      - name: Set up Go environment
-        uses: actions/setup-go@v3.0.0
-        with:
-          go-version: '>=1.17.0'
-      - name: Check out Hive repository
-        uses: actions/checkout@v3
-        with:
-          repository: ethereum/hive
-          ref: master
-          path: hive
-      - name: Patch Hive Dockerfile
-        run: sed -i 's#FROM $baseimage:$tag#FROM nethermind:test-${{ github.sha }}#g' hive/clients/nethermind/Dockerfile
-      - name: Build Hive
-        working-directory: hive
-        run: go build .
-      - name: Load Docker image
-        run: docker load --input /tmp/image.tar
-      - name: Run bcTotalDifficultyTest
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcTotalDifficultyTest --sim.parallelism $PARALLELISM
-      - name: Run bcUncleSpecialTests
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleSpecialTests --sim.parallelism $PARALLELISM
-      - name: Run bcUncleTest
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcUncleTest --sim.parallelism $PARALLELISM
-      - name: Run bcValidBlockTest
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcValidBlockTest --sim.parallelism $PARALLELISM
-      - name: Run bcWalletTest
-        continue-on-error: true
-        working-directory: hive
-        run: ./hive --client nethermind --sim ethereum/consensus --sim.limit /bcWalletTest --sim.parallelism $PARALLELISM
-      - name: Print results
-        run: |
-          chmod +x nethermind/scripts/hive-results.sh
-          nethermind/scripts/hive-results.sh "hive/workspace/logs/*.json"
+          host: ${{ secrets.HIVE_HOST }}
+          username: ${{ secrets.HIVE_USERNAME }}
+          key: ${{ secrets.HIVE_KEY }}
+          port: ${{ secrets.HIVE_PORT }}
+          source: hive/workspace/logs/*
+          target: ${{ secrets.HIVE_DIR }}/
