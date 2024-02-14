@@ -70,7 +70,7 @@ public class SnapServer : ISnapServer
         // TODO: Before checking missing node cache, actually check StateReader.
         if (_rootWithMissingNode.TryGet(rootHash, out DateTimeOffset missingTime))
         {
-            if ((DateTimeOffset.Now - missingTime) < TimeSpan.FromSeconds(10))
+            if (DateTimeOffset.Now - missingTime < TimeSpan.FromSeconds(10))
             {
                 return true;
             }
@@ -92,16 +92,16 @@ public class SnapServer : ISnapServer
     {
         if (IsRootMissing(rootHash)) return Array.Empty<byte[]>();
 
-        _logger.Debug($"Trie node {pathSet.Length}");
+        if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Length}");
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
-        List<byte[]> response = new(pathLength);
+        using ArrayPoolList<byte[]> response = new(pathLength);
         StateTree tree = new(_store, _logManager);
         bool abort = false;
 
-        for (int reqi = 0; reqi < pathLength && !abort && !cancellationToken.IsCancellationRequested; reqi++)
+        for (int i = 0; i < pathLength && !abort && !cancellationToken.IsCancellationRequested; i++)
         {
-            byte[][]? requestedPath = pathSet[reqi].Group;
+            byte[][]? requestedPath = pathSet[i].Group;
             switch (requestedPath.Length)
             {
                 case 0:
@@ -122,21 +122,19 @@ public class SnapServer : ISnapServer
                     try
                     {
                         Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
-                        if (account is null)
+                        if (account is not null)
                         {
-                            break;
-                        }
-                        Hash256? storageRoot = account.StorageRoot;
-                        if (storageRoot.Bytes.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
-                        {
-                            break;
-                        }
-                        StorageTree sTree = new(_store, storageRoot, _logManager);
+                            Hash256? storageRoot = account.StorageRoot;
+                            if (!storageRoot.Bytes.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
+                            {
+                                StorageTree sTree = new(_store, storageRoot, _logManager);
 
-                        for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
-                        {
-                            byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
-                            response.Add(sRlp);
+                                for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
+                                {
+                                    byte[]? sRlp = sTree.GetNodeByPath(Nibbles.CompactToHexEncode(requestedPath[reqStorage]));
+                                    response.Add(sRlp);
+                                }
+                            }
                         }
                     }
                     catch (MissingTrieNodeException)
@@ -153,7 +151,7 @@ public class SnapServer : ISnapServer
     public byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        List<byte[]> response = new(requestedHashes.Count);
+        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
 
         if (byteLimit > HardResponseByteLimit)
         {
@@ -164,12 +162,7 @@ public class SnapServer : ISnapServer
         {
             // break when the response size exceeds the byteLimit - it is a soft limit
             // so not a big issue if we so over slightly.
-            if (currentByteCount > byteLimit)
-            {
-                break;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
+            if (currentByteCount > byteLimit || cancellationToken.IsCancellationRequested)
             {
                 break;
             }
@@ -179,10 +172,13 @@ public class SnapServer : ISnapServer
             {
                 response.Add(Array.Empty<byte>());
             }
+
             byte[]? code = _codeDb[codeHash.Bytes];
-            if (code is null) continue;
-            response.Add(code);
-            currentByteCount += code.Length;
+            if (code is not null)
+            {
+                response.Add(code);
+                currentByteCount += code.Length;
+            }
         }
 
         return response.ToArray();
@@ -203,9 +199,7 @@ public class SnapServer : ISnapServer
             index += 1;
         }
 
-
-        if (nodes.Length == 0) return (nodes, Array.Empty<byte[]>());
-        return (nodes, proofs);
+        return nodes.Length == 0 ? (nodes, Array.Empty<byte[]>()) : (nodes, proofs);
     }
 
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(in ValueHash256 rootHash, PathWithAccount[] accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
@@ -222,15 +216,10 @@ public class SnapServer : ISnapServer
             limitHash1 = ValueKeccak.MaxValue;
         }
 
-        List<PathWithStorageSlot[]> responseNodes = new(accounts.Length);
+        using ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Length);
         for (int i = 0; i < accounts.Length; i++)
         {
-            if (responseSize > byteLimit)
-            {
-                break;
-            }
-
-            if (cancellationToken.IsCancellationRequested)
+            if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
             {
                 break;
             }
