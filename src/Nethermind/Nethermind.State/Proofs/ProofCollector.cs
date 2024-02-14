@@ -35,10 +35,7 @@ namespace Nethermind.State.Proofs
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Hash256 nextNode)
-        {
-            return _visitingFilter.Contains(nextNode);
-        }
+        public bool ShouldVisit(Hash256 nextNode) => _visitingFilter.Contains(nextNode);
 
         public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
         {

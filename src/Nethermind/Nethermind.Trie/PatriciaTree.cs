@@ -1223,7 +1223,6 @@ namespace Nethermind.Trie
                 IsStorage = storageAddr != null
             };
 
-            ITrieNodeResolver resolver = TrieStore;
             if (storageAddr != null)
             {
                 if (storageRoot != null)
@@ -1243,6 +1242,7 @@ namespace Nethermind.Trie
                 flags |= ReadFlags.HintCacheMiss;
             }
 
+            ITrieNodeResolver resolver = TrieStore;
             if (flags != ReadFlags.None)
             {
                 resolver = new TrieNodeResolverWithReadFlags(resolver, flags);

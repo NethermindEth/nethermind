@@ -24,13 +24,21 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapServer
 {
-    public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
-    public byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
+    byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
+    byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
-    public (PathWithAccount[], byte[][]) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash,
-        long byteLimit, CancellationToken cancellationToken);
+    (PathWithAccount[], byte[][]) GetAccountRanges(
+        in ValueHash256 rootHash,
+        in ValueHash256 startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken);
 
-    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(in ValueHash256 rootHash, PathWithAccount[] accounts,
-        in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken);
-
+    (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(
+        in ValueHash256 rootHash,
+        PathWithAccount[] accounts,
+        in ValueHash256? startingHash,
+        in ValueHash256? limitHash,
+        long byteLimit,
+        CancellationToken cancellationToken);
 }

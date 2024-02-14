@@ -411,11 +411,6 @@ public struct TreePathContext : INodeContext<TreePathContext>
             Path = Path.Append(nibble)
         };
     }
-
-    public readonly TreePathContext AddStorage(in ValueHash256 storage)
-    {
-        return new TreePathContext();
-    }
 }
 
 public interface INodeContext<TNodeContext>

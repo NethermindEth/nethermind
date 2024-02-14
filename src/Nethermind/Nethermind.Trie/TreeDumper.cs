@@ -21,7 +21,7 @@ namespace Nethermind.Trie
 
         public bool IsFullDbScan => true;
 
-        public bool ShouldVisit(Hash256 nodeHash)
+        public bool ShouldVisit(Hash256 nextNode)
         {
             return true;
         }

@@ -335,6 +335,7 @@ namespace Nethermind.State.Proofs
 
         public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
+            throw new InvalidOperationException($"{nameof(AccountProofCollector)} does never expect to visit code");
         }
     }
 }

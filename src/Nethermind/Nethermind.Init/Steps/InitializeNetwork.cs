@@ -212,28 +212,8 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        if (_syncConfig.SnapSync && !_syncConfig.SnapServe)
+        void RegisterSnapProtocol(ISnapServer? snapServer)
         {
-            _api.ProtocolsManager!.AddProtocol(Protocol.Snap, (session, version) =>
-            {
-                var handler = version switch
-                {
-                    1 => new SnapProtocolHandler(session, _api.NodeStatsManager!, _api.MessageSerializationService, null, _api.BackgroundTaskScheduler, _api.LogManager),
-                    _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
-                };
-                _api.ProtocolsManager.InitSatelliteProtocol(session, handler);
-
-                return handler;
-            });
-            // TODO: Should we keep snap capability even after finishing sync?
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-        }
-        else if (_syncConfig.SnapSync && _syncConfig.SnapServe)
-        {
-            ISnapServer snapServer = new SnapServer(_api.TrieStore.AsReadOnly(null), _api.DbProvider.CodeDb, _api.LogManager);
-
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
             _api.ProtocolsManager!.AddProtocol(Protocol.Snap, (session, version) =>
             {
                 var handler = version switch
@@ -245,6 +225,24 @@ public class InitializeNetwork : IStep
 
                 return handler;
             });
+        }
+
+        if (_syncConfig.SnapSync)
+        {
+            if (_syncConfig.SnapServe)
+            {
+                ISnapServer snapServer = new SnapServer(_api.TrieStore.AsReadOnly(null), _api.DbProvider.CodeDb,
+                    _api.LogManager);
+                RegisterSnapProtocol(snapServer);
+                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+            }
+            else
+            {
+                RegisterSnapProtocol(null);
+                // TODO: Should we keep snap capability even after finishing sync?
+                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
         }
 
 
