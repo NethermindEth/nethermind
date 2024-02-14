@@ -95,7 +95,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to enable the Witness protocol.", DefaultValue = "false")]
     public bool WitnessProtocolEnabled { get; set; }
 
-    [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
+    [ConfigItem(Description = "_Experimental._ Whether to enable snap serving. WARNING: Very slow on hash db layout.", DefaultValue = "false", HiddenFromDocs = true)]
     public bool SnapSync { get; set; }
 
     [ConfigItem(Description = "The number of account range partitions to create. Increases the Snap sync request concurrency. Allowed values are between between 1 and 256.", DefaultValue = "8")]
