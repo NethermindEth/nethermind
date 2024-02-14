@@ -4,6 +4,7 @@
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Merge.Plugin.InvalidChainTracker;
 
@@ -28,7 +29,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
         return Validate(header, parent, isUncle, out _);
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = _baseValidator.Validate(header, parent, isUncle, out error);
         if (!result)
@@ -37,7 +38,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
             if (ShouldNotTrackInvalidation(header))
             {
                 if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
-                return false;
+                return result;
             }
             _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }
@@ -49,7 +50,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
     {
         return Validate(header, isUncle, out _);
     }
-    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         bool result = _baseValidator.Validate(header, isUncle, out error);
         if (!result)
@@ -58,7 +59,7 @@ public class InvalidHeaderInterceptor : IHeaderValidator
             if (ShouldNotTrackInvalidation(header))
             {
                 if (_logger.IsDebug) _logger.Debug($"Header invalidation should not be tracked");
-                return false;
+                return result;
             }
             _invalidChainTracker.OnInvalidBlock(header.Hash!, header.ParentHash);
         }

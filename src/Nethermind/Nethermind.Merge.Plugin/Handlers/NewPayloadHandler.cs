@@ -42,7 +42,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     private readonly IMergeSyncController _mergeSyncController;
     private readonly IInvalidChainTracker _invalidChainTracker;
     private readonly ILogger _logger;
-    private readonly LruCache<ValueHash256, (bool, string?)>? _latestBlocks;
+    private readonly LruCache<ValueHash256, (bool valid, string? message)>? _latestBlocks;
     private readonly ProcessingOptions _defaultProcessingOptions;
     private readonly TimeSpan _timeout;
 
@@ -157,7 +157,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             if (!_blockValidator.ValidateSuggestedBlock(block, out string? error))
             {
                 if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
-                return NewPayloadV1Result.Invalid(error!);
+                return NewPayloadV1Result.Invalid(error);
             }
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
@@ -184,10 +184,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
         {
             const string errorMessage = $"Misconfigured terminal total difficulty.";
-            if (_logger.IsWarn)
-            {
-                _logger.Warn(errorMessage);
-            }
+            if (_logger.IsWarn) _logger.Warn(errorMessage);
             return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }
 
@@ -289,14 +286,14 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         (ValidationResult? result, string? validationMessage) = (null, null);
 
         // If duplicate, reuse results
-        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out var cachedResult))
+        if (_latestBlocks is not null && _latestBlocks.TryGet(block.Hash!, out (bool valid, string? message) cachedResult))
         {
-            bool isValid = cachedResult.Item1;
+            (bool isValid, string? message) = cachedResult;
             if (!isValid)
             {
                 if (_logger.IsWarn) _logger.Warn("Invalid block found in latestBlock cache.");
             }
-            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, cachedResult.Item2);
+            return (isValid ? ValidationResult.Valid : ValidationResult.Invalid, message);
         }
 
         // Validate

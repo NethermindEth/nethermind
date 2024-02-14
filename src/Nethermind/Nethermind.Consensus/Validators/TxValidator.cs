@@ -219,17 +219,17 @@ namespace Nethermind.Consensus.Validators
             {
                 if (wrapper.Blobs.Length != blobCount)
                 {
-                    error = TxErrorMessages.InvalidBlobData();
+                    error = TxErrorMessages.InvalidBlobData;
                     return false;
                 }
                 if (wrapper.Commitments.Length != blobCount)
                 {
-                    error = TxErrorMessages.InvalidBlobData();
+                    error = TxErrorMessages.InvalidBlobData;
                     return false;
                 }
                 if (wrapper.Proofs.Length != blobCount)
                 {
-                    error = TxErrorMessages.InvalidBlobData();
+                    error = TxErrorMessages.InvalidBlobData;
                     return false;
                 }
 

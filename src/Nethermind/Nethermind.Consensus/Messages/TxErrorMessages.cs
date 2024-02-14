@@ -75,6 +75,7 @@ public static class TxErrorMessages
 
     public const string InvalidBlobProof =
         "InvalidBlobProof: Proof does not match.";
-    public static string InvalidBlobData()
-        => $"InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
+
+    public const string InvalidBlobData
+        = "InvalidTxBlobData: Number of blobs, hashes, commitments and proofs must match.";
 }

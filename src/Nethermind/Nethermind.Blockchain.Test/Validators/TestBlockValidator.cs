@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 
@@ -34,17 +35,18 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
     {
-        error = null;
-        return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+        var result = _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
+        error = result ? null : "";
+        return result;
     }
 
     public bool Validate(BlockHeader header, bool isUncle)
     {
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
-    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
@@ -54,7 +56,7 @@ public class TestBlockValidator : IBlockValidator
     {
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
-    public bool ValidateSuggestedBlock(Block block, out string? error)
+    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
@@ -63,7 +65,7 @@ public class TestBlockValidator : IBlockValidator
     {
         return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
     }
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return _alwaysSameResultForProcessed ?? _processedValidationResults.Dequeue();
@@ -76,7 +78,7 @@ public class TestBlockValidator : IBlockValidator
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
     }
 
-    public bool ValidateOrphanedBlock(Block block, out string? error)
+    public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
     {
         error = null;
         return _alwaysSameResultForSuggested ?? _suggestedValidationResults.Dequeue();
