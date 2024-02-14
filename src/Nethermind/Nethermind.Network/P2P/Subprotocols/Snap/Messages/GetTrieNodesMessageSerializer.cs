@@ -10,6 +10,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class GetTrieNodesMessageSerializer : IZeroMessageSerializer<GetTrieNodesMessage>
     {
+        private static readonly PathGroup _defaultPathGroup = new() { Group = Array.Empty<byte[]>() };
+
         public void Serialize(IByteBuffer byteBuffer, GetTrieNodesMessage message)
         {
             (int contentLength, int allPathsLength, int[] pathsLengths) = CalculateLengths(message);
@@ -55,7 +57,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
-            PathGroup defaultValue = new PathGroup() { Group = Array.Empty<byte[]>() };
+            PathGroup defaultValue = _defaultPathGroup;
             message.Paths = stream.DecodeArray(DecodeGroup, defaultElement: defaultValue);
 
             message.Bytes = stream.DecodeLong();
@@ -63,13 +65,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             return message;
         }
 
-        private PathGroup DecodeGroup(RlpStream stream)
-        {
-            PathGroup group = new PathGroup();
-            group.Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: Array.Empty<byte>());
-
-            return group;
-        }
+        private PathGroup DecodeGroup(RlpStream stream) =>
+            new()
+            {
+                Group = stream.DecodeArray(s => stream.DecodeByteArray(), defaultElement: Array.Empty<byte>())
+            };
 
         private static (int contentLength, int allPathsLength, int[] pathsLengths) CalculateLengths(GetTrieNodesMessage message)
         {
