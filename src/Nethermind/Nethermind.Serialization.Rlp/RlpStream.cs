@@ -1305,23 +1305,7 @@ namespace Nethermind.Serialization.Rlp
 
         public byte[] DecodeByteArray()
         {
-            var span = DecodeByteArraySpan();
-            if (span.Length == 0)
-            {
-                return Array.Empty<byte>();
-            }
-
-            if (span.Length == 1)
-            {
-                int value = span[0];
-                var arrays = SingleByteArrays;
-                if ((uint)value < (uint)arrays.Length)
-                {
-                    return arrays[value];
-                }
-            }
-
-            return span.ToArray();
+            return Rlp.ByteSpanToArray(DecodeByteArraySpan());
         }
 
         public ReadOnlySpan<byte> DecodeByteArraySpan()
