@@ -14,7 +14,7 @@ on:
 jobs:
   prepare-branches:
     name: Prepare branches
-    runs-on: ubuntu-latest
+    runs-on: sync-agent-80gb
     outputs:
       matrix: ${{ steps.set-matrix.outputs.matrix }}
     steps:
