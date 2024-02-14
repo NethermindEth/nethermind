@@ -45,7 +45,7 @@ public class SnapServer : ISnapServer
     // On flatdb/halfpath, using ReadAhead flag significantly reduce IOPs by reading a larger chunk of sequential data.
     // It also skip the block cache, which reduces impact on block processing.
     // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
-    private readonly ReadFlags _optimizedReadFlags = ReadFlags.None;
+    private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
     // Some cache to make sure we don't accidentally serve blocks with missing trie node.
     // We don't know for sure if a tree was pruned with just the root hash.
