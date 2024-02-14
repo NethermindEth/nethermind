@@ -37,6 +37,7 @@ namespace Nethermind.Synchronization.SnapSync;
 public class SnapServer : ISnapServer
 {
     private readonly IReadOnlyTrieStore _store;
+    private readonly TrieStoreWithReadFlags _storeWithReadahead;
     private readonly IReadOnlyKeyValueStore _codeDb;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
@@ -53,6 +54,7 @@ public class SnapServer : ISnapServer
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+        _storeWithReadahead = new TrieStoreWithReadFlags(_store.GetTrieStore(null), ReadFlags.HintReadAhead);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
@@ -188,7 +190,6 @@ public class SnapServer : ISnapServer
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
             limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, null, cancellationToken);
-        StateTree tree = new(_store, _logManager);
 
         PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
         int index = 0;
@@ -208,7 +209,7 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
 
         long responseSize = 0;
-        StateTree tree = new(_store, _logManager);
+        StateTree tree = new(_storeWithReadahead, _logManager);
 
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
         ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
