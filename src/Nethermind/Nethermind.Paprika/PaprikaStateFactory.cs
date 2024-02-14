@@ -227,7 +227,7 @@ public class PaprikaStateFactory : IStateFactory
         public void Commit(long blockNumber)
         {
             _wrapped.Commit((uint)blockNumber);
-            _factory.Committed(_wrapped, (uint)blockNumber);
+            _factory.Committed(_wrapped);
         }
 
         public void Reset() => _wrapped.Reset();
@@ -237,29 +237,27 @@ public class PaprikaStateFactory : IStateFactory
         public void Dispose() => _wrapped.Dispose();
     }
 
-    private void Committed(IWorldState block, uint committedAt)
+    private void Committed(IWorldState block)
     {
-        const int poorManFinality = 96;
+        const int poorManFinality = 64;
 
         lock (_poorManFinalizationQueue)
         {
-            _poorManFinalizationQueue.Enqueue((block.Hash, committedAt));
+            // Find all the ancestors that are after last finalized.
+            (uint blockNumber, PaprikaKeccak hash)[] beyondFinalized =
+                block.Stats.Ancestors.Where(ancestor => ancestor.blockNumber > _lastFinalized).ToArray();
 
-            while (_poorManFinalizationQueue.TryPeek(out (PaprikaKeccak hash, uint number) peeked))
+            if (beyondFinalized.Length < poorManFinality)
             {
-                if ((committedAt - peeked.number <= poorManFinality))
-                {
-                    break;
-                }
-
-                _poorManFinalizationQueue.Dequeue();
-
-                if (peeked.number > _lastFinalized)
-                {
-                    _blockchain.Finalize(peeked.hash);
-                    _lastFinalized = peeked.number;
-                }
+                // There number of ancestors is not as big as needed.
+                return;
             }
+
+            // If there's more than poorManFinality, finalize the oldest and memoize its number
+            (uint blockNumber, PaprikaKeccak hash) oldest = beyondFinalized.Min(blockNo => blockNo);
+
+            _lastFinalized = oldest.blockNumber;
+            _blockchain.Finalize(oldest.hash);
         }
     }
 }
