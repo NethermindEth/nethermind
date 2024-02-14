@@ -1597,7 +1597,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)(value | 1)) / 8);
+                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8);
             }
         }
 
@@ -1610,7 +1610,7 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 // everything has a length prefix
-                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value | 1) / 8);
+                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value) / 8);
             }
         }
 
