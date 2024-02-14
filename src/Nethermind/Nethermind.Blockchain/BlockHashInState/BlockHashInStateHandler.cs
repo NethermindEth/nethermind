@@ -13,21 +13,21 @@ namespace Nethermind.Blockchain.BlockHashInState;
 
 public interface IBlockHashInStateHandler
 {
-    public void AddBlockHashToState(Block block, IReleaseSpec spec, IWorldState stateProvider);
+    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider);
 }
 
 public class BlockHashInStateHandler: IBlockHashInStateHandler
 {
 
-    public void AddBlockHashToState(Block block, IReleaseSpec spec, IWorldState stateProvider)
+    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsEip2935Enabled ||
-            block.IsGenesis ||
-            block.Header.ParentHash is null) return;
+            blockHeader.IsGenesis ||
+            blockHeader.ParentHash is null) return;
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
-        Hash256 parentBlockHash = block.Header.ParentHash;
-        var blockIndex = new UInt256((ulong)block.Number - 1);
+        Hash256 parentBlockHash = blockHeader.ParentHash;
+        var blockIndex = new UInt256((ulong)blockHeader.Number - 1);
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         if(!stateProvider.AccountExists(eip2935Account)) stateProvider.CreateAccount(eip2935Account, 0);
