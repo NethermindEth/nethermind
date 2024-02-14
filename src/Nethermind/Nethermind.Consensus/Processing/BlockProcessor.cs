@@ -274,11 +274,11 @@ public partial class BlockProcessor : IBlockProcessor
         for (var i = 0; i < Math.Min(256, current - 1); i++)
         {
             _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider);
-             header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-             if (header is null)
-             {
-                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
-             }
+            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null)
+            {
+                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+            }
         }
     }
 
