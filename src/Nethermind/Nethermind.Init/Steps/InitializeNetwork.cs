@@ -212,7 +212,7 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        void RegisterSnapProtocol(ISnapServer? snapServer)
+        void RegisterSnapProtocol(ISnapServer? snapServer = null)
         {
             _api.ProtocolsManager!.AddProtocol(Protocol.Snap, (session, version) =>
             {
@@ -231,14 +231,12 @@ public class InitializeNetwork : IStep
         {
             if (_syncConfig.SnapServe)
             {
-                ISnapServer snapServer = new SnapServer(_api.TrieStore.AsReadOnly(), _api.DbProvider.CodeDb,
-                    _api.LogManager);
-                RegisterSnapProtocol(snapServer);
+                RegisterSnapProtocol(new SnapServer(_api.TrieStore.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager));
                 _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
             }
             else
             {
-                RegisterSnapProtocol(null);
+                RegisterSnapProtocol();
                 // TODO: Should we keep snap capability even after finishing sync?
                 SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
                 snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
