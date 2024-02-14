@@ -37,9 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             upperWatermark: UpperLatencyThreshold
         );
 
-        protected ISnapServer? SyncServer { get; }
-        protected IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
-        protected bool ServingEnabled { get; }
+        private ISnapServer? SyncServer { get; }
+        private IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
+        private bool ServingEnabled { get; }
 
         public override string Name => "snap1";
         protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -54,7 +54,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
         private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
         private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
-        private static readonly byte[] _emptyBytes = { 0 };
+        private static readonly byte[] _emptyBytes = [0];
 
         public SnapProtocolHandler(ISession session,
             INodeStatsManager nodeStats,
@@ -73,7 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             ServingEnabled = SyncServer is not null;
         }
 
-        public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+        public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
         public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested
         {
             add { }
@@ -191,36 +191,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getTrieNodesRequests.Handle(msg, size);
         }
 
-        private Task<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
+        private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetAccountRangeReceived++;
             AccountRangeMessage? response = FulfillAccountRangeMessage(getAccountRangeMessage, cancellationToken);
             response.RequestId = getAccountRangeMessage.RequestId;
-            return Task.FromResult(response);
+            return new ValueTask<AccountRangeMessage>(response);
         }
 
-        private Task<StorageRangeMessage> Handle(GetStorageRangeMessage getStorageRangesMessage, CancellationToken cancellationToken)
+        private ValueTask<StorageRangeMessage> Handle(GetStorageRangeMessage getStorageRangesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetStorageRangesReceived++;
             StorageRangeMessage? response = FulfillStorageRangeMessage(getStorageRangesMessage, cancellationToken);
             response.RequestId = getStorageRangesMessage.RequestId;
-            return Task.FromResult(response);
+            return new ValueTask<StorageRangeMessage>(response);
         }
 
-        private Task<ByteCodesMessage> Handle(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
+        private ValueTask<ByteCodesMessage> Handle(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetByteCodesReceived++;
             ByteCodesMessage? response = FulfillByteCodesMessage(getByteCodesMessage, cancellationToken);
             response.RequestId = getByteCodesMessage.RequestId;
-            return Task.FromResult(response);
+            return new ValueTask<ByteCodesMessage>(response);
         }
 
-        private Task<TrieNodesMessage> Handle(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
+        private ValueTask<TrieNodesMessage> Handle(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             Metrics.SnapGetTrieNodesReceived++;
             TrieNodesMessage? response = FulfillTrieNodesMessage(getTrieNodesMessage, cancellationToken);
             response.RequestId = getTrieNodesMessage.RequestId;
-            return Task.FromResult(response);
+            return new ValueTask<TrieNodesMessage>(response);
         }
 
         public override void DisconnectProtocol(DisconnectReason disconnectReason, string details)
@@ -228,14 +228,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             Dispose();
         }
 
-        protected TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
+        private TrieNodesMessage FulfillTrieNodesMessage(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             if (SyncServer == null) return new TrieNodesMessage(Array.Empty<byte[]>());
             var trieNodes = SyncServer.GetTrieNodes(getTrieNodesMessage.Paths, getTrieNodesMessage.RootHash, cancellationToken);
             return new TrieNodesMessage(trieNodes);
         }
 
-        protected AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
+        private AccountRangeMessage FulfillAccountRangeMessage(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             if (SyncServer == null) return new AccountRangeMessage()
             {
@@ -248,7 +248,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             AccountRangeMessage? response = new() { Proofs = proofs, PathsWithAccounts = ranges };
             return response;
         }
-        protected StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
+
+        private StorageRangeMessage FulfillStorageRangeMessage(GetStorageRangeMessage getStorageRangeMessage, CancellationToken cancellationToken)
         {
             if (SyncServer == null) return new StorageRangeMessage()
             {
@@ -261,7 +262,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
         }
-        protected ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
+
+        private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             if (SyncServer == null) return new ByteCodesMessage(Array.Empty<byte[]>());
             var byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
@@ -362,14 +364,16 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 token);
         }
 
-        protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
+        protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
         {
             BackgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
         }
 
         // I just don't want to create a closure.. so this happens.
         private async Task BackgroundSyncSender<TReq, TRes>(
-            (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
+            (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input,
+            CancellationToken cancellationToken)
+            where TRes : P2PMessage
         {
             try
             {
