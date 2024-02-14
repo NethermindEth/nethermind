@@ -294,6 +294,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip2935Enabled { get; }
         Address Eip2935ContractAddress { get; }
+        public ulong Eip2935TransitionTimeStamp { get; }
 
         public ulong WithdrawalTimestamp { get; }
 

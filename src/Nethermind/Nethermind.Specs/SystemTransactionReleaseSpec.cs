@@ -137,5 +137,7 @@ namespace Nethermind.Specs
         public bool IsVerkleTreeEipEnabled => _spec.IsVerkleTreeEipEnabled;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
+
+        public ulong Eip2935TransitionTimeStamp => _spec.Eip2935TransitionTimeStamp;
     }
 }

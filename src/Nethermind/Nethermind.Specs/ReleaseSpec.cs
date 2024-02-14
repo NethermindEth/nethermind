@@ -102,5 +102,7 @@ namespace Nethermind.Specs
             get => IsEip2935Enabled ? _eip2935ContractAddress : null;
             set => _eip2935ContractAddress = value;
         }
+
+        public ulong Eip2935TransitionTimeStamp { get; set; }
     }
 }
