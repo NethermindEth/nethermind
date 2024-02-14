@@ -12,7 +12,7 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, ITrieStore
 {
     private ITrieStore _baseImplementation;
 
-    public TrieStoreWithReadFlags(ITrieStore baseImplementation, ReadFlags readFlags): base(baseImplementation, readFlags)
+    public TrieStoreWithReadFlags(ITrieStore baseImplementation, ReadFlags readFlags) : base(baseImplementation, readFlags)
     {
         _baseImplementation = baseImplementation;
     }
