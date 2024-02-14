@@ -96,17 +96,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             switch (message.PacketType)
             {
                 case SnapMessageCode.GetAccountRange:
-                    if (!ServingEnabled)
+                    if (ShouldServeSnap(nameof(GetAccountRangeMessage)))
                     {
-                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-                        if (Logger.IsDebug)
-                            Logger.Debug(
-                                $"Peer disconnected because of requesting Snap data (GetAccountRange). Peer: {Session.Node.ClientId}");
-                        break;
+                        GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
+                        ReportIn(getAccountRangeMessage, size);
+                        ScheduleSyncServe(getAccountRangeMessage, Handle);
                     }
-                    GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
-                    ReportIn(getAccountRangeMessage, size);
-                    ScheduleSyncServe(getAccountRangeMessage, Handle);
+
                     break;
                 case SnapMessageCode.AccountRange:
                     AccountRangeMessage accountRangeMessage = Deserialize<AccountRangeMessage>(message.Content);
@@ -114,17 +110,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(accountRangeMessage, size);
                     break;
                 case SnapMessageCode.GetStorageRanges:
-                    if (!ServingEnabled)
+                    if (ShouldServeSnap(nameof(GetStorageRangeMessage)))
                     {
-                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-                        if (Logger.IsDebug)
-                            Logger.Debug(
-                                $"Peer disconnected because of requesting Snap data (GetStorageRanges). Peer: {Session.Node.ClientId}");
-                        break;
+                        GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
+                        ReportIn(getStorageRangesMessage, size);
+                        ScheduleSyncServe(getStorageRangesMessage, Handle);
                     }
-                    GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
-                    ReportIn(getStorageRangesMessage, size);
-                    ScheduleSyncServe(getStorageRangesMessage, Handle);
+
                     break;
                 case SnapMessageCode.StorageRanges:
                     StorageRangeMessage storageRangesMessage = Deserialize<StorageRangeMessage>(message.Content);
@@ -132,17 +124,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(storageRangesMessage, size);
                     break;
                 case SnapMessageCode.GetByteCodes:
-                    if (!ServingEnabled)
+                    if (ShouldServeSnap(nameof(GetByteCodesMessage)))
                     {
-                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-                        if (Logger.IsDebug)
-                            Logger.Debug(
-                                $"Peer disconnected because of requesting Snap data (GetByteCodes). Peer: {Session.Node.ClientId}");
-                        break;
+                        GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
+                        ReportIn(getByteCodesMessage, size);
+                        ScheduleSyncServe(getByteCodesMessage, Handle);
                     }
-                    GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
-                    ReportIn(getByteCodesMessage, size);
-                    ScheduleSyncServe(getByteCodesMessage, Handle);
+
                     break;
                 case SnapMessageCode.ByteCodes:
                     ByteCodesMessage byteCodesMessage = Deserialize<ByteCodesMessage>(message.Content);
@@ -150,17 +138,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(byteCodesMessage, size);
                     break;
                 case SnapMessageCode.GetTrieNodes:
-                    if (!ServingEnabled)
+                    if (ShouldServeSnap(nameof(GetTrieNodes)))
                     {
-                        Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
-                        if (Logger.IsDebug)
-                            Logger.Debug(
-                                $"Peer disconnected because of requesting Snap data (GetTrieNodes). Peer: {Session.Node.ClientId}");
-                        break;
+                        GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
+                        ReportIn(getTrieNodesMessage, size);
+                        ScheduleSyncServe(getTrieNodesMessage, Handle);
                     }
-                    GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
-                    ReportIn(getTrieNodesMessage, size);
-                    ScheduleSyncServe(getTrieNodesMessage, Handle);
+
                     break;
                 case SnapMessageCode.TrieNodes:
                     TrieNodesMessage trieNodesMessage = Deserialize<TrieNodesMessage>(message.Content);
@@ -168,6 +152,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Handle(trieNodesMessage, size);
                     break;
             }
+        }
+
+        private bool ShouldServeSnap(string messageName)
+        {
+            if (!ServingEnabled)
+            {
+                Session.InitiateDisconnect(DisconnectReason.SnapServerNotImplemented, DisconnectMessage);
+                if (Logger.IsDebug)
+                    Logger.Debug($"Peer disconnected because of requesting Snap data ({messageName}). Peer: {Session.Node.ClientId}");
+                return false;
+            }
+
+            return true;
         }
 
         private void Handle(AccountRangeMessage msg, long size)
