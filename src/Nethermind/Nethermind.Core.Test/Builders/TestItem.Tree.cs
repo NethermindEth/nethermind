@@ -47,7 +47,7 @@ namespace Nethermind.Core.Test.Builders
                 new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
             };
 
-            public static StateTree GetStateTree(ITrieStore? store)
+            public static StateTree GetStateTree(ITrieStore? store = null)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
