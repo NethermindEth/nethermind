@@ -384,7 +384,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
 public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
-    public EmptyContext Add(byte[] nibblePath) => this;
+    public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
     public EmptyContext Add(byte nibble) => this;
 }
 
@@ -396,7 +396,7 @@ public struct TreePathContext : INodeContext<TreePathContext>
     {
     }
 
-    public TreePathContext Add(byte[] nibblePath)
+    public TreePathContext Add(ReadOnlySpan<byte> nibblePath)
     {
         return new TreePathContext()
         {
@@ -413,11 +413,11 @@ public struct TreePathContext : INodeContext<TreePathContext>
     }
 }
 
-public interface INodeContext<TNodeContext>
+public interface INodeContext<out TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
-    TNodeContext Add(byte[] nibblePath);
+    TNodeContext Add(ReadOnlySpan<byte> nibblePath);
 
     TNodeContext Add(byte nibble);
 }

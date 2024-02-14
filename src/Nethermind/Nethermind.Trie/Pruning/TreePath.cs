@@ -84,7 +84,7 @@ public struct TreePath
         }
     }
 
-    public readonly TreePath Append(Span<byte> nibbles)
+    public readonly TreePath Append(ReadOnlySpan<byte> nibbles)
     {
         if (nibbles.Length == 0) return this;
         if (nibbles.Length == 1) return Append(nibbles[0]);
