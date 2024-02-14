@@ -492,22 +492,30 @@ namespace Nethermind.Synchronization.Test
 
             public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
             {
-                throw new NotImplementedException();
+                Thread.Sleep(1000);
+                error = null;
+                return true;
             }
 
             public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
             {
-                throw new NotImplementedException();
+                Thread.Sleep(1000);
+                error = null;
+                return true;
             }
 
             public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
             {
-                throw new NotImplementedException();
+                Thread.Sleep(1000);
+                error = null;
+                return true;
             }
 
             public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
             {
-                throw new NotImplementedException();
+                Thread.Sleep(1000);
+                error = null;
+                return true;
             }
         }
 
