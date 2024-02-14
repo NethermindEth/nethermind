@@ -183,7 +183,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
         if (_poSSwitcher.MisconfiguredTerminalTotalDifficulty())
         {
-            const string errorMessage = $"Misconfigured terminal total difficulty.";
+            const string errorMessage = "Misconfigured terminal total difficulty.";
             if (_logger.IsWarn) _logger.Warn(errorMessage);
             return NewPayloadV1Result.Invalid(Keccak.Zero, errorMessage);
         }

@@ -400,7 +400,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             lastProcessed = processedBlocks[^1];
             if (_logger.IsTrace) _logger.Trace($"Setting total on last processed to {lastProcessed.ToString(Block.Format.Short)}");
             lastProcessed.Header.TotalDifficulty = suggestedBlock.TotalDifficulty;
-        }   
+        }
         else
         {
             if (_logger.IsDebug) _logger.Debug($"Skipped processing of {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}, last processed is null: {true}, processedBlocks.Length: {processedBlocks.Length}");
