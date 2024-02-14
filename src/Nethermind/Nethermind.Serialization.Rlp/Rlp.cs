@@ -429,22 +429,8 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOfLength(int value)
         {
-            if (value < 1 << 8)
-            {
-                return 1;
-            }
-
-            if (value < 1 << 16)
-            {
-                return 2;
-            }
-
-            if (value < 1 << 24)
-            {
-                return 3;
-            }
-
-            return 4;
+            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
+            return (bits + 7) / 8;
         }
 
         public static byte[] SerializeLength(int value)
