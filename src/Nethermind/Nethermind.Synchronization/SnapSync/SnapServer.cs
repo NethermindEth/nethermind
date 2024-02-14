@@ -187,7 +187,7 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, cancellationToken);
+            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, null, cancellationToken);
         StateTree tree = new(_store, _logManager);
 
         PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
@@ -250,6 +250,7 @@ public class SnapServer : ISnapServer
                 byteLimit - responseSize,
                 HardResponseByteLimit - responseSize,
                 storagePath,
+                accountNeth.StorageRoot,
                 cancellationToken);
 
             if (requiredNodes.Count == 0)
@@ -275,13 +276,13 @@ public class SnapServer : ISnapServer
     }
 
     private (IDictionary<ValueHash256, byte[]>?, long, byte[][], bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
-        long byteLimit, long hardByteLimit, in ValueHash256? storage, CancellationToken cancellationToken)
+        long byteLimit, long hardByteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
     {
         bool isStorage = storage != null;
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
-        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment());
+        tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
         byte[][] proofs = Array.Empty<byte[]>();

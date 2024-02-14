@@ -1235,8 +1235,8 @@ namespace Nethermind.Trie
             ITreeVisitor<TNodeContext> visitor,
             Hash256 rootHash,
             VisitingOptions? visitingOptions = null,
-            Hash256 storageAddr = null,
-            Hash256 storageRoot = null
+            Hash256? storageAddr = null,
+            Hash256? storageRoot = null
         ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
