@@ -1603,6 +1603,10 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(int value)
         {
+            if (value < 0)
+            {
+                return 9; // will be a sign extended long -> ulong
+            }
             if ((uint)value < 128)
             {
                 return 1;
