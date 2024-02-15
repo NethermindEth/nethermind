@@ -104,7 +104,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         int id = _blocksProduced;
 
         _parentPayload!.TryGetBlock(out Block? parentBlock);
-        chain.AddTransactions(BuildTransactions(chain, parentBlock!.CalculateHash(), TestItem.PrivateKeys[id], TestItem.AddressF, count, id, out _, out _));
+        chain.AddTransactions(BuildTransactions(chain, parentBlock!.CalculateHash(), TestItem.PrivateKeyC, TestItem.AddressF, count, id, out _, out _));
 
         IReadOnlyList<ExecutionPayload> executionPayloads = await ProduceBranchV1(rpc, chain, 1, _parentPayload, true);
         executionPayloads.Should().HaveCount(1);
