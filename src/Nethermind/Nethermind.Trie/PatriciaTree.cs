@@ -403,8 +403,8 @@ namespace Nethermind.Trie
             try
             {
                 int nibblesCount = 2 * rawKey.Length;
-                Span<byte> nibbles = rawKey.Length <= 64
-                    ? stackalloc byte[nibblesCount]
+                Span<byte> nibbles = rawKey.Length <= MaxKeyStackAlloc
+                    ? stackalloc byte[MaxKeyStackAlloc]
                     : array = ArrayPool<byte>.Shared.Rent(nibblesCount);
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 CappedArray<byte> result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,

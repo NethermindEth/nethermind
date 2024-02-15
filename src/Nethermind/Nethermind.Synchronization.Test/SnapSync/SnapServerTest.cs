@@ -19,15 +19,20 @@ namespace Nethermind.Synchronization.Test.SnapSync;
 
 public class SnapServerTest
 {
-    [Test]
-    public void TestGetAccountRange()
+    private class Context
+    {
+        internal SnapServer Server { get; init; } = null!;
+        internal SnapProvider SnapProvider { get; init; } = null!;
+        internal StateTree Tree { get; init; } = null!;
+        internal MemDb ClientStateDb { get; init; } = null!;
+    }
+
+    private Context CreateContext()
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        TestItem.Tree.FillStateTreeWithTestAccounts(tree);
-
         SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
@@ -37,42 +42,44 @@ public class SnapServerTest
 
         SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
-        (PathWithAccount[] accounts, byte[][] proofs) =
-            server.GetAccountRanges(tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+        return new Context()
+        {
+            Server = server,
+            SnapProvider = snapProvider,
+            Tree = tree,
+            ClientStateDb = stateDbClient
+        };
+    }
 
-        AddRangeResult result = snapProvider.AddAccountRange(1, tree.RootHash, Keccak.Zero,
+    [Test]
+    public void TestGetAccountRange()
+    {
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
+
+        (PathWithAccount[] accounts, byte[][] proofs) =
+            context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, Keccak.Zero,
             accounts, proofs);
 
         result.Should().Be(AddRangeResult.OK);
-        stateDbClient.Keys.Count.Should().Be(10);
+        context.ClientStateDb.Keys.Count.Should().Be(10);
     }
 
     [Test]
     public void TestGetAccountRangeMultiple()
     {
-        MemDb stateDbServer = new();
-        MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
 
-        StateTree tree = new(store, LimboLogs.Instance);
-
-        TestItem.Tree.FillStateTreeWithTestAccounts(tree);
-
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
-
-        IDbProvider dbProviderClient = new DbProvider();
-        MemDb stateDbClient = new();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
             (PathWithAccount[] accounts, byte[][] proofs) =
-                server.GetAccountRanges(tree.RootHash, startRange, Keccak.MaxValue, 100, CancellationToken.None);
+                context.Server.GetAccountRanges(context.Tree.RootHash, startRange, Keccak.MaxValue, 100, CancellationToken.None);
 
-            AddRangeResult result = snapProvider.AddAccountRange(1, tree.RootHash, startRange,
+            AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
                 accounts, proofs);
 
             result.Should().Be(AddRangeResult.OK);
@@ -82,7 +89,7 @@ public class SnapServerTest
                 break;
             }
         }
-        stateDbClient.Keys.Count.Should().Be(10);
+        context.ClientStateDb.Keys.Count.Should().Be(10);
     }
 
     [TestCase(10, 10)]
@@ -91,29 +98,16 @@ public class SnapServerTest
     [TestCase(10000, 10000)]
     public void TestGetAccountRangeMultipleLarger(int stateSize, int byteLimit)
     {
-        MemDb stateDbServer = new();
-        MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeMultipleAccount(context.Tree, stateSize);
 
-        StateTree tree = new(store, LimboLogs.Instance);
-
-        TestItem.Tree.FillStateTreeMultipleAccount(tree, stateSize);
-
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
-
-        IDbProvider dbProviderClient = new DbProvider();
-        MemDb stateDbClient = new();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
             (PathWithAccount[] accounts, byte[][] proofs) =
-                server.GetAccountRanges(tree.RootHash, startRange, Keccak.MaxValue, byteLimit, CancellationToken.None);
+                context.Server.GetAccountRanges(context.Tree.RootHash, startRange, Keccak.MaxValue, byteLimit, CancellationToken.None);
 
-            AddRangeResult result = snapProvider.AddAccountRange(1, tree.RootHash, startRange,
+            AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
                 accounts, proofs);
 
             result.Should().Be(AddRangeResult.OK);
@@ -131,31 +125,17 @@ public class SnapServerTest
     [TestCase(10000, 10000000)]
     public void TestGetAccountRangeArtificialLimit(int stateSize, int byteLimit)
     {
-        MemDb stateDbServer = new();
-        MemDb codeDbServer = new();
-        TrieStore store = new(stateDbServer, LimboLogs.Instance);
-
-        StateTree tree = new(store, LimboLogs.Instance);
-
-        TestItem.Tree.FillStateTreeMultipleAccount(tree, stateSize);
-
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
-
-        IDbProvider dbProviderClient = new DbProvider();
-        MemDb stateDbClient = new();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeMultipleAccount(context.Tree, stateSize);
         Hash256 startRange = Keccak.Zero;
 
         ValueHash256 limit = new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
-            (PathWithAccount[] accounts, byte[][] proofs) = server
-                .GetAccountRanges(tree.RootHash, startRange, limit, byteLimit, CancellationToken.None);
+            (PathWithAccount[] accounts, byte[][] proofs) = context.Server
+                .GetAccountRanges(context.Tree.RootHash, startRange, limit, byteLimit, CancellationToken.None);
 
-            AddRangeResult result = snapProvider.AddAccountRange(1, tree.RootHash, startRange,
+            AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
                 accounts, proofs);
 
             result.Should().Be(AddRangeResult.OK);
