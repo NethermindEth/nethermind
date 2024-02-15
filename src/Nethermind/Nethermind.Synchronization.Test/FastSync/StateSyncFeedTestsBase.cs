@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             foreach (ISyncPeer syncPeer in syncPeers)
             {
-                ctx.Pool.AddPeer(syncPeer);
+                ctx.Pool.TryAddPeer(syncPeer);
             }
 
             ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);

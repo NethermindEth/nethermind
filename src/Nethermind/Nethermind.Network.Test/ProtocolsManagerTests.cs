@@ -100,6 +100,7 @@ namespace Nethermind.Network.Test
                 _protocolValidator = new ProtocolValidator(_nodeStatsManager, _blockTree, forkInfo, LimboLogs.Instance);
                 _peerStorage = Substitute.For<INetworkStorage>();
                 _syncPeerPool = Substitute.For<ISyncPeerPool>();
+                _syncPeerPool.TryAddPeer(Arg.Any<ISyncPeer>()).Returns(true);
                 _gossipPolicy = Substitute.For<IGossipPolicy>();
                 _manager = new ProtocolsManager(
                     _syncPeerPool,

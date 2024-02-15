@@ -70,10 +70,12 @@ public abstract class SyncProtocolHandlerFactory: IProtocolHandlerFactory
             bool isValid = _protocolValidator.DisconnectOnInvalid(handler.ProtocolCode, session, args);
             if (isValid)
             {
-                // TODO: Disconnect if pool already have peer
-                // if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                // session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
-                _syncPool.AddPeer(handler);
+                if (!_syncPool.TryAddPeer(handler))
+                {
+                    if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
+                    session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
+                }
+
                 if (handler.IncludeInTxPool) _txPool.AddPeer(handler);
                 if (_logger.IsDebug) _logger.Debug($"{handler.ClientId} sync peer {session} created.");
 

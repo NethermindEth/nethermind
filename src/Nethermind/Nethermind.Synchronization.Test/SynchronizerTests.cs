@@ -533,7 +533,7 @@ namespace Nethermind.Synchronization.Test
 
                 _logger.Info($"PEER ADDED {syncPeer.ClientId}");
                 _peers.TryAdd(syncPeer.ClientId, syncPeer);
-                SyncPeerPool.AddPeer(syncPeer);
+                SyncPeerPool.TryAddPeer(syncPeer);
                 return this;
             }
 

@@ -85,8 +85,9 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             public int InitializedPeersCount { get; } = 0;
             public int PeerMaxCount { get; } = 0;
 
-            public void AddPeer(ISyncPeer syncPeer)
+            public bool TryAddPeer(ISyncPeer syncPeer)
             {
+                return false;
             }
 
             public void RemovePeer(ISyncPeer syncPeer)

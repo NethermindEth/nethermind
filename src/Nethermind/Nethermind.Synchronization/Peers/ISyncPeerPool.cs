@@ -63,7 +63,7 @@ namespace Nethermind.Synchronization.Peers
         /// Invoked when a new connection is established and ETH subprotocol handshake is finished - this node is ready to sync.
         /// </summary>
         /// <param name="syncPeer"></param>
-        void AddPeer(ISyncPeer syncPeer);
+        bool TryAddPeer(ISyncPeer syncPeer);
 
         /// <summary>
         /// Invoked after a session / connection is closed.

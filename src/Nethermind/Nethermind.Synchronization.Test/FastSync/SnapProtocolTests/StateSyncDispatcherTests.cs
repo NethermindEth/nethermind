@@ -64,7 +64,7 @@ public class StateSyncDispatcherTests
         peer.ProtocolVersion.Returns((byte)66);
         peer.IsInitialized.Returns(true);
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
-        _pool.AddPeer(peer);
+        _pool.TryAddPeer(peer);
 
         StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,
@@ -91,7 +91,7 @@ public class StateSyncDispatcherTests
                 x[1] = snapPeer;
                 return true;
             });
-        _pool.AddPeer(peer);
+        _pool.TryAddPeer(peer);
 
         StateSyncItem item01 = new(Keccak.EmptyTreeHash, null, new byte[] { 3 }, NodeDataType.State);
         StateSyncItem item02 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 2 }, NodeDataType.State);
