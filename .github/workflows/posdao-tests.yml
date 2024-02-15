@@ -6,6 +6,10 @@ on:
     tags: ['*']
   workflow_dispatch:
     inputs:
+      nethermind_branch:
+        description: Can be used to select different branch than selected for tests
+        required: false
+        default: ''
       branch:
         description: Branch to get tests from
         required: false
@@ -41,6 +45,7 @@ jobs:
         uses: actions/checkout@v4
         with:
           path: nethermind
+          ref: ${{ inputs.nethermind_branch || github.ref }}
       - name: Check out posdao-test-setup repository
         uses: actions/checkout@v4
         with:
