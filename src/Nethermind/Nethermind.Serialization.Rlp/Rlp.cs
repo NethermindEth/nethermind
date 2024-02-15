@@ -1555,7 +1555,7 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? LengthOfNull : LengthOf(item.Value);
         }
 
-        public static int LengthOf(UInt256 item)
+        public static int LengthOf(in UInt256 item)
         {
             ulong value;
             int size;
