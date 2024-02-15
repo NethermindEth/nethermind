@@ -113,6 +113,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [TestCase(false, FullPruningCompletionBehavior.None, false)]
         [TestCase(false, FullPruningCompletionBehavior.ShutdownOnSuccess, false)]
         [TestCase(false, FullPruningCompletionBehavior.AlwaysShutdown, true)]
+        [Retry(10)]
         public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
         {
             TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);

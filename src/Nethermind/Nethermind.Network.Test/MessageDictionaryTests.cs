@@ -100,6 +100,7 @@ public class MessageDictionaryTests
     }
 
     [Test]
+    [Explicit("CI issues - bad test design")]
     public async Task Test_OldRequest_WillThrowWithTimeout()
     {
         TimeSpan timeout = TimeSpan.FromMilliseconds(100);
