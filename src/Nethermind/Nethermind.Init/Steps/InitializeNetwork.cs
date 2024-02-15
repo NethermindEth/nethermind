@@ -28,7 +28,6 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -212,37 +211,20 @@ public class InitializeNetwork : IStep
         }
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
-        void RegisterSnapProtocol(ISnapServer? snapServer = null)
-        {
-            _api.ProtocolsManager!.AddProtocol(Protocol.Snap, (session, version) =>
-            {
-                var handler = version switch
-                {
-                    1 => new SnapProtocolHandler(session, _api.NodeStatsManager!, _api.MessageSerializationService, _api.BackgroundTaskScheduler, _api.LogManager, snapServer),
-                    _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
-                };
-                _api.ProtocolsManager.InitSatelliteProtocol(session, handler);
-
-                return handler;
-            });
-        }
-
         if (_syncConfig.SnapSync)
         {
-            if (_syncConfig.SnapServe)
+            if (!_syncConfig.SnapServe)
             {
-                RegisterSnapProtocol(new SnapServer(_api.TrieStore.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager));
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+                // TODO: Should we keep snap capability even after finishing sync?
+                SnapCapabilitySwitcher snapCapabilitySwitcher =
+                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
             }
             else
             {
-                RegisterSnapProtocol();
-                // TODO: Should we keep snap capability even after finishing sync?
-                SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
             }
         }
-
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
@@ -537,6 +519,13 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
+
+        ISnapServer? snapServer = null;
+        if (_syncConfig.SnapServe)
+        {
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager);
+        }
+
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -552,6 +541,7 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
+            snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
 

@@ -29,6 +29,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -116,6 +117,7 @@ namespace Nethermind.Network.Test
                     forkInfo,
                     _gossipPolicy,
                     new NetworkConfig(),
+                    Substitute.For<ISnapServer>(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

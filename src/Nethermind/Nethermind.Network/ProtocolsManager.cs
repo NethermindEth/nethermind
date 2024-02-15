@@ -29,6 +29,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
@@ -62,6 +63,7 @@ namespace Nethermind.Network
         private readonly HashSet<Capability> _capabilities = new();
         private readonly Regex? _clientIdPattern;
         private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+        private readonly ISnapServer? _snapServer;
         public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
@@ -79,6 +81,7 @@ namespace Nethermind.Network
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
             INetworkConfig networkConfig,
+            ISnapServer? snapServer,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
         {
@@ -98,6 +101,7 @@ namespace Nethermind.Network
             _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _snapServer = snapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (networkConfig.ClientIdMatcher is not null)
@@ -178,14 +182,14 @@ namespace Nethermind.Network
             protocolHandler.Init();
         }
 
-        public void AddProtocol(string code, Func<ISession, int, IProtocolHandler> factory)
+        public void AddProtocol(string code, Func<ISession, IProtocolHandler> factory)
         {
             if (_protocolFactories.ContainsKey(code))
             {
                 throw new InvalidOperationException($"Protocol {code} was already added.");
             }
 
-            _protocolFactories[code] = (session, version) => factory(session, version);
+            _protocolFactories[code] = (session, _) => factory(session);
         }
 
         private IDictionary<string, Func<ISession, int, IProtocolHandler>> GetProtocolFactories()
@@ -211,6 +215,17 @@ namespace Nethermind.Network
 
                     InitSyncPeerProtocol(session, ethHandler);
                     return ethHandler;
+                },
+                [Protocol.Snap] = (session, version) =>
+                {
+                    var handler = version switch
+                    {
+                        1 => new SnapProtocolHandler(session, _stats, _serializer, _backgroundTaskScheduler, _logManager, _snapServer),
+                        _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
+                    };
+                    InitSatelliteProtocol(session, handler);
+
+                    return handler;
                 },
                 [Protocol.NodeData] = (session, version) =>
                 {
@@ -243,7 +258,7 @@ namespace Nethermind.Network
                 }
             };
 
-        public void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
+        private void InitSatelliteProtocol(ISession session, ProtocolHandlerBase handler)
         {
             session.Node.EthDetails = handler.Name;
             handler.ProtocolInitialized += (sender, args) =>
