@@ -1562,17 +1562,17 @@ namespace Nethermind.Serialization.Rlp
             if (item.u3 > 0)
             {
                 value = item.u3;
-                size = 24;
+                size = 1 + sizeof(ulong) * 4;
             }
             else if (item.u2 > 0)
             {
                 value = item.u2;
-                size = 16;
+                size = 1 + sizeof(ulong) * 3;
             }
             else if (item.u1 > 0)
             {
                 value = item.u1;
-                size = 8;
+                size = 1 + sizeof(ulong) * 2;
             }
             else if (item.u0 < 128)
             {
@@ -1581,10 +1581,10 @@ namespace Nethermind.Serialization.Rlp
             else
             {
                 value = item.u0;
-                size = 0;
+                size = 1 + sizeof(ulong);
             }
 
-            return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8) + size;
+            return size - (BitOperations.LeadingZeroCount(value) / 8);
         }
 
         public static int LengthOf(byte[][]? arrays)
