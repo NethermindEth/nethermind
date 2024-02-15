@@ -42,7 +42,7 @@
     <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="17.8.0" />
     <PackageVersion Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.19.6" />
     <PackageVersion Include="Nethermind.Crypto.Pairings" Version="1.0.1" />
-    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.0-preview.29" />
+    <PackageVersion Include="Nethermind.Crypto.Bls" Version="1.0.0-preview.31" />
     <PackageVersion Include="Nethermind.Crypto.SecP256k1" Version="1.1.1" />
     <PackageVersion Include="Nethermind.DotNetty.Buffers" Version="1.0.1" />
     <PackageVersion Include="Nethermind.DotNetty.Handlers" Version="1.0.1" />
