@@ -608,7 +608,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, in TraverseContext traverseContext)
             {
-                _logger.Trace($"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
+                _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
             }
 
             [DoesNotReturn]
@@ -858,7 +858,7 @@ namespace Nethermind.Trie
                 {
                     return ref node.FullRlp;
                 }
-                if (traverseContext.IsRead)
+                if (traverseContext.IsReadValue)
                 {
                     return ref node.ValueRef;
                 }
@@ -894,7 +894,7 @@ namespace Nethermind.Trie
 
             if (childNode is null)
             {
-                if (traverseContext.IsRead || traverseContext.IsNodeRead)
+                if (traverseContext.IsRead)
                 {
                     return ref CappedArray<byte>.Null;
                 }
@@ -964,7 +964,7 @@ namespace Nethermind.Trie
                 {
                     return ref node.FullRlp;
                 }
-                if (traverseContext.IsRead)
+                if (traverseContext.IsReadValue)
                 {
                     return ref node.ValueRef;
                 }
@@ -985,7 +985,7 @@ namespace Nethermind.Trie
                 return ref traverseContext.UpdateValue;
             }
 
-            if (traverseContext.IsRead || traverseContext.IsNodeRead)
+            if (traverseContext.IsRead)
             {
                 return ref CappedArray<byte>.Null;
             }
@@ -1058,7 +1058,7 @@ namespace Nethermind.Trie
                 return ref TraverseNext(next, in traverseContext, extensionLength);
             }
 
-            if (traverseContext.IsRead || traverseContext.IsNodeRead)
+            if (traverseContext.IsRead)
             {
                 return ref CappedArray<byte>.Null;
             }
@@ -1130,7 +1130,8 @@ namespace Nethermind.Trie
             public readonly ReadOnlySpan<byte> UpdatePath;
             public bool IsUpdate { get; }
             public bool IsNodeRead { get; }
-            public bool IsRead => !IsUpdate && !IsNodeRead;
+            public bool IsReadValue => !IsUpdate && !IsNodeRead;
+            public bool IsRead => IsNodeRead || IsReadValue;
             public bool IsDelete => IsUpdate && UpdateValue.IsNull;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; }
@@ -1169,7 +1170,7 @@ namespace Nethermind.Trie
 
             public override string ToString()
             {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue}")}";
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsReadValue ? string.Empty : $" -> {UpdateValue}")}";
             }
         }
 
