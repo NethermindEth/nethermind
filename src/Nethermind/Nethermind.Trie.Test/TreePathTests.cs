@@ -24,7 +24,11 @@ public class TreePathTests
     [Test]
     public void TestIndexWrite()
     {
-        TreePath path = CreateFullTreePath();
+        TreePath path = new TreePath(Keccak.Zero, 64);
+        for (int i = 0; i < 64; i++)
+        {
+            path[i] = ((byte)(i % 16));
+        }
 
         string asHex = path.Span.ToHexString();
         asHex.Should().Be("0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef");

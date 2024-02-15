@@ -151,7 +151,7 @@ public class SnapServer : ISnapServer
     public byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
+        using ArrayPoolList<byte[]> response = new(requestedHashes.Count);
 
         if (byteLimit > HardResponseByteLimit)
         {

@@ -14,6 +14,8 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static class Nibbles
     {
+        private const int StackAllocLengthLimit = 255;
+
         public static Nibble[] FromBytes(params byte[] bytes)
         {
             return FromBytes(bytes.AsSpan());
@@ -150,10 +152,13 @@ namespace Nethermind.Trie
                 return compactPath;
             }
             int nibblesCount = compactPath.Length * 2 + 1;
-            byte[] array = ArrayPool<byte>.Shared.Rent(nibblesCount);
+            byte[]? array = null;
+            Span<byte> nibbles = nibblesCount < StackAllocLengthLimit
+                ? stackalloc byte[nibblesCount]
+                : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
+
             try
             {
-                Span<byte> nibbles = array.AsSpan().Slice(0, nibblesCount);
                 BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
                 nibbles[^1] = 16;
 
@@ -167,7 +172,10 @@ namespace Nethermind.Trie
             }
             finally
             {
-                ArrayPool<byte>.Shared.Return(array);
+                if (array is not null)
+                {
+                    ArrayPool<byte>.Shared.Return(array);
+                }
             }
         }
 
