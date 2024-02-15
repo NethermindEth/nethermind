@@ -1601,22 +1601,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static int LengthOf(int value)
-        {
-            if (value < 0)
-            {
-                return 9; // will be a sign extended long -> ulong
-            }
-            if ((uint)value < 128)
-            {
-                return 1;
-            }
-            else
-            {
-                // everything has a length prefix
-                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value) / 8);
-            }
-        }
+        public static int LengthOf(int value) => LengthOf((long)value);
 
         public static int LengthOf(Hash256? item)
         {
