@@ -407,8 +407,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (value < 1 << 16)
             {
-                buffer[position] = (byte)(value >> 8);
-                buffer[position + 1] = ((byte)value);
+                BinaryPrimitives.WriteUInt16BigEndian(buffer.Slice(position), (ushort)value);
                 return position + 2;
             }
 
@@ -420,31 +419,14 @@ namespace Nethermind.Serialization.Rlp
                 return position + 3;
             }
 
-            buffer[position] = (byte)(value >> 24);
-            buffer[position + 1] = (byte)(value >> 16);
-            buffer[position + 2] = (byte)(value >> 8);
-            buffer[position + 3] = (byte)value;
+            BinaryPrimitives.WriteInt32BigEndian(buffer.Slice(position), value);
             return position + 4;
         }
 
         public static int LengthOfLength(int value)
         {
-            if (value < 1 << 8)
-            {
-                return 1;
-            }
-
-            if (value < 1 << 16)
-            {
-                return 2;
-            }
-
-            if (value < 1 << 24)
-            {
-                return 3;
-            }
-
-            return 4;
+            int bits = 32 - BitOperations.LeadingZeroCount((uint)value | 1);
+            return (bits + 7) / 8;
         }
 
         public static byte[] SerializeLength(int value)
@@ -1608,74 +1590,32 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(long value)
         {
-            // everything has a length prefix
-            if (value < 0)
+            if ((ulong)value < 128)
             {
-                return 9;
+                return 1;
             }
-
-            if (value < 256L * 256L * 256L * 256L * 256L * 256L * 256L)
+            else
             {
-                if (value < 256L * 256L * 256L * 256L * 256L * 256L)
-                {
-                    if (value < 256L * 256L * 256L * 256L * 256L)
-                    {
-                        if (value < 256L * 256L * 256L * 256L)
-                        {
-                            if (value < 256 * 256 * 256)
-                            {
-                                if (value < 256 * 256)
-                                {
-                                    if (value < 128)
-                                    {
-                                        return 1;
-                                    }
-
-                                    return value < 256 ? 2 : 3;
-                                }
-
-                                return 4;
-                            }
-
-                            return 5;
-                        }
-
-                        return 6;
-                    }
-
-                    return 7;
-                }
-
-                return 8;
+                // everything has a length prefix
+                return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8);
             }
-
-            return 9;
         }
 
         public static int LengthOf(int value)
         {
-            // everything has a length prefix
             if (value < 0)
             {
-                return 9; // we cast it to long now
+                return 9; // will be a sign extended long -> ulong
             }
-
-            if (value < 256 * 256 * 256)
+            if ((uint)value < 128)
             {
-                if (value < 256 * 256)
-                {
-                    if (value < 128)
-                    {
-                        return 1;
-                    }
-
-                    return value < 256 ? 2 : 3;
-                }
-
-                return 4;
+                return 1;
             }
-
-            return 5;
+            else
+            {
+                // everything has a length prefix
+                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value) / 8);
+            }
         }
 
         public static int LengthOf(Hash256? item)
