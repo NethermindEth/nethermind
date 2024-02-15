@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -118,7 +119,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     [Test]
     public async Task Can_include_shutter_transactions()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(new TestSingleReleaseSpecProvider(London.Instance));
+        using MergeTestBlockchain chain = await new MergeAuRaTestBlockchain(null, null, true).Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // creating chain with 3 blocks
@@ -224,11 +225,13 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     class MergeAuRaTestBlockchain : MergeTestBlockchain
     {
         private AuRaNethermindApi? _api;
+        private readonly bool _useShutter;
 
-        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
+        public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, bool useShutter = false)
             : base(mergeConfig, mockedPayloadPreparationService)
         {
             SealEngineType = Core.SealEngineType.AuRa;
+            _useShutter = useShutter;
         }
 
         protected override IBlockProcessor CreateBlockProcessor()
@@ -306,7 +309,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 LogManager);
 
 
-            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(new ShutterTxSource());
+            BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(_useShutter ? new ShutterTxSource() : null);
             PostMergeBlockProducer postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv, BlockProductionTrigger);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
