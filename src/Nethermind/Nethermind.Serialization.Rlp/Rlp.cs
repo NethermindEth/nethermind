@@ -1584,7 +1584,7 @@ namespace Nethermind.Serialization.Rlp
                 size = 0;
             }
 
-            return  1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8) + size;
+            return 1 + sizeof(ulong) - (BitOperations.LeadingZeroCount((ulong)value) / 8) + size;
         }
 
         public static int LengthOf(byte[][]? arrays)
