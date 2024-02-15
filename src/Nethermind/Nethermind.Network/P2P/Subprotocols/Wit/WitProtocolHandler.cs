@@ -16,6 +16,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 
+
 namespace Nethermind.Network.P2P.Subprotocols.Wit
 {
     public class WitProtocolHandler : ZeroProtocolHandlerBase, IWitnessPeer
@@ -38,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
 
         public override string ProtocolCode => Protocol.Wit;
 
-        public override int MessageIdSpaceSize => 3;
+        public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.Wit;
 
         public override string Name => "wit0";
 

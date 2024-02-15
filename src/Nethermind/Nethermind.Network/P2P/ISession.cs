@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using DotNetty.Transport.Channels;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.EventArg;
@@ -40,6 +41,10 @@ namespace Nethermind.Network.P2P
         IPingSender PingSender { get; set; }
 
         void AddProtocolHandler(IProtocolHandler handler);
+
+        // Before the protocol is added, some protocol may need to send message, during which the adaptive id must be
+        // correct
+        void RegisterProtocolMessageSpace(IDictionary<string, int> protocolMessageSpace);
 
         bool TryGetProtocolHandler(string protocolCode, out IProtocolHandler handler);
 

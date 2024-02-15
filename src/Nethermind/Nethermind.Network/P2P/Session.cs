@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
+using MathNet.Numerics.LinearAlgebra;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -566,15 +567,27 @@ namespace Nethermind.Network.P2P
             }
 
             _protocols.TryAdd(handler.ProtocolCode, handler);
-            _resolver = GetOrCreateResolver();
         }
 
-        private AdaptiveCodeResolver GetOrCreateResolver()
+        public void RegisterProtocolMessageSpace(IDictionary<string, int> protocols)
         {
-            string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
+            _resolver = GetOrCreateResolver(protocols);
+        }
+
+        private AdaptiveCodeResolver GetOrCreateResolver(IDictionary<string, int> protocols)
+        {
+            // Combine with already initialized protocols
+            // Note: Devp2p does not specify add or remove capability in the spec, so what actually happen if a protocol
+            // is removed is not really know, or what happen if a message with the wrong adaptive id happens to be send
+            // in between and such.
+            protocols = protocols
+                .Concat(_protocols.Select((p) => KeyValuePair.Create(p.Key, p.Value.MessageIdSpaceSize)))
+                .ToDictionary();
+
+            string key = string.Join(":", protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
             if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver? value))
             {
-                value = new AdaptiveCodeResolver(_protocols);
+                value = new AdaptiveCodeResolver(protocols);
                 _resolvers[key] = value;
             }
 
@@ -595,15 +608,15 @@ namespace Nethermind.Network.P2P
         {
             private readonly (string ProtocolCode, int SpaceSize)[] _alphabetically;
 
-            public AdaptiveCodeResolver(IDictionary<string, IProtocolHandler> protocols)
+            public AdaptiveCodeResolver(IDictionary<string, int> protocols)
             {
                 _alphabetically = new (string, int)[protocols.Count];
-                _alphabetically[0] = (Protocol.P2P, protocols[Protocol.P2P].MessageIdSpaceSize);
+                _alphabetically[0] = (Protocol.P2P, protocols[Protocol.P2P]);
                 int i = 1;
-                foreach (KeyValuePair<string, IProtocolHandler> protocolSession
+                foreach (KeyValuePair<string, int> protocolSession
                     in protocols.Where(kv => kv.Key != Protocol.P2P).OrderBy(kv => kv.Key))
                 {
-                    _alphabetically[i++] = (protocolSession.Key, protocolSession.Value.MessageIdSpaceSize);
+                    _alphabetically[i++] = (protocolSession.Key, protocolSession.Value);
                 }
             }
 

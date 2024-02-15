@@ -91,7 +91,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public override string ProtocolCode => Protocol.Les;
 
-        public override int MessageIdSpaceSize => 23;
+        public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.Les;
 
         protected override TimeSpan InitTimeout => Timeouts.Les3Status;
 
