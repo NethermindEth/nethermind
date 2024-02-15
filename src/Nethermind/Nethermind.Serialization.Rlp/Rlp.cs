@@ -1557,15 +1557,30 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(UInt256 item)
         {
-            if (item < 128UL)
+            ulong value;
+            int size;
+            if (item.u3 > 0)
             {
-                return 1;
+                value = item.u3;
+                size = 24;
+            }
+            else if (item.u2 > 0)
+            {
+                value = item.u2;
+                size = 16;
+            }
+            else if (item.u1 > 0)
+            {
+                value = item.u1;
+                size = 8;
+            }
+            else
+            {
+                value = item.u0;
+                size = 0;
             }
 
-            Span<byte> bytes = stackalloc byte[32];
-            item.ToBigEndian(bytes);
-            int length = bytes.WithoutLeadingZeros().Length;
-            return length + 1;
+            return LengthOf((long)value) + size;
         }
 
         public static int LengthOf(byte[][]? arrays)
