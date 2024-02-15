@@ -578,8 +578,9 @@ namespace Nethermind.Network.P2P
         {
             // Combine with already initialized protocols
             // Note: Devp2p does not specify add or remove capability in the spec, so what actually happen if a protocol
-            // is removed is not really know, or what happen if a message with the wrong adaptive id happens to be send
-            // in between and such.
+            // is removed is not really defined, or what happen if a message with the wrong adaptive id happens to be send
+            // in between and such, so we'll assume that protocol space is never removed, but this is not really correct
+            // as newly added protocol can go in between other protocol.
             protocols = protocols
                 .Concat(_protocols.Select((p) => KeyValuePair.Create(p.Key, p.Value.MessageIdSpaceSize)))
                 .ToDictionary();

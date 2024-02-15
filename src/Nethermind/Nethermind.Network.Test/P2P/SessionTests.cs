@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -451,6 +452,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(aaa);
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
+            session.RegisterProtocolMessageSpace(new Dictionary<string, int>());
 
             _packetSender.Enqueue(PingMessage.Instance).Returns(10);
             session.DeliverMessage(PingMessage.Instance);
@@ -537,6 +539,7 @@ namespace Nethermind.Network.Test.P2P
 
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
+            session.RegisterProtocolMessageSpace(new Dictionary<string, int>());
 
             p2p.When(it => it.DisconnectProtocol(Arg.Any<DisconnectReason>(), Arg.Any<string>()))
                 .Do((_) =>
@@ -569,6 +572,7 @@ namespace Nethermind.Network.Test.P2P
             session.AddProtocolHandler(aaa);
             session.AddProtocolHandler(bbb);
             session.AddProtocolHandler(ccc);
+            session.RegisterProtocolMessageSpace(new Dictionary<string, int>());
 
             byte[] data = new byte[10];
             session.ReceiveMessage(new Packet("---", 3, data));

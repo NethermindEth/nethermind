@@ -196,6 +196,7 @@ namespace Nethermind.Network
             }
 
             _protocolFactories[(code, version)] = factory;
+            AddSupportedCapability(new Capability(code, version));
         }
 
         private IDictionary<(string, int), IProtocolHandlerFactory> GetProtocolFactories()
