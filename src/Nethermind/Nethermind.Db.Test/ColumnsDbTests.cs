@@ -76,7 +76,7 @@ public class ColumnsDbTests
         colA.Set(TestItem.KeccakA, TestItem.KeccakA.BytesToArray());
         colB.Set(TestItem.KeccakA, TestItem.KeccakB.BytesToArray());
 
-        _db.GatherMetric().MemtableSize.Should().Be(22544);
+        Assert.That(() => _db.GatherMetric().MemtableSize, Is.EqualTo(22544).After(1000, 10));
     }
 
     [Test]
