@@ -42,7 +42,7 @@ using Int256;
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
-    internal static FrozenDictionary<Address, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
+    internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
     internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -98,9 +98,9 @@ public class VirtualMachine : IVirtualMachine
         where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
 
-    private static FrozenDictionary<Address, CodeInfo> InitializePrecompiledContracts()
+    private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
-        return new Dictionary<Address, CodeInfo>
+        return new Dictionary<AddressAsKey, CodeInfo>
         {
             [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),

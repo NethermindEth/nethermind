@@ -372,10 +372,10 @@ namespace Nethermind.Blockchain.Receipts
 
         private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
-            HashSet<Hash256> newTxs = null;
+            HashSet<Hash256AsKey> newTxs = null;
             if (exceptBlock is not null)
             {
-                newTxs = new HashSet<Hash256>(exceptBlock.Transactions.Select((tx) => tx.Hash));
+                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select((tx) => new Hash256AsKey(tx.Hash)));
             }
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();
