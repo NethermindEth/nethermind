@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         public override byte ProtocolVersion => 1;
         public override string ProtocolCode => Protocol.Snap;
-        public override int MessageIdSpaceSize => 8;
+        public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.Snap;
 
         private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
 

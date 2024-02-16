@@ -36,7 +36,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public override string ProtocolCode => Protocol.P2P;
 
-    public override int MessageIdSpaceSize => 0x10;
+    public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.P2P;
 
     protected override TimeSpan InitTimeout => Timeouts.P2PHello;
 
@@ -116,16 +116,14 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
 
-                    // We need to initialize subprotocols in alphabetical order. Protocols are using AdaptiveId,
-                    // which should be constant for the whole session. Some protocols (like Eth) are sending messages
-                    // on initialization and we need to avoid changing theirs AdaptiveId by initializing protocols,
-                    // which are alphabetically before already initialized ones.
-                    foreach (Capability capability in
-                        _agreedCapabilities.GroupBy(c => c.ProtocolCode).Select(c => c.OrderBy(v => v.Version).Last()).OrderBy(c => c.ProtocolCode))
-                    {
-                        if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
-                        SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
-                    }
+                    List<(string ProtocolName, int ProtocolVersion)> caps = _agreedCapabilities
+                        .GroupBy(c => c.ProtocolCode)
+                        .Select(c => c.OrderBy(v => v.Version).Last())
+                        .Select(c => (c.ProtocolCode, c.Version))
+                        .ToList();
+
+                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(caps));
+                    // if (Logger.IsTrace) Logger.Trace($"{Session} Starting protocolHandler for {capability.ProtocolCode} v{capability.Version} on {Session.RemotePort}");
 
                     break;
                 }
@@ -176,7 +174,9 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                     SupportedCapabilities.Add(message.Capability);
                     if (Logger.IsTrace)
                         Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
-                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
+
+                    SubprotocolRequested?.Invoke(this, new ProtocolEventArgs([(capability.ProtocolCode, capability.Version)]));
+
                     break;
                 }
             default:

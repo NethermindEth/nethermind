@@ -1,18 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+
 namespace Nethermind.Network.P2P.EventArg
 {
     public class ProtocolEventArgs : System.EventArgs
     {
-        public int Version { get; }
+        public IList<(string ProtocolCode, int Version)> Protocols { get; }
 
-        public string ProtocolCode { get; }
-
-        public ProtocolEventArgs(string protocolCode, int version)
+        public ProtocolEventArgs(IList<(string ProtocolCode, int Version)> protocols)
         {
-            Version = version;
-            ProtocolCode = protocolCode;
+            Protocols = protocols;
         }
     }
 }

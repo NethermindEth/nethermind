@@ -50,7 +50,7 @@ namespace Nethermind.AccountAbstraction.Network
 
         public override string ProtocolCode => Protocol.AA;
 
-        public override int MessageIdSpaceSize => 4;
+        public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.AA;
 
         public override string Name => "aa";
 

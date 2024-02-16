@@ -266,9 +266,8 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
             AccountAbstractionPeerManager peerManager = new(_userOperationPools, UserOperationBroadcaster, _accountAbstractionConfig.AaPriorityPeersMaxCount, _logger);
 
             serializer.Register(new UserOperationsMessageSerializer());
-            protocolsManager.AddProtocol(Protocol.AA,
-                session => new AaProtocolHandler(session, serializer, stats, _userOperationPools, peerManager, logManager));
-            protocolsManager.AddSupportedCapability(new Capability(Protocol.AA, 0));
+            protocolsManager.AddProtocol(Protocol.AA, 0,
+                new AaProtocolHandlerFactory(serializer, stats, _userOperationPools, peerManager, logManager));
 
             if (_logger.IsInfo) _logger.Info("Initialized Account Abstraction network protocol");
         }

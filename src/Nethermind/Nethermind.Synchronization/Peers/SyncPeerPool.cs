@@ -218,23 +218,26 @@ namespace Nethermind.Synchronization.Peers
             _peerRefreshQueue.Add(task);
         }
 
-        public void AddPeer(ISyncPeer syncPeer)
+        public bool TryAddPeer(ISyncPeer syncPeer)
         {
             if (_logger.IsDebug) _logger.Debug($"Adding sync peer {syncPeer.Node:c}");
             if (!_isStarted)
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer pool not started yet - adding peer is blocked: {syncPeer.Node:s}");
-                return;
+                return false;
             }
 
             if (_peers.ContainsKey(syncPeer.Node.Id))
             {
                 if (_logger.IsDebug) _logger.Debug($"Sync peer {syncPeer.Node:c} already in peers collection.");
-                return;
+                return false;
             }
 
             PeerInfo peerInfo = new(syncPeer);
-            _peers.TryAdd(syncPeer.Node.Id, peerInfo);
+            if (!_peers.TryAdd(syncPeer.Node.Id, peerInfo))
+            {
+                return false;
+            }
             Metrics.SyncPeers = _peers.Count;
 
             if (syncPeer.IsPriority)
@@ -256,6 +259,8 @@ namespace Nethermind.Synchronization.Peers
                 if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportInterestingEvent(syncPeer.Node.Address, "adding node to refresh queue");
                 _peerRefreshQueue.Add(new RefreshTotalDiffTask(syncPeer));
             }
+
+            return true;
         }
 
         public void RemovePeer(ISyncPeer syncPeer)

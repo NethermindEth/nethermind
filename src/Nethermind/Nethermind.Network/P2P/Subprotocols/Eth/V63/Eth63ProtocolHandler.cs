@@ -61,7 +61,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         public override byte ProtocolVersion => EthVersions.Eth63;
 
-        public override int MessageIdSpaceSize => 17; // magic number here following Go
+        public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.Eth63;
 
         public override void HandleMessage(ZeroPacket message)
         {

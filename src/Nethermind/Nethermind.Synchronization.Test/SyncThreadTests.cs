@@ -105,7 +105,7 @@ namespace Nethermind.Synchronization.Test
                     }
 
                     SyncTestContext remotePeer = _peers[remoteIndex];
-                    localPeer.PeerPool!.AddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
+                    localPeer.PeerPool!.TryAddPeer(new SyncPeerMock(remotePeer.Tree, TestItem.PublicKeys[localIndex],
                         $"PEER{localIndex}", remotePeer.SyncServer, TestItem.PublicKeys[remoteIndex],
                         $"PEER{remoteIndex}"));
                 }

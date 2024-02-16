@@ -131,7 +131,7 @@ namespace Nethermind.Synchronization.Test
             };
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(peer);
+            _pool.TryAddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
@@ -145,7 +145,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(peer);
+            _pool.TryAddPeer(peer);
 
             Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(0));
         }
@@ -161,7 +161,7 @@ namespace Nethermind.Synchronization.Test
             _synchronizer.SyncEvent += (_, _) => { resetEvent.Set(); };
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(peer);
+            _pool.TryAddPeer(peer);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
             Assert.That(_blockTree.BestSuggestedHeader!.Number, Is.EqualTo(SyncBatchSize.Max * 2 - 1));
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization.Test
             };
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(peer);
+            _pool.TryAddPeer(peer);
 
             BlockTreeBuilder.ExtendTree(_remoteBlockTree, SyncBatchSize.Max * 2);
             _syncServer.AddNewBlock(_remoteBlockTree.RetrieveHeadBlock()!, peer);
@@ -208,7 +208,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(peer);
+            _pool.TryAddPeer(peer);
 
             Block block = Build.A.Block
                 .WithParent(_remoteBlockTree.Head!)
@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner1);
+            _pool.TryAddPeer(miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner1);
+            _pool.TryAddPeer(miner1);
 
             resetEvent.WaitOne(_standardTimeoutUnit);
 
@@ -311,7 +311,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner1);
+            _pool.TryAddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(minerTree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
@@ -328,7 +328,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner2);
+            _pool.TryAddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default);
@@ -349,7 +349,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner1);
+            _pool.TryAddPeer(miner1);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             Assert.That(_blockTree.BestSuggestedHeader!.Hash, Is.EqualTo(minerTree.BestSuggestedHeader!.Hash), "client agrees with miner before split");
@@ -366,7 +366,7 @@ namespace Nethermind.Synchronization.Test
 
             _pool.Start();
             _synchronizer.Start();
-            _pool.AddPeer(miner2);
+            _pool.TryAddPeer(miner2);
             resetEvent.WaitOne(_standardTimeoutUnit);
 
             await miner2.Received().GetBlockHeaders(6, 1, 0, default);

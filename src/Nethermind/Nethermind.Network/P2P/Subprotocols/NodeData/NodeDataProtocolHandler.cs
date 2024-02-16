@@ -31,7 +31,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
     protected override TimeSpan InitTimeout => Timeouts.Eth;
     public override byte ProtocolVersion => 1;
     public override string ProtocolCode => Protocol.NodeData;
-    public override int MessageIdSpaceSize => 2;
+    public override int MessageIdSpaceSize => ProtocolMessageIdSpaces.NodeData;
 
     public NodeDataProtocolHandler(ISession session,
         IMessageSerializationService serializer,
