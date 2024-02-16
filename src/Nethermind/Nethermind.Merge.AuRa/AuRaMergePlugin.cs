@@ -10,13 +10,17 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.TxPool;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -86,14 +90,27 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-            // todo: sign up to validator register contract where?
-            // need a blockheader
-            // link to libp2p
+            // todo
+            // link to libp2p?
 
-            LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
-            ITxSource? shutterTxSource = _auraConfig!.UseShutter
-                ? new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!)
-                : null;
+            ITxSource? shutterTxSource = null;
+
+            if (_auraConfig!.UseShutter)
+            {
+                Address validatorContractAddress = _api.ChainSpec.AuRa.Validators.GetContractAddress();
+                ReadOnlyTxProcessingEnv readonlyTxProcessorSource = new(_api.WorldStateManager!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
+                ValidatorContract validatorContract = new(_api.TransactionProcessor!, _api.AbiEncoder, validatorContractAddress, _api.WorldState!, readonlyTxProcessorSource, _api.EngineSigner!);
+                BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
+                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!), validatorContract, blockHeader);
+                if (validatorRegistryContract.IsRegistered(blockHeader))
+                {
+                    // todo: safe to do this in another thread?
+                    var _ = validatorRegistryContract.Register(blockHeader);
+                }
+
+                LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
+                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
+            }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
         }
