@@ -157,26 +157,22 @@ namespace Nethermind.Trie
                 ? stackalloc byte[nibblesCount]
                 : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
 
-            try
-            {
-                BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
-                nibbles[^1] = 16;
+            BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+            nibbles[^1] = 16;
 
-                if (nibbles[0] < 2)
-                {
-                    nibbles = nibbles[..^1];
-                }
-
-                int chop = 2 - (nibbles[0] & 1);
-                return nibbles[chop..].ToArray();
-            }
-            finally
+            if (nibbles[0] < 2)
             {
-                if (array is not null)
-                {
-                    ArrayPool<byte>.Shared.Return(array);
-                }
+                nibbles = nibbles[..^1];
             }
+
+            int chop = 2 - (nibbles[0] & 1);
+            byte[] result = nibbles[chop..].ToArray();
+            if (array is not null)
+            {
+                ArrayPool<byte>.Shared.Return(array);
+            }
+
+            return result;
         }
 
         public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)

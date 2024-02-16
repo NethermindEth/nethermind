@@ -391,8 +391,8 @@ namespace Nethermind.Trie
             }
             catch (TrieException e)
             {
-                throw new TrieException(
-                    $"Failed to load by path {nibbles.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
+                EnhanceExceptionNibble(nibbles, rootHash ?? RootHash, e);
+                throw;
             }
         }
 
@@ -410,16 +410,13 @@ namespace Nethermind.Trie
                 Nibbles.BytesToNibbleBytes(rawKey, nibbles);
                 CappedArray<byte> result = Run(nibbles, nibblesCount, Array.Empty<byte>(), false, startRootHash: rootHash,
                     isNodeRead: true);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
                 return result.ToArray() ?? Array.Empty<byte>();
             }
             catch (TrieException e)
             {
-                throw new TrieException(
-                    $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash ?? RootHash}.", e);
-            }
-            finally
-            {
-                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
             }
         }
 
@@ -440,6 +437,26 @@ namespace Nethermind.Trie
                 trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
                     ? $"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}."
                     : $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.";
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void EnhanceExceptionNibble(ReadOnlySpan<byte> nibble, ValueHash256 rootHash, TrieException baseException)
+        {
+            static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+                exception switch
+                {
+                    null => null,
+                    TrieNodeException ex => ex,
+                    _ => GetTrieNodeException(exception.InnerException as TrieException)
+                };
+
+            TrieNodeException? trieNodeException = GetTrieNodeException(baseException);
+            if (trieNodeException is not null)
+            {
+                trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
+                    ? $"Failed to load root hash {rootHash} while loading nibble {nibble.ToHexString()}."
+                    : $"Failed to load nibble {nibble.ToHexString()} from root hash {rootHash}.";
             }
         }
 
