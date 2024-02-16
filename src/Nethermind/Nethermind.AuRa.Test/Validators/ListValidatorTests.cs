@@ -48,7 +48,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         [TestCaseSource(nameof(ValidateTestCases))]
         public bool should_validate_correctly(Address address, long index) =>
-            _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index);
+            _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index, out _);
 
         [TestCase(1)]
         [TestCase(2)]

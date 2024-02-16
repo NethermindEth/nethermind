@@ -41,6 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 [Parallelizable(ParallelScope.All)]
 [TestFixture]
+[Culture("en-US")]
 public partial class EthRpcModuleTests
 {
     [TestCase("earliest", "0x3635c9adc5dea00000")]
