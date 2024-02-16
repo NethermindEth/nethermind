@@ -8,6 +8,6 @@ namespace Nethermind.Evm.TransactionProcessing
 {
     public interface ITransactionProcessorAdapter
     {
-        void Execute(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer);
+        TransactionResult Execute(Transaction transaction, BlockExecutionContext blkCtx, ITxTracer txTracer);
     }
 }
