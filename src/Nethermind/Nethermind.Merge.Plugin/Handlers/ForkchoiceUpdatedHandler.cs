@@ -123,14 +123,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
             if (headBlockHeader is null)
             {
                 if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
-                try
-                {
-                    headBlockHeader = await _syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsDebug) _logger.Debug($"Error attempting to fetch header from peer: {e}.");
-                }
+                headBlockHeader = await _syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
             }
 
             if (headBlockHeader is not null)
