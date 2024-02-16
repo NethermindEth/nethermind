@@ -22,10 +22,10 @@ namespace Nethermind.TxPool
 
         public Transaction[] GetPendingTransactionsBySender(Address address) => Array.Empty<Transaction>();
 
-        public Dictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
-        public Dictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender()
             => new Dictionary<AddressAsKey, Transaction[]>();
 
         public static IEnumerable<Transaction> GetPendingBlobTransactions() => Array.Empty<Transaction>();

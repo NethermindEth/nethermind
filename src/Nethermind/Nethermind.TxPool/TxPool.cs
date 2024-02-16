@@ -160,10 +160,10 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public Dictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
-        public Dictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
