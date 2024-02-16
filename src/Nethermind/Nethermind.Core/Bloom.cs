@@ -229,39 +229,14 @@ namespace Nethermind.Core
         public const int BitLength = 2048;
         public const int ByteLength = BitLength / 8;
 
-        public BloomStructRef(LogEntry[] logEntries, Bloom? blockBloom = null)
-        {
-            Bytes = new byte[ByteLength];
-            Add(logEntries, blockBloom);
-        }
-
-        public BloomStructRef(Span<byte> bytes)
+        public BloomStructRef(ReadOnlySpan<byte> bytes)
         {
             Bytes = bytes;
         }
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
-        public void Set(ReadOnlySpan<byte> sequence)
-        {
-            Set(sequence, null);
-        }
-
-        private readonly void Set(ReadOnlySpan<byte> sequence, Bloom? masterBloom = null)
-        {
-            Bloom.BloomExtract indexes = GetExtract(sequence);
-            Set(indexes.Index1);
-            Set(indexes.Index2);
-            Set(indexes.Index3);
-            if (masterBloom is not null)
-            {
-                masterBloom.Set(indexes.Index1);
-                masterBloom.Set(indexes.Index2);
-                masterBloom.Set(indexes.Index3);
-            }
-        }
-
-        public bool Matches(ReadOnlySpan<byte> sequence)
+        public readonly bool Matches(ReadOnlySpan<byte> sequence)
         {
             Bloom.BloomExtract indexes = GetExtract(sequence);
             return Matches(in indexes);
@@ -306,27 +281,7 @@ namespace Nethermind.Core
             return Core.Extensions.Bytes.GetSimplifiedHashCode(Bytes);
         }
 
-        public void Add(LogEntry[] logEntries, Bloom? blockBloom)
-        {
-            for (int entryIndex = 0; entryIndex < logEntries.Length; entryIndex++)
-            {
-                LogEntry logEntry = logEntries[entryIndex];
-                byte[] addressBytes = logEntry.LoggersAddress.Bytes;
-                Set(addressBytes, blockBloom);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
-                {
-                    Hash256 topic = logEntry.Topics[topicIndex];
-                    Set(topic.Bytes, blockBloom);
-                }
-            }
-        }
-
-        public readonly void Accumulate(BloomStructRef bloom)
-        {
-            Bytes.Or(bloom.Bytes);
-        }
-
-        public bool Matches(LogEntry logEntry)
+        public readonly bool Matches(LogEntry logEntry)
         {
             if (Matches(logEntry.LoggersAddress))
             {
@@ -351,16 +306,9 @@ namespace Nethermind.Core
             return Bytes[bytePosition].GetBit(shift);
         }
 
-        private readonly void Set(int index)
-        {
-            int bytePosition = index / 8;
-            int shift = index % 8;
-            Bytes[bytePosition].SetBit(shift);
-        }
+        public readonly bool Matches(Address address) => Matches(address.Bytes);
 
-        public bool Matches(Address address) => Matches(address.Bytes);
-
-        public bool Matches(Hash256 topic) => Matches(topic.Bytes);
+        public readonly bool Matches(Hash256 topic) => Matches(topic.Bytes);
 
         public readonly bool Matches(in Bloom.BloomExtract extract) => Get(extract.Index1) && Get(extract.Index2) && Get(extract.Index3);
 

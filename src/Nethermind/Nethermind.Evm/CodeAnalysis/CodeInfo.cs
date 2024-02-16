@@ -2,21 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
+using System.Threading;
 
 using Nethermind.Evm.Precompiles;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
-    public class CodeInfo
+    public class CodeInfo : IThreadPoolWorkItem
     {
-        public byte[] MachineCode { get; set; }
+        public ReadOnlyMemory<byte> MachineCode { get; }
         public IPrecompile? Precompile { get; set; }
-        private JumpDestinationAnalyzer? _analyzer;
+        private readonly JumpDestinationAnalyzer _analyzer;
+        private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
+        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>());
 
         public CodeInfo(byte[] code)
         {
             MachineCode = code;
+            _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
+        }
+
+        public CodeInfo(ReadOnlyMemory<byte> code)
+        {
+            MachineCode = code;
+            _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 
         public bool IsPrecompile => Precompile is not null;
@@ -25,24 +34,17 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             Precompile = precompile;
             MachineCode = Array.Empty<byte>();
+            _analyzer = _emptyAnalyzer;
         }
 
         public bool ValidateJump(int destination, bool isSubroutine)
         {
-            JumpDestinationAnalyzer analyzer = _analyzer;
-            analyzer ??= CreateAnalyzer();
-
-            return analyzer.ValidateJump(destination, isSubroutine);
+            return _analyzer.ValidateJump(destination, isSubroutine);
         }
 
-        /// <summary>
-        /// Do sampling to choose an algo when the code is big enough.
-        /// When the code size is small we can use the default analyzer.
-        /// </summary>
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private JumpDestinationAnalyzer CreateAnalyzer()
+        void IThreadPoolWorkItem.Execute()
         {
-            return _analyzer = new JumpDestinationAnalyzer(MachineCode);
+            _analyzer.Execute();
         }
     }
 }

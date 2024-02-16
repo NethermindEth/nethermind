@@ -21,6 +21,7 @@ public enum DisconnectReason : byte
     SessionAlreadyExist,
     ReplacingSessionWithOppositeDirection,
     OppositeDirectionCleanup,
+    Exception,
 
     // Non sync, non connection related disconnect
     SnapServerNotImplemented,
@@ -48,6 +49,7 @@ public enum DisconnectReason : byte
     UnexpectedParentHeader,
     InvalidHeader,
     InvalidReceiptRoot,
+    EthSyncException,
 
     // These are from EthDisconnectReason which does not necessarily used in Nethermind.
     EthDisconnectRequested,
@@ -126,6 +128,7 @@ public static class DisconnectReasonExtension
             case DisconnectReason.UnexpectedParentHeader:
             case DisconnectReason.InvalidHeader:
             case DisconnectReason.InvalidReceiptRoot:
+            case DisconnectReason.EthSyncException:
                 return EthDisconnectReason.BreachOfProtocol;
 
             case DisconnectReason.EthDisconnectRequested:

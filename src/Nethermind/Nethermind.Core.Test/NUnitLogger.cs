@@ -7,7 +7,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test
 {
-    public class NUnitLogger : ILogger
+    public class NUnitLogger : InterfaceLogger
     {
         private readonly LogLevel _level;
 

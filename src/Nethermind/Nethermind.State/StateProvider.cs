@@ -146,10 +146,9 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
-            Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -308,7 +307,7 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(Hash256 codeHash)
+        public void TouchCode(in ValueHash256 codeHash)
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
@@ -325,12 +324,13 @@ namespace Nethermind.State
         public byte[] GetCode(Hash256 codeHash)
         {
             byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
-            if (code is null)
-            {
-                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-            }
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+        }
 
-            return code;
+        public byte[] GetCode(ValueHash256 codeHash)
+        {
+            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         public byte[] GetCode(Address address)

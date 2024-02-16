@@ -12,7 +12,8 @@ namespace Nethermind.Merkleization;
 public class ShaMerkleTree : MerkleTree
 {
     private static readonly Bytes32[] _zeroHashes = new Bytes32[32];
-    private static readonly HashAlgorithm _hashAlgorithm = SHA256.Create();
+    [ThreadStatic]
+    private static HashAlgorithm? _hashAlgorithm;
 
     static ShaMerkleTree()
     {
@@ -41,7 +42,7 @@ public class ShaMerkleTree : MerkleTree
         a.CopyTo(combined);
         b.CopyTo(combined[a.Length..]);
 
-        _hashAlgorithm.TryComputeHash(combined, target, out int bytesWritten);
+        (_hashAlgorithm ??= SHA256.Create()).TryComputeHash(combined, target, out int bytesWritten);
     }
 
     protected override Bytes32[] ZeroHashesInternal => _zeroHashes;

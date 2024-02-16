@@ -1,12 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.Collections.Generic;
 using System.Collections.Immutable;
+using System.Globalization;
 using System.IO;
 using System.Linq;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,50 +16,42 @@ using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
 
-using System.Text.Json;
-using System.Text.Json.Serialization;
-using System.Globalization;
-
 namespace Nethermind.Specs.ChainSpecStyle;
 
 /// <summary>
 /// This class can load a Parity-style chain spec file and build a <see cref="ChainSpec"/> out of it.
 /// </summary>
-public class ChainSpecLoader : IChainSpecLoader
+public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 {
-    private readonly IJsonSerializer _serializer;
-
-    public ChainSpecLoader(IJsonSerializer serializer)
-    {
-        _serializer = serializer;
-    }
-
-    public ChainSpec Load(byte[] data) => Load(Encoding.UTF8.GetString(data));
-
-    public ChainSpec Load(string jsonData)
+    public ChainSpec Load(Stream streamData)
     {
         try
         {
-            ChainSpecJson chainSpecJson = _serializer.Deserialize<ChainSpecJson>(jsonData);
-            ChainSpec chainSpec = new();
-
-            chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
-            chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
-            chainSpec.Name = chainSpecJson.Name;
-            chainSpec.DataDir = chainSpecJson.DataDir;
-            LoadGenesis(chainSpecJson, chainSpec);
-            LoadEngine(chainSpecJson, chainSpec);
-            LoadAllocations(chainSpecJson, chainSpec);
-            LoadBootnodes(chainSpecJson, chainSpec);
-            LoadParameters(chainSpecJson, chainSpec);
-            LoadTransitions(chainSpecJson, chainSpec);
-
-            return chainSpec;
+            ChainSpecJson chainSpecJson = serializer.Deserialize<ChainSpecJson>(streamData);
+            return InitChainSpecFrom(chainSpecJson);
         }
         catch (Exception e)
         {
             throw new InvalidDataException($"Error when loading chainspec ({e.Message})", e);
         }
+    }
+
+    private ChainSpec InitChainSpecFrom(ChainSpecJson chainSpecJson)
+    {
+        ChainSpec chainSpec = new();
+
+        chainSpec.NetworkId = chainSpecJson.Params.NetworkId ?? chainSpecJson.Params.ChainId ?? 1;
+        chainSpec.ChainId = chainSpecJson.Params.ChainId ?? chainSpec.NetworkId;
+        chainSpec.Name = chainSpecJson.Name;
+        chainSpec.DataDir = chainSpecJson.DataDir;
+        LoadGenesis(chainSpecJson, chainSpec);
+        LoadEngine(chainSpecJson, chainSpec);
+        LoadAllocations(chainSpecJson, chainSpec);
+        LoadBootnodes(chainSpecJson, chainSpec);
+        LoadParameters(chainSpecJson, chainSpec);
+        LoadTransitions(chainSpecJson, chainSpec);
+
+        return chainSpec;
     }
 
     private void LoadParameters(ChainSpecJson chainSpecJson, ChainSpec chainSpec)
@@ -78,20 +72,16 @@ public class ChainSpecLoader : IChainSpecLoader
 
         long? GetTransitionForExpectedPricing(string builtInName, string innerPath, long expectedValue)
         {
-            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o)
-            {
-                return o.Value.TryGetSubProperty(innerPath, out JsonElement value) ? value.GetInt64() == expectedValue : false;
-            }
+            bool GetForExpectedPricing(KeyValuePair<string, JsonElement> o) =>
+                o.Value.TryGetSubProperty(innerPath, out JsonElement value) && value.GetInt64() == expectedValue;
 
             return GetTransitions(builtInName, GetForExpectedPricing);
         }
 
         long? GetTransitionIfInnerPathExists(string builtInName, string innerPath)
         {
-            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o)
-            {
-                return o.Value.TryGetSubProperty(innerPath, out _);
-            }
+            bool GetForInnerPathExistence(KeyValuePair<string, JsonElement> o) =>
+                o.Value.TryGetSubProperty(innerPath, out _);
 
             return GetTransitions(builtInName, GetForInnerPathExistence);
         }
@@ -416,18 +406,18 @@ public class ChainSpecLoader : IChainSpecLoader
         genesisHeader.StateRoot = stateRoot;
         genesisHeader.TxRoot = Keccak.EmptyTreeHash;
         genesisHeader.BaseFeePerGas = baseFee;
-        bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
+        bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
-        bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
+        bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
         {
             genesisHeader.BlobGasUsed = chainSpecJson.Genesis.BlobGasUsed;
             genesisHeader.ExcessBlobGas = chainSpecJson.Genesis.ExcessBlobGas;
         }
 
-        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp != null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
+        bool isEip4788Enabled = chainSpecJson.Params.Eip4788TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4788TransitionTimestamp;
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;

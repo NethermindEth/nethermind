@@ -513,6 +513,7 @@ public class InitializeNetwork : IStep
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
+            _api.BackgroundTaskScheduler,
             _api.TxPool,
             pooledTxsRequestor,
             _api.DiscoveryApp!,

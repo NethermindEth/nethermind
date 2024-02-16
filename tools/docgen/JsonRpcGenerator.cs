@@ -262,7 +262,7 @@ internal static class JsonRpcGenerator
         }
         catch (Exception)
         {
-            Console.WriteLine($"Failed copying from '${fileName}'");
+            Console.WriteLine($"Failed copying from {fileName}");
         }
     }
 
@@ -302,9 +302,11 @@ internal static class JsonRpcGenerator
 
     private static Type GetReturnType(Type type)
     {
-        var returnType = type.GetGenericTypeDefinition() == typeof(Task<>)
-            ? type.GetGenericArguments()[0].GetGenericArguments()[0]
-            : type.GetGenericArguments()[0];
+        var returnType = type.IsGenericType
+            ? type.GetGenericTypeDefinition() == typeof(Task<>)
+                ? type.GetGenericArguments()[0].GetGenericArguments()[0]
+                : type.GetGenericArguments()[0]
+            : type;
 
         return Nullable.GetUnderlyingType(returnType) ?? returnType;
     }

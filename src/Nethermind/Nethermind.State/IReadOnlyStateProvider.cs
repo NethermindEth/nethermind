@@ -16,13 +16,15 @@ namespace Nethermind.State
 
         UInt256 GetBalance(Address address);
 
-        Hash256 GetStorageRoot(Address address);
+        ValueHash256 GetStorageRoot(Address address);
 
-        byte[] GetCode(Address address);
+        byte[]? GetCode(Address address);
 
-        byte[] GetCode(Hash256 codeHash);
+        byte[]? GetCode(Hash256 codeHash);
 
-        Hash256 GetCodeHash(Address address);
+        byte[]? GetCode(ValueHash256 codeHash);
+
+        ValueHash256 GetCodeHash(Address address);
 
         public bool IsContract(Address address);
 

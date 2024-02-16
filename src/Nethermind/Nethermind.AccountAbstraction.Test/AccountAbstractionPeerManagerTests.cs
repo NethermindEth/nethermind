@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Test
         private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
         private readonly IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
         private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
-        private readonly ILogger _logger = Substitute.For<ILogger>();
+        private readonly ILogger _logger = new(Substitute.For<InterfaceLogger>());
         private readonly ILogFinder _logFinder = Substitute.For<ILogFinder>();
         private readonly IWorldState _stateProvider = Substitute.For<IWorldState>();
         private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();

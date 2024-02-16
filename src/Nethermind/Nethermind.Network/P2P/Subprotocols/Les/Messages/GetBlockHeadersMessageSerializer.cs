@@ -17,7 +17,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             int totalLength = Rlp.LengthOfSequence(contentLength);
 
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            byteBuffer.EnsureWritable(totalLength, true);
+            byteBuffer.EnsureWritable(totalLength);
 
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);

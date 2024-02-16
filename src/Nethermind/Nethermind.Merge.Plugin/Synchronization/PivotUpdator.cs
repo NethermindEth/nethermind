@@ -54,7 +54,7 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;

@@ -140,14 +140,14 @@ public partial class EngineModuleTests
     public void ForkchoiceV1_ToString_returns_correct_results()
     {
         ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
-        forkchoiceState.ToString().Should().Be("ForkChoice: Head: 0x03783f...35b760, Safe: 0x017e66...b18f72, Finalized: 0xe61d9a...97c37a");
+        forkchoiceState.ToString().Should().Be("ForkChoice: 0x03783f...35b760, Safe: 0x017e66...b18f72, Finalized: 0xe61d9a...97c37a");
     }
 
     [Test]
     public void ForkchoiceV1_ToString_with_block_numbers_returns_correct_results()
     {
         ForkchoiceStateV1 forkchoiceState = new(TestItem.KeccakA, TestItem.KeccakF, TestItem.KeccakC);
-        forkchoiceState.ToString(1, 2, 3).Should().Be("ForkChoice: Head: 1 (0x03783f...35b760), Safe: 2 (0x017e66...b18f72), Finalized: 3 (0xe61d9a...97c37a)");
+        forkchoiceState.ToString(1, 2, 3).Should().Be("ForkChoice: 1 (0x03783f...35b760), Safe: 2 (0x017e66...b18f72), Finalized: 3 (0xe61d9a...97c37a)");
     }
 
     [Test]
@@ -1536,9 +1536,8 @@ public partial class EngineModuleTests
     public void Should_return_expected_capabilities_for_mainnet()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        string data = File.ReadAllText(path);
         ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.Load(data);
+        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
@@ -1554,8 +1553,11 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
             nameof(IEngineRpcModule.engine_newPayloadV2),
             nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1),
-            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1),
 
+            nameof(IEngineRpcModule.engine_getPayloadV3),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
+            nameof(IEngineRpcModule.engine_newPayloadV3)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }
@@ -1564,8 +1566,13 @@ public partial class EngineModuleTests
     public async Task Should_warn_for_missing_capabilities()
     {
         using MergeTestBlockchain chain = await CreateBlockchain();
-        chain.LogManager = Substitute.For<ILogManager>();
-        chain.LogManager.GetClassLogger().IsWarn.Returns(true);
+        var loggerManager = Substitute.For<ILogManager>();
+        var iLogger = Substitute.For<InterfaceLogger>();
+        iLogger.IsWarn.Returns(true);
+        var logger = new ILogger(iLogger);
+        loggerManager.GetClassLogger().Returns(logger);
+
+        chain.LogManager = loggerManager;
 
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         string[] list = new[]
@@ -1576,7 +1583,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<IEnumerable<string>> result = rpcModule.engine_exchangeCapabilities(list);
 
-        chain.LogManager.GetClassLogger().Received().Warn(
+        chain.LogManager.GetClassLogger().UnderlyingLogger.Received().Warn(
             Arg.Is<string>(a =>
                 a.Contains(nameof(IEngineRpcModule.engine_getPayloadV1), StringComparison.Ordinal)/* &&
                 !a.Contains(nameof(IEngineRpcModule.engine_getPayloadV2), StringComparison.Ordinal)*/));
