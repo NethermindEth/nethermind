@@ -31,7 +31,7 @@ public class PaprikaStateFactory : IStateFactory
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, true);
-        ComputeMerkleBehavior merkle = new(1, 1);
+        ComputeMerkleBehavior merkle = new(1, 1, Memoization.None);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
@@ -92,18 +92,11 @@ public class PaprikaStateFactory : IStateFactory
         // _blockchain.Finalize(Convert(finalizedStateRoot));
     }
 
-    class ReadOnlyState : IReadOnlyState
+    class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
     {
-        private readonly IReadOnlyWorldState _wrapped;
-
-        public ReadOnlyState(IReadOnlyWorldState wrapped)
-        {
-            _wrapped = wrapped;
-        }
-
         public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
             bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
                                           retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
             if (retrieved.Balance.IsZero &&
@@ -131,52 +124,43 @@ public class PaprikaStateFactory : IStateFactory
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
 
-            Span<byte> value = _wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
             return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
         }
 
         public byte[] GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
-            Span<byte> value = _wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
             return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
         }
 
-        public Hash256 StateRoot => Convert(_wrapped.Hash);
+        public Hash256 StateRoot => Convert(wrapped.Hash);
 
-        public void Dispose() => _wrapped.Dispose();
+        public void Dispose() => wrapped.Dispose();
     }
 
-    class State : IState
+    class State(IWorldState wrapped, PaprikaStateFactory factory) : IState
     {
-        private readonly IWorldState _wrapped;
-        private readonly PaprikaStateFactory _factory;
-
-        public State(IWorldState wrapped, PaprikaStateFactory factory)
-        {
-            _wrapped = wrapped;
-            _factory = factory;
-        }
-
         public void Set(Address address, Account? account)
         {
             PaprikaKeccak key = Convert(address);
 
             if (account == null)
             {
-                _wrapped.DestroyAccount(key);
+                wrapped.DestroyAccount(key);
             }
             else
             {
                 PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
                     Convert(account.StorageRoot));
-                _wrapped.SetAccount(key, actual);
+                wrapped.SetAccount(key, actual);
             }
         }
 
         public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
             bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
                                           retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
             if (retrieved.Balance.IsZero &&
@@ -204,14 +188,14 @@ public class PaprikaStateFactory : IStateFactory
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
 
-            Span<byte> value = _wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
             return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
         }
 
         public byte[] GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
-            Span<byte> value = _wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
             return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
         }
 
@@ -220,21 +204,21 @@ public class PaprikaStateFactory : IStateFactory
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
-            _wrapped.SetStorage(converted, new PaprikaKeccak(key),
+            wrapped.SetStorage(converted, new PaprikaKeccak(key),
                 value.IsZero() ? ReadOnlySpan<byte>.Empty : value);
         }
 
         public void Commit(long blockNumber)
         {
-            _wrapped.Commit((uint)blockNumber);
-            _factory.Committed(_wrapped);
+            wrapped.Commit((uint)blockNumber);
+            factory.Committed(wrapped);
         }
 
-        public void Reset() => _wrapped.Reset();
+        public void Reset() => wrapped.Reset();
 
-        public Hash256 StateRoot => Convert(_wrapped.Hash);
+        public Hash256 StateRoot => Convert(wrapped.Hash);
 
-        public void Dispose() => _wrapped.Dispose();
+        public void Dispose() => wrapped.Dispose();
     }
 
     private void Committed(IWorldState block)
