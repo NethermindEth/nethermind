@@ -44,14 +44,14 @@ namespace Nethermind.TxPool.Test
             info.Queued.Count.Should().Be(1);
 
             var pending = info.Pending.First();
-            pending.Key.Should().Be(_address);
+            pending.Key.Value.Should().Be(_address);
             pending.Value.Count.Should().Be(3);
             VerifyNonceAndTransactions(pending.Value, 3);
             VerifyNonceAndTransactions(pending.Value, 4);
             VerifyNonceAndTransactions(pending.Value, 5);
 
             var queued = info.Queued.First();
-            queued.Key.Should().Be(_address);
+            queued.Key.Value.Should().Be(_address);
             queued.Value.Count.Should().Be(4);
             VerifyNonceAndTransactions(queued.Value, 1);
             VerifyNonceAndTransactions(queued.Value, 2);
