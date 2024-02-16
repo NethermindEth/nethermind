@@ -29,7 +29,6 @@ using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 using No = Nethermind.Synchronization.No;
-using TimeoutException = DotNetty.Handlers.TimeoutException;
 
 namespace Nethermind.Merge.Plugin.Test;
 
