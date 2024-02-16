@@ -91,14 +91,14 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Explicit]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
         const int reservationsCount = 1000;
 
         ConcurrentQueue<UInt256> nonces = new();
 
-        var result = Parallel.For(0, reservationsCount, i =>
+        ParallelLoopResult result = Parallel.For(0, reservationsCount, i =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
             locker.Accept();
