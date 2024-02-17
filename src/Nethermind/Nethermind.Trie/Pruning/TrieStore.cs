@@ -530,6 +530,8 @@ namespace Nethermind.Trie.Pruning
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
+
+                        node.Keccak = keccak;
                     }
                     _dirtyNodes.Remove(keccak);
 
