@@ -498,7 +498,7 @@ namespace Nethermind.Trie
                 return;
             }
 
-            Keccak = GenerateKey(tree, ref path, isRoot, bufferPool);;
+            Keccak = GenerateKey(tree, ref path, isRoot, bufferPool);
         }
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null)

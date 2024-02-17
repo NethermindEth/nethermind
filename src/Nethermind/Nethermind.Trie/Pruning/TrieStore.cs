@@ -513,7 +513,6 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-
         public IReadOnlyTrieStore AsReadOnly(INodeStorage? store)
         {
             return new ReadOnlyTrieStore(this, store);
