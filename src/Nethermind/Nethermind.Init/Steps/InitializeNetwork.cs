@@ -213,7 +213,7 @@ public class InitializeNetwork : IStep
 
         if (_syncConfig.SnapSync)
         {
-            if (!_syncConfig.SnapServe)
+            if (!_syncConfig.SnapServingEnabled)
             {
                 // TODO: Should we keep snap capability even after finishing sync?
                 SnapCapabilitySwitcher snapCapabilitySwitcher =
@@ -521,7 +521,7 @@ public class InitializeNetwork : IStep
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
 
         ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServe)
+        if (_syncConfig.SnapServingEnabled)
         {
             snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager);
         }

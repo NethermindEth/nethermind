@@ -141,5 +141,5 @@ public interface ISyncConfig : IConfig
     public int MallocTrimIntervalSec { get; set; }
 
     [ConfigItem(Description = "_Experimental._ Whether to enable snap serving. WARNING: Very slow on hash db layout.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool SnapServe { get; set; }
+    bool SnapServingEnabled { get; set; }
 }
