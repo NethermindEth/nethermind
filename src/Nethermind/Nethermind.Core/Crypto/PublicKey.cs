@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -15,6 +16,11 @@ namespace Nethermind.Core.Crypto
     [JsonConverter(typeof(PublicKeyConverter))]
     public class PublicKey : IEquatable<PublicKey>
     {
+        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
+        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // the performance of the network as a whole.
+        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+
         public const int PrefixedLengthInBytes = 65;
         public const int LengthInBytes = 64;
         private Address? _address;
@@ -108,16 +114,16 @@ namespace Nethermind.Core.Crypto
 
         private static int GetHashCode(byte[] bytes)
         {
-            long l0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(bytes));
-            long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long)));
-            long l2 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2));
-            long l3 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 3));
-            long l4 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 4));
-            long l5 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 5));
-            long l6 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 6));
-            long l7 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 7));
-            l0 ^= l1 ^ l2 ^ l3 ^ l4 ^ l5 ^ l6 ^ l7;
-            return (int)(l0 ^ (l0 >> 32));
+            uint hash = s_instanceRandom;
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetArrayDataReference(bytes)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long))));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 2)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 3)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 4)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 5)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 6)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(bytes), sizeof(long) * 7)));
+            return (int)hash;
         }
 
         public override string ToString()
@@ -155,5 +161,17 @@ namespace Nethermind.Core.Crypto
         {
             return !(a == b);
         }
+    }
+
+    public readonly struct PublicKeyAsKey(PublicKey key) : IEquatable<PublicKeyAsKey>
+    {
+        private readonly PublicKey _key = key;
+        public PublicKey Value => _key;
+
+        public static implicit operator PublicKey(PublicKeyAsKey key) => key._key;
+        public static implicit operator PublicKeyAsKey(PublicKey key) => new(key);
+
+        public bool Equals(PublicKeyAsKey other) => _key.Equals(other._key);
+        public override int GetHashCode() => _key.GetHashCode();
     }
 }
