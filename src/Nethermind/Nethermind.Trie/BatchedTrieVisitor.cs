@@ -129,7 +129,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     public void Start(
-        ValueHash256 root,
+        Hash256 root,
         TrieVisitContext trieVisitContext)
     {
         // Start with the root
@@ -197,7 +197,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToCommitment()), item.NodeContext,
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key), item.NodeContext,
                         item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
@@ -231,7 +231,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToCommitment());
+                TrieNode node = _resolver.FindCachedOrUnknown(job.Key);
                 finalBatch.Add((node, job.NodeContext, job.Context));
             }
 
@@ -268,7 +268,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 continue;
             }
 
-            ValueHash256 keccak = trieNode.Keccak;
+            Hash256 keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -369,11 +369,11 @@ public class BatchedTrieVisitor<TNodeContext>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct Job
     {
-        public readonly ValueHash256 Key;
+        public readonly Hash256 Key;
         public readonly TNodeContext NodeContext;
         public readonly SmallTrieVisitContext Context;
 
-        public Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
+        public Job(Hash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
         {
             Key = key;
             NodeContext = nodeContext;
