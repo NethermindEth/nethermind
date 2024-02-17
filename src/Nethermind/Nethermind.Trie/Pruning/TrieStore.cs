@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Pruning
                     if (_storeByHash)
                     {
                         return _byHashObjectCache.Select(
-                            pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.ToCommitment()), pair.Value));
+                            pair => new KeyValuePair<Key, TrieNode>(new Key(null, TreePath.Empty, pair.Key.Value), pair.Value));
                     }
 
                     return _byKeyObjectCache;
@@ -224,7 +224,7 @@ namespace Nethermind.Trie.Pruning
             internal ref struct MapLock
             {
                 public bool _storeByHash;
-                public ConcurrentDictionaryLock<ValueHash256, TrieNode>.Lock _byHashLock;
+                public ConcurrentDictionaryLock<Hash256AsKey, TrieNode>.Lock _byHashLock;
                 public ConcurrentDictionaryLock<Key, TrieNode>.Lock _byKeyLock;
 
                 public readonly void Dispose()
