@@ -98,7 +98,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public IDictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
         {
             using var lockRelease = Lock.Acquire();
 

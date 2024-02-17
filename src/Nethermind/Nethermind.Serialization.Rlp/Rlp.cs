@@ -1555,17 +1555,36 @@ namespace Nethermind.Serialization.Rlp
             return item is null ? LengthOfNull : LengthOf(item.Value);
         }
 
-        public static int LengthOf(UInt256 item)
+        public static int LengthOf(in UInt256 item)
         {
-            if (item < 128UL)
+            ulong value;
+            int size;
+            if (item.u3 > 0)
+            {
+                value = item.u3;
+                size = 1 + sizeof(ulong) * 4;
+            }
+            else if (item.u2 > 0)
+            {
+                value = item.u2;
+                size = 1 + sizeof(ulong) * 3;
+            }
+            else if (item.u1 > 0)
+            {
+                value = item.u1;
+                size = 1 + sizeof(ulong) * 2;
+            }
+            else if (item.u0 < 128)
             {
                 return 1;
             }
+            else
+            {
+                value = item.u0;
+                size = 1 + sizeof(ulong);
+            }
 
-            Span<byte> bytes = stackalloc byte[32];
-            item.ToBigEndian(bytes);
-            int length = bytes.WithoutLeadingZeros().Length;
-            return length + 1;
+            return size - (BitOperations.LeadingZeroCount(value) / 8);
         }
 
         public static int LengthOf(byte[][]? arrays)
@@ -1601,22 +1620,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        public static int LengthOf(int value)
-        {
-            if (value < 0)
-            {
-                return 9; // will be a sign extended long -> ulong
-            }
-            if ((uint)value < 128)
-            {
-                return 1;
-            }
-            else
-            {
-                // everything has a length prefix
-                return 1 + sizeof(uint) - (BitOperations.LeadingZeroCount((uint)value) / 8);
-            }
-        }
+        public static int LengthOf(int value) => LengthOf((long)value);
 
         public static int LengthOf(Hash256? item)
         {

@@ -24,14 +24,14 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
-        private readonly ResettableHashSet<Address> _committedThisRound = new();
-        private readonly HashSet<Address> _nullAccountReads = new();
+        private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraBlockCache = new();
+        private readonly ResettableHashSet<AddressAsKey> _committedThisRound = new();
+        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Hash256> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCache<Hash256AsKey> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -482,10 +482,10 @@ namespace Nethermind.State
             }
 
             bool isTracing = stateTracer.IsTracingState;
-            Dictionary<Address, ChangeTrace> trace = null;
+            Dictionary<AddressAsKey, ChangeTrace> trace = null;
             if (isTracing)
             {
-                trace = new Dictionary<Address, ChangeTrace>();
+                trace = new Dictionary<AddressAsKey, ChangeTrace>();
             }
 
             for (int i = 0; i <= _currentPosition; i++)
@@ -616,7 +616,7 @@ namespace Nethermind.State
             }
         }
 
-        private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
+        private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
         {
             foreach ((Address address, ChangeTrace change) in trace)
             {

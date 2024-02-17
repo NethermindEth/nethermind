@@ -24,7 +24,7 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
 
         /// <summary>
         /// EIP-1283
@@ -211,7 +211,7 @@ namespace Nethermind.State
         public void CommitTrees(long blockNumber)
         {
             // _logger.Warn($"Storage block commit {blockNumber}");
-            foreach (KeyValuePair<Address, StorageTree> storage in _storages)
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
             }
