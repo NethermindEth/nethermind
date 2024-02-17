@@ -498,19 +498,11 @@ namespace Nethermind.Trie
                 return;
             }
 
-            Hash256 newKeccak = GenerateKey(tree, ref path, isRoot, bufferPool);
-            if (newKeccak == Keccak) return; // Don't replace keccak instance if same as it might be used as key in trie store
-            Keccak = newKeccak;
+            Keccak = GenerateKey(tree, ref path, isRoot, bufferPool);;
         }
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, ref TreePath path, bool isRoot, ICappedArrayPool? bufferPool = null)
         {
-            Hash256? keccak = Keccak;
-            if (keccak is not null)
-            {
-                return keccak;
-            }
-
             RlpFactory rlp = _rlp;
             if (rlp is null || IsDirty)
             {
