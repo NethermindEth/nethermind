@@ -129,7 +129,7 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     public void Start(
-        ValueHash256 root,
+        Hash256 root,
         TrieVisitContext trieVisitContext)
     {
         // Start with the root
@@ -200,7 +200,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                     TrieNode node = _resolver
                         .GetStorageTrieNodeResolver(item.Context.Storage)
-                        .FindCachedOrUnknown(item.Path, item.Key.ToCommitment());
+                        .FindCachedOrUnknown(item.Path, item.Key);
 
                     finalBatch.Add((item.Path, node, item.NodeContext, item.Context));
 
@@ -238,7 +238,7 @@ public class BatchedTrieVisitor<TNodeContext>
 
                 TrieNode node = _resolver
                     .GetStorageTrieNodeResolver(job.Context.Storage)
-                    .FindCachedOrUnknown(job.Path, job.Key.ToCommitment());
+                    .FindCachedOrUnknown(job.Path, job.Key);
 
                 finalBatch.Add((job.Path, node, job.NodeContext, job.Context));
             }
@@ -276,7 +276,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 continue;
             }
 
-            ValueHash256 keccak = trieNode.Keccak;
+            Hash256 keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -380,11 +380,11 @@ public class BatchedTrieVisitor<TNodeContext>
     private readonly struct Job
     {
         public readonly TreePath Path;
-        public readonly ValueHash256 Key;
+        public readonly Hash256 Key;
         public readonly TNodeContext NodeContext;
         public readonly SmallTrieVisitContext Context;
 
-        public Job(in TreePath path, ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
+        public Job(in TreePath path, Hash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
         {
             Path = path;
             Key = key;

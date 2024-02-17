@@ -92,7 +92,7 @@ namespace Nethermind.Trie.Pruning
             }
 
             private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new();
-            private readonly ConcurrentDictionary<ValueHash256, TrieNode> _byHashObjectCache = new();
+            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _byHashObjectCache = new();
 
             public bool IsNodeCached(in Key key)
             {
