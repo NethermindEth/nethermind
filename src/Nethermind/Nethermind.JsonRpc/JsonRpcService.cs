@@ -331,6 +331,7 @@ public class JsonRpcService : IJsonRpcService
         const int parallelThreshold = 4;
         try
         {
+            bool hasMissing = false;
             int arrayLength = providedParameters.GetArrayLength();
             int totalLength = arrayLength + missingParamsCount;
 
@@ -345,7 +346,12 @@ public class JsonRpcService : IJsonRpcService
                     JsonElement providedParameter = providedParameters[i];
                     ParameterInfo expectedParameter = expectedParameters[i];
 
-                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
+                    executionParameters[i] = parameter;
+                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
+                    {
+                        hasMissing = true;
+                    }
                 }
             }
             else if (arrayLength > parallelThreshold)
@@ -355,7 +361,12 @@ public class JsonRpcService : IJsonRpcService
                     JsonElement providedParameter = providedParameters[i];
                     ParameterInfo expectedParameter = expectedParameters[i];
 
-                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
+                    executionParameters[i] = parameter;
+                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
+                    {
+                        hasMissing = true;
+                    }
                 });
             }
 
@@ -363,8 +374,8 @@ public class JsonRpcService : IJsonRpcService
             {
                 executionParameters[i] = Type.Missing;
             }
-
-            return (executionParameters, hasMissing: arrayLength < totalLength);
+            hasMissing |= arrayLength < totalLength;
+            return (executionParameters, hasMissing);
         }
         catch (Exception e)
         {
