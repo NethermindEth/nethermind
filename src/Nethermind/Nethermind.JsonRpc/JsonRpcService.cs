@@ -131,7 +131,7 @@ public class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].Info.IsOptional && !nullable)
+                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         break;

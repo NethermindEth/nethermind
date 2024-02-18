@@ -153,8 +153,9 @@ namespace Nethermind.JsonRpc.Modules
                 public readonly ParameterInfo Info;
                 private readonly ParameterDetails _introspection;
 
-                public bool IsNullable => _introspection.HasFlag(ParameterDetails.IsNullable);
-                public bool IsIJsonRpcParam => _introspection.HasFlag(ParameterDetails.IsIJsonRpcParam);
+                public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
+                public bool IsIJsonRpcParam => (_introspection & ParameterDetails.IsIJsonRpcParam) != 0;
+                public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
 
                 public ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
                 {
@@ -167,8 +168,9 @@ namespace Nethermind.JsonRpc.Modules
             public enum ParameterDetails
             {
                 None,
-                IsNullable,
-                IsIJsonRpcParam,
+                IsNullable = 0b1,
+                IsIJsonRpcParam = 0b10,
+                IsOptional = 0b100,
             }
 
             public ResolvedMethodInfo()
@@ -198,6 +200,10 @@ namespace Nethermind.JsonRpc.Modules
                     if (IsNullableParameter(parameter))
                     {
                         details |= ParameterDetails.IsNullable;
+                    }
+                    if (parameter.IsOptional)
+                    {
+                        details |= ParameterDetails.IsOptional;
                     }
 
                     expectedParameters[i] = new(parameter, details);
