@@ -110,11 +110,11 @@ namespace Nethermind.JsonRpc.Modules
             return _enabledModules.Contains(result.ModuleType) ? ModuleResolution.Enabled : ModuleResolution.Disabled;
         }
 
-        public (MethodInfo, ParameterInfo[], bool) Resolve(string methodName)
+        public ResolvedMethodInfo? Resolve(string methodName)
         {
-            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return (null, Array.Empty<ParameterInfo>(), false);
+            if (!_methods.TryGetValue(methodName, out ResolvedMethodInfo result)) return null;
 
-            return (result.MethodInfo, result.ExpectedParameters, result.ReadOnly);
+            return result;
         }
 
         public Task<IRpcModule> Rent(string methodName, bool canBeShared)
@@ -146,8 +146,13 @@ namespace Nethermind.JsonRpc.Modules
                 });
         }
 
-        private class ResolvedMethodInfo
+        public class ResolvedMethodInfo
         {
+            public ResolvedMethodInfo()
+            {
+                ExpectedParameters = Array.Empty<ParameterInfo>();
+            }
+
             public ResolvedMethodInfo(
                 string moduleType,
                 MethodInfo methodInfo,
@@ -159,10 +164,12 @@ namespace Nethermind.JsonRpc.Modules
                 ExpectedParameters = methodInfo.GetParameters();
                 ReadOnly = readOnly;
                 Availability = availability;
+                Invoker = MethodInvoker.Create(methodInfo);
             }
 
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
+            public MethodInvoker Invoker { get; }
             public ParameterInfo[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }

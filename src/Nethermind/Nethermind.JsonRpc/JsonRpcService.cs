@@ -17,6 +17,8 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
 
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
+
 namespace Nethermind.JsonRpc;
 
 public class JsonRpcService : IJsonRpcService
@@ -82,21 +84,20 @@ public class JsonRpcService : IJsonRpcService
     {
         string methodName = rpcRequest.Method.Trim();
 
-        (MethodInfo MethodInfo, ParameterInfo[] expectedParameters, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo is not null
+        ResolvedMethodInfo? result = _rpcModuleProvider.Resolve(methodName);
+        return result?.MethodInfo is not null
             ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
 
-    private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName,
-        (MethodInfo Info, ParameterInfo[] expectedParameters, bool ReadOnly) method, JsonRpcContext context)
+    private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         JsonElement providedParameters = request.Params;
 
-        LogRequest(methodName, providedParameters, method.expectedParameters);
+        LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
-        int missingParamsCount = method.expectedParameters.Length - providedParametersLength;
+        int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         if (providedParametersLength > 0)
         {
             foreach (JsonElement item in providedParameters.EnumerateArray())
@@ -118,8 +119,8 @@ public class JsonRpcService : IJsonRpcService
                 hasIncorrectParameters = false;
                 for (int i = 0; i < missingParamsCount; i++)
                 {
-                    int parameterIndex = method.expectedParameters.Length - missingParamsCount + i;
-                    bool nullable = IsNullableParameter(method.expectedParameters[parameterIndex]);
+                    int parameterIndex = method.ExpectedParameters.Length - missingParamsCount + i;
+                    bool nullable = IsNullableParameter(method.ExpectedParameters[parameterIndex]);
 
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
@@ -129,7 +130,7 @@ public class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.expectedParameters[method.expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         break;
@@ -139,7 +140,7 @@ public class JsonRpcService : IJsonRpcService
 
             if (hasIncorrectParameters)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.expectedParameters.Length}, actual: {method.expectedParameters.Length - missingParamsCount}", request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.ExpectedParameters.Length}, actual: {method.ExpectedParameters.Length - missingParamsCount}", request.Id);
             }
         }
 
@@ -147,9 +148,10 @@ public class JsonRpcService : IJsonRpcService
 
         //prepare parameters
         object[]? parameters = null;
-        if (method.expectedParameters.Length > 0)
+        bool hasMissing = false;
+        if (method.ExpectedParameters.Length > 0)
         {
-            parameters = DeserializeParameters(method.expectedParameters, providedParameters, missingParamsCount);
+            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParameters, missingParamsCount);
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
@@ -168,7 +170,10 @@ public class JsonRpcService : IJsonRpcService
         Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         try
         {
-            object invocationResult = method.Info.Invoke(rpcModule, parameters);
+            object invocationResult = hasMissing ?
+                method.MethodInfo.Invoke(rpcModule, parameters) :
+                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+
             switch (invocationResult)
             {
                 case IResultWrapper wrapper:
@@ -321,7 +326,7 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
+    private (object[]? parameters, bool hasMissing) DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
         const int parallelThreshold = 4;
         try
@@ -329,7 +334,7 @@ public class JsonRpcService : IJsonRpcService
             int arrayLength = providedParameters.GetArrayLength();
             int totalLength = arrayLength + missingParamsCount;
 
-            if (totalLength == 0) return Array.Empty<object>();
+            if (totalLength == 0) return (Array.Empty<object>(), false);
 
             object[] executionParameters = new object[totalLength];
 
@@ -359,12 +364,12 @@ public class JsonRpcService : IJsonRpcService
                 executionParameters[i] = Type.Missing;
             }
 
-            return executionParameters;
+            return (executionParameters, hasMissing: arrayLength < totalLength);
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
-            return null;
+            return (null, false);
         }
     }
 
