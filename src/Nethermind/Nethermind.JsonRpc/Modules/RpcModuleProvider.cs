@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
@@ -151,16 +153,39 @@ namespace Nethermind.JsonRpc.Modules
             public readonly struct ExpectedParameter
             {
                 public readonly ParameterInfo Info;
+                public readonly ConstructorInvoker? ConstructorInvoker;
                 private readonly ParameterDetails _introspection;
 
                 public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
                 public bool IsIJsonRpcParam => (_introspection & ParameterDetails.IsIJsonRpcParam) != 0;
                 public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
 
+                public IJsonRpcParam CreateRpcParam()
+                {
+                    if (!IsIJsonRpcParam)
+                    {
+                        ThrowNotJsonRpc();
+                    }
+
+                    return (IJsonRpcParam)ConstructorInvoker!.Invoke(Span<object>.Empty);
+
+                    [DoesNotReturn]
+                    [StackTraceHidden]
+                    static void ThrowNotJsonRpc()
+                    {
+                        throw new InvalidOperationException("This parameter is not an IJsonRpcParam");
+                    }
+                }
+
                 public ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
                 {
                     Info = info ?? throw new ArgumentNullException(nameof(info));
                     _introspection = introspection;
+
+                    if (introspection.HasFlag(ParameterDetails.IsIJsonRpcParam))
+                    {
+                        ConstructorInvoker = ConstructorInvoker.Create(info.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
+                    }
                 }
             }
 

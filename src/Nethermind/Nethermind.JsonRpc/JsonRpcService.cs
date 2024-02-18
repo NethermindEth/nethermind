@@ -300,7 +300,7 @@ public class JsonRpcService : IJsonRpcService
         }
         else if (expectedParameter.IsIJsonRpcParam)
         {
-            IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+            IJsonRpcParam jsonRpcParam = expectedParameter.CreateRpcParam();
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
             executionParam = jsonRpcParam;
         }
