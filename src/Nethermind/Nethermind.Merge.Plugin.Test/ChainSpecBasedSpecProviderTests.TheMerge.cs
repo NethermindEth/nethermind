@@ -68,8 +68,9 @@ public class ChainSpecBasedSpecProviderTestsTheMerge
         ChainSpecLoader loader = new(new EthereumJsonSerializer());
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
         ChainSpec chainSpec = loader.LoadFromFile(path);
+        ChainSpecParametersProvider chainSpecParametersProvider = new(chainSpec, new EthereumJsonSerializer());
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, chainSpecParametersProvider);
         Assert.That(provider.MergeBlockNumber?.BlockNumber, Is.EqualTo(expectedTerminalPoWBlock + 1));
 
         provider.UpdateMergeTransitionInfo(newMergeBlock);

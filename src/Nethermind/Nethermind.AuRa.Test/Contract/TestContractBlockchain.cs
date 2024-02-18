@@ -29,7 +29,7 @@ namespace Nethermind.AuRa.Test.Contract
                 string name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
                 using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
                 ChainSpec chainSpec = loader.Load(stream);
-                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
+                ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec, null);
                 return (chainSpec, chainSpecBasedSpecProvider);
             }
 

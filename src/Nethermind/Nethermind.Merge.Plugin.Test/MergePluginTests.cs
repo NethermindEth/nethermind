@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Clique.Test;
 using Nethermind.Config;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Producers;
@@ -16,6 +17,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Specs.Test;
 using NUnit.Framework;
 using NSubstitute;
 using Build = Nethermind.Runner.Test.Ethereum.Build;
@@ -37,7 +39,6 @@ public class MergePluginTests
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
         _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
@@ -57,12 +58,14 @@ public class MergePluginTests
             miningConfig,
             _context.LogManager!);
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
-        // _context.ChainSpec.SealEngineType = SealEngineType.Clique;
-        _context.ChainSpec!.Clique = new CliqueParameters()
+        TestChainSpecParametersProvider chainSpecParametersProvider = new();
+        chainSpecParametersProvider.SealEngineType = SealEngineType.Clique;
+        chainSpecParametersProvider.AddChainSpecParametersProvider(new CliqueChainSpecEngineParameters
         {
             Epoch = CliqueConfig.Default.Epoch,
             Period = CliqueConfig.Default.BlockPeriod
-        };
+        });
+        _context.ChainSpecParametersProvider = chainSpecParametersProvider;
         _plugin = new MergePlugin();
 
         _consensusPlugin = new();

@@ -22,7 +22,7 @@ public class ChainSpecLoaderTests
     public void Can_load_hive()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/hive.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.Name, Is.EqualTo("Foundation"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
@@ -110,28 +110,33 @@ public class ChainSpecLoaderTests
         Assert.That(chainSpec.Parameters.GasLimitBoundDivisor, Is.EqualTo((long)0x0400), "gas limit bound divisor");
     }
 
-    private static ChainSpec LoadChainSpec(string path)
+    private static (ChainSpec ChainSpec, ChainSpecParametersProvider ChainSpecParametersProvider) LoadChainSpec(string path)
     {
-        ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
+        IJsonSerializer serializer = new EthereumJsonSerializer();
+        ChainSpecLoader chainSpecLoader = new(serializer);
         ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
-        return chainSpec;
+        ChainSpecParametersProvider chainSpecParametersProvider =
+            new(chainSpec, serializer);
+        return (chainSpec, chainSpecParametersProvider);
     }
 
     [Test]
     public void Can_load_goerli()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(5), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Görli Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("goerli"), $"{nameof(chainSpec.DataDir)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
 
-        Assert.That(chainSpec.Clique.Period, Is.EqualTo(15UL));
-        Assert.That(chainSpec.Clique.Epoch, Is.EqualTo(30000UL));
-        Assert.That(chainSpec.Clique.Reward, Is.EqualTo(UInt256.Zero));
+        // TODO: move to clique tests
+        // chainSpecParametersProvider.GetChainSpecParameters<CliqueChainSpec>()
+        // Assert.That(chainSpec.Clique.Period, Is.EqualTo(15UL));
+        // Assert.That(chainSpec.Clique.Epoch, Is.EqualTo(30000UL));
+        // Assert.That(chainSpec.Clique.Reward, Is.EqualTo(UInt256.Zero));
 
         chainSpec.HomesteadBlockNumber.Should().Be(0);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -153,12 +158,12 @@ public class ChainSpecLoaderTests
     public void Can_load_gnosis()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(100), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("GnosisChain"), $"{nameof(chainSpec.Name)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         int berlinGnosisBlockNumber = 16101500;
         chainSpec.Parameters.Eip2565Transition.Should().Be(berlinGnosisBlockNumber);
@@ -176,12 +181,12 @@ public class ChainSpecLoaderTests
     public void Can_load_chiado()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/chiado.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(10200), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("chiado"), $"{nameof(chainSpec.Name)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.AuRa), "engine");
 
         chainSpec.Parameters.TerminalTotalDifficulty.ToString()
             .Should().Be("231707791542740786049188744689299064356246512");
@@ -198,13 +203,13 @@ public class ChainSpecLoaderTests
     public void Can_load_mainnet()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
         Assert.That(chainSpec.NetworkId, Is.EqualTo(1), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Ethereum"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("ethereum"), $"{nameof(chainSpec.Name)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(MainnetSpecProvider.HomesteadBlockNumber);
         chainSpec.DaoForkBlockNumber.Should().Be(1920000);
@@ -227,12 +232,12 @@ public class ChainSpecLoaderTests
     public void Can_load_spaceneth()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/spaceneth.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.NetworkId, Is.EqualTo(99), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Spaceneth"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("spaceneth"), $"{nameof(chainSpec.Name)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.NethDev), "engine");
 
         chainSpec.HomesteadBlockNumber.Should().Be(0L);
         chainSpec.DaoForkBlockNumber.Should().Be(null);
@@ -253,7 +258,7 @@ public class ChainSpecLoaderTests
     public void Can_load_sepolia()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/sepolia.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.NetworkId, Is.EqualTo(11155111), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Sepolia Testnet"), $"{nameof(chainSpec.Name)}");
@@ -268,12 +273,12 @@ public class ChainSpecLoaderTests
     public void Can_load_holesky()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/holesky.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
 
         Assert.That(chainSpec.NetworkId, Is.EqualTo(17000), $"{nameof(chainSpec.NetworkId)}");
         Assert.That(chainSpec.Name, Is.EqualTo("Holesky Testnet"), $"{nameof(chainSpec.Name)}");
         Assert.That(chainSpec.DataDir, Is.EqualTo("holesky"), $"{nameof(chainSpec.DataDir)}");
-        // Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
+        Assert.That(chainSpecParametersProvider.SealEngineType, Is.EqualTo(SealEngineType.Ethash), "engine");
 
         chainSpec.DaoForkBlockNumber.Should().Be(null);
         chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
@@ -294,7 +299,7 @@ public class ChainSpecLoaderTests
     {
         // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
         chainSpec.Parameters.Eip152Transition.Should().Be(15);
         chainSpec.Parameters.Eip1108Transition.Should().Be(10);
     }
@@ -304,7 +309,7 @@ public class ChainSpecLoaderTests
     {
         // TODO: modexp 2565
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/posdao.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
+        (ChainSpec chainSpec, ChainSpecParametersProvider chainSpecParametersProvider) = LoadChainSpec(path);
         IDictionary<long, IDictionary<Address, byte[]>> expected = new Dictionary<long, IDictionary<Address, byte[]>>
         {
             {

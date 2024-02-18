@@ -100,7 +100,7 @@ public class ForkInfoTests
         ChainSpec spec = loader.LoadFromFile("../../../../Chains/foundation.json");
         spec.Parameters.MergeForkIdTransition = 21_000_000L;
         spec.MergeForkIdBlockNumber = 21_000_000L;
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
     }
 
@@ -176,7 +176,7 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.LoadFromFile("../../../../Chains/chiado.json");
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, KnownHashes.ChiadoGenesis, forkHashHex, next, description, provider);
     }
 
@@ -343,7 +343,7 @@ public class ForkInfoTests
         string chainspec = $"{{\"params\":{{\"networkID\":{specNetworkId?.ToString() ?? "null"},\"chainId\":{specChainId?.ToString() ?? "null"}}},\"engine\":{{\"NethDev\":{{}}}}}}";
         using MemoryStream memoryStream = new MemoryStream(Encoding.UTF8.GetBytes(chainspec));
         ChainSpec spec = loader.Load(memoryStream);
-        ChainSpecBasedSpecProvider provider = new(spec);
+        ChainSpecBasedSpecProvider provider = new(spec, null);
 
         spec.ChainId.Should().Be(expectedChainId);
         spec.NetworkId.Should().Be(expectedNetworkId);
@@ -361,7 +361,7 @@ public class ForkInfoTests
     {
         ChainSpecLoader loader = new ChainSpecLoader(new EthereumJsonSerializer());
         ChainSpec spec = loader.LoadFromFile(Path.Combine(path, chainSpec));
-        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec);
+        ChainSpecBasedSpecProvider provider = new ChainSpecBasedSpecProvider(spec, null);
         Test(head, headTimestamp, genesisHash, forkHashHex, next, description, provider);
     }
 

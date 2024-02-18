@@ -20,7 +20,7 @@ namespace Nethermind.Clique.Test
         {
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
             snapshotManager.GetLastSignersCount().Returns(test.ValidatorsCount);
-            IHealthHintService healthHintService = new CliqueHealthHintService(snapshotManager, test.ChainSpec);
+            IHealthHintService healthHintService = new CliqueHealthHintService(snapshotManager, test.CliqueChainSpecEngineParameters);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
             Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
@@ -29,7 +29,7 @@ namespace Nethermind.Clique.Test
 
         public class BlockProcessorIntervalHint
         {
-            public ChainSpec ChainSpec { get; set; }
+            public CliqueChainSpecEngineParameters CliqueChainSpecEngineParameters { get; set; }
 
             public ulong ValidatorsCount { get; set; }
 
@@ -47,27 +47,27 @@ namespace Nethermind.Clique.Test
             {
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() { Clique = new CliqueParameters() { Period = 15 } },
+                    CliqueChainSpecEngineParameters = new() { Period = 15 },
                     ExpectedProcessingHint = 60,
                     ExpectedProducingHint = 30
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
-                    ChainSpec = new ChainSpec() { Clique = new CliqueParameters() { Period = 23 } },
+                    CliqueChainSpecEngineParameters = new() { Period = 23 },
                     ExpectedProcessingHint = 92,
                     ExpectedProducingHint = 46
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
                     ValidatorsCount = 10,
-                    ChainSpec = new ChainSpec() { Clique = new CliqueParameters() { Period = 23 } },
+                    CliqueChainSpecEngineParameters = new() { Period = 23 },
                     ExpectedProcessingHint = 92,
                     ExpectedProducingHint = 460
                 };
                 yield return new BlockProcessorIntervalHint()
                 {
                     ValidatorsCount = 2,
-                    ChainSpec = new ChainSpec() { Clique = new CliqueParameters() { Period = 10 } },
+                    CliqueChainSpecEngineParameters = new() { Period = 10 },
                     ExpectedProcessingHint = 40,
                     ExpectedProducingHint = 40
                 };
