@@ -193,7 +193,7 @@ public class JsonRpcService : IJsonRpcService
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
         }
-        catch (Exception e) when (e.InnerException is OperationCanceledException)
+        catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {
             string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
             return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
