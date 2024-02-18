@@ -148,10 +148,19 @@ namespace Nethermind.JsonRpc.Modules
 
         public class ResolvedMethodInfo
         {
-            public struct ExpectedParameter
+            public readonly struct ExpectedParameter
             {
-                public ParameterInfo Info;
-                public ParameterDetails Introspection;
+                public readonly ParameterInfo Info;
+                private readonly ParameterDetails _introspection;
+
+                public bool IsNullable => _introspection.HasFlag(ParameterDetails.IsNullable);
+                public bool IsIJsonRpcParam => _introspection.HasFlag(ParameterDetails.IsIJsonRpcParam);
+
+                public ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
+                {
+                    Info = info ?? throw new ArgumentNullException(nameof(info));
+                    _introspection = introspection;
+                }
             }
 
             [Flags]
@@ -191,11 +200,7 @@ namespace Nethermind.JsonRpc.Modules
                         details |= ParameterDetails.IsNullable;
                     }
 
-                    expectedParameters[i] = new()
-                    {
-                        Info = parameter,
-                        Introspection = details
-                    };
+                    expectedParameters[i] = new(parameter, details);
                 }
 
                 ExpectedParameters = expectedParameters;

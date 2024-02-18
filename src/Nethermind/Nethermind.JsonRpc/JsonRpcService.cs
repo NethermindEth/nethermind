@@ -121,7 +121,7 @@ public class JsonRpcService : IJsonRpcService
                 for (int i = 0; i < missingParamsCount; i++)
                 {
                     int parameterIndex = method.ExpectedParameters.Length - missingParamsCount + i;
-                    bool nullable = (method.ExpectedParameters[parameterIndex].Introspection & ParameterDetails.IsNullable) != 0;
+                    bool nullable = method.ExpectedParameters[parameterIndex].IsNullable;
 
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
@@ -281,7 +281,7 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && (expectedParameter.Introspection & ParameterDetails.IsNullable) != 0)
+            if (providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable)
             {
                 return null;
             }
@@ -298,7 +298,7 @@ public class JsonRpcService : IJsonRpcService
                 providedParameter.GetString() :
                 providedParameter.GetRawText();
         }
-        else if ((expectedParameter.Introspection & ParameterDetails.IsIJsonRpcParam) != 0)
+        else if (expectedParameter.IsIJsonRpcParam)
         {
             IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
