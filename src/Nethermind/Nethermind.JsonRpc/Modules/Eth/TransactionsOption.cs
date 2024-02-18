@@ -6,7 +6,7 @@ using System.Text.Json;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public sealed class TransactionsOption : IJsonRpcParam
+public class TransactionsOption : IJsonRpcParam
 {
     public bool IncludeTransactions { get; set; }
 

@@ -9,7 +9,7 @@ using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Subscribe;
 
-public sealed class UserOperationSubscriptionParam : IJsonRpcParam
+public class UserOperationSubscriptionParam : IJsonRpcParam
 {
     public Address[] EntryPoints { get; set; } = Array.Empty<Address>();
     public bool IncludeUserOperations { get; set; }

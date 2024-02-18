@@ -9,7 +9,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public sealed class Filter : IJsonRpcParam
+public class Filter : IJsonRpcParam
 {
     public object? Address { get; set; }
 
