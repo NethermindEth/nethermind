@@ -291,17 +291,17 @@ public class JsonRpcService : IJsonRpcService
         }
 
         object? executionParam;
-        if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
-        {
-            IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-            jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
-            executionParam = jsonRpcParam;
-        }
-        else if (paramType == typeof(string))
+        if (paramType == typeof(string))
         {
             executionParam = providedParameter.ValueKind == JsonValueKind.String ?
                 providedParameter.GetString() :
                 providedParameter.GetRawText();
+        }
+        else if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
+        {
+            IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
+            jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
+            executionParam = jsonRpcParam;
         }
         else
         {
