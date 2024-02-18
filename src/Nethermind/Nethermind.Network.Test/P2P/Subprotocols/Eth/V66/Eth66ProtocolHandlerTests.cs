@@ -11,6 +11,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Crypto;
@@ -82,6 +83,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _svc,
                 new NodeStatsManager(_timerFactory, LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _pooledTxsRequestor,
                 _gossipPolicy,
@@ -305,6 +307,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 _svc,
                 new NodeStatsManager(_timerFactory, LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
                 _gossipPolicy,

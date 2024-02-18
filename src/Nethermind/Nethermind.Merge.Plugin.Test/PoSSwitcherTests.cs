@@ -11,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -23,8 +22,6 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public class PoSSwitcherTests
     {
-        private static readonly IBlockCacheService _blockCacheService = new BlockCacheService();
-
         [Test]
         public void Initial_TTD_should_be_null()
         {
@@ -42,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            ChainSpec chainSpec = loader.LoadFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec, null);
             PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);

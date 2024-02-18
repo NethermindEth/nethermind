@@ -43,7 +43,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private WriteOptions? _lowPriorityAndNoWalWrite;
     private WriteOptions? _lowPriorityWriteOptions;
 
-    private ReadOptions? _defaultReadOptions = null;
+    private ReadOptions _defaultReadOptions = null!;
+    private ReadOptions _hintCacheMissOptions = null!;
     private ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
@@ -147,11 +148,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                     if (columnFamily == "Default") columnFamily = "default";
 
                     ColumnFamilyOptions options = new();
-                    IntPtr? cacheForColumn = sharedCache;
-                    if (_cache != null)
-                    {
-                        cacheForColumn = _cache;
-                    }
+                    IntPtr? cacheForColumn = _cache ?? sharedCache;
                     BuildOptions(new PerTableDbConfig(dbConfig, _settings, columnFamily), options, cacheForColumn);
                     columnFamilies.Add(columnFamily, options);
                 }
@@ -163,24 +160,23 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             if (dbConfig.EnableMetricsUpdater)
             {
+                DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
+                metricUpdater.StartUpdating();
+                _metricsUpdaters.Add(metricUpdater);
+
                 if (columnFamilies is not null)
                 {
                     foreach (ColumnFamilies.Descriptor columnFamily in columnFamilies)
                     {
+                        if (columnFamily.Name == "default") continue;
                         if (db.TryGetColumnFamily(columnFamily.Name, out ColumnFamilyHandle handle))
                         {
-                            DbMetricsUpdater<ColumnFamilyOptions> metricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
+                            DbMetricsUpdater<ColumnFamilyOptions> columnMetricUpdater = new DbMetricsUpdater<ColumnFamilyOptions>(
                                 Name + "_" + columnFamily.Name, columnFamily.Options, db, handle, dbConfig, _logger);
-                            metricUpdater.StartUpdating();
-                            _metricsUpdaters.Add(metricUpdater);
+                            columnMetricUpdater.StartUpdating();
+                            _metricsUpdaters.Add(columnMetricUpdater);
                         }
                     }
-                }
-                else
-                {
-                    DbMetricsUpdater<DbOptions> metricUpdater = new DbMetricsUpdater<DbOptions>(Name, DbOptions, db, null, dbConfig, _logger);
-                    metricUpdater.StartUpdating();
-                    _metricsUpdaters.Add(metricUpdater);
                 }
             }
 
@@ -284,7 +280,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         try
         {
-            if (_cache == null && !includeSharedCache)
+            if (_cache is null && !includeSharedCache)
             {
                 // returning 0 as we are using shared cache.
                 return 0;
@@ -612,6 +608,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         _defaultReadOptions = new ReadOptions();
         _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
 
+        _hintCacheMissOptions = new ReadOptions();
+        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _hintCacheMissOptions.SetFillCache(false);
+
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
         // will increase the chances that the next keys will be in the cache, which reduces iops and latency. This
         // increases throughput, however, if a lot of the keys are not close to the current key, it will increase read
@@ -669,7 +669,7 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
-            return _db.Get(key, cf, _defaultReadOptions);
+            return _db.Get(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
         }
         catch (RocksDbSharpException e)
         {
@@ -746,10 +746,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags)
     {
-        return GetSpanWithColumnFamily(key, null);
+        return GetSpanWithColumnFamily(key, null, flags);
     }
 
-    internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf)
+    internal Span<byte> GetSpanWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ReadFlags flags)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -757,7 +757,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            Span<byte> span = _db.GetSpan(key, cf, _defaultReadOptions);
+            Span<byte> span = _db.GetSpan(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
 
             if (!span.IsNullOrEmpty())
             {
@@ -986,9 +986,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
         try
         {
-            // seems it has no performance impact
-            return _db.Get(key, cf, _defaultReadOptions) is not null;
-            // return _db.Get(key, 32, _keyExistsBuffer, 0, 0, null, null) != -1;
+            return _db.HasKey(key, cf, _defaultReadOptions);
         }
         catch (RocksDbSharpException e)
         {

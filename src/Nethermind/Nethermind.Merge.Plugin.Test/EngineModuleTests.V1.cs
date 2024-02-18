@@ -1536,9 +1536,8 @@ public partial class EngineModuleTests
     public void Should_return_expected_capabilities_for_mainnet()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
-        string data = File.ReadAllText(path);
         ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.Load(data);
+        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
         ChainSpecBasedSpecProvider specProvider = new(chainSpec, null);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
@@ -1554,8 +1553,11 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
             nameof(IEngineRpcModule.engine_newPayloadV2),
             nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1),
-            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1),
 
+            nameof(IEngineRpcModule.engine_getPayloadV3),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
+            nameof(IEngineRpcModule.engine_newPayloadV3)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

@@ -98,7 +98,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public IDictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
         {
             using var lockRelease = Lock.Acquire();
 
@@ -310,7 +310,12 @@ namespace Nethermind.TxPool.Collections
 
                     if (_cacheMap.Count > _capacity)
                     {
-                        RemoveLast(out removed);
+                        if (!RemoveLast(out removed) || _cacheMap.Count > _capacity)
+                        {
+                            UpdateWorstValue();
+                            RemoveLast(out removed);
+                        }
+
                         return true;
                     }
 
@@ -325,16 +330,17 @@ namespace Nethermind.TxPool.Collections
 
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
-        private void RemoveLast(out TValue? removed)
+        private bool RemoveLast(out TValue? removed)
         {
             TKey? key = _worstValue.GetValueOrDefault().Value;
             if (key is not null)
             {
-                TryRemoveNonLocked(key, true, out removed, out _);
+                return TryRemoveNonLocked(key, true, out removed, out _);
             }
             else
             {
                 removed = default;
+                return false;
             }
         }
 
