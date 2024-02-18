@@ -148,9 +148,23 @@ namespace Nethermind.JsonRpc.Modules
 
         public class ResolvedMethodInfo
         {
+            public struct ExpectedParameter
+            {
+                public ParameterInfo Info;
+                public ParameterDetails Introspection;
+            }
+
+            [Flags]
+            public enum ParameterDetails
+            {
+                None,
+                IsNullable,
+                IsIJsonRpcParam,
+            }
+
             public ResolvedMethodInfo()
             {
-                ExpectedParameters = Array.Empty<ParameterInfo>();
+                ExpectedParameters = Array.Empty<ExpectedParameter>();
             }
 
             public ResolvedMethodInfo(
@@ -161,7 +175,30 @@ namespace Nethermind.JsonRpc.Modules
             {
                 ModuleType = moduleType;
                 MethodInfo = methodInfo;
-                ExpectedParameters = methodInfo.GetParameters();
+
+                ParameterInfo[] parameters = methodInfo.GetParameters();
+                ExpectedParameter[] expectedParameters = new ExpectedParameter[parameters.Length];
+                for (var i = 0; i < parameters.Length; i++)
+                {
+                    ParameterInfo parameter = parameters[i];
+                    ParameterDetails details = ParameterDetails.None;
+                    if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
+                    {
+                        details |= ParameterDetails.IsIJsonRpcParam;
+                    }
+                    if (IsNullableParameter(parameter))
+                    {
+                        details |= ParameterDetails.IsNullable;
+                    }
+
+                    expectedParameters[i] = new()
+                    {
+                        Info = parameter,
+                        Introspection = details
+                    };
+                }
+
+                ExpectedParameters = expectedParameters;
                 ReadOnly = readOnly;
                 Availability = availability;
                 Invoker = MethodInvoker.Create(methodInfo);
@@ -170,13 +207,34 @@ namespace Nethermind.JsonRpc.Modules
             public string ModuleType { get; }
             public MethodInfo MethodInfo { get; }
             public MethodInvoker Invoker { get; }
-            public ParameterInfo[] ExpectedParameters { get; }
+            public ExpectedParameter[] ExpectedParameters { get; }
             public bool ReadOnly { get; }
             public RpcEndpoint Availability { get; }
 
             public override string ToString()
             {
                 return MethodInfo.Name;
+            }
+
+            private static bool IsNullableParameter(ParameterInfo parameterInfo)
+            {
+                Type parameterType = parameterInfo.ParameterType;
+                if (parameterType.IsValueType)
+                {
+                    return Nullable.GetUnderlyingType(parameterType) is not null;
+                }
+
+                CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
+                    .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
+                if (nullableAttribute is not null)
+                {
+                    CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
+                    if (attributeArgument.ArgumentType == typeof(byte))
+                    {
+                        return (byte)attributeArgument.Value! == 2;
+                    }
+                }
+                return false;
             }
         }
     }

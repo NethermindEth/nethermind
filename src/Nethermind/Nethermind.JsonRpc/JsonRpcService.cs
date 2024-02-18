@@ -18,6 +18,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.State;
 
 using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
@@ -120,7 +121,7 @@ public class JsonRpcService : IJsonRpcService
                 for (int i = 0; i < missingParamsCount; i++)
                 {
                     int parameterIndex = method.ExpectedParameters.Length - missingParamsCount + i;
-                    bool nullable = IsNullableParameter(method.ExpectedParameters[parameterIndex]);
+                    bool nullable = (method.ExpectedParameters[parameterIndex].Introspection & ParameterDetails.IsNullable) != 0;
 
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
@@ -130,7 +131,7 @@ public class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].Info.IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         break;
@@ -224,7 +225,7 @@ public class JsonRpcService : IJsonRpcService
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
-    private void LogRequest(string methodName, JsonElement providedParameters, ParameterInfo[] expectedParameters)
+    private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
         if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
         {
@@ -241,7 +242,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount)?.Name == "passphrase"
+                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -270,9 +271,9 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private static object? DeserializeParameter(JsonElement providedParameter, ParameterInfo expectedParameter)
+    private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
     {
-        Type paramType = expectedParameter.ParameterType;
+        Type paramType = expectedParameter.Info.ParameterType;
         if (paramType.IsByRef)
         {
             paramType = paramType.GetElementType();
@@ -280,7 +281,7 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
+            if (providedParameter.ValueKind == JsonValueKind.Null && (expectedParameter.Introspection & ParameterDetails.IsNullable) != 0)
             {
                 return null;
             }
@@ -297,7 +298,7 @@ public class JsonRpcService : IJsonRpcService
                 providedParameter.GetString() :
                 providedParameter.GetRawText();
         }
-        else if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
+        else if ((expectedParameter.Introspection & ParameterDetails.IsIJsonRpcParam) != 0)
         {
             IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
             jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
@@ -326,7 +327,7 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private (object[]? parameters, bool hasMissing) DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
+    private (object[]? parameters, bool hasMissing) DeserializeParameters(ExpectedParameter[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
         const int parallelThreshold = 4;
         try
@@ -344,7 +345,7 @@ public class JsonRpcService : IJsonRpcService
                 for (int i = 0; i < arrayLength; i++)
                 {
                     JsonElement providedParameter = providedParameters[i];
-                    ParameterInfo expectedParameter = expectedParameters[i];
+                    ExpectedParameter expectedParameter = expectedParameters[i];
 
                     object? parameter = DeserializeParameter(providedParameter, expectedParameter);
                     executionParameters[i] = parameter;
@@ -359,7 +360,7 @@ public class JsonRpcService : IJsonRpcService
                 Parallel.For(0, arrayLength, (int i) =>
                 {
                     JsonElement providedParameter = providedParameters[i];
-                    ParameterInfo expectedParameter = expectedParameters[i];
+                    ExpectedParameter expectedParameter = expectedParameters[i];
 
                     object? parameter = DeserializeParameter(providedParameter, expectedParameter);
                     executionParameters[i] = parameter;
@@ -382,27 +383,6 @@ public class JsonRpcService : IJsonRpcService
             if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
             return (null, false);
         }
-    }
-
-    private static bool IsNullableParameter(ParameterInfo parameterInfo)
-    {
-        Type parameterType = parameterInfo.ParameterType;
-        if (parameterType.IsValueType)
-        {
-            return Nullable.GetUnderlyingType(parameterType) is not null;
-        }
-
-        CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
-            .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-        if (nullableAttribute is not null)
-        {
-            CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
-            if (attributeArgument.ArgumentType == typeof(byte))
-            {
-                return (byte)attributeArgument.Value! == 2;
-            }
-        }
-        return false;
     }
 
     private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)
