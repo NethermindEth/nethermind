@@ -12,7 +12,7 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrie
 {
     private IScopedTrieStore _scopedTrieStoreImplementation;
 
-    public TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags): base(implementation, flags)
+    public TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags) : base(implementation, flags)
     {
         _scopedTrieStoreImplementation = implementation;
     }
