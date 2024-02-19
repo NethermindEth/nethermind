@@ -13,6 +13,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
@@ -358,14 +359,16 @@ namespace Nethermind.Blockchain.Receipts
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    writeBatch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    writeBatch[hash.Bytes] = Rlp.Encode(block.Number).Bytes;
                 }
             }
             else
             {
                 foreach (Transaction tx in block.Transactions)
                 {
-                    writeBatch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    writeBatch[hash.Bytes] = block.Hash.BytesToArray();
                 }
             }
         }
