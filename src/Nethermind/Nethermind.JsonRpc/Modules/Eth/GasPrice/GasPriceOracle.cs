@@ -62,28 +62,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
             return gasPriceEstimate!;
         }
 
-        public GasPrices GetGasPricesEstimate()
-        {
-            return new GasPrices
-            {
-                Gas = GetGasPriceEstimate(),
-                BlobGas = GetBlobGasPriceEstimate(),
-                MaxPriority = GetMaxPriorityGasFeeEstimate(),
-            };
-        }
-
-        public UInt256 GetBlobGasPriceEstimate()
-        {
-            Block? headBlock = _blockFinder.Head;
-
-            if (headBlock is null)
-            {
-                return Eip4844Constants.MinBlobGasPrice;
-            }
-
-            return BlobGasCalculator.TryCalculateBlobGasPricePerUnit(headBlock.Header, out UInt256 result) ? result : 0;
-        }
-
         internal IEnumerable<UInt256> GetSortedGasPricesFromRecentBlocks(long blockNumber) =>
             GetGasPricesFromRecentBlocks(blockNumber, BlockLimit,
             (transaction, eip1559Enabled, baseFee) => transaction.CalculateEffectiveGasPrice(eip1559Enabled, baseFee));

@@ -29,7 +29,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -117,14 +116,14 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
 
-    public ResultWrapper<GasPrices> eth_gasPrices()
+    public ResultWrapper<UInt256?> eth_blobBaseFee()
     {
-        return ResultWrapper<GasPrices>.Success(_gasPriceOracle.GetGasPricesEstimate());
-    }
-
-    public ResultWrapper<UInt256?> eth_blobGasPrice()
-    {
-        return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetBlobGasPriceEstimate());
+        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_blockchainBridge.HeadBlock?.Header?.ExcessBlobGas ?? 0,
+            out UInt256 blobGasPricePerUnit))
+        {
+            return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
+        }
+        return ResultWrapper<UInt256?>.Success(blobGasPricePerUnit);
     }
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
