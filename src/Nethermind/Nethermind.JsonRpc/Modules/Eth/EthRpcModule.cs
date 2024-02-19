@@ -118,7 +118,11 @@ public partial class EthRpcModule : IEthRpcModule
 
     public ResultWrapper<UInt256?> eth_blobBaseFee()
     {
-        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_blockchainBridge.HeadBlock?.Header?.ExcessBlobGas ?? 0,
+        if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
+        {
+            return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+        }
+        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
             out UInt256 blobGasPricePerUnit))
         {
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
