@@ -3,7 +3,7 @@
 
 namespace Nethermind.Core;
 
-public class InvalidBlockHelper
+public static class InvalidBlockHelper
 {
     public static string GetMessage(Block? block, string reason)
     {
