@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Concurrent;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Synchronization
 {
@@ -58,7 +60,8 @@ namespace Nethermind.Synchronization
 
         [GaugeMetric]
         [Description("Number of sync peers.")]
-        public static long SyncPeers;
+        [KeyIsLabel("client_type")]
+        public static ConcurrentDictionary<NodeClientType, long> SyncPeers = new();
 
         [GaugeMetric]
         [Description("Number of priority peers.")]
