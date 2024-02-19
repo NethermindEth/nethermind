@@ -36,48 +36,26 @@ namespace Nethermind.Consensus.Validators
         }
         public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? error)
         {
+            error = null;
+
             // validate type before calculating intrinsic gas to avoid exception
-            if (!ValidateTxType(transaction, releaseSpec))
-            {
-                error = TxErrorMessages.InvalidTxType(releaseSpec.Name);
-                return false;
-            }
-            /* This is unnecessarily calculated twice - at validation and execution times. */
-            if (transaction.GasLimit < IntrinsicGasCalculator.Calculate(transaction, releaseSpec))
-            {
-                error = TxErrorMessages.IntrinsicGasTooLow;
-                return false;
-            }
-            /* if it is a call or a transfer then we require the 'To' field to have a value
-               while for an init it will be empty */
-            if (!ValidateSignature(transaction, releaseSpec))
-            {
-                error = TxErrorMessages.InvalidTxSignature;
-                return false;
-            }
-            if (!ValidateChainId(transaction))
-            {
-                error = TxErrorMessages.InvalidTxChainId(_chainIdValue, transaction.ChainId);
-                return false;
-            }
-            if (!Validate1559GasFields(transaction, releaseSpec))
-            {
-                error = TxErrorMessages.InvalidMaxPriorityFeePerGas;
-                return false;
-            }
-            if (!Validate3860Rules(transaction, releaseSpec))
-            {
-                error = TxErrorMessages.ContractSizeTooBig;
-                return false;
-            }
-            return Validate4844Fields(transaction, out error);
+            return ValidateTxType(transaction, releaseSpec, ref error)
+                   // This is unnecessarily calculated twice - at validation and execution times.
+                   && ValidateWithError(transaction.GasLimit >= IntrinsicGasCalculator.Calculate(transaction, releaseSpec), TxErrorMessages.IntrinsicGasTooLow, ref error)
+                   // if it is a call or a transfer then we require the 'To' field to have a value while for an init it will be empty
+                   && ValidateWithError(ValidateSignature(transaction, releaseSpec), TxErrorMessages.InvalidTxSignature, ref error)
+                   && ValidateChainId(transaction, ref error)
+                   && ValidateWithError(Validate1559GasFields(transaction, releaseSpec), TxErrorMessages.InvalidMaxPriorityFeePerGas, ref error)
+                   && ValidateWithError(Validate3860Rules(transaction, releaseSpec), TxErrorMessages.ContractSizeTooBig, ref error)
+                   && Validate4844Fields(transaction, ref error);
         }
 
         private static bool Validate3860Rules(Transaction transaction, IReleaseSpec releaseSpec) =>
             !transaction.IsAboveInitCode(releaseSpec);
 
-        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec) =>
-            transaction.Type switch
+        private static bool ValidateTxType(Transaction transaction, IReleaseSpec releaseSpec, ref string error)
+        {
+            bool result = transaction.Type switch
             {
                 TxType.Legacy => true,
                 TxType.AccessList => releaseSpec.UseTxAccessLists,
@@ -85,6 +63,15 @@ namespace Nethermind.Consensus.Validators
                 TxType.Blob => releaseSpec.IsEip4844Enabled,
                 _ => false
             };
+
+            if (!result)
+            {
+                error = TxErrorMessages.InvalidTxType(releaseSpec.Name);
+                return false;
+            }
+
+            return true;
+        }
 
 
         private static bool Validate1559GasFields(Transaction transaction, IReleaseSpec releaseSpec)
@@ -95,12 +82,37 @@ namespace Nethermind.Consensus.Validators
             return transaction.MaxFeePerGas >= transaction.MaxPriorityFeePerGas;
         }
 
-        private bool ValidateChainId(Transaction transaction) =>
-            transaction.Type switch
+        private bool ValidateChainId(Transaction transaction, ref string? error)
+        {
+            return transaction.Type switch
             {
                 TxType.Legacy => true,
-                _ => transaction.ChainId == _chainIdValue
+                _ => ValidateChainIdNonLegacy(transaction.ChainId, ref error)
             };
+
+            bool ValidateChainIdNonLegacy(ulong? chainId, ref string? error)
+            {
+                bool result = chainId == _chainIdValue;
+                if (!result)
+                {
+                    error = TxErrorMessages.InvalidTxChainId(_chainIdValue, transaction.ChainId);
+                    return false;
+                }
+
+                return true;
+            }
+        }
+
+        private bool ValidateWithError(bool validation, string errorMessage, ref string? error)
+        {
+            if (!validation)
+            {
+                error = errorMessage;
+                return false;
+            }
+
+            return true;
+        }
 
         private bool ValidateSignature(Transaction tx, IReleaseSpec spec)
         {
@@ -137,7 +149,7 @@ namespace Nethermind.Consensus.Validators
             return !spec.ValidateChainId;
         }
 
-        private static bool Validate4844Fields(Transaction transaction, out string? error)
+        private static bool Validate4844Fields(Transaction transaction, ref string? error)
         {
             // Execution-payload version verification
             if (!transaction.SupportsBlobs)
@@ -147,18 +159,20 @@ namespace Nethermind.Consensus.Validators
                     error = TxErrorMessages.NotAllowedMaxFeePerBlobGas;
                     return false;
                 }
+
                 if (transaction.BlobVersionedHashes is not null)
                 {
                     error = TxErrorMessages.NotAllowedBlobVersionedHashes;
                     return false;
                 }
+
                 if (transaction is { NetworkWrapper: ShardBlobNetworkWrapper })
                 {
                     //This must be an internal issue?
                     error = TxErrorMessages.InvalidTransaction;
                     return false;
                 }
-                error = null;
+
                 return true;
             }
 
@@ -272,7 +286,7 @@ namespace Nethermind.Consensus.Validators
                 }
 
             }
-            error = null;
+
             return true;
         }
     }

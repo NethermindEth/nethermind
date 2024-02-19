@@ -4,6 +4,7 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Messages;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -56,8 +57,8 @@ namespace Nethermind.Merge.Plugin
         public override bool Validate(BlockHeader header, bool isUncle = false) =>
             Validate(header, _blockTree.FindParentHeader(header, BlockTreeLookupOptions.None), isUncle);
 
-        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header) =>
-            _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header);
+        protected override bool ValidateTotalDifficulty(BlockHeader parent, BlockHeader header, ref string? error) =>
+            _poSSwitcher.IsPostMerge(header) || base.ValidateTotalDifficulty(parent, header, ref error);
 
         private bool ValidatePoWTotalDifficulty(BlockHeader header)
         {
@@ -72,36 +73,31 @@ namespace Nethermind.Merge.Plugin
 
         private bool ValidateTheMergeChecks(BlockHeader header)
         {
-            bool validDifficulty = true, validNonce = true, validUncles = true;
             (bool IsTerminal, bool IsPostMerge) switchInfo = _poSSwitcher.GetBlockConsensusInfo(header);
             bool terminalTotalDifficultyChecks = ValidateTerminalTotalDifficultyChecks(header, switchInfo.IsTerminal);
-            if (switchInfo.IsPostMerge)
-            {
-                validDifficulty = ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty));
-                validNonce = ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce));
-                validUncles = ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
-            }
+            bool valid = !switchInfo.IsPostMerge ||
+                        ValidateHeaderField(header, header.Difficulty, UInt256.Zero, nameof(header.Difficulty))
+                        && ValidateHeaderField(header, header.Nonce, 0u, nameof(header.Nonce))
+                        && ValidateHeaderField(header, header.UnclesHash, Keccak.OfAnEmptySequenceRlp, nameof(header.UnclesHash));
 
-            return terminalTotalDifficultyChecks
-                   && validDifficulty
-                   && validNonce
-                   && validUncles;
+            return terminalTotalDifficultyChecks && valid;
         }
 
-        protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle = false)
+        protected override bool ValidateExtraData(BlockHeader header, BlockHeader? parent, IReleaseSpec spec, bool isUncle, ref string? error)
         {
             if (_poSSwitcher.IsPostMerge(header))
             {
                 if (header.ExtraData.Length > MaxExtraDataBytes)
                 {
                     if (_logger.IsWarn) _logger.Warn($"Invalid block header {header.ToString(BlockHeader.Format.Short)} - the {nameof(header.ExtraData)} exceeded max length of {MaxExtraDataBytes}.");
+                    error = BlockErrorMessages.InvalidExtraData;
                     return false;
                 }
 
                 return true;
             }
 
-            return base.ValidateExtraData(header, parent, spec, isUncle);
+            return base.ValidateExtraData(header, parent, spec, isUncle, ref error);
         }
 
         private bool ValidateTerminalTotalDifficultyChecks(BlockHeader header, bool isTerminal)
