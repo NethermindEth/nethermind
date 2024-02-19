@@ -7,6 +7,6 @@ public static class InvalidBlockHelper
 {
     public static string GetMessage(Block? block, string reason)
     {
-        return $"Invalid block {block?.ToString(Block.Format.FullHashNumberAndExtraData)} rejected, reason: {reason}";
+        return $"Rejected invalid block {block?.ToString(Block.Format.FullHashNumberAndExtraData)}, reason: {reason}";
     }
 }
