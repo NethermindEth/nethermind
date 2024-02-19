@@ -26,8 +26,8 @@ public class FeeHistoryResults
         OldestBlock = oldestBlock;
         Reward = reward;
         BaseFeePerGas = baseFeePerGas;
-        GasUsedRatio = gasUsedRatio;
         BaseFeePerBlobGas = baseFeePerBlobGas;
+        GasUsedRatio = gasUsedRatio;
         BlobGasUsedRatio = blobGasUsedRatio;
     }
 }
