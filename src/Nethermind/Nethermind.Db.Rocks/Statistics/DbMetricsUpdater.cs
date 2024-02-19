@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.RegularExpressions;
 using System.Threading;
+using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
 using RocksDbSharp;
@@ -108,15 +109,26 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
     {
         if (!string.IsNullOrEmpty(compactionStatsString))
         {
-            var stats = ExtractStatsPerLevel(compactionStatsString);
-            UpdateMetricsFromList(stats);
+            var statsWithLevel = ExtractStatsPerLevel(compactionStatsString);
+            UpdateLevelCompactionMetricsFromlist(statsWithLevel);
 
-            stats = ExctractIntervalCompaction(compactionStatsString);
+            var stats = ExctractIntervalCompaction(compactionStatsString);
             UpdateMetricsFromList(stats);
         }
         else
         {
             _logger.Warn($"No RocksDB compaction stats available for {_dbName} database.");
+        }
+    }
+
+    private void UpdateLevelCompactionMetricsFromlist(List<(string Name, int Level, double Metric)> stats)
+    {
+        if (stats is not null)
+        {
+            foreach (var stat in stats)
+            {
+                Metrics.DbCompactionStats[($"{_dbName}Db", stat.Level, stat.Name)] = stat.Metric;
+            }
         }
     }
 
@@ -135,20 +147,44 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
     /// Example line:
     ///   L0      2/0    1.77 MB   0.5      0.0     0.0      0.0       0.4      0.4       0.0   1.0      0.0     44.6      9.83              0.00       386    0.025       0      0
     /// </summary>
-    private static List<(string Name, long Value)> ExtractStatsPerLevel(string compactionStatsDump)
+    private static List<(string Name, int Level, double Value)> ExtractStatsPerLevel(string compactionStatsDump)
     {
-        var stats = new List<(string Name, long Value)>(5);
+        var stats = new List<(string Name, int Level, double Value)>(5);
 
         if (!string.IsNullOrEmpty(compactionStatsDump))
         {
+
+            // Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+            //----------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+            //L0      2/0    1.77 MB   0.5      0.0     0.0      0.0       0.4      0.4       0.0   1.0      0.0     44.6      9.83              0.00       386    0.025       0      0
             var rgx = ExtractStatsRegex();
             var matches = rgx.Matches(compactionStatsDump);
 
             foreach (Match m in matches)
             {
                 var level = int.Parse(m.Groups[1].Value);
-                stats.Add(($"Level{level}Files", int.Parse(m.Groups[2].Value)));
-                stats.Add(($"Level{level}FilesCompacted", int.Parse(m.Groups[3].Value)));
+                stats.Add(("files", level, double.Parse(m.Groups[2].Value)));
+                stats.Add(("files_compacting", level, double.Parse(m.Groups[3].Value)));
+
+                var size = double.Parse(m.Groups[4].Value);
+                if (m.Groups[5].Value == "KB") size *= 1.KiB();
+                if (m.Groups[5].Value == "MB") size *= 1.MiB();
+                if (m.Groups[5].Value == "GB") size *= 1.GiB();
+                stats.Add(("size", level, size));
+
+                stats.Add(("score", level, double.Parse(m.Groups[6].Value)));
+                stats.Add(("read", level, double.Parse(m.Groups[7].Value)));
+                stats.Add(("rn", level, double.Parse(m.Groups[8].Value)));
+                stats.Add(("rnp1", level, double.Parse(m.Groups[9].Value)));
+                stats.Add(("write", level, double.Parse(m.Groups[10].Value)));
+                stats.Add(("wnew", level, double.Parse(m.Groups[11].Value)));
+                stats.Add(("moved", level, double.Parse(m.Groups[12].Value)));
+                stats.Add(("wamp", level, double.Parse(m.Groups[13].Value)));
+                stats.Add(("rd", level, double.Parse(m.Groups[14].Value)));
+                stats.Add(("wr", level, double.Parse(m.Groups[15].Value)));
+                stats.Add(("comp_sec", level, double.Parse(m.Groups[16].Value)));
+                stats.Add(("comp_merge_cpu_sec", level, double.Parse(m.Groups[17].Value)));
+                stats.Add(("comp_total", level, double.Parse(m.Groups[18].Value)));
             }
         }
 
@@ -185,7 +221,7 @@ public partial class DbMetricsUpdater<T> : IDisposable where T : Options<T>
         return stats;
     }
 
-    [GeneratedRegex("^\\s+L(\\d+)\\s+(\\d+)\\/(\\d+).*$", RegexOptions.Multiline)]
+    [GeneratedRegex("^\\s+L(\\d+)\\s+(\\d+)\\/(\\d+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+)\\s+(\\S+).*$", RegexOptions.Multiline)]
     private static partial Regex ExtractStatsRegex();
 
     [GeneratedRegex("^Interval compaction: (\\d+)\\.\\d+.*GB write.*\\s+(\\d+)\\.\\d+.*MB\\/s write.*\\s+(\\d+)\\.\\d+.*GB read.*\\s+(\\d+)\\.\\d+.*MB\\/s read.*\\s+(\\d+)\\.\\d+.*seconds.*$", RegexOptions.Multiline)]

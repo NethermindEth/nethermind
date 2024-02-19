@@ -239,5 +239,9 @@ namespace Nethermind.Db
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         [KeyIsLabel("db", "metric")]
         public static IDictionary<(string, string), double> DbStats { get; set; } = new ConcurrentDictionary<(string, string), double>();
+
+        [Description("Metrics extracted from RocksDB Compaction Stats")]
+        [KeyIsLabel("db", "level", "metric")]
+        public static IDictionary<(string, int, string), double> DbCompactionStats { get; set; } = new ConcurrentDictionary<(string, int, string), double>();
     }
 }
