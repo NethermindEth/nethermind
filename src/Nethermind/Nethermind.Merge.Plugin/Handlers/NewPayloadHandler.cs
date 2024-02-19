@@ -128,7 +128,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateOrphanedBlock(block!, out string? error))
             {
-                if (_logger.IsWarn) _logger.Info($"Invalid block without parent. Result of {requestStr}.");
+                if (_logger.IsWarn) _logger.Warn(ErrorMessages.BadBlock(block, "orphaned block is invalid"));
                 return NewPayloadV1Result.Invalid(null, $"Invalid block without parent: {error}.");
             }
 
@@ -156,7 +156,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         {
             if (!_blockValidator.ValidateSuggestedBlock(block))
             {
-                if (_logger.IsInfo) _logger.Info($"Rejecting invalid block received during the sync, block: {block}");
+                if (_logger.IsWarn) _logger.Warn(ErrorMessages.BadBlock(block, "suggested block is invalid"));
                 return NewPayloadV1Result.Invalid(null);
             }
 

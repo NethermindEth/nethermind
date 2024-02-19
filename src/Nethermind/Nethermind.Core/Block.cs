@@ -4,9 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
+using System.Text.Unicode;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core;
@@ -114,17 +117,24 @@ public class Block
     public string ToString(Format format) => format switch
     {
         Format.Full => ToFullString(),
-        Format.FullHashAndNumber => Hash is null ? $"{Number} null" : $"{Number} ({Hash})",
-        Format.FullHashNumberAndExtraData => Hash is null ? $"{Number} null, ExtraData {ExtraData?.ToHexString()}" : $"{Number} ({Hash})",
+        Format.FullHashAndNumber => ToFullHashAndNumber(),
+        Format.FullHashNumberAndExtraData => $"{ToFullHashAndNumber()},  ExtraData: {ExtraDataToString()}",
         Format.HashNumberAndTx => Hash is null
             ? $"{Number} null, tx count: {Body.Transactions.Length}"
             : $"{Number} {TimestampDate:HH:mm:ss} ({Hash?.ToShortString()}), tx count: {Body.Transactions.Length}",
-        Format.HashNumberDiffAndTx => Hash is null
-            ? $"{Number} null, diff: {Difficulty}, tx count: {Body.Transactions.Length}"
-            : $"{Number} ({Hash?.ToShortString()}), diff: {Difficulty}, tx count: {Body.Transactions.Length}",
-        _ => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})"
+        Format.HashNumberDiffAndTx => $"{ToShortHashAndNumber()}, diff: {Difficulty}, tx count: {Body.Transactions.Length}",
+        _ => ToShortHashAndNumber()
     };
 
+    private string ExtraDataToString()
+    {
+        if (ExtraData is null)
+            return "null";
+
+        return Utf8.IsValid(ExtraData) ? Encoding.UTF8.GetString(ExtraData) : ExtraData.ToHexString();
+    }
+    private string ToFullHashAndNumber() => Hash is null ? $"{Number} null" : $"{Number} ({Hash})";
+    private string ToShortHashAndNumber() => Hash is null ? $"{Number} null" : $"{Number} ({Hash?.ToShortString()})";
     private string ToFullString()
     {
         StringBuilder builder = new();
@@ -146,7 +156,7 @@ public class Block
 
         builder.AppendLine("  Withdrawals:");
 
-        foreach (var w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
+        foreach (Withdrawal w in Body?.Withdrawals ?? Array.Empty<Withdrawal>())
         {
             builder.Append(w.ToString("    "));
         }
