@@ -10,6 +10,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Reflection;
 using System.Threading.Tasks;
+using System.Runtime.CompilerServices;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -260,15 +261,11 @@ namespace Nethermind.JsonRpc.Modules
                     return Nullable.GetUnderlyingType(parameterType) is not null;
                 }
 
-                CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
-                    .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
+                NullableAttribute nullableAttribute = parameterInfo.GetCustomAttribute<NullableAttribute>();
                 if (nullableAttribute is not null)
                 {
-                    CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
-                    if (attributeArgument.ArgumentType == typeof(byte))
-                    {
-                        return (byte)attributeArgument.Value! == 2;
-                    }
+                    byte[] flags = nullableAttribute.NullableFlags;
+                    return flags.Length >= 1 && flags[0] == 2;
                 }
                 return false;
             }
