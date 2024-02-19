@@ -65,7 +65,7 @@ public interface ISyncConfig : IConfig
     int MaxAttemptsToUpdatePivot { get; set; }
 
     [ConfigItem(Description = $$"""
-        _Experimental._ The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
+        The earliest body downloaded with fast sync when `{{nameof(DownloadBodiesInFastSync)}}` is set to `true`. The actual value is determined as follows:
 
         ```
         max{ 1, min{ PivotNumber, AncientBodiesBarrier } }
@@ -79,7 +79,7 @@ public interface ISyncConfig : IConfig
     public long AncientBodiesBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, AncientBodiesBarrier));
 
     [ConfigItem(Description = $$"""
-        _Experimental._ The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as folows:
+        The earliest receipt downloaded with fast sync when `{{nameof(DownloadReceiptsInFastSync)}}` is set to `true`. The actual value is determined as folows:
 
         ```
         max{ 1, min{ PivotNumber, max{ AncientBodiesBarrier, AncientReceiptsBarrier } } }
@@ -116,13 +116,13 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Whether to disable some optimizations and do a more extensive sync. Useful when sync state is corrupted.", DefaultValue = "false")]
     public bool StrictMode { get; set; }
 
-    [ConfigItem(Description = $"_Experimental._ Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
+    [ConfigItem(Description = $"Whether to operate as a non-validator. If `true`, the `{nameof(DownloadReceiptsInFastSync)}` and `{nameof(DownloadBodiesInFastSync)}` can be set to `false`.", DefaultValue = "false")]
     public bool NonValidatorNode { get; set; }
 
-    [ConfigItem(Description = "_Experimental._ Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = "HeavyWrite")]
+    [ConfigItem(Description = "Configure the database for write optimizations during sync. Significantly reduces the total number of writes and sync time if you are not network limited.", DefaultValue = "HeavyWrite")]
     public ITunableDb.TuneType TuneDbMode { get; set; }
 
-    [ConfigItem(Description = "_Experimental._ Configure the blocks database for write optimizations during sync.", DefaultValue = "EnableBlobFiles")]
+    [ConfigItem(Description = "Configure the blocks database for write optimizations during sync.", DefaultValue = "EnableBlobFiles")]
     ITunableDb.TuneType BlocksDbTuneDbMode { get; set; }
 
     [ConfigItem(Description = "The max number of threads used for syncing. `0` to use the number of logical processors.", DefaultValue = "0")]
