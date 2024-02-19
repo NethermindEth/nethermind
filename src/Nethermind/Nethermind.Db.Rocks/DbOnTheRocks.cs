@@ -513,6 +513,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
+        options.SetLevelCompactionDynamicLevelBytes(false);
+
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
