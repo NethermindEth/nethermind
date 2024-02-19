@@ -63,6 +63,11 @@ public class SnapServer : ISnapServer
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
+
+        if (_store.Scheme == INodeStorage.KeyScheme.HalfPath)
+        {
+            _optimizedReadFlags = ReadFlags.HintReadAhead;
+        }
     }
 
     private bool IsRootMissing(in ValueHash256 rootHash)
