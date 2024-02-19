@@ -158,17 +158,18 @@ namespace Nethermind.JsonRpc.Modules
                 private readonly ParameterDetails _introspection;
 
                 public bool IsNullable => (_introspection & ParameterDetails.IsNullable) != 0;
-                public bool IsIJsonRpcParam => (_introspection & ParameterDetails.IsIJsonRpcParam) != 0;
+                public bool IsIJsonRpcParam => ConstructorInvoker is not null;
                 public bool IsOptional => (_introspection & ParameterDetails.IsOptional) != 0;
 
                 public IJsonRpcParam CreateRpcParam()
                 {
-                    if (!IsIJsonRpcParam)
+                    ConstructorInvoker constructorInvoker = ConstructorInvoker;
+                    if (constructorInvoker is null)
                     {
                         ThrowNotJsonRpc();
                     }
 
-                    return (IJsonRpcParam)ConstructorInvoker!.Invoke(Span<object>.Empty);
+                    return Unsafe.As<IJsonRpcParam>(constructorInvoker.Invoke(Span<object>.Empty));
 
                     [DoesNotReturn]
                     [StackTraceHidden]
@@ -178,7 +179,7 @@ namespace Nethermind.JsonRpc.Modules
                     }
                 }
 
-                public ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
+                internal ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
                 {
                     Info = info ?? throw new ArgumentNullException(nameof(info));
                     _introspection = introspection;
@@ -261,7 +262,7 @@ namespace Nethermind.JsonRpc.Modules
                     return Nullable.GetUnderlyingType(parameterType) is not null;
                 }
 
-                NullableAttribute nullableAttribute = parameterInfo.GetCustomAttribute<NullableAttribute>();
+                NullableAttribute? nullableAttribute = parameterInfo.GetCustomAttribute<NullableAttribute>();
                 if (nullableAttribute is not null)
                 {
                     byte[] flags = nullableAttribute.NullableFlags;
