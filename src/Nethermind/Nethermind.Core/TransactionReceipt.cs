@@ -9,6 +9,31 @@ namespace Nethermind.Core
 {
     public class TxReceipt
     {
+        public TxReceipt()
+        {
+        }
+
+        public TxReceipt(TxReceipt other)
+        {
+            TxType = other.TxType;
+            StatusCode = other.StatusCode;
+            BlockNumber = other.BlockNumber;
+            BlockHash = other.BlockHash;
+            TxHash = other.TxHash;
+            Index = other.Index;
+            GasUsed = other.GasUsed;
+            GasUsedTotal = other.GasUsedTotal;
+            Sender = other.Sender;
+            ContractAddress = other.ContractAddress;
+            Recipient = other.Recipient;
+            ReturnValue = other.ReturnValue;
+            PostTransactionState = other.PostTransactionState;
+            Bloom = other.Bloom;
+            Logs = other.Logs;
+            Error = other.Error;
+            SkipStateAndStatusInRlp = other.SkipStateAndStatusInRlp;
+        }
+
         /// <summary>
         /// EIP-2718 transaction type
         /// </summary>
@@ -38,9 +63,6 @@ namespace Nethermind.Core
         public Bloom? Bloom { get; set; }
         public LogEntry[]? Logs { get; set; }
         public string? Error { get; set; }
-
-        public ulong? DepositNonce { get; set; }
-        public ulong? DepositReceiptVersion { get; set; }
 
         /// <summary>
         /// Ignores receipt output on RLP serialization.
@@ -83,7 +105,7 @@ namespace Nethermind.Core
         /// <summary>
         /// Rlp encoded logs
         /// </summary>
-        public Span<byte> LogsRlp { get; set; }
+        public ReadOnlySpan<byte> LogsRlp { get; set; }
 
         public LogEntry[]? Logs { get; set; }
 

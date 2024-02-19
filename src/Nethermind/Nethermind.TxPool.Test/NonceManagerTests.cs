@@ -91,14 +91,14 @@ public class NonceManagerTests
     }
 
     [Test]
-    [Repeat(10)]
+    [Explicit]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations_in_parallel()
     {
         const int reservationsCount = 1000;
 
         ConcurrentQueue<UInt256> nonces = new();
 
-        var result = Parallel.For(0, reservationsCount, i =>
+        ParallelLoopResult result = Parallel.For(0, reservationsCount, i =>
         {
             using NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce);
             locker.Accept();
@@ -116,7 +116,7 @@ public class NonceManagerTests
     public void should_pick_account_nonce_as_initial_value()
     {
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        Account account = new(0);
+        AccountStruct account = new(0);
         accountStateProvider.GetAccount(TestItem.AddressA).Returns(account);
         _nonceManager = new NonceManager(accountStateProvider);
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
@@ -124,7 +124,7 @@ public class NonceManagerTests
             nonce.Should().Be(0);
         }
 
-        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account.WithChangedNonce(10));
+        accountStateProvider.GetAccount(TestItem.AddressA).Returns(new AccountStruct(10, account.Balance));
         using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(10);

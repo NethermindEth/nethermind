@@ -31,7 +31,7 @@ namespace Nethermind.TxPool.Filters
                 return AcceptTxResult.Accepted;
             }
 
-            Account account = state.SenderAccount;
+            AccountStruct account = state.SenderAccount;
             UInt256 balance = account.Balance;
 
             UInt256 cumulativeCost = UInt256.Zero;

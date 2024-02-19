@@ -175,7 +175,7 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
 
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
+        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
         return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
     }
 
@@ -189,12 +189,8 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        byte[] storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        if (storage is null)
-        {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
-        }
-        return ResultWrapper<byte[]>.Success(storage!.PadLeft(32));
+        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Array.Empty<byte>() : storage!.PadLeft(32));
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)
@@ -217,7 +213,7 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
 
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
+        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
         UInt256 nonce = account?.Nonce ?? 0;
 
         return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
@@ -274,14 +270,8 @@ public partial class EthRpcModule : IEthRpcModule
             return GetStateFailureResult<byte[]>(header);
         }
 
-        Account account = _stateReader.GetAccount(header!.StateRoot!, address);
-        if (account is null)
-        {
-            return ResultWrapper<byte[]>.Success(Array.Empty<byte>());
-        }
-
-        byte[]? code = _stateReader.GetCode(account.CodeHash);
-        return ResultWrapper<byte[]>.Success(code);
+        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
+        return ResultWrapper<byte[]>.Success(account is null ? Array.Empty<byte>() : _stateReader.GetCode(account.Value.CodeHash));
     }
 
     public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
@@ -718,22 +708,22 @@ public partial class EthRpcModule : IEthRpcModule
         }
     }
 
-    public ResultWrapper<AccountForRpc> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
+    public ResultWrapper<AccountForRpc?> eth_getAccount(Address accountAddress, BlockParameter? blockParameter)
     {
         SearchResult<BlockHeader> searchResult = _blockFinder.SearchForHeader(blockParameter);
         if (searchResult.IsError)
         {
-            return GetFailureResult<AccountForRpc, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
+            return GetFailureResult<AccountForRpc?, BlockHeader>(searchResult, _ethSyncingInfo.SyncMode.HaveNotSyncedHeadersYet());
         }
 
         BlockHeader header = searchResult.Object;
         if (!HasStateForBlock(_blockchainBridge, header!))
         {
-            return GetStateFailureResult<AccountForRpc>(header);
+            return GetStateFailureResult<AccountForRpc?>(header);
         }
 
-        Account account = _stateReader.GetAccount(header!.StateRoot!, accountAddress);
-        return ResultWrapper<AccountForRpc>.Success(account is null ? null : new AccountForRpc(account));
+        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, accountAddress);
+        return ResultWrapper<AccountForRpc?>.Success(account is null ? null : new AccountForRpc(account.Value));
     }
 
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>

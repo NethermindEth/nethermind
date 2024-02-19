@@ -58,7 +58,7 @@ namespace Nethermind.Benchmark.Runner
             {
                 foreach (Assembly assembly in additionalJobAssemblies)
                 {
-                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core70)), args);
+                    BenchmarkRunner.Run(assembly, new DashboardConfig(Job.MediumRun.WithRuntime(CoreRuntime.Core80)), args);
                 }
 
                 foreach (Assembly assembly in simpleJobAssemblies)

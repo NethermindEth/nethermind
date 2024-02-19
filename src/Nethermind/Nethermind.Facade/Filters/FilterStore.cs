@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
             if (address is IEnumerable<string> e)
             {
-                return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
+                return new AddressFilter(e.Select(a => new AddressAsKey(new Address(a))).ToHashSet());
             }
 
             throw new InvalidDataException("Invalid address filter format");

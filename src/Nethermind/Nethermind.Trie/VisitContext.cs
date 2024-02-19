@@ -114,7 +114,7 @@ namespace Nethermind.Trie
             readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
             internal set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _branchChildIndex = 255;
                 }
@@ -125,7 +125,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext ToVisitContext()
+        public readonly TrieVisitContext ToVisitContext()
         {
             return new TrieVisitContext()
             {

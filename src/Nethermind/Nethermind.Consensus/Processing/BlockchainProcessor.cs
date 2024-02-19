@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,7 +24,7 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
@@ -566,14 +565,14 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             if (!blocksToProcess[0].IsGenesis)
             {
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock == null)
+                if (parentOfFirstBlock is null)
                 {
                     throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 }
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
                 }
             }
         }
@@ -750,8 +749,6 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         _recoveryQueue.Dispose();
         _blockQueue.Dispose();
         _loopCancellationSource?.Dispose();
-        _recoveryTask?.Dispose();
-        _processorTask?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
     }

@@ -201,7 +201,7 @@ public class NodesLocator : INodesLocator
         {
             INodeLifecycleManager? nodeManager = _discoveryManager.GetNodeLifecycleManager(destinationNode);
 
-            if (nodeManager != null)
+            if (nodeManager is not null)
             {
                 await nodeManager.SendFindNode(searchedNodeId ?? _masterNode!.Id.Bytes);
             }

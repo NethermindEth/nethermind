@@ -44,16 +44,16 @@ namespace Nethermind.Merge.Plugin.Test
         private (UInt256, UInt256) AddTransactions(MergeTestBlockchain chain, ExecutionPayload executePayloadRequest,
             PrivateKey from, Address to, uint count, int value, out BlockHeader parentHeader)
         {
-            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out Account accountFrom, out parentHeader);
+            Transaction[] transactions = BuildTransactions(chain, executePayloadRequest.ParentHash, from, to, count, value, out AccountStruct accountFrom, out parentHeader);
             executePayloadRequest.SetTransactions(transactions);
             UInt256 totalValue = ((int)(count * value)).GWei();
             return (accountFrom.Balance - totalValue, chain.StateReader.GetBalance(parentHeader.StateRoot!, to) + totalValue);
         }
 
         private Transaction[] BuildTransactions(MergeTestBlockchain chain, Hash256 parentHash, PrivateKey from,
-            Address to, uint count, int value, out Account accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
+            Address to, uint count, int value, out AccountStruct accountFrom, out BlockHeader parentHeader, int blobCountPerTx = 0)
         {
-            Transaction BuildTransaction(uint index, Account senderAccount) =>
+            Transaction BuildTransaction(uint index, AccountStruct senderAccount) =>
                 Build.A.Transaction.WithNonce(senderAccount.Nonce + index)
                     .WithTimestamp(Timestamper.UnixTime.Seconds)
                     .WithTo(to)
@@ -66,7 +66,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            Account account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!;
+            AccountStruct account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!.Value;
             accountFrom = account;
 
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();
@@ -88,7 +88,7 @@ namespace Nethermind.Merge.Plugin.Test
             };
         }
 
-        private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+        private static ExecutionPayload CreateBlockRequest(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
                ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayload blockRequest = CreateBlockRequestInternal<ExecutionPayload>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
@@ -107,7 +107,7 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequest;
         }
 
-        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+        private static ExecutionPayloadV3 CreateBlockRequestV3(MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
         {
             ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
@@ -127,7 +127,7 @@ namespace Nethermind.Merge.Plugin.Test
             return blockRequestV3;
         }
 
-        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, IList<Withdrawal>? withdrawals = null,
+        private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
                 ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
         {
             T blockRequest = new()

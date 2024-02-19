@@ -11,7 +11,7 @@ namespace Nethermind.TxPool;
 
 public class NonceManager : INonceManager
 {
-    private readonly ConcurrentDictionary<Address, AddressNonceManager> _addressNonceManagers = new();
+    private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
 
     public NonceManager(IAccountStateProvider accounts)

@@ -144,7 +144,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
             }
 
-            if (CurrentBeaconPivot != null)
+            if (CurrentBeaconPivot is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Loaded Beacon Pivot: {CurrentBeaconPivot?.ToString(BlockHeader.Format.FullHashAndNumber)}");
             }
