@@ -214,10 +214,19 @@ public class InitializeNetwork : IStep
 
         if (_syncConfig.SnapSync)
         {
-            // TODO: Should we keep snap capability even after finishing sync?
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            if (!_syncConfig.SnapServingEnabled)
+            {
+                // TODO: Should we keep snap capability even after finishing sync?
+                SnapCapabilitySwitcher snapCapabilitySwitcher =
+                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
+            else
+            {
+                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+            }
         }
+
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
@@ -511,6 +520,13 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
+
+        ISnapServer? snapServer = null;
+        if (_syncConfig.SnapServingEnabled)
+        {
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager);
+        }
+
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -526,6 +542,7 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
+            snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
 

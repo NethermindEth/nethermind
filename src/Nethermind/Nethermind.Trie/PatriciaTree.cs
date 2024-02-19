@@ -391,6 +391,49 @@ namespace Nethermind.Trie
             }
         }
 
+        [DebuggerStepThrough]
+        public byte[]? GetNodeByPath(byte[] nibbles, Hash256? rootHash = null)
+        {
+            try
+            {
+                int nibblesCount = nibbles.Length;
+                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
+                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updatePathTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                return result.ToArray() ?? Array.Empty<byte>();
+            }
+            catch (TrieException e)
+            {
+                EnhanceExceptionNibble(nibbles, rootHash ?? RootHash, e);
+                throw;
+            }
+        }
+
+        [DebuggerStepThrough]
+        public byte[]? GetNodeByKey(Span<byte> rawKey, Hash256? rootHash = null)
+        {
+            byte[] array = null;
+            try
+            {
+                int nibblesCount = 2 * rawKey.Length;
+                Span<byte> nibbles = (nibblesCount <= MaxKeyStackAlloc
+                        ? stackalloc byte[MaxKeyStackAlloc]
+                        : array = ArrayPool<byte>.Shared.Rent(nibblesCount))
+                    [..nibblesCount]; // Slice to exact size;
+                Nibbles.BytesToNibbleBytes(rawKey, nibbles);
+                TreePath updatePathTreePath = TreePath.Empty; // Only used on update.
+                CappedArray<byte> result = Run(nibbles, nibblesCount, ref updatePathTreePath, Array.Empty<byte>(), false, startRootHash: rootHash,
+                    isNodeRead: true);
+                if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                return result.ToArray() ?? Array.Empty<byte>();
+            }
+            catch (TrieException e)
+            {
+                EnhanceException(rawKey, rootHash ?? RootHash, e);
+                throw;
+            }
+        }
+
         [MethodImpl(MethodImplOptions.NoInlining)]
         private static void EnhanceException(ReadOnlySpan<byte> rawKey, ValueHash256 rootHash, TrieException baseException)
         {
@@ -408,6 +451,26 @@ namespace Nethermind.Trie
                 trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
                     ? $"Failed to load root hash {rootHash} while loading key {rawKey.ToHexString()}."
                     : $"Failed to load key {rawKey.ToHexString()} from root hash {rootHash}.";
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private static void EnhanceExceptionNibble(ReadOnlySpan<byte> nibble, ValueHash256 rootHash, TrieException baseException)
+        {
+            static TrieNodeException? GetTrieNodeException(TrieException? exception) =>
+                exception switch
+                {
+                    null => null,
+                    TrieNodeException ex => ex,
+                    _ => GetTrieNodeException(exception.InnerException as TrieException)
+                };
+
+            TrieNodeException? trieNodeException = GetTrieNodeException(baseException);
+            if (trieNodeException is not null)
+            {
+                trieNodeException.EnhancedMessage = trieNodeException.NodeHash == rootHash
+                    ? $"Failed to load root hash {rootHash} while loading nibble {nibble.ToHexString()}."
+                    : $"Failed to load nibble {nibble.ToHexString()} from root hash {rootHash}.";
             }
         }
 
@@ -477,7 +540,8 @@ namespace Nethermind.Trie
             in CappedArray<byte> updateValue,
             bool isUpdate,
             bool ignoreMissingDelete = true,
-            Hash256? startRootHash = null)
+            Hash256? startRootHash = null,
+            bool isNodeRead = false)
         {
 #if DEBUG
             if (nibblesCount != updatePath.Length)
@@ -486,7 +550,7 @@ namespace Nethermind.Trie
             }
 #endif
             TraverseContext traverseContext =
-                new(updatePath[..nibblesCount], ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete);
+                new(updatePath[..nibblesCount], ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete, isNodeRead: isNodeRead);
 
             if (startRootHash is not null)
             {
@@ -557,6 +621,11 @@ namespace Nethermind.Trie
         {
             if (_logger.IsTrace) Trace(node, traverseContext);
 
+            if (traverseContext.IsNodeRead && traverseContext.RemainingUpdatePathLength == 0)
+            {
+                return ref node.FullRlp;
+            }
+
             switch (node.NodeType)
             {
                 case NodeType.Branch:
@@ -574,7 +643,7 @@ namespace Nethermind.Trie
             [MethodImpl(MethodImplOptions.NoInlining)]
             void Trace(TrieNode node, in TraverseContext traverseContext)
             {
-                _logger.Trace($"Traversing {node} to {(traverseContext.IsRead ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
+                _logger.Trace($"Traversing {node} to {(traverseContext.IsReadValue ? "READ" : traverseContext.IsDelete ? "DELETE" : "UPDATE")}");
             }
 
             [DoesNotReturn]
@@ -825,7 +894,11 @@ namespace Nethermind.Trie
                 /* all these cases when the path ends on the branch assume a trie with values in the branches
                    which is not possible within the Ethereum protocol which has keys of the same length (64) */
 
-                if (traverseContext.IsRead)
+                if (traverseContext.IsNodeRead)
+                {
+                    return ref node.FullRlp;
+                }
+                if (traverseContext.IsReadValue)
                 {
                     return ref node.ValueRef;
                 }
@@ -928,7 +1001,11 @@ namespace Nethermind.Trie
             int extensionLength = shorterPath.CommonPrefixLength(longerPath);
             if (extensionLength == shorterPath.Length && extensionLength == longerPath.Length)
             {
-                if (traverseContext.IsRead)
+                if (traverseContext.IsNodeRead)
+                {
+                    return ref node.FullRlp;
+                }
+                if (traverseContext.IsReadValue)
                 {
                     return ref node.ValueRef;
                 }
@@ -1095,7 +1172,9 @@ namespace Nethermind.Trie
             public readonly ReadOnlySpan<byte> UpdatePath;
             public readonly ref readonly TreePath UpdatePathTreePath;
             public bool IsUpdate { get; }
-            public bool IsRead => !IsUpdate;
+            public bool IsNodeRead { get; }
+            public bool IsReadValue => !IsUpdate && !IsNodeRead;
+            public bool IsRead => IsNodeRead || IsReadValue;
             public bool IsDelete => IsUpdate && UpdateValue.IsNull;
             public bool IgnoreMissingDelete { get; }
             public int CurrentIndex { get; }
@@ -1122,7 +1201,8 @@ namespace Nethermind.Trie
                 ref TreePath updatePathTreePath,
                 in CappedArray<byte> updateValue,
                 bool isUpdate,
-                bool ignoreMissingDelete = true)
+                bool ignoreMissingDelete = true,
+                bool isNodeRead = false)
             {
                 UpdatePath = updatePath;
                 UpdatePathTreePath = ref updatePathTreePath;
@@ -1130,11 +1210,12 @@ namespace Nethermind.Trie
                 IsUpdate = isUpdate;
                 IgnoreMissingDelete = ignoreMissingDelete;
                 CurrentIndex = 0;
+                IsNodeRead = isNodeRead;
             }
 
             public override string ToString()
             {
-                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsRead ? string.Empty : $" -> {UpdateValue}")}";
+                return $"{(IsDelete ? "DELETE" : IsUpdate ? "UPDATE" : "READ")} {UpdatePath.ToHexString()}{(IsReadValue ? string.Empty : $" -> {UpdateValue}")}";
             }
         }
 
@@ -1157,11 +1238,25 @@ namespace Nethermind.Trie
             }
         }
 
-        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null) =>
-            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions);
+        public void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null, Hash256? storageAddr = null) =>
+            Accept(new ContextNotAwareTreeVisitor(visitor), rootHash, visitingOptions, storageAddr);
 
-        public void Accept<TNodeContext>(ITreeVisitor<TNodeContext> visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
-            where TNodeContext : struct, INodeContext<TNodeContext>
+        /// <summary>
+        /// Run tree visitor
+        /// </summary>
+        /// <param name="visitor">The visitor</param>
+        /// <param name="rootHash">State root hash (not storage root)</param>
+        /// <param name="visitingOptions">Options</param>
+        /// <param name="storageAddr">Address of storage, if it should visit storage. </param>
+        /// <param name="storageRoot">Root of storage if it should visit storage. Optional for performance.</param>
+        /// <typeparam name="TNodeContext"></typeparam>
+        public void Accept<TNodeContext>(
+            ITreeVisitor<TNodeContext> visitor,
+            Hash256 rootHash,
+            VisitingOptions? visitingOptions = null,
+            Hash256? storageAddr = null,
+            Hash256? storageRoot = null
+        ) where TNodeContext : struct, INodeContext<TNodeContext>
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(rootHash);
@@ -1173,63 +1268,83 @@ namespace Nethermind.Trie
                 // we introduced a notion of an account on the visit context level which should have no knowledge of account really
                 // but we know that we have multiple optimizations and assumptions on trees
                 ExpectAccounts = visitingOptions.ExpectAccounts,
-                MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism
+                MaxDegreeOfParallelism = visitingOptions.MaxDegreeOfParallelism,
+                Storage = storageAddr
             };
 
-            TrieNode rootRef = null;
-            TreePath startingPath = TreePath.Empty;
-            if (!rootHash.Equals(Keccak.EmptyTreeHash))
+            if (storageAddr is not null)
             {
-                rootRef = RootHash == rootHash ? RootRef : TrieStore.FindCachedOrUnknown(startingPath, rootHash);
-                if (!rootRef!.TryResolveNode(TrieStore, ref startingPath))
+                Hash256 DecodeStorageRoot(Hash256 root, Hash256 address)
                 {
-                    visitor.VisitMissingNode(default, rootHash, trieVisitContext);
-                    return;
+                    ReadOnlySpan<byte> bytes = Get(address.Bytes, root);
+                    Rlp.ValueDecoderContext valueContext = bytes.AsRlpValueContext();
+                    return AccountDecoder.Instance.DecodeStorageRootOnly(ref valueContext);
                 }
+
+                rootHash = storageRoot ?? DecodeStorageRoot(rootHash, storageAddr);
             }
 
             ReadFlags flags = visitor.ExtraReadFlag;
             if (visitor.IsFullDbScan)
             {
-                if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash)
+                if (TrieStore.Scheme == INodeStorage.KeyScheme.HalfPath)
                 {
-                    flags |= ReadFlags.HintCacheMiss;
+                    // With halfpath or flat, the nodes are ordered so readahead will make things faster.
+                    flags |= ReadFlags.HintReadAhead;
                 }
                 else
                 {
-                    flags |= ReadFlags.HintReadAhead;
+                    // With hash, we don't wanna add cache as that will take some CPU time away.
+                    flags |= ReadFlags.HintCacheMiss;
                 }
             }
 
-            if (visitor.ExtraReadFlag != ReadFlags.None)
+            ITrieNodeResolver resolver = flags != ReadFlags.None
+                ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
+                : TrieStore;
+
+            if (storageAddr != null)
             {
-                flags |= visitor.ExtraReadFlag;
+                resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }
 
-            ITrieNodeResolver resolver = TrieStore;
-            if (flags != ReadFlags.None)
+            bool TryGetRootRef(out TrieNode? rootRef)
             {
-                resolver = new TrieNodeResolverWithReadFlags(TrieStore, flags);
+                rootRef = null;
+                if (rootHash != Keccak.EmptyTreeHash)
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    rootRef = RootHash == rootHash ? RootRef : resolver.FindCachedOrUnknown(emptyPath, rootHash);
+                    if (!rootRef!.TryResolveNode(resolver, ref emptyPath))
+                    {
+                        visitor.VisitMissingNode(default, rootHash, trieVisitContext);
+                        return false;
+                    }
+                }
+
+                return true;
             }
 
             if (!visitor.IsFullDbScan)
             {
-                TreePath emptyPath = TreePath.Empty;
-                rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
-                return;
+                visitor.VisitTree(default, rootHash, trieVisitContext);
+                if (TryGetRootRef(out TrieNode rootRef))
+                {
+                    TreePath emptyPath = TreePath.Empty;
+                    rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
+                }
             }
-
-            visitor.VisitTree(default, rootHash, trieVisitContext);
-
             // Full db scan
-            if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
+            else if (visitingOptions.FullScanMemoryBudget != 0)
             {
+                visitor.VisitTree(default, rootHash, trieVisitContext);
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
                 batchedTrieVisitor.Start(rootHash, trieVisitContext);
             }
-            else
+            else if (TryGetRootRef(out TrieNode rootRef))
             {
                 TreePath emptyPath = TreePath.Empty;
+                visitor.VisitTree(default, rootHash, trieVisitContext);
                 rootRef?.Accept(visitor, default, resolver, ref emptyPath, trieVisitContext);
             }
         }

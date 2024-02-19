@@ -6,10 +6,12 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Linq;
 using System.Runtime.Intrinsics;
 
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Trie;
 
@@ -21,16 +23,16 @@ namespace Nethermind.Trie;
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
 public struct TreePath
 {
-    const int NoopLength = 255; // Length marking that the TreePath is a noop.
+    public const int MemorySize = 36;
     public ValueHash256 Path;
 
     public static TreePath Empty => new TreePath();
-    public static TreePath Noop => Empty;
 
-    private readonly Span<byte> Span => Path.BytesAsSpan;
+    public readonly Span<byte> Span => Path.BytesAsSpan;
 
     public TreePath(in ValueHash256 path, int length)
     {
+        if (length > 64) throw new InvalidOperationException("TreePath can't represent more than 64 nibble.");
         Path = path;
         Length = length;
     }
@@ -47,6 +49,17 @@ public struct TreePath
         pathHash.CopyTo(newTreePath.Span);
         newTreePath.Length = pathHash.Length * 2;
         return newTreePath;
+    }
+
+    // Mainly used in testing code
+    public static TreePath FromHexString(string hexString)
+    {
+        string toHashHex = hexString;
+        if (hexString.Length < 64)
+        {
+            toHashHex += string.Concat(Enumerable.Repeat('0', 64 - hexString.Length));
+        }
+        return new TreePath(new ValueHash256(toHashHex), hexString.Length);
     }
 
     public static TreePath FromNibble(ReadOnlySpan<byte> pathNibbles)
@@ -205,9 +218,23 @@ public struct TreePath
         Length--;
     }
 
-    public override readonly string ToString()
+    public readonly byte[] ToNibble()
     {
-        return $"{Length} {Path}";
+        bool odd = Length % 2 == 1;
+        Span<byte> theNibbles = stackalloc byte[odd ? Length + 1 : Length];
+        Nibbles.BytesToNibbleBytes(Span[..((Length + 1) / 2)], theNibbles);
+        return (odd ? theNibbles[..Length] : theNibbles).ToArray();
+    }
+
+    public readonly string ToHexString()
+    {
+        string fromPath = Span.ToHexString();
+        return fromPath[..Length];
+    }
+
+    public readonly override string ToString()
+    {
+        return ToHexString();
     }
 
     public static bool operator ==(in TreePath left, in TreePath right)
@@ -254,6 +281,23 @@ public struct TreePath
         {
             _path.TruncateMut(_previousLength);
         }
+    }
+
+    public readonly int CompareTo(in TreePath otherTree)
+    {
+        int minLength = Math.Min(Length, otherTree.Length);
+        int commonByteLength = minLength / 2;
+        int compareByByte =
+            Bytes.BytesComparer.Compare(Span[..commonByteLength], otherTree.Span[..commonByteLength]);
+        if (compareByByte != 0) return compareByByte;
+
+        if (minLength % 2 == 1)
+        {
+            int result = this[minLength - 1].CompareTo(otherTree[minLength - 1]);
+            if (result != 0) return result;
+        }
+
+        return Length.CompareTo(otherTree.Length);
     }
 
     private static ReadOnlySpan<byte> ZeroMasksData => new byte[]

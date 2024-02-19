@@ -1033,8 +1033,9 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    Hash256 storageHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageHash != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
+                    Rlp.ValueDecoderContext valueContext = Value.AsSpan().AsRlpValueContext();
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
+                    if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
                         Hash256 storagePath;
                         using (currentPath.ScopedAppend(Key))
@@ -1044,7 +1045,7 @@ namespace Nethermind.Trie
                         hasStorage = true;
                         TreePath emptyPath = TreePath.Empty;
                         _storageRoot = storageRoot = resolver.GetStorageTrieNodeResolver(storagePath)
-                            .FindCachedOrUnknown(in emptyPath, storageHash);
+                            .FindCachedOrUnknown(in emptyPath, storageRootKey);
                     }
                 }
             }

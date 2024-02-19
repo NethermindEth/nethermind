@@ -34,7 +34,7 @@ namespace Nethermind.Store.Test
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            (_inputStateTree, _inputStorageTree, _) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]

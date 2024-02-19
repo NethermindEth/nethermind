@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree(null);
+            _inputTree = TestItem.Tree.GetStateTree();
         }
 
         private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)

@@ -28,6 +28,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private TrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
+        private Hash256 _storage;
 
         private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
 
@@ -35,7 +36,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]

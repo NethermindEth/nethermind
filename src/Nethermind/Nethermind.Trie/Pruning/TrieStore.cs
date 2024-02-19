@@ -677,7 +677,8 @@ namespace Nethermind.Trie.Pruning
                         {
                             throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
                         }
-                        node.Keccak = newKeccak;
+
+                        node.Keccak = key.Keccak;
                     }
                     _dirtyNodes.Remove(key);
 
