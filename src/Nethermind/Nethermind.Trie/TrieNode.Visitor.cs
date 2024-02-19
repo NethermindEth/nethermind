@@ -128,7 +128,7 @@ namespace Nethermind.Trie
                                         storageAddr = path.Path.ToCommitment();
                                     }
                                     trieVisitContext.Storage = storageAddr;
-                                    TNodeContext storageContext = nodeContext.AddStorage(storageAddr);
+                                    TNodeContext storageContext = childContext.AddStorage(storageAddr);
                                     nextToVisit.Add((TreePath.Empty, chStorageRoot!, storageContext, trieVisitContext));
                                     trieVisitContext.Storage = null;
                                 }
