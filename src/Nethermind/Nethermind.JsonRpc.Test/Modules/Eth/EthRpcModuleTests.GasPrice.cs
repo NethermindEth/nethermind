@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-#nullable enable
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
@@ -126,9 +125,9 @@ public partial class EthRpcModuleTests
             yield return new TestCaseData(0ul)
             {
                 TestName = $"Cancun block no {nameof(BlockHeader.ExcessBlobGas)} accumulated",
-                ExpectedResult = Success(0)
+                ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)
             };
-            yield return new TestCaseData(1)
+            yield return new TestCaseData(1ul)
             {
                 TestName = $"Low {nameof(BlockHeader.ExcessBlobGas)}",
                 ExpectedResult = Success(Eip4844Constants.MinBlobGasPrice)

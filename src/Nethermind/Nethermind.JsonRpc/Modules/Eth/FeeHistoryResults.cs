@@ -9,13 +9,15 @@ namespace Nethermind.JsonRpc.Modules.Eth;
 public class FeeHistoryResults
 {
     public UInt256[]? BaseFeePerGas { get; }
-    public double[]? GasUsedRatio { get; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256[]? BaseFeePerBlobGas { get; }
 
+    public double[]? GasUsedRatio { get; }
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public double[]? BlobGasUsedRatio { get; }
+
     public long OldestBlock { get; }
     public UInt256[][]? Reward { get; }
 
