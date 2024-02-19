@@ -163,7 +163,7 @@ namespace Nethermind.JsonRpc.Modules
 
                 public IJsonRpcParam CreateRpcParam()
                 {
-                    ConstructorInvoker constructorInvoker = ConstructorInvoker;
+                    ConstructorInvoker? constructorInvoker = ConstructorInvoker;
                     if (constructorInvoker is null)
                     {
                         ThrowNotJsonRpc();
@@ -179,15 +179,13 @@ namespace Nethermind.JsonRpc.Modules
                     }
                 }
 
-                internal ExpectedParameter(ParameterInfo info, ParameterDetails introspection)
+                internal ExpectedParameter(ParameterInfo info, ConstructorInvoker? constructor, ParameterDetails introspection)
                 {
-                    Info = info ?? throw new ArgumentNullException(nameof(info));
-                    _introspection = introspection;
+                    ArgumentNullException.ThrowIfNull(info);
 
-                    if (introspection.HasFlag(ParameterDetails.IsIJsonRpcParam))
-                    {
-                        ConstructorInvoker = ConstructorInvoker.Create(info.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
-                    }
+                    Info = info;
+                    ConstructorInvoker = constructor;
+                    _introspection = introspection;
                 }
             }
 
@@ -196,8 +194,7 @@ namespace Nethermind.JsonRpc.Modules
             {
                 None,
                 IsNullable = 0b1,
-                IsIJsonRpcParam = 0b10,
-                IsOptional = 0b100,
+                IsOptional = 0b10,
             }
 
             public ResolvedMethodInfo()
@@ -219,11 +216,13 @@ namespace Nethermind.JsonRpc.Modules
                 for (var i = 0; i < parameters.Length; i++)
                 {
                     ParameterInfo parameter = parameters[i];
+                    ConstructorInvoker? constructor = null;
                     ParameterDetails details = ParameterDetails.None;
                     if (parameter.ParameterType.IsAssignableTo(typeof(IJsonRpcParam)))
                     {
-                        details |= ParameterDetails.IsIJsonRpcParam;
+                        constructor = ConstructorInvoker.Create(parameter.ParameterType.GetConstructor(BindingFlags.Public | BindingFlags.Instance, Array.Empty<Type>()));
                     }
+
                     if (IsNullableParameter(parameter))
                     {
                         details |= ParameterDetails.IsNullable;
@@ -233,7 +232,7 @@ namespace Nethermind.JsonRpc.Modules
                         details |= ParameterDetails.IsOptional;
                     }
 
-                    expectedParameters[i] = new(parameter, details);
+                    expectedParameters[i] = new(parameter, constructor, details);
                 }
 
                 ExpectedParameters = expectedParameters;
