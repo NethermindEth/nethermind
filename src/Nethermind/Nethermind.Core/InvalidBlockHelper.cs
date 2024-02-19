@@ -3,9 +3,9 @@
 
 namespace Nethermind.Core;
 
-public class ErrorMessages
+public class InvalidBlockHelper
 {
-    public static string BadBlock(Block? block, string reason)
+    public static string GetMessage(Block? block, string reason)
     {
         return $"Invalid block {block?.ToString(Block.Format.FullHashNumberAndExtraData)} rejected, reason: {reason}";
     }

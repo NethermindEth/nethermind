@@ -216,7 +216,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
                     {
-                        string message = $"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.";
+                        string message = InvalidBlockHelper.GetMessage(currentBlock, "invalid block sent by peer") +
+                                         $" PeerInfo {bestPeer}";
                         if (_logger.IsWarn) _logger.Warn(message);
                         throw new EthSyncException(message);
                     }

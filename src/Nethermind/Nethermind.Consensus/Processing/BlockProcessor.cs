@@ -215,7 +215,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
         {
-            if (_logger.IsWarn) _logger.Warn(ErrorMessages.BadBlock(suggestedBlock, "invalid block after processing"));
+            if (_logger.IsWarn) _logger.Warn(InvalidBlockHelper.GetMessage(suggestedBlock, "invalid block after processing"));
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock);
         }
