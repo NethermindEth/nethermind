@@ -636,9 +636,16 @@ namespace Nethermind.Trie.Pruning
                     _commitSetQueue.Enqueue(toAddBack[index]);
                 }
 
+                bool shouldDeletePersistedNode =
+                    // Its disabled
+                    _pastPathHash != null &&
+                    // Full pruning need to visit all node, so can't delete anything.
+                    !_persistenceStrategy.IsFullPruning &&
+                    // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
+                    candidateSets.Count == 1;
+
                 Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes =
-                    // If its a reorg, we can't remove node as persisted node may not be canonical
-                    _pastPathHash != null && candidateSets.Count == 1
+                    shouldDeletePersistedNode
                     ? new Dictionary<(Hash256?, TinyTreePath), Hash256?>()
                     : null;
 

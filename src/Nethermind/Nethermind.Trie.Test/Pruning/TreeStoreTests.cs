@@ -16,6 +16,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test.Pruning
@@ -822,6 +823,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
         }
 
+        [Test]
         public async Task Will_RemovePastKeys_OnSnapshot()
         {
             MemDb memDb = new();
@@ -852,6 +854,35 @@ namespace Nethermind.Trie.Test.Pruning
             {
                 memDb.Count.Should().Be(1);
             }
+        }
+
+        [Test]
+        public async Task Will_Not_RemovePastKeys_OnSnapshot_DuringFullPruning()
+        {
+            MemDb memDb = new();
+
+            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
+            isPruningPersistenceStrategy.IsFullPruning.Returns(true);
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 100000),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                reorgDepthOverride: 2);
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
+                trieStore.FinishBlockCommit(TrieType.State, i, node);
+
+                // Pruning is done in background
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+
+            memDb.Count.Should().Be(61);
         }
 
         [Test]
