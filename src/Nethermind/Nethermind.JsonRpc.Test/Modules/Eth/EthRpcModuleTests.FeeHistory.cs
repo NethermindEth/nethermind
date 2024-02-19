@@ -27,7 +27,7 @@ public partial class EthRpcModuleTests
 {
     [TestCase(1, "latest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
     [TestCase(1, "pending", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x2da282a8\",\"0x27ee3253\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x3\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
-    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0,0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
+    [TestCase(2, "0x01", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\",\"0x342770c0\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0,0.0],\"blobGasUsedRatio\":[0.0,0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"],[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
     [TestCase(2, "earliest", "{\"jsonrpc\":\"2.0\",\"result\":{\"baseFeePerGas\":[\"0x0\",\"0x3b9aca00\"],\"baseFeePerBlobGas\":[\"0x0\",\"0x0\"],\"gasUsedRatio\":[0.0],\"blobGasUsedRatio\":[0.0],\"oldestBlock\":\"0x0\",\"reward\":[[\"0x0\",\"0x0\",\"0x0\",\"0x0\",\"0x0\"]]},\"id\":67}")]
     public async Task Eth_feeHistory(long blockCount, string blockParameter, string expected)
     {
@@ -39,7 +39,7 @@ public partial class EthRpcModuleTests
     [TestCaseSource(nameof(FeeHistoryBlobTestCases))]
     public (UInt256[]?, double[]?) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
     {
-        Block[] blobs = Enumerable.Range(0, excessBlobGas.Length)
+        Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
              Build.A.BlockHeader
                  .WithNumber(i)
@@ -52,16 +52,16 @@ public partial class EthRpcModuleTests
 
         IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>())
-            .Returns(ci => blobs[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
+            .Returns(ci => blocks[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
         blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>())
-                  .Returns(ci => blobs[((Hash256)ci[0]).Bytes[^1]]);
+                  .Returns(ci => blocks[((Hash256)ci[0]).Bytes[^1]]);
 
         IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
         ResultWrapper<FeeHistoryResults> result = oracle
-            .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blobs.Length - 1), [0.0, 1.0]);
+            .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blocks.Length - 1), [0.0, 1.0]);
 
         Assert.That(result.ErrorCode, Is.Zero);
         return (result.Data.BaseFeePerBlobGas, result.Data.BlobGasUsedRatio);
