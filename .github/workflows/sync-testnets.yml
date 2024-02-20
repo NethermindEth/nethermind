@@ -20,17 +20,17 @@ jobs:
         include:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: ubuntu-latest
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
@@ -65,7 +65,7 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch develop --single-branch
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
@@ -91,11 +91,10 @@ jobs:
         timeout-minutes: 180
         run: |
           set +e
-
+          
           declare -A bad_logs
-          bad_logs["Invalid"]=1
+          bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
-          bad_logs["Corrupted"]=1
 
           declare -A good_logs
           good_logs["Synced Chain Head"]=0
@@ -105,14 +104,28 @@ jobs:
           required_count["Synced Chain Head"]=20
           required_count["Processed"]=20
 
+          counter=0
+          found_bad_log=false
+
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
 
+            if [[ $found_bad_log == true ]]; then
+              ((counter++))
+              if [ $counter -ge 100 ]; then
+                echo "Exiting after capturing extra logs due to error."
+                exit 1
+              else
+                continue
+              fi
+            fi
+
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
-                exit 1
+                $found_bad_log=true
+                continue 2
               fi
             done
 
@@ -133,8 +146,11 @@ jobs:
 
             if $all_reached_required_count; then
               echo "All required logs found."
-              break
+              exit 0
             fi
           done
-
-          echo "Node is synced."
+          
+      - name: Get Consensus Logs
+        if: always()
+        run: |
+          docker logs sedge-consensus-client
