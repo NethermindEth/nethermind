@@ -105,7 +105,7 @@ public class SnapServer : ISnapServer
             switch (requestedPath.Length)
             {
                 case 0:
-                    return null;
+                    return response.ToArray();
                 case 1:
                     try
                     {
@@ -167,10 +167,11 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            // TODO: handle empty code in the DB itself?
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 response.Add(Array.Empty<byte>());
+                currentByteCount += 1;
+                continue;
             }
 
             byte[]? code = _codeDb[codeHash.Bytes];
@@ -188,8 +189,10 @@ public class SnapServer : ISnapServer
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
 
+        byteLimit = Math.Min(byteLimit, HardResponseByteLimit);
+
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, null, cancellationToken);
+            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, null, null, cancellationToken);
 
         PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
         int index = 0;
@@ -206,6 +209,7 @@ public class SnapServer : ISnapServer
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
 
+        byteLimit = Math.Min(byteLimit, HardResponseByteLimit);
         long responseSize = 0;
         StateTree tree = new(_storeWithReadFlag, _logManager);
 
@@ -242,7 +246,6 @@ public class SnapServer : ISnapServer
                 startingHash1,
                 limitHash1,
                 byteLimit - responseSize,
-                HardResponseByteLimit - responseSize,
                 storagePath,
                 accountNeth.StorageRoot,
                 cancellationToken);
@@ -270,11 +273,11 @@ public class SnapServer : ISnapServer
     }
 
     private (IDictionary<ValueHash256, byte[]>?, long, byte[][], bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
-        long byteLimit, long hardByteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
+        long byteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
     {
         bool isStorage = storage is not null;
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 

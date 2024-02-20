@@ -48,7 +48,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
-    private readonly long _hardByteLimit;
 
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
@@ -62,8 +61,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         in ValueHash256 startHash,
         in ValueHash256 limitHash,
         bool isAccountVisitor,
-        long byteLimit = -1,
-        long hardByteLimit = 200000,
+        long byteLimit = 200000,
         int nodeLimit = 10000,
         ReadFlags readFlags = ReadFlags.None,
         CancellationToken cancellationToken = default)
@@ -82,7 +80,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         _isAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
-        _hardByteLimit = hardByteLimit;
         ExtraReadFlag = readFlags;
 
         TreePath startHashPath = new TreePath(startHash, 64);
@@ -108,13 +105,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             return false;
         }
 
-        if (_byteLimit != -1 && _currentBytesCount >= _byteLimit)
-        {
-            StoppedEarly = true;
-            return false;
-        }
-
-        if (_currentBytesCount >= _hardByteLimit)
+        if (_currentBytesCount >= _byteLimit)
         {
             StoppedEarly = true;
             return false;
