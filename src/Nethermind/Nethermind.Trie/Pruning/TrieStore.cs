@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public TrieNode FindCachedOrUnknown(Hash256 hash)
+            public virtual TrieNode FindCachedOrUnknown(Hash256 hash)
             {
                 if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
@@ -379,7 +379,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public TrieNode FindCachedOrUnknown(Hash256? hash) =>
+        public virtual TrieNode FindCachedOrUnknown(Hash256? hash) =>
             FindCachedOrUnknown(hash, false);
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
