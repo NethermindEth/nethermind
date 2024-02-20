@@ -423,6 +423,43 @@ public struct TreePathContext : INodeContext<TreePathContext>
     }
 }
 
+public struct TreePathContextWithStorage : INodeContext<TreePathContextWithStorage>
+{
+    public TreePath Path = TreePath.Empty;
+    public Hash256? Storage = null; // Not using ValueHash as value is shared with many context.
+
+    public TreePathContextWithStorage()
+    {
+    }
+
+    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = Path.Append(nibblePath),
+            Storage = Storage
+        };
+    }
+
+    public TreePathContextWithStorage Add(byte nibble)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = Path.Append(nibble),
+            Storage = Storage
+        };
+    }
+
+    public readonly TreePathContextWithStorage AddStorage(in ValueHash256 storage)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = TreePath.Empty,
+            Storage = Path.Path.ToCommitment(),
+        };
+    }
+}
+
 
 public interface INodeContext<out TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
