@@ -22,23 +22,15 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper
+public class SimulateBridgeHelper(
+    SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
+    ISpecProvider specProvider,
+    IBlocksConfig blocksConfig)
 {
-    private readonly SimulateReadOnlyBlocksProcessingEnv _simulateProcessingEnv;
-    private readonly ISpecProvider _specProvider;
-    private readonly IBlocksConfig _blocksConfig;
-
     private static readonly ProcessingOptions _simulateProcessingOptions = ProcessingOptions.ForceProcessing |
-                                                                            ProcessingOptions.IgnoreParentNotOnMainChain |
-                                                                            ProcessingOptions.MarkAsProcessed |
-                                                                            ProcessingOptions.StoreReceipts;
-
-    public SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv, ISpecProvider specProvider, IBlocksConfig blocksConfig)
-    {
-        _simulateProcessingEnv = simulateProcessingEnv;
-        _specProvider = specProvider;
-        _blocksConfig = blocksConfig;
-    }
+                                                                           ProcessingOptions.IgnoreParentNotOnMainChain |
+                                                                           ProcessingOptions.MarkAsProcessed |
+                                                                           ProcessingOptions.StoreReceipts;
 
     private void UpdateStateByModifyingAccounts(BlockHeader blockHeader,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall, SimulateReadOnlyBlocksProcessingEnv env)
@@ -67,14 +59,18 @@ public class SimulateBridgeHelper
         blockHeader.StateRoot = env.StateProvider.StateRoot;
     }
 
-    public (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer)
-    {
-        using SimulateReadOnlyBlocksProcessingEnv? env = _simulateProcessingEnv.Clone(payload.TraceTransfers, payload.Validation);
+    public (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer) =>
+        TrySimulateTrace(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.TraceTransfers, payload.Validation));
 
-        Block? latestPersistant = env.BlockTree.FindLatestBlock();
-        if (latestPersistant.Number < parent.Number)
+
+    private (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer, SimulateReadOnlyBlocksProcessingEnv env)
+    {
+        Block? latestBlock = env.BlockTree.FindLatestBlock();
+        long latestBlockNumber = latestBlock?.Number ?? 0;
+
+        if (latestBlockNumber < parent.Number)
         {
-            parent = latestPersistant.Header;
+            parent = latestBlock?.Header ?? env.BlockTree.Head!.Header;
         }
 
         IWorldState stateProvider = env.StateProvider;
@@ -82,7 +78,7 @@ public class SimulateBridgeHelper
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
-        ulong lastKnown = (ulong)latestPersistant.Number;
+        ulong lastKnown = (ulong)latestBlockNumber;
         if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
         {
             Block? searchResult = env.BlockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
@@ -101,7 +97,7 @@ public class SimulateBridgeHelper
             foreach (BlockStateCall<TransactionWithSourceDetails> callInputBlock in payload.BlockStateCalls)
             {
                 BlockHeader callHeader = callInputBlock.BlockOverrides is not null
-                    ? callInputBlock.BlockOverrides.GetBlockHeader(parent, _blocksConfig)
+                    ? callInputBlock.BlockOverrides.GetBlockHeader(parent, blocksConfig)
                     : new BlockHeader(
                         parent.Hash!,
                         Keccak.OfAnEmptySequenceRlp,
@@ -113,7 +109,7 @@ public class SimulateBridgeHelper
                         parent.Timestamp + 1,
                         Array.Empty<byte>())
                     {
-                        BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(parent)),
+                        BaseFeePerGas = BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent)),
                         MixHash = parent.MixHash,
                         IsPostMerge = parent.Difficulty == 0
                     };
@@ -121,8 +117,7 @@ public class SimulateBridgeHelper
                 UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
 
                 using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(env.StateProvider.StateRoot!);
-                GasEstimator gasEstimator = new(readOnlyTransactionProcessor, env.StateProvider,
-                    _specProvider, _blocksConfig);
+                GasEstimator gasEstimator = new(readOnlyTransactionProcessor, env.StateProvider, specProvider, blocksConfig);
 
                 long EstimateGas(Transaction transaction)
                 {
@@ -185,7 +180,7 @@ public class SimulateBridgeHelper
 
                     return transaction;
                 }
-                IReleaseSpec? spec = _specProvider.GetSpec(parent);
+                IReleaseSpec? spec = specProvider.GetSpec(parent);
                 Transaction[] transactions = callInputBlock.Calls?.Select(t => SetTxHashAndMissingDefaults(t, spec)).ToArray() ?? Array.Empty<Transaction>();
 
 
@@ -206,9 +201,8 @@ public class SimulateBridgeHelper
                 Block[]? currentBlocks = null;
                 //try
                 {
-                    IBlockProcessor? processor = env.GetProcessor(currentBlock.StateRoot!);
-                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks,
-                        processingFlags, tracer);
+                    IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!);
+                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer);
                 }
                 //catch (Exception)
                 //{

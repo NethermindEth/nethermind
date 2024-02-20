@@ -381,7 +381,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public virtual TrieNode FindCachedOrUnknown(Hash256? hash)
+        public virtual TrieNode FindCachedOrUnknown(Hash256 hash)
         {
             return FindCachedOrUnknown(hash, false);
         }

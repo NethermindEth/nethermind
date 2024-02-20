@@ -68,17 +68,16 @@ namespace Nethermind.Facade.Test
             IWorldStateManager readOnlyWorldStateManager =
                 new ReadOnlyWorldStateManager(dbProvider, trieStore, LimboLogs.Instance);
 
-            IReadOnlyBlockTree? roBlockTree = _blockTree!.AsReadOnly();
+            IReadOnlyBlockTree? readOnlyBlockTree = _blockTree!.AsReadOnly();
             ReadOnlyTxProcessingEnv processingEnv = new(
                 readOnlyWorldStateManager,
-                roBlockTree,
+                readOnlyBlockTree,
                 _specProvider,
                 LimboLogs.Instance);
 
-            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
-                false,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 readOnlyWorldStateManager,
-                roBlockTree,
+                readOnlyBlockTree,
             new ReadOnlyDbProvider(_dbProvider, true),
                 _specProvider,
                 LimboLogs.Instance);
@@ -87,7 +86,7 @@ namespace Nethermind.Facade.Test
 
             _blockchainBridge = new BlockchainBridge(
                 processingEnv,
-                simulateProcessingEnv,
+                simulateProcessingEnvFactory,
                 _txPool,
                 _receiptStorage,
                 _filterStore,
@@ -233,8 +232,7 @@ namespace Nethermind.Facade.Test
                 _specProvider,
                 LimboLogs.Instance);
 
-            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
-                false,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 readOnlyWorldStateManager,
                 roBlockTree,
                 new ReadOnlyDbProvider(_dbProvider, true),

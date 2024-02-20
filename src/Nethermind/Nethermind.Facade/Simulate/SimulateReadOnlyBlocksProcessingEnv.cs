@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -25,44 +26,39 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
+public class SimulateReadOnlyBlocksProcessingEnvFactory(
+    IWorldStateManager worldStateManager,
+    IReadOnlyBlockTree baseBlockTree,
+    IReadOnlyDbProvider readOnlyDbProvider,
+    ISpecProvider specProvider,
+    ILogManager? logManager = null)
 {
-    //private readonly ITrieStore _trieStore;
-    private readonly ILogManager? _logManager;
-    private readonly IBlockValidator _blockValidator;
-    public ISpecProvider SpecProvider { get; }
-    public IWorldStateManager WorldStateManager { get; }
-
-    public IVirtualMachine VirtualMachine { get; }
-    public OverridableCodeInfoRepository CodeInfoRepository { get; }
-    private readonly bool _doValidation = false;
-    // We need ability to get many instances that do not conflict in terms of editable tmp storage - thus we implement env cloning
-    public static SimulateReadOnlyBlocksProcessingEnv Create(
-        bool traceTransfers,
-        IWorldStateManager worldStateManager,
-        IReadOnlyBlockTree roBlockTree,
-        IReadOnlyDbProvider readOnlyDbProvider,
-        ISpecProvider? specProvider,
-        ILogManager? logManager = null,
-        bool doValidation = false)
+    public SimulateReadOnlyBlocksProcessingEnv Create(bool traceTransfers, bool validate)
     {
         IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
-
-        //var emptyDbProvider = new DbProvider();
-        //StandardDbInitializer? standardDbInitializer = new StandardDbInitializer(emptyDbProvider, new MemDbFactory());
-        //standardDbInitializer.InitStandardDbs(true);
-        //IReadOnlyDbProvider dbProvider = new ReadOnlyDbProvider(emptyDbProvider, true);
-
         OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
         OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
+        BlockTree tempBlockTree = CreateTempBlockTree(readOnlyDbProvider, specProvider, logManager, editableDbProvider);
 
+        return new SimulateReadOnlyBlocksProcessingEnv(
+            traceTransfers,
+            overlayWorldStateManager,
+            baseBlockTree,
+            editableDbProvider,
+            tempBlockTree,
+            specProvider,
+            logManager,
+            validate);
+    }
+
+    private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager? logManager, IReadOnlyDbProvider editableDbProvider)
+    {
         IBlockStore blockStore = new BlockStore(editableDbProvider.BlocksDb);
         IHeaderStore headerStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
         const int badBlocksStored = 1;
         IBlockStore badBlockStore = new BlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
 
-
-        BlockTree tmpBlockTree = new(blockStore,
+        return new(blockStore,
             headerStore,
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
@@ -72,40 +68,36 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             NullBloomStorage.Instance,
             new SyncConfig(),
             logManager);
-
-        //var blockTree = new NonDistructiveBlockTreeOverlay(roBlockTree, tmpBlockTree);
-
-        return new SimulateReadOnlyBlocksProcessingEnv(
-            traceTransfers,
-            overlayWorldStateManager,
-            roBlockTree,
-            editableDbProvider,
-            //trieStore,
-            tmpBlockTree,
-            specProvider,
-            logManager,
-            doValidation);
     }
+}
 
-    public SimulateReadOnlyBlocksProcessingEnv Clone(bool traceTransfers, bool doValidation) =>
-        Create(traceTransfers, WorldStateManager, ReadOnlyBlockTree, DbProvider, SpecProvider, _logManager, doValidation);
 
+public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
+{
+    private readonly ILogManager? _logManager;
+    private readonly IBlockValidator _blockValidator;
+    private readonly bool _doValidation = false;
+    private readonly TransactionProcessor _transactionProcessor;
+    public ISpecProvider SpecProvider { get; }
+    public IWorldStateManager WorldStateManager { get; }
+    public IVirtualMachine VirtualMachine { get; }
     public IReadOnlyDbProvider DbProvider { get; }
+    public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
+    public OverridableCodeInfoRepository CodeInfoRepository { get; }
 
-    private SimulateReadOnlyBlocksProcessingEnv(
+    public SimulateReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
         IWorldStateManager worldStateManager,
-        IReadOnlyBlockTree roBlockTree,
+        IReadOnlyBlockTree baseBlockTree,
         IReadOnlyDbProvider readOnlyDbProvider,
         IBlockTree blockTree,
-        ISpecProvider? specProvider,
+        ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool doValidation = false)
         : base(worldStateManager, blockTree, logManager)
     {
-        ReadOnlyBlockTree = roBlockTree;
+        ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
-
         WorldStateManager = worldStateManager;
         _logManager = logManager;
         SpecProvider = specProvider;
@@ -122,7 +114,13 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
 
         VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+        _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !_doValidation);
 
+        _blockValidator = CreateValidator();
+    }
+
+    private SimulateBlockValidatorProxy CreateValidator()
+    {
         HeaderValidator headerValidator = new(
             BlockTree,
             Always.Valid,
@@ -136,31 +134,26 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             SpecProvider,
             _logManager);
 
-        _blockValidator = new SimulateBlockValidatorProxy(blockValidator);
+        return new SimulateBlockValidatorProxy(blockValidator);
     }
-
-    public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
 
     public IBlockProcessor GetProcessor(Hash256 stateRoot)
     {
-        IReadOnlyTransactionProcessor transactionProcessor = Build(stateRoot);
-
         return new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, StateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(Build(stateRoot), StateProvider),
             StateProvider,
             NullReceiptStorage.Instance,
             NullWitnessCollector.Instance,
             _logManager);
     }
 
-    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !_doValidation), StateProvider, stateRoot);
+    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(_transactionProcessor, StateProvider, stateRoot);
 
     public void Dispose()
     {
         //_trieStore.Dispose();
         DbProvider.Dispose();
     }
-
 }

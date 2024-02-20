@@ -127,8 +127,7 @@ namespace Nethermind.Blockchain
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _bloomStorage = bloomStorage ?? throw new ArgumentNullException(nameof(bloomStorage));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _chainLevelInfoRepository = chainLevelInfoRepository ??
-                                        throw new ArgumentNullException(nameof(chainLevelInfoRepository));
+            _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
 
             byte[]? deletePointer = _blockInfoDb.Get(DeletePointerAddressInDb);
             if (deletePointer is not null)

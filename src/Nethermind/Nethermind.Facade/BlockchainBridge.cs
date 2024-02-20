@@ -55,7 +55,7 @@ namespace Nethermind.Facade
         private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
-            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -68,7 +68,7 @@ namespace Nethermind.Facade
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentNullException(nameof(filterManager));
@@ -79,7 +79,7 @@ namespace Nethermind.Facade
             _blocksConfig = blocksConfig;
             IsMining = isMining;
             _simulateBridgeHelper = new SimulateBridgeHelper(
-                simulateProcessingEnv ?? throw new ArgumentNullException(nameof(simulateProcessingEnv)),
+                simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
                 _specProvider,
                 _blocksConfig);
         }

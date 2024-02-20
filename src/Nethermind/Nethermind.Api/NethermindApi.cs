@@ -95,11 +95,11 @@ namespace Nethermind.Api
                 SpecProvider,
                 LogManager);
 
-            SimulateReadOnlyBlocksProcessingEnv simulateReadOnlyBlocksProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(false,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 WorldStateManager!,
                 readOnlyTree,
                 _simulateReadOnlyDbProvider,
-                SpecProvider,
+                SpecProvider!,
                 LogManager);
 
 

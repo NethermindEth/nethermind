@@ -30,8 +30,7 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
     public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
 
-    public BlockHeader? BestSuggestedBeaconHeader =>
-        _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
+    public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
 
     public BlockHeader? LowestInsertedHeader => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
 
@@ -49,7 +48,6 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
 
     public long BestKnownNumber => Math.Max(_overlayTree.BestKnownNumber, _baseTree.BestKnownNumber);
     public long BestKnownBeaconNumber => Math.Max(_overlayTree.BestKnownBeaconNumber, _baseTree.BestKnownBeaconNumber);
-
     public Hash256 HeadHash => _overlayTree.HeadHash ?? _baseTree.HeadHash;
     public Hash256 GenesisHash => _baseTree.GenesisHash;
     public Hash256? PendingHash => _overlayTree.PendingHash ?? _baseTree.PendingHash;
@@ -58,138 +56,88 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     public Block? Head => _overlayTree.Head ?? _baseTree.Head;
     public long? BestPersistedState { get => _overlayTree.BestPersistedState; set => _overlayTree.BestPersistedState = value; }
 
-
-    public AddBlockResult Insert(BlockHeader header,
-        BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None)
-    {
-        return _overlayTree.Insert(header, headerOptions);
-    }
+    public AddBlockResult Insert(BlockHeader header, BlockTreeInsertHeaderOptions headerOptions = BlockTreeInsertHeaderOptions.None) =>
+        _overlayTree.Insert(header, headerOptions);
 
     public AddBlockResult Insert(Block block,
         BlockTreeInsertBlockOptions insertBlockOptions = BlockTreeInsertBlockOptions.None,
         BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.None,
-        WriteFlags bodiesWriteFlags = WriteFlags.None)
-    {
-        return _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
-    }
+        WriteFlags bodiesWriteFlags = WriteFlags.None) =>
+        _overlayTree.Insert(block, insertBlockOptions, insertHeaderOptions, bodiesWriteFlags);
 
-    public void UpdateHeadBlock(Hash256 blockHash)
-    {
+    public void UpdateHeadBlock(Hash256 blockHash) =>
         _overlayTree.UpdateHeadBlock(blockHash);
-    }
 
     public AddBlockResult SuggestBlock(Block block,
-        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
-    {
-        return _overlayTree.SuggestBlock(block, options);
-    }
+        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+        _overlayTree.SuggestBlock(block, options);
 
     public ValueTask<AddBlockResult> SuggestBlockAsync(Block block,
-        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess)
-    {
-        return _overlayTree.SuggestBlockAsync(block, options);
-    }
+        BlockTreeSuggestOptions options = BlockTreeSuggestOptions.ShouldProcess) =>
+        _overlayTree.SuggestBlockAsync(block, options);
 
-    public AddBlockResult SuggestHeader(BlockHeader header)
-    {
-        return _overlayTree.SuggestHeader(header);
-    }
+    public AddBlockResult SuggestHeader(BlockHeader header) => _overlayTree.SuggestHeader(header);
 
-    public bool IsKnownBlock(long number, Hash256 blockHash)
-    {
-        return _overlayTree.IsKnownBlock(number, blockHash) || _baseTree.IsKnownBlock(number, blockHash);
-    }
+    public bool IsKnownBlock(long number, Hash256 blockHash) => _overlayTree.IsKnownBlock(number, blockHash) || _baseTree.IsKnownBlock(number, blockHash);
 
-    public bool IsKnownBeaconBlock(long number, Hash256 blockHash)
-    {
-        return _overlayTree.IsKnownBeaconBlock(number, blockHash) || _baseTree.IsKnownBeaconBlock(number, blockHash);
-    }
+    public bool IsKnownBeaconBlock(long number, Hash256 blockHash) => _overlayTree.IsKnownBeaconBlock(number, blockHash) || _baseTree.IsKnownBeaconBlock(number, blockHash);
 
-    public bool WasProcessed(long number, Hash256 blockHash)
-    {
-        return _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
-    }
+    public bool WasProcessed(long number, Hash256 blockHash) => _overlayTree.WasProcessed(number, blockHash) || _baseTree.WasProcessed(number, blockHash);
 
-    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false)
-    {
+    public void UpdateMainChain(IReadOnlyList<Block> blocks, bool wereProcessed, bool forceHeadBlock = false) =>
         _overlayTree.UpdateMainChain(blocks, wereProcessed, forceHeadBlock);
-    }
 
-    public void MarkChainAsProcessed(IReadOnlyList<Block> blocks)
-    {
-        _overlayTree.MarkChainAsProcessed(blocks);
-    }
+    public void MarkChainAsProcessed(IReadOnlyList<Block> blocks) => _overlayTree.MarkChainAsProcessed(blocks);
 
-    public bool CanAcceptNewBlocks { get; }
-    public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken)
-    {
-        return _overlayTree.Accept(blockTreeVisitor, cancellationToken);
-    }
-    // Additional method implementations for the BlockTreeOverlay class
+    public bool CanAcceptNewBlocks => _overlayTree.CanAcceptNewBlocks;
+
+    public Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken) => _overlayTree.Accept(blockTreeVisitor, cancellationToken);
 
     public (BlockInfo? Info, ChainLevelInfo? Level) GetInfo(long number, Hash256 blockHash)
     {
-        var overlayInfo = _overlayTree.GetInfo(number, blockHash);
-        if (overlayInfo.Info != null || overlayInfo.Level != null)
-        {
-            return overlayInfo;
-        }
-
-        return _baseTree.GetInfo(number, blockHash);
+        (BlockInfo Info, ChainLevelInfo Level) overlayInfo = _overlayTree.GetInfo(number, blockHash);
+        return overlayInfo.Info is not null || overlayInfo.Level is not null ? overlayInfo : _baseTree.GetInfo(number, blockHash);
     }
 
-    public ChainLevelInfo? FindLevel(long number)
-    {
-        var overlayLevel = _overlayTree.FindLevel(number);
-        return overlayLevel ?? _baseTree.FindLevel(number);
-    }
+    public ChainLevelInfo? FindLevel(long number) => _overlayTree.FindLevel(number) ?? _baseTree.FindLevel(number);
 
-    public BlockInfo FindCanonicalBlockInfo(long blockNumber)
-    {
-        var overlayBlockInfo = _overlayTree.FindCanonicalBlockInfo(blockNumber);
-        return overlayBlockInfo ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
-    }
+    public BlockInfo FindCanonicalBlockInfo(long blockNumber) => _overlayTree.FindCanonicalBlockInfo(blockNumber) ?? _baseTree.FindCanonicalBlockInfo(blockNumber);
 
-    public Hash256 FindHash(long blockNumber)
-    {
-        var overlayHash = _overlayTree.FindHash(blockNumber);
-        return overlayHash ?? _baseTree.FindHash(blockNumber);
-    }
+    public Hash256 FindHash(long blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
 
     public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
     {
-        var overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        BlockHeader[] overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         return overlayHeaders.Length > 0 ? overlayHeaders : _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
     }
 
-    public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth)
-    {
-        var overlayAncestor = _overlayTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
-        return overlayAncestor ?? _baseTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
-    }
+    public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) =>
+        _overlayTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth) ?? _baseTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
 
-    public void DeleteInvalidBlock(Block invalidBlock)
-    {
+    public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
-    }
 
-    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash)
-    {
+    public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
-    }
 
     // Event forwarding
-    public event EventHandler<BlockEventArgs> NewBestSuggestedBlock
+    public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
     {
         add
         {
-            _baseTree.NewBestSuggestedBlock += value;
-            _overlayTree.NewBestSuggestedBlock += value;
+            if (value is not null)
+            {
+                _baseTree.NewBestSuggestedBlock += value;
+                _overlayTree.NewBestSuggestedBlock += value;
+            }
         }
         remove
         {
-            _baseTree.NewBestSuggestedBlock -= value;
-            _overlayTree.NewBestSuggestedBlock -= value;
+            if (value is not null)
+            {
+                _baseTree.NewBestSuggestedBlock -= value;
+                _overlayTree.NewBestSuggestedBlock -= value;
+            }
         }
     }
 
@@ -197,13 +145,19 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     {
         add
         {
-            _baseTree.NewSuggestedBlock += value;
-            _overlayTree.NewSuggestedBlock += value;
+            if (value is not null)
+            {
+                _baseTree.NewSuggestedBlock += value;
+                _overlayTree.NewSuggestedBlock += value;
+            }
         }
         remove
         {
-            _baseTree.NewSuggestedBlock -= value;
-            _overlayTree.NewSuggestedBlock -= value;
+            if (value is not null)
+            {
+                _baseTree.NewSuggestedBlock -= value;
+                _overlayTree.NewSuggestedBlock -= value;
+            }
         }
     }
 
@@ -211,13 +165,19 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     {
         add
         {
-            _baseTree.BlockAddedToMain += value;
-            _overlayTree.BlockAddedToMain += value;
+            if (value is not null)
+            {
+                _baseTree.BlockAddedToMain += value;
+                _overlayTree.BlockAddedToMain += value;
+            }
         }
         remove
         {
-            _baseTree.BlockAddedToMain -= value;
-            _overlayTree.BlockAddedToMain -= value;
+            if (value is not null)
+            {
+                _baseTree.BlockAddedToMain -= value;
+                _overlayTree.BlockAddedToMain -= value;
+            }
         }
     }
 
@@ -225,13 +185,19 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     {
         add
         {
-            _baseTree.NewHeadBlock += value;
-            _overlayTree.NewHeadBlock += value;
+            if (value is not null)
+            {
+                _baseTree.NewHeadBlock += value;
+                _overlayTree.NewHeadBlock += value;
+            }
         }
         remove
         {
-            _baseTree.NewHeadBlock -= value;
-            _overlayTree.NewHeadBlock -= value;
+            if (value is not null)
+            {
+                _baseTree.NewHeadBlock -= value;
+                _overlayTree.NewHeadBlock -= value;
+            }
         }
     }
 
@@ -239,75 +205,52 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     {
         add
         {
-            _baseTree.OnUpdateMainChain += value;
-            _overlayTree.OnUpdateMainChain += value;
+            if (value is not null)
+            {
+                _baseTree.OnUpdateMainChain += value;
+                _overlayTree.OnUpdateMainChain += value;
+            }
         }
         remove
         {
-            _baseTree.OnUpdateMainChain -= value;
-            _overlayTree.OnUpdateMainChain -= value;
+            if (value is not null)
+            {
+                _baseTree.OnUpdateMainChain -= value;
+                _overlayTree.OnUpdateMainChain -= value;
+            }
         }
     }
 
+    public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false) =>
+        _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
 
-    public int DeleteChainSlice(in long startNumber, long? endNumber = null, bool force = false)
-    {
-        return _overlayTree.DeleteChainSlice(startNumber, endNumber, force);
-    }
+    public bool IsBetterThanHead(BlockHeader? header) => _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
 
-    public bool IsBetterThanHead(BlockHeader? header)
-    {
-        return _overlayTree.IsBetterThanHead(header) || _baseTree.IsBetterThanHead(header);
-    }
-
-    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint)
-    {
+    public void UpdateBeaconMainChain(BlockInfo[]? blockInfos, long clearBeaconMainChainStartPoint) =>
         _overlayTree.UpdateBeaconMainChain(blockInfos, clearBeaconMainChainStartPoint);
-    }
 
-    public void RecalculateTreeLevels()
-    {
-        _overlayTree.RecalculateTreeLevels();
-    }
+    public void RecalculateTreeLevels() => _overlayTree.RecalculateTreeLevels();
 
-    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-    {
-        var overlayBlock = _overlayTree.FindBlock(blockHash, options, blockNumber);
-        return overlayBlock ?? _baseTree.FindBlock(blockHash, options, blockNumber);
-    }
+    public Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+        _overlayTree.FindBlock(blockHash, options, blockNumber) ?? _baseTree.FindBlock(blockHash, options, blockNumber);
 
-    public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options)
-    {
-        var overlayBlock = _overlayTree.FindBlock(blockNumber, options);
-        return overlayBlock ?? _baseTree.FindBlock(blockNumber, options);
-    }
+    public Block? FindBlock(long blockNumber, BlockTreeLookupOptions options) =>
+        _overlayTree.FindBlock(blockNumber, options) ?? _baseTree.FindBlock(blockNumber, options);
 
-    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
-    {
-        var overlayHeader = _overlayTree.FindHeader(blockHash, options, blockNumber);
-        return overlayHeader ?? _baseTree.FindHeader(blockHash, options, blockNumber);
-    }
+    public BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null) =>
+        _overlayTree.FindHeader(blockHash, options, blockNumber) ?? _baseTree.FindHeader(blockHash, options, blockNumber);
 
-    public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options)
-    {
-        var overlayHeader = _overlayTree.FindHeader(blockNumber, options);
-        return overlayHeader ?? _baseTree.FindHeader(blockNumber, options);
-    }
+    public BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options) =>
+        _overlayTree.FindHeader(blockNumber, options) ?? _baseTree.FindHeader(blockNumber, options);
 
-    public Hash256? FindBlockHash(long blockNumber)
-    {
-        var overlayBlockHash = _overlayTree.FindBlockHash(blockNumber);
-        return overlayBlockHash ?? _baseTree.FindBlockHash(blockNumber);
-    }
+    public Hash256? FindBlockHash(long blockNumber) =>
+        _overlayTree.FindBlockHash(blockNumber) ?? _baseTree.FindBlockHash(blockNumber);
 
-    public bool IsMainChain(BlockHeader blockHeader)
-    {
-        return _baseTree.IsMainChain(blockHeader) || _overlayTree.IsMainChain(blockHeader);
-    }
+    public bool IsMainChain(BlockHeader blockHeader) =>
+        _baseTree.IsMainChain(blockHeader) || _overlayTree.IsMainChain(blockHeader);
 
     public bool IsMainChain(Hash256 blockHash)
     {
-
         try
         {
             if (_baseTree.IsMainChain(blockHash)) return true;
@@ -322,7 +265,7 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
 
     public BlockHeader FindBestSuggestedHeader()
     {
-        var overlayHeader = _overlayTree.FindBestSuggestedHeader();
+        BlockHeader? overlayHeader = _overlayTree.FindBestSuggestedHeader();
         return overlayHeader ?? _baseTree.FindBestSuggestedHeader();
     }
 

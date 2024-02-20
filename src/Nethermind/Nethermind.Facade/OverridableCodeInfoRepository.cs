@@ -32,33 +32,22 @@ public class OverridableCodeInfoRepository : ICodeInfoRepository
     {
         if (redirectAddress is not null)
         {
-            var tmp = GetCachedCodeInfo(worldState, key, vmSpec);
-            _codeOverwrites[redirectAddress] = tmp;
-
+            _codeOverwrites[redirectAddress] = GetCachedCodeInfo(worldState, key, vmSpec);
         }
+
         _codeOverwrites[key] = value;
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
-        if (EcRecoverPrecompile.Address == codeSource)
-        {
-            var aaa = 666;
-            aaa += 1;
-        }
-
-        if (_codeOverwrites.TryGetValue(codeSource, out CodeInfo result))
-            return result;
-        else
-            return _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
+        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result) ? result : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
     }
 
-
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
-    {
-        return _codeInfoRepository.GetOrAdd(codeHash, initCode);
-    }
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) =>
+        _codeInfoRepository.GetOrAdd(codeHash, initCode);
 
     public void InsertCode(IWorldState state, byte[] code, Address codeOwner, IReleaseSpec spec) =>
         _codeInfoRepository.InsertCode(state, code, codeOwner, spec);
+
+    public void Clear() => _codeOverwrites.Clear();
 }

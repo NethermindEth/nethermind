@@ -8,70 +8,23 @@ using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning;
 
-public class OverlayTrieStore : TrieStore
+public class OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : TrieStore(keyValueStore, logManager)
 {
-    private readonly IReadOnlyTrieStore _store;
+    public override bool IsPersisted(in ValueHash256 keccak) =>
+        base.IsPersisted(in keccak) || store.IsPersisted(in keccak);
 
-    public OverlayTrieStore(IKeyValueStoreWithBatching? keyValueStore, IReadOnlyTrieStore store, ILogManager? logManager) : base(keyValueStore, logManager)
+    public override TrieNode FindCachedOrUnknown(Hash256 hash)
     {
-        _store = store;
+        TrieNode node = base.FindCachedOrUnknown(hash);
+        return node.NodeType == NodeType.Unknown ? store.FindCachedOrUnknown(hash) : node;
     }
 
+    public override byte[]? LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+        base.TryLoadRlp(keccak, readFlags) ?? store.LoadRlp(keccak, readFlags);
 
+    public override byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) =>
+        base.TryLoadRlp(keccak, readFlags) ?? store.TryLoadRlp(keccak, readFlags);
 
-
-    public override bool IsPersisted(in ValueHash256 keccak)
-    {
-        var isPersisted = base.IsPersisted(in keccak);
-        if (!isPersisted)
-        {
-            isPersisted = _store.IsPersisted(in keccak);
-        }
-        return isPersisted;
-    }
-
-
-    public override TrieNode FindCachedOrUnknown(Hash256? hash)
-    {
-        TrieNode findCachedOrUnknown = base.FindCachedOrUnknown(hash);
-        if (findCachedOrUnknown.NodeType == NodeType.Unknown)
-        {
-            findCachedOrUnknown = _store.FindCachedOrUnknown(hash);
-        }
-
-        return findCachedOrUnknown;
-    }
-
-    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
-    {
-        var rlp = base.TryLoadRlp(keccak, readFlags);
-        if (rlp != null)
-        {
-            return rlp;
-        }
-
-        return _store.LoadRlp(keccak, readFlags);
-    }
-
-    public override byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
-    {
-        var rlp = base.TryLoadRlp(keccak, readFlags);
-        if (rlp != null)
-        {
-            return rlp;
-        }
-
-        return _store.TryLoadRlp(keccak, readFlags);
-    }
-
-    public override byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
-    {
-        var hash = base.GetByHash(key, flags);
-        if (hash != null)
-        {
-            return hash;
-        }
-
-        return _store.GetByHash(key, flags);
-    }
+    public override byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+        base.GetByHash(key, flags) ?? store.GetByHash(key, flags);
 }

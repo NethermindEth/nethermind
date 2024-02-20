@@ -131,8 +131,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
 
-            SimulateReadOnlyBlocksProcessingEnv simulateProcessingEnv = SimulateReadOnlyBlocksProcessingEnv.Create(
-                false,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 WorldStateManager,
                 roBlockTree,
                 new ReadOnlyDbProvider(dbProvider, true),
@@ -140,7 +139,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 LimboLogs.Instance);
 
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnv, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
+            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
