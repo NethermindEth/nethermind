@@ -16,6 +16,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Trie.Test.Pruning
@@ -35,12 +36,22 @@ namespace Nethermind.Trie.Test.Pruning
             _scheme = scheme;
         }
 
-        public TrieStore CreateTrieStore(IPruningStrategy? pruningStrategy = null, IKeyValueStoreWithBatching? kvStore = null, IPersistenceStrategy? persistenceStrategy = null)
+        private TrieStore CreateTrieStore(
+            IPruningStrategy? pruningStrategy = null,
+            IKeyValueStoreWithBatching? kvStore = null,
+            IPersistenceStrategy? persistenceStrategy = null,
+            long? reorgDepthOverride = null
+        )
         {
             pruningStrategy ??= No.Pruning;
             kvStore ??= new TestMemDb();
             persistenceStrategy ??= No.Persistence;
-            return new(new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath), pruningStrategy, persistenceStrategy, _logManager);
+            return new(
+                new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
+                pruningStrategy,
+                persistenceStrategy,
+                _logManager,
+                reorgDepthOverride: reorgDepthOverride);
         }
 
         [SetUp]
@@ -810,6 +821,95 @@ namespace Nethermind.Trie.Test.Pruning
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
             trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+        }
+
+        [Test]
+        public async Task Will_RemovePastKeys_OnSnapshot()
+        {
+            MemDb memDb = new();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 100000),
+                persistenceStrategy: No.Persistence,
+                reorgDepthOverride: 2);
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
+                trieStore.FinishBlockCommit(TrieType.State, i, node);
+
+                // Pruning is done in background
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+
+            if (_scheme == INodeStorage.KeyScheme.Hash)
+            {
+                memDb.Count.Should().NotBe(1);
+            }
+            else
+            {
+                memDb.Count.Should().Be(1);
+            }
+        }
+
+        [Test]
+        public async Task Will_Not_RemovePastKeys_OnSnapshot_DuringFullPruning()
+        {
+            MemDb memDb = new();
+
+            IPersistenceStrategy isPruningPersistenceStrategy = Substitute.For<IPersistenceStrategy>();
+            isPruningPersistenceStrategy.IsFullPruning.Returns(true);
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 100000),
+                persistenceStrategy: isPruningPersistenceStrategy,
+                reorgDepthOverride: 2);
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
+                trieStore.FinishBlockCommit(TrieType.State, i, node);
+
+                // Pruning is done in background
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+
+            memDb.Count.Should().Be(61);
+        }
+
+        [Test]
+        public async Task Will_NotRemove_ReCommittedNode()
+        {
+            MemDb memDb = new();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 100000),
+                persistenceStrategy: No.Persistence,
+                reorgDepthOverride: 2);
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i % 4], new byte[2]);
+                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
+                node = trieStore.FindCachedOrUnknown(TreePath.Empty, node.Keccak);
+                trieStore.FinishBlockCommit(TrieType.State, i, node);
+
+                // Pruning is done in background
+                await Task.Delay(TimeSpan.FromMilliseconds(10));
+            }
+
+            memDb.Count.Should().Be(4);
         }
     }
 }

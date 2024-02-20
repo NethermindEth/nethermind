@@ -52,4 +52,24 @@ public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
             _batches.Enqueue(currentBatch);
         }
     }
+
+    public void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak)
+    {
+        if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
+        if (!_batches.TryDequeue(out INodeStorage.WriteBatch? currentBatch))
+        {
+            currentBatch = _underlyingDb.StartWriteBatch();
+        }
+
+        currentBatch.Remove(address, path, currentNodeKeccak);
+        long val = Interlocked.Increment(ref _counter);
+        if (val % 10000 == 0)
+        {
+            currentBatch.Dispose();
+        }
+        else
+        {
+            _batches.Enqueue(currentBatch);
+        }
+    }
 }
