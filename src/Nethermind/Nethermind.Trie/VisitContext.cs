@@ -15,7 +15,7 @@ namespace Nethermind.Trie
         private int _visitedNodes;
 
         public int Level { get; internal set; }
-        public bool IsStorage => Storage != null;
+        public bool IsStorage { get; set; }
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
         public int VisitedNodes => _visitedNodes;
@@ -39,8 +39,6 @@ namespace Nethermind.Trie
                 return _semaphore;
             }
         }
-
-        public Hash256? Storage { get; set; }
 
         public TrieVisitContext Clone() => (TrieVisitContext)MemberwiseClone();
 
@@ -68,18 +66,33 @@ namespace Nethermind.Trie
         public SmallTrieVisitContext(TrieVisitContext trieVisitContext)
         {
             Level = (byte)trieVisitContext.Level;
+            IsStorage = trieVisitContext.IsStorage;
             BranchChildIndex = (byte?)trieVisitContext.BranchChildIndex;
             ExpectAccounts = trieVisitContext.ExpectAccounts;
-            Storage = trieVisitContext.Storage;
         }
 
-        public readonly bool IsStorage => Storage != null;
-        public Hash256? Storage { get; internal set; }
         public byte Level { get; internal set; }
         private byte _branchChildIndex = 255;
         private byte _flags = 0;
 
-        private const byte ExpectAccountsFlag = 1;
+        private const byte StorageFlag = 1;
+        private const byte ExpectAccountsFlag = 2;
+
+        public bool IsStorage
+        {
+            readonly get => (_flags & StorageFlag) == StorageFlag;
+            internal set
+            {
+                if (value)
+                {
+                    _flags = (byte)(_flags | StorageFlag);
+                }
+                else
+                {
+                    _flags = (byte)(_flags & ~StorageFlag);
+                }
+            }
+        }
 
         public bool ExpectAccounts
         {
@@ -118,7 +131,7 @@ namespace Nethermind.Trie
             return new TrieVisitContext()
             {
                 Level = Level,
-                Storage = Storage,
+                IsStorage = IsStorage,
                 BranchChildIndex = BranchChildIndex,
                 ExpectAccounts = ExpectAccounts
             };

@@ -102,7 +102,7 @@ namespace Nethermind.Trie
 
                             if (account.HasStorage && visitor.ShouldVisit(childContext, account.StorageRoot))
                             {
-                                trieVisitContext.Storage = account.StorageRoot;
+                                trieVisitContext.IsStorage = true;
                                 TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                                 trieVisitContext.Level++;
                                 trieVisitContext.BranchChildIndex = null;
@@ -115,6 +115,8 @@ namespace Nethermind.Trie
                                 {
                                     visitor.VisitMissingNode(storageContext, account.StorageRoot, trieVisitContext.ToVisitContext());
                                 }
+
+                                trieVisitContext.IsStorage = false;
                             }
                         }
 
@@ -294,13 +296,13 @@ namespace Nethermind.Trie
                                         storageAccount = path.Path.ToCommitment();
                                     }
 
-                                    trieVisitContext.Storage = storageAccount;
+                                    trieVisitContext.IsStorage = true;
 
                                     TNodeContext storageContext = leafContext.AddStorage(storageAccount);
                                     TreePath emptyPath = TreePath.Empty;
                                     storageRoot!.Accept(visitor, storageContext, nodeResolver.GetStorageTrieNodeResolver(storageAccount), ref emptyPath, trieVisitContext);
 
-                                    trieVisitContext.Storage = null;
+                                    trieVisitContext.IsStorage = false;
                                 }
                                 else
                                 {
