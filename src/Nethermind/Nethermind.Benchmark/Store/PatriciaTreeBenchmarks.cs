@@ -344,8 +344,9 @@ namespace Nethermind.Benchmarks.Store
 
             for (int i = 0; i < _largerEntryCount; i++)
             {
-                if (i%2000 == 0) {
-                    tempTree.Commit(i/2000);
+                if (i % 2000 == 0)
+                {
+                    tempTree.Commit(i / 2000);
                 }
 
                 (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
