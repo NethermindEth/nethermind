@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.ComponentModel;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
@@ -30,6 +33,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -42,6 +46,8 @@ namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
+    protected Autofac.IContainer Container { get; set; } = null!;
+
     public const int DefaultTimeout = 10000;
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
@@ -69,14 +75,15 @@ public class TestBlockchain : IDisposable
     }
 
     public ILogFinder LogFinder { get; private set; } = null!;
-    public IJsonSerializer JsonSerializer { get; set; } = null!;
+    public IJsonSerializer JsonSerializer => Container.Resolve<IJsonSerializer>();
     public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public TrieStore TrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
-    public ISpecProvider SpecProvider { get; set; } = null!;
+    public ISpecProvider SpecProvider => Container.Resolve<ISpecProvider>();
+    protected ChainSpec ChainSpec => Container.Resolve<ChainSpec>();
 
     public ISealEngine SealEngine { get; set; } = null!;
 
@@ -88,7 +95,7 @@ public class TestBlockchain : IDisposable
     {
     }
 
-    public string SealEngineType { get; set; } = null!;
+    protected string SealEngineType => Container.Resolve<ChainSpec>().SealEngineType;
 
     public static Address AccountA = TestItem.AddressA;
     public static Address AccountB = TestItem.AddressB;
@@ -118,8 +125,13 @@ public class TestBlockchain : IDisposable
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
-        JsonSerializer = new EthereumJsonSerializer();
-        SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
+
+        ContainerBuilder containerBuilder = Builders.Build.A.BasicTestContainerBuilder();
+        containerBuilder.RegisterInstance(CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance));
+        containerBuilder.RegisterInstance(Timestamper).AsImplementedInterfaces();
+        ConfigureContainer(containerBuilder);
+        Container = containerBuilder.Build();
+
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
@@ -219,6 +231,10 @@ public class TestBlockchain : IDisposable
             await AddBlocksOnStart();
 
         return this;
+    }
+
+    protected virtual void ConfigureContainer(ContainerBuilder builder)
+    {
     }
 
     private static ISpecProvider CreateSpecProvider(ISpecProvider specProvider)

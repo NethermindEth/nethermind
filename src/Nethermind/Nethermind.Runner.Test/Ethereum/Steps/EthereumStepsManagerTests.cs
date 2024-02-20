@@ -4,15 +4,14 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using FluentAssertions;
 using FluentAssertions.Execution;
 using Nethermind.Api;
-using Nethermind.Config;
-using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Runner.Modules;
 using NUnit.Framework;
 
 namespace Nethermind.Runner.Test.Ethereum.Steps
@@ -21,30 +20,18 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     public class EthereumStepsManagerTests
     {
         [Test]
-        public async Task When_no_assemblies_defined()
+        public void When_no_steps_defined()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader();
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
-
-            using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
-            await stepsManager.InitializeAll(source.Token);
+            IContainer runnerContext = CreateEmptyContainer();
+            Action action = () => runnerContext.Resolve<EthereumStepsManager>();
+            action.Should().Throw<DependencyResolutionException>();
         }
 
         [Test]
         public async Task With_steps_from_here()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
+            IContainer runnerContext = CreateNethermindApi();
+            EthereumStepsManager stepsManager = runnerContext.Resolve<EthereumStepsManager>();
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(1));
 
@@ -65,13 +52,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Retry(3)]
         public async Task With_steps_from_here_AuRa()
         {
-            AuRaNethermindApi runnerContext = CreateAuraApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
+            IContainer runnerContext = CreateAuraApi();
+            EthereumStepsManager stepsManager = runnerContext.Resolve<EthereumStepsManager>();
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(5));
 
@@ -88,13 +70,8 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
         [Test]
         public async Task With_failing_steps()
         {
-            NethermindApi runnerContext = CreateNethermindApi();
-
-            IEthereumStepsLoader stepsLoader = new EthereumStepsLoader(GetType().Assembly);
-            EthereumStepsManager stepsManager = new EthereumStepsManager(
-                stepsLoader,
-                runnerContext,
-                LimboLogs.Instance);
+            IContainer runnerContext = CreateNethermindApi();
+            EthereumStepsManager stepsManager = runnerContext.Resolve<EthereumStepsManager>();
 
             using CancellationTokenSource source = new CancellationTokenSource(TimeSpan.FromSeconds(2));
 
@@ -111,10 +88,41 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
             }
         }
 
-        private static NethermindApi CreateNethermindApi() =>
-            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
-        private static AuRaNethermindApi CreateAuraApi() =>
-            new(new ConfigProvider(), new EthereumJsonSerializer(), LimboLogs.Instance, new ChainSpec());
+        private static ContainerBuilder CreateBaseContainerBuilder()
+        {
+            var builder = new ContainerBuilder();
+            builder.RegisterInstance(LimboLogs.Instance).AsImplementedInterfaces();
+            builder.RegisterModule(new BaseModule());
+            builder.RegisterModule(new RunnerModule());
+            return builder;
+        }
+
+        private static IContainer CreateEmptyContainer()
+        {
+            return CreateBaseContainerBuilder()
+                .Build();
+        }
+
+        private static IContainer CreateNethermindApi()
+        {
+            ContainerBuilder builder = CreateBaseContainerBuilder();
+            builder.RegisterIStep(typeof(StepLong));
+            builder.RegisterIStep(typeof(StepForever));
+            builder.RegisterIStep(typeof(StepA));
+            builder.RegisterIStep(typeof(StepB));
+            builder.RegisterIStep(typeof(StepCStandard));
+            return builder.Build();
+        }
+        private static IContainer CreateAuraApi()
+        {
+            ContainerBuilder builder = CreateBaseContainerBuilder();
+            builder.RegisterIStep(typeof(StepLong));
+            builder.RegisterIStep(typeof(StepForever));
+            builder.RegisterIStep(typeof(StepA));
+            builder.RegisterIStep(typeof(StepB));
+            builder.RegisterIStep(typeof(StepCAuRa));
+            return builder.Build();
+        }
     }
 
     public class StepLong : IStep
@@ -187,7 +195,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
     /// </summary>
     public class StepCAuRa : StepC
     {
-        public StepCAuRa(AuRaNethermindApi runnerContext)
+        public StepCAuRa()
         {
         }
 
@@ -199,7 +207,7 @@ namespace Nethermind.Runner.Test.Ethereum.Steps
 
     public class StepCStandard : StepC
     {
-        public StepCStandard(NethermindApi runnerContext)
+        public StepCStandard()
         {
         }
     }

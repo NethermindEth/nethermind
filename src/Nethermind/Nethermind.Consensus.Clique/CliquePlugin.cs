@@ -3,6 +3,8 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
@@ -17,6 +19,7 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
@@ -28,6 +31,12 @@ namespace Nethermind.Consensus.Clique
         public string Description => "Clique Consensus Engine";
 
         public string Author => "Nethermind";
+        public bool Enabled => _chainSpec.SealEngineType == SealEngineType;
+
+        public CliquePlugin(ChainSpec chainSpec)
+        {
+            _chainSpec = chainSpec;
+        }
 
         public Task Init(INethermindApi nethermindApi)
         {
@@ -135,8 +144,6 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.LogManager,
                 txFilterPipeline);
 
-            IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
-
             IBlockProducer blockProducer = new CliqueBlockProducer(
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
@@ -146,7 +153,7 @@ namespace Nethermind.Consensus.Clique
                 getFromApi.CryptoRandom,
                 _snapshotManager!,
                 getFromApi.Sealer!,
-                gasLimitCalculator,
+                _nethermindApi!.GasLimitCalculator,
                 getFromApi.SpecProvider,
                 _cliqueConfig!,
                 getFromApi.LogManager);
@@ -192,5 +199,19 @@ namespace Nethermind.Consensus.Clique
         private ICliqueConfig? _cliqueConfig;
 
         private IBlocksConfig? _blocksConfig;
+        private readonly ChainSpec _chainSpec;
+
+        public IModule? Module => new CliqueModule();
+
+        private class CliqueModule : Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                builder.RegisterType<TargetAdjustedGasLimitCalculator>()
+                    .As<IGasLimitCalculator>();
+            }
+        }
     }
 }

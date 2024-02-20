@@ -4,7 +4,7 @@
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using System.Linq;
-using Nethermind.Abi;
+using Autofac;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -25,27 +25,27 @@ namespace Nethermind.Api
     {
         DisposableStack DisposeStack { get; }
 
-        IAbiEncoder AbiEncoder { get; }
-        ChainSpec ChainSpec { get; set; }
-        IConfigProvider ConfigProvider { get; set; }
+        ChainSpec ChainSpec { get; }
+        IConfigProvider ConfigProvider { get; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
         IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
-        IJsonSerializer EthereumJsonSerializer { get; set; }
-        IFileSystem FileSystem { get; set; }
-        IKeyStore? KeyStore { get; set; }
-        ILogManager LogManager { get; set; }
-        ProtectedPrivateKey? OriginalSignerKey { get; set; }
+        IJsonSerializer EthereumJsonSerializer { get; }
+        IFileSystem FileSystem { get; }
+        IKeyStore KeyStore { get; }
+        ILogManager LogManager { get; }
         IReadOnlyList<INethermindPlugin> Plugins { get; }
-        string SealEngineType { get; set; }
-        ISpecProvider? SpecProvider { get; set; }
+        string SealEngineType { get; }
+        ISpecProvider? SpecProvider { get; }
         ISyncModeSelector SyncModeSelector { get; set; }
-        ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
-        IProcessExitSource? ProcessExit { get; set; }
+        IProcessExitSource? ProcessExit { get; }
+
+        // TODO: Eventually, no code should use this
+        ILifetimeScope BaseContainer { get; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

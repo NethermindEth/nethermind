@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 
@@ -12,27 +13,28 @@ namespace Nethermind.Init.Steps;
 
 public class InitializePrecompiles : IStep
 {
-    private readonly INethermindApi _api;
+    private ILogger _logger;
+    private IInitConfig _initConfig;
+    private ISpecProvider _specProvider;
 
-    public InitializePrecompiles(INethermindApi api)
+    public InitializePrecompiles(ISpecProvider specProvider, IInitConfig initConfig, ILogger logger)
     {
-        _api = api;
+        _specProvider = specProvider;
+        _initConfig = initConfig;
+        _logger = logger;
     }
 
     public async Task Execute(CancellationToken cancellationToken)
     {
-        if (_api.SpecProvider!.GetFinalSpec().IsEip4844Enabled)
+        if (_specProvider!.GetFinalSpec().IsEip4844Enabled)
         {
-            ILogger logger = _api.LogManager.GetClassLogger<InitializePrecompiles>();
-            IInitConfig initConfig = _api.Config<IInitConfig>();
-
             try
             {
-                await KzgPolynomialCommitments.InitializeAsync(logger, initConfig.KzgSetupPath);
+                await KzgPolynomialCommitments.InitializeAsync(_logger, _initConfig.KzgSetupPath);
             }
             catch (Exception e)
             {
-                if (logger.IsError) logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
+                if (_logger.IsError) _logger.Error($"Couldn't initialize {nameof(KzgPolynomialCommitments)} precompile", e);
                 throw;
             }
         }

@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac.Core;
 
 namespace Nethermind.Api.Extensions
 {
@@ -14,11 +15,15 @@ namespace Nethermind.Api.Extensions
 
         string Author { get; }
 
-        Task Init(INethermindApi nethermindApi);
+        bool Enabled { get; }
 
-        Task InitNetworkProtocol();
+        IModule? Module => null;
 
-        Task InitRpcModules();
+        Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
+
+        Task InitNetworkProtocol() => Task.CompletedTask;
+
+        Task InitRpcModules() => Task.CompletedTask;
 
         bool MustInitialize { get => false; }
     }

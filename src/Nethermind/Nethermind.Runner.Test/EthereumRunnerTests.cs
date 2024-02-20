@@ -9,6 +9,7 @@ using System.IO;
 using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -27,6 +28,7 @@ using Nethermind.TxPool;
 using NUnit.Framework;
 using LogLevel = NLog.LogLevel;
 using Nethermind.Serialization.Json;
+using NSubstitute;
 
 namespace Nethermind.Runner.Test
 {
@@ -122,9 +124,9 @@ namespace Nethermind.Runner.Test
                 networkConfig.P2PPort = port;
                 networkConfig.DiscoveryPort = port;
 
-                INethermindApi nethermindApi = new ApiBuilder(configProvider, LimboLogs.Instance).Create();
-                nethermindApi.RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
-                EthereumRunner runner = new(nethermindApi);
+                IContainer container = new NethermindContainerBuilder(configProvider, Substitute.For<IProcessExitSource>(), LimboLogs.Instance).Create();
+                container.Resolve<INethermindApi>().RpcModuleProvider = new RpcModuleProvider(new FileSystem(), new JsonRpcConfig(), LimboLogs.Instance);
+                EthereumRunner runner = container.Resolve<EthereumRunner>();
 
                 using CancellationTokenSource cts = new();
 

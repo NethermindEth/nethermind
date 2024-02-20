@@ -15,7 +15,7 @@ public class TraceStorePlugin : INethermindPlugin
 {
     private const string DbName = "TraceStore";
     private INethermindApi _api = null!;
-    private ITraceStoreConfig _config = null!;
+    private readonly ITraceStoreConfig _config;
     private IJsonRpcConfig _jsonRpcConfig = null!;
     private IDb? _db;
     private TraceStorePruner? _pruner;
@@ -25,13 +25,17 @@ public class TraceStorePlugin : INethermindPlugin
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
     public string Author => "Nethermind";
-    private bool Enabled => _config?.Enabled == true;
+    public bool Enabled => _config.Enabled == true;
+
+    public TraceStorePlugin(ITraceStoreConfig traceStoreConfig)
+    {
+        _config = traceStoreConfig;
+    }
 
     public Task Init(INethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;
-        _config = _api.Config<ITraceStoreConfig>();
         _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
         _logger = _logManager.GetClassLogger<TraceStorePlugin>();
 

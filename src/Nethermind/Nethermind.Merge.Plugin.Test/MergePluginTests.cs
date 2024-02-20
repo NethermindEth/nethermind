@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public class MergePluginTests
 {
     private MergeConfig _mergeConfig = null!;
-    private NethermindApi _context = null!;
+    private INethermindApi _context = null!;
     private MergePlugin _plugin = null!;
     private CliquePlugin? _consensusPlugin = null;
 
@@ -37,7 +37,6 @@ public class MergePluginTests
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
         _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
@@ -56,16 +55,15 @@ public class MergePluginTests
             _context.TransactionComparerProvider!,
             miningConfig,
             _context.LogManager!);
-        _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
         _context.ChainSpec!.Clique = new CliqueParameters()
         {
             Epoch = CliqueConfig.Default.Epoch,
             Period = CliqueConfig.Default.BlockPeriod
         };
-        _plugin = new MergePlugin();
+        _plugin = new MergePlugin(_context.ChainSpec, _mergeConfig);
 
-        _consensusPlugin = new();
+        _consensusPlugin = new(_context.ChainSpec);
     }
 
     [TearDown]

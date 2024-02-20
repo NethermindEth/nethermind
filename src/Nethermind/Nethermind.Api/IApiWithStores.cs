@@ -23,11 +23,10 @@ namespace Nethermind.Api
         ILogFinder? LogFinder { get; set; }
         ISigner? EngineSigner { get; set; }
         ISignerStore? EngineSignerStore { get; set; }
-        ProtectedPrivateKey? NodeKey { get; set; }
         IReceiptStorage? ReceiptStorage { get; set; }
         IReceiptFinder? ReceiptFinder { get; set; }
         IReceiptMonitor? ReceiptMonitor { get; set; }
-        IWallet? Wallet { get; set; }
+        IWallet Wallet { get; }
         IBlockStore? BadBlocksStore { get; set; }
     }
 }

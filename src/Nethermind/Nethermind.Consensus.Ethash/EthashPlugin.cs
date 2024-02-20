@@ -7,11 +7,21 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
     public class EthashPlugin : IConsensusPlugin
     {
+        private readonly string _currentSealEngineType;
+
+        public EthashPlugin(ChainSpec chainSpec)
+        {
+            _currentSealEngineType = chainSpec.SealEngineType;
+        }
+
+        public bool Enabled => _currentSealEngineType == SealEngineType;
+
         private INethermindApi _nethermindApi;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }

@@ -58,6 +58,26 @@ namespace Nethermind.KeyStore
         private readonly Encoding _keyStoreEncoding;
         private readonly IKeyStoreIOSettingsProvider _keyStoreIOSettingsProvider;
 
+        // Constructor with concrete type. Useful for dependency injection which setup to automatically register
+        // concrete type for convenience.
+        public FileKeyStore(
+            IKeyStoreConfig keyStoreConfig,
+            IJsonSerializer jsonSerializer,
+            AesEncrypter encrypter,
+            ICryptoRandom cryptoRandom,
+            ILogManager logManager,
+            PrivateKeyStoreIOSettingsProvider ioSettingsProvider)
+        : this(
+            keyStoreConfig,
+            jsonSerializer,
+            (ISymmetricEncrypter)encrypter,
+            cryptoRandom,
+            logManager,
+            ioSettingsProvider
+        )
+        {
+        }
+
         public FileKeyStore(
             IKeyStoreConfig keyStoreConfig,
             IJsonSerializer jsonSerializer,

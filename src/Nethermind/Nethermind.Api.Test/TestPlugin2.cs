@@ -16,6 +16,8 @@ namespace Nethermind.Api.Test
         public string Name { get; }
         public string Description { get; }
         public string Author { get; }
+        public bool Enabled { get; }
+
         public Task Init(INethermindApi nethermindApi)
         {
             throw new System.NotImplementedException();

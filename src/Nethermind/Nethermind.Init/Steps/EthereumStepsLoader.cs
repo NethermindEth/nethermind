@@ -4,83 +4,50 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Reflection;
-using Nethermind.Api;
+using Autofac;
+using Autofac.Core;
+using Autofac.Core.Activators.Reflection;
 
 namespace Nethermind.Init.Steps
 {
     public class EthereumStepsLoader : IEthereumStepsLoader
     {
-        private readonly IEnumerable<Assembly> _stepsAssemblies;
-        private readonly Type _baseApiType = typeof(INethermindApi);
+        private readonly IReadOnlyList<StepInfo> _steps;
 
-        public EthereumStepsLoader(params Assembly[] stepsAssemblies)
-            : this((IEnumerable<Assembly>)stepsAssemblies) { }
-
-        public EthereumStepsLoader(IEnumerable<Assembly> stepsAssemblies)
+        public EthereumStepsLoader(IReadOnlyList<StepInfo> steps)
         {
-            _stepsAssemblies = stepsAssemblies;
+            _steps = steps;
         }
 
-        public IEnumerable<StepInfo> LoadSteps(Type apiType)
+        public IEnumerable<StepInfo> LoadSteps()
         {
-            if (!apiType.GetInterfaces().Contains(_baseApiType))
-            {
-                throw new NotSupportedException($"api type must implement {_baseApiType.Name}");
-            }
-
-            List<Type> allStepTypes = new List<Type>();
-            foreach (Assembly stepsAssembly in _stepsAssemblies)
-            {
-                allStepTypes.AddRange(stepsAssembly.GetExportedTypes()
-                    .Where(t => !t.IsInterface && !t.IsAbstract && IsStepType(t)));
-            }
-
-            return allStepTypes
-                .Select(s => new StepInfo(s, GetStepBaseType(s)))
+            return _steps
                 .GroupBy(s => s.StepBaseType)
-                .Select(g => SelectImplementation(g.ToArray(), apiType))
+                .Select(g => SelectImplementation(g.ToArray(), g.Key))
                 .Where(s => s is not null)
                 .Select(s => s!);
         }
 
-        private static bool HasConstructorWithParameter(Type type, Type parameterType)
+        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type baseType)
         {
-            Type[] expectedParams = { parameterType };
-            return type.GetConstructors().Any(
-                c => c.GetParameters().Select(p => p.ParameterType).SequenceEqual(expectedParams));
-        }
-
-        private StepInfo? SelectImplementation(StepInfo[] stepsWithTheSameBase, Type apiType)
-        {
-            StepInfo[] stepsWithMatchingApiType = stepsWithTheSameBase
-                .Where(t => HasConstructorWithParameter(t.StepType, apiType)).ToArray();
-
-            if (stepsWithMatchingApiType.Length == 0)
+            // In case of multiple step declaration, make sure that there is one final step that is the most specific
+            // implementation.
+            StepInfo[] stepWithNoParent = stepsWithTheSameBase.Where((currentStep) =>
             {
-                // base API type this time
-                stepsWithMatchingApiType = stepsWithTheSameBase
-                    .Where(t => HasConstructorWithParameter(t.StepType, _baseApiType)).ToArray();
+                return !stepsWithTheSameBase.Any(otherStep =>
+                    otherStep != currentStep && currentStep.StepType.IsAssignableFrom(otherStep.StepType));
+            }).ToArray();
+
+            if (stepWithNoParent.Length != 1)
+            {
+                throw new InvalidOperationException(
+                    $"Unable to find unique step for group {baseType.FullName}. Current steps: {stepWithNoParent}");
             }
 
-            if (stepsWithMatchingApiType.Length > 1)
-            {
-                Array.Sort(stepsWithMatchingApiType, (t1, t2) => t1.StepType.IsAssignableFrom(t2.StepType) ? 1 : -1);
-            }
-
-            return stepsWithMatchingApiType.FirstOrDefault();
+            return stepWithNoParent[0];
         }
 
         private static bool IsStepType(Type t) => typeof(IStep).IsAssignableFrom(t);
 
-        private static Type GetStepBaseType(Type type)
-        {
-            while (type.BaseType is not null && IsStepType(type.BaseType))
-            {
-                type = type.BaseType;
-            }
-
-            return type;
-        }
     }
 }
