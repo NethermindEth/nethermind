@@ -103,16 +103,17 @@ namespace Nethermind.Trie
                             if (account.HasStorage && visitor.ShouldVisit(childContext, account.StorageRoot))
                             {
                                 trieVisitContext.Storage = account.StorageRoot;
+                                TNodeContext storageContext = childContext.AddStorage(account.StorageRoot);
                                 trieVisitContext.Level++;
                                 trieVisitContext.BranchChildIndex = null;
 
                                 if (TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
                                 {
-                                    nextToVisit.Add((storageRoot!, childContext, trieVisitContext));
+                                    nextToVisit.Add((storageRoot!, storageContext, trieVisitContext));
                                 }
                                 else
                                 {
-                                    visitor.VisitMissingNode(childContext, account.StorageRoot, trieVisitContext.ToVisitContext());
+                                    visitor.VisitMissingNode(storageContext, account.StorageRoot, trieVisitContext.ToVisitContext());
                                 }
                             }
                         }
