@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Autofac;
+using Nethermind.Api;
 using Nethermind.Logging;
 using Nethermind.Runner.Modules;
 
@@ -14,6 +15,10 @@ public partial class Build
         ContainerBuilder builder = new ContainerBuilder();
         builder.RegisterInstance(LimboLogs.Instance).AsImplementedInterfaces();
         builder.RegisterModule(new BaseModule());
+        builder.RegisterModule(new DatabaseModule());
+        builder.RegisterModule(new CoreModule());
+        builder.RegisterModule(new StateModule());
+        builder.Register((ctx) => false).Keyed<bool>(ComponentKey.SkipLoadGenesis);
         return builder;
     }
 }

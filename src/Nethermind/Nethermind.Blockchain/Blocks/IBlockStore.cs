@@ -25,4 +25,10 @@ public interface IBlockStore
     // These two are used by blocktree. Try not to use them...
     void SetMetadata(byte[] key, byte[] value);
     byte[]? GetMetadata(byte[] key);
+
+    public enum Key
+    {
+        Main,
+        BadBlock
+    }
 }

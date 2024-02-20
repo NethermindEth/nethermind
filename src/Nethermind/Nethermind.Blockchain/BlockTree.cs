@@ -8,6 +8,7 @@ using System.IO;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Headers;
@@ -107,11 +108,11 @@ namespace Nethermind.Blockchain
         private TaskCompletionSource<bool>? _taskCompletionSource;
 
         public BlockTree(
-            IBlockStore? blockStore,
+            [KeyFilter(IBlockStore.Key.Main)] IBlockStore? blockStore,
             IHeaderStore? headerDb,
-            IDb? blockInfoDb,
-            IDb? metadataDb,
-            IBlockStore? badBlockStore,
+            [KeyFilter(DbNames.BlockInfos)] IDb? blockInfoDb,
+            [KeyFilter(DbNames.Metadata)] IDb? metadataDb,
+            [KeyFilter(IBlockStore.Key.Main)] IBlockStore? badBlockStore,
             IChainLevelInfoRepository? chainLevelInfoRepository,
             ISpecProvider? specProvider,
             IBloomStorage? bloomStorage,

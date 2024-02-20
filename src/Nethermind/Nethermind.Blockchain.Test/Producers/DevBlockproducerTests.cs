@@ -33,26 +33,19 @@ namespace Nethermind.Blockchain.Test.Producers
         public void Test()
         {
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.BlockInfos, new MemDb());
-            dbProvider.RegisterDb(DbNames.Blocks, new MemDb());
-            dbProvider.RegisterDb(DbNames.Headers, new MemDb());
-            dbProvider.RegisterDb(DbNames.State, new MemDb());
-            dbProvider.RegisterDb(DbNames.Code, new MemDb());
-            dbProvider.RegisterDb(DbNames.Metadata, new MemDb());
-
+            IDbProvider dbProvider = TestMemDbProvider.Init();
             BlockTree blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
                 .TestObject;
 
             TrieStore trieStore = new(
-                dbProvider.RegisteredDbs[DbNames.State],
+                dbProvider.StateDb,
                 NoPruning.Instance,
                 Archive.Instance,
                 LimboLogs.Instance);
             WorldState stateProvider = new(
                 trieStore,
-                dbProvider.RegisteredDbs[DbNames.Code],
+                dbProvider.CodeDb,
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);

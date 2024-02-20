@@ -3,9 +3,11 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
@@ -39,7 +41,7 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore? trieStore, [KeyFilter(DbNames.Code)] IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore, codeDb, logManager);

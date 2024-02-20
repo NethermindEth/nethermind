@@ -107,15 +107,15 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IDb db = (IDb)dbProvider.StateDb;
+
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -131,15 +131,14 @@ namespace Nethermind.Store.Test
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
             byte[][] lastProof = accountProofCollector.BuildResult().Proof;
 
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IDb db = (IDb)dbProvider.StateDb;
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -148,15 +147,14 @@ namespace Nethermind.Store.Test
         {
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IDb db = (IDb)dbProvider.StateDb;
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
             Assert.IsFalse(db.KeyExists(rootHash)); // the root node is NOT a part of the proof nodes
         }
 
@@ -166,9 +164,8 @@ namespace Nethermind.Store.Test
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IDb db = dbProvider.StateDb;
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
@@ -181,7 +178,7 @@ namespace Nethermind.Store.Test
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -192,7 +189,7 @@ namespace Nethermind.Store.Test
 
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -206,7 +203,7 @@ namespace Nethermind.Store.Test
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             Assert.IsFalse(db.KeyExists(rootHash));
         }
 
@@ -216,9 +213,8 @@ namespace Nethermind.Store.Test
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             // output state
-            MemDb db = new();
-            DbProvider dbProvider = new();
-            dbProvider.RegisterDb(DbNames.State, db);
+            IDbProvider dbProvider = TestMemDbProvider.Init();
+            IDb db = dbProvider.StateDb;
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
@@ -231,7 +227,7 @@ namespace Nethermind.Store.Test
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -243,7 +239,7 @@ namespace Nethermind.Store.Test
             // missing TestItem.Tree.AccountsWithHashes[2]
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[3..4], firstProof!.Concat(lastProof!).ToArray());
 
-            Assert.That(db.Keys.Count, Is.EqualTo(2));
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(2));
 
             accountProofCollector = new(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             _inputTree.Accept(accountProofCollector, _inputTree.RootHash);
@@ -257,7 +253,7 @@ namespace Nethermind.Store.Test
             Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
             Assert.That(result2, Is.EqualTo(AddRangeResult.DifferentRootHash));
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
-            Assert.That(db.Keys.Count, Is.EqualTo(6));
+            Assert.That(db.GetAllKeys().Count, Is.EqualTo(6));
             Assert.IsFalse(db.KeyExists(rootHash));
         }
     }

@@ -584,7 +584,7 @@ namespace Nethermind.Trie.Test.Pruning
             node.ResolveKey(NullTrieNodeResolver.Instance, true);
 
             MemDb originalStore = new MemDb();
-            WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Logger);
             IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
             using TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));

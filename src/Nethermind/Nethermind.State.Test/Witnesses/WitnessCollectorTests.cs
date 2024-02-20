@@ -19,7 +19,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_each_cache_once()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(Keccak.Zero);
@@ -31,7 +31,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_collect_many()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -43,7 +43,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -56,7 +56,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_collect_after_reset()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -70,7 +70,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Collects_what_it_should_collect()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -83,7 +83,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_empty()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Reset();
@@ -94,7 +94,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_empty_many_times()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Reset();
@@ -107,7 +107,7 @@ namespace Nethermind.Store.Test.Witnesses
         [Test]
         public void Can_reset_non_empty_many_times()
         {
-            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(new MemDb(), LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -125,7 +125,7 @@ namespace Nethermind.Store.Test.Witnesses
         {
             IKeyValueStore keyValueStore = new MemDb();
 
-            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Logger);
             witnessCollector.Persist(Keccak.Zero);
 
             var witness = keyValueStore[Keccak.Zero.Bytes];
@@ -136,7 +136,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_persist_more()
         {
             IKeyValueStore keyValueStore = new MemDb();
-            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -151,7 +151,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_persist_and_load()
         {
             IKeyValueStore keyValueStore = new MemDb();
-            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             witnessCollector.Add(TestItem.KeccakA);
@@ -166,7 +166,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_load_missing()
         {
             IKeyValueStore keyValueStore = new MemDb();
-            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Logger);
             var witness = witnessCollector.Load(Keccak.Zero);
             witness.Should().BeNull();
         }
@@ -175,7 +175,7 @@ namespace Nethermind.Store.Test.Witnesses
         public void Can_read_beyond_cache()
         {
             IKeyValueStore keyValueStore = new MemDb();
-            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Instance);
+            WitnessCollector witnessCollector = new(keyValueStore, LimboLogs.Logger);
 
             using IDisposable tracker = witnessCollector.TrackOnThisThread();
             for (int i = 0; i < 255; i++)

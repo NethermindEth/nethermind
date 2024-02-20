@@ -62,11 +62,14 @@ namespace Nethermind.Runner.Ethereum.Api
             containerBuilder.RegisterInstance(chainSpec).SingleInstance();
 
             containerBuilder.RegisterModule(new BaseModule());
-            containerBuilder.RegisterModule(new CoreModule());
+            containerBuilder.RegisterModule(new CoreModule(_configProvider));
+            containerBuilder.RegisterModule(new DatabaseModule(_configProvider));
+            containerBuilder.RegisterModule(new StateModule(_configProvider));
             containerBuilder.RegisterModule(new NetworkModule());
             containerBuilder.RegisterModule(new KeyStoreModule());
             containerBuilder.RegisterModule(new StepModule());
             containerBuilder.RegisterModule(new RunnerModule());
+
             ApplyPluginModule(plugins, chainSpec, containerBuilder);
 
             return containerBuilder.Build();

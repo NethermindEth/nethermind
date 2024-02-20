@@ -110,7 +110,7 @@ namespace Nethermind.Store.Test.Witnesses
 
             public Context()
             {
-                WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+                WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Logger);
                 Database = new WitnessingStore(Wrapped, WitnessCollector);
             }
         }

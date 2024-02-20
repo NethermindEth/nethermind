@@ -22,17 +22,24 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapProvider : ISnapProvider
     {
         private readonly ObjectPool<ITrieStore> _trieStorePool;
-        private readonly IDbProvider _dbProvider;
+        private readonly IDb _codeDb;
+        private readonly IDb _stateDb;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
         private readonly ProgressTracker _progressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager): this(progressTracker, dbProvider.CodeDb, dbProvider.StateDb, logManager)
         {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+
+        }
+
+        public SnapProvider(ProgressTracker progressTracker, IDb codeDb, IDb stateDb, ILogManager logManager)
+        {
+            _codeDb = codeDb;
+            _stateDb = stateDb;
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(stateDb, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -273,7 +280,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
-            using (IWriteBatch writeBatch = _dbProvider.CodeDb.StartWriteBatch())
+            using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
             {
                 for (int i = 0; i < codes.Length; i++)
                 {

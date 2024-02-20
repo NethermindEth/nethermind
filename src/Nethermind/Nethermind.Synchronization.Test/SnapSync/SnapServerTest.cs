@@ -13,6 +13,7 @@ using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -35,12 +36,10 @@ public class SnapServerTest
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        ProgressTracker progressTracker = new(null!, stateDbClient, LimboLogs.Instance);
 
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, codeDbServer, stateDbClient, LimboLogs.Instance);
 
         return new Context()
         {
@@ -158,12 +157,8 @@ public class SnapServerTest
 
         SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
-
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        ProgressTracker progressTracker = new(null!, new MemDb(), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), new MemDb(), LimboLogs.Instance);
 
         (PathWithStorageSlot[][] storageSlots, byte[][]? proofs) =
             server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
@@ -186,12 +181,8 @@ public class SnapServerTest
 
         SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
-
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        ProgressTracker progressTracker = new(null!, new MemDb(), LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), new MemDb(), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)

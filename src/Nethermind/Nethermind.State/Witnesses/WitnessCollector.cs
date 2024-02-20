@@ -4,10 +4,12 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Nethermind.Db;
 using Nethermind.Logging;
 
 namespace Nethermind.State.Witnesses
@@ -24,10 +26,10 @@ namespace Nethermind.State.Witnesses
 
         public IReadOnlyCollection<Hash256> Collected => _collected;
 
-        public WitnessCollector(IKeyValueStore? keyValueStore, ILogManager? logManager)
+        public WitnessCollector([KeyFilter(DbNames.Witness)] IKeyValueStore keyValueStore, ILogger logger)
         {
-            _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _keyValueStore = keyValueStore;
+            _logger = logger;
         }
 
         public void Add(Hash256 hash)

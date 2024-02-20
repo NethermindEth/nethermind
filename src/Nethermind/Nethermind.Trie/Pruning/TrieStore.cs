@@ -7,10 +7,13 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Db;
+using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -139,7 +142,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public TrieStore(
-            IKeyValueStoreWithBatching? keyValueStore,
+            [KeyFilter(DbNames.State)] IKeyValueStoreWithBatching? keyValueStore,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)

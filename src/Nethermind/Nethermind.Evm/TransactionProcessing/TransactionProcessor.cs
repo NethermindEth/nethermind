@@ -71,7 +71,7 @@ namespace Nethermind.Evm.TransactionProcessing
             SpecProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             WorldState = worldState ?? throw new ArgumentNullException(nameof(worldState));
             VirtualMachine = virtualMachine ?? throw new ArgumentNullException(nameof(virtualMachine));
-            Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager.GetClassLogger());
         }
 
         public void CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer)

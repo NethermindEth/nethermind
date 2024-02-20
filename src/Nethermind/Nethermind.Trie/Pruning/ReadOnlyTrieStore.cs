@@ -3,9 +3,9 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.FullPruning;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -52,6 +52,11 @@ namespace Nethermind.Trie.Pruning
 
         public void Set(in ValueHash256 hash, byte[] rlp)
         {
+        }
+
+        public void PersistCache(CancellationToken token)
+        {
+            _trieStore.PersistCache(token);
         }
 
         public bool HasRoot(Hash256 stateRoot)

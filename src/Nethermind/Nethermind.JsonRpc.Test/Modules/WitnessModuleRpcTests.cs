@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 .WithUncles(Build.A.BlockHeader.TestObject, Build.A.BlockHeader.TestObject).TestObject;
 
             _blockFinder = Substitute.For<IBlockTree>();
-            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            _witnessRepository = new WitnessCollector(new MemDb(), LimboLogs.Logger);
             _witnessRpcModule = new WitnessRpcModule(_witnessRepository, _blockFinder);
         }
 

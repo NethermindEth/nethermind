@@ -80,7 +80,7 @@ namespace Nethermind.Init
                 AssignFastBlocksMemory(_syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
-                AssignTrieCacheMemory(dbConfig);
+                AssignTrieCacheMemory(_dbConfig);
                 _remainingMemory -= TrieCacheMemory;
                 if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
                 UpdateDbConfig(cpuCount, _syncConfig, _dbConfig, _initConfig);

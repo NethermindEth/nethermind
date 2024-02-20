@@ -52,19 +52,6 @@ namespace Nethermind.Init.Steps.Migrations
         private readonly IDb _receiptsBlockDb;
         private readonly IReceiptsRecovery _recovery;
 
-        public ReceiptMigration(IApiWithNetwork api) : this(
-            api.ReceiptStorage!,
-            api.BlockTree!,
-            api.SyncModeSelector!,
-            api.ChainLevelInfoRepository!,
-            api.Config<IReceiptConfig>(),
-            api.DbProvider?.ReceiptsDb!,
-            new ReceiptsRecovery(api.EthereumEcdsa, api.SpecProvider),
-            api.LogManager
-        )
-        {
-        }
-
         public ReceiptMigration(
             IReceiptStorage receiptStorage,
             IBlockTree blockTree,
@@ -86,6 +73,12 @@ namespace Nethermind.Init.Steps.Migrations
             _txIndexDb = _receiptsDb.GetColumnDb(ReceiptsColumns.Transactions);
             _recovery = recovery;
             _logger = logManager.GetClassLogger();
+        }
+
+        public async ValueTask DisposeAsync()
+        {
+            _cancellationTokenSource?.Cancel();
+            await (_migrationTask ?? Task.CompletedTask);
         }
 
         public async Task<bool> Run(long blockNumber)

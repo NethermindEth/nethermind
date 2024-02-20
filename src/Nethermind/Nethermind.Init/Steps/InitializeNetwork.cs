@@ -79,7 +79,7 @@ public class InitializeNetwork : IStep
     public InitializeNetwork(
         INethermindApi api,
         IPResolver ipResolver,
-        [KeyFilter(PrivateKeyName.NodeKey)] ProtectedPrivateKey nodeKey,
+        [KeyFilter(ComponentKey.NodeKey)] ProtectedPrivateKey nodeKey,
         CryptoRandom cryptoRandom,
         ILogManager logManager,
         INetworkConfig networkConfig,

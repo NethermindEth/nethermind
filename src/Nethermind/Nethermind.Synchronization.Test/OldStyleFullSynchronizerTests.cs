@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Core;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -91,7 +92,7 @@ namespace Nethermind.Synchronization.Test
                 _pool,
                 _synchronizer.SyncModeSelector,
                 quickConfig,
-                new WitnessCollector(new MemDb(), LimboLogs.Instance),
+                new WitnessCollector(new MemDb(), LimboLogs.Logger),
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 LimboLogs.Instance);

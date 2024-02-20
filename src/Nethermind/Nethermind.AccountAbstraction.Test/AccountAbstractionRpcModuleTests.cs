@@ -506,7 +506,7 @@ public partial class AccountAbstractionRpcModuleTests
     {
         op.CalculateRequestId(entryPointAddress, chainId);
 
-        Signer signer = new(chainId, privateKey, NullLogManager.Instance);
+        Signer signer = new(chainId, privateKey, LimboLogs.Instance);
         Hash256 hashedRequestId = Keccak.Compute(
             Bytes.Concat(
                 Encoding.UTF8.GetBytes("\x19"),

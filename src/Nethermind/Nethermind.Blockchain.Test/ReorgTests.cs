@@ -74,7 +74,7 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
+            new WitnessCollector(memDbProvider.StateDb, LimboLogs.Logger),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

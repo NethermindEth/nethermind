@@ -8,6 +8,7 @@ using System.IO.Abstractions;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Config;
@@ -54,17 +55,15 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
                 DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
                 _chainEstimations.StateSize.Returns((long?)null);
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, DriveInfo, chain.TrieStore, _chainEstimations, LogManager);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, DriveInfo, Substitute.For<IPruningTrieStore>(), _chainEstimations, LogManager);
                 return chain;
             }
 
-            protected override async Task<IDbProvider> CreateDbProvider()
+            protected override void ConfigureContainer(ContainerBuilder builder)
             {
-                IDbProvider dbProvider = new DbProvider();
-                RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
-                await standardDbInitializer.InitStandardDbsAsync(true);
-                return dbProvider;
+                base.ConfigureContainer(builder);
+
+                builder.RegisterInstance<IDbFactory>(new RocksDbFactory(new DbConfig(), LogManager, TempDirectory.Path));
             }
 
             public override void Dispose()
@@ -94,7 +93,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     IStateReader stateReader,
                     IProcessExitSource processExitSource,
                     IDriveInfo driveInfo,
-                    TrieStore trieStore,
+                    IPruningTrieStore trieStore,
                     IChainEstimations chainEstimations,
                     ILogManager logManager)
                     : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)

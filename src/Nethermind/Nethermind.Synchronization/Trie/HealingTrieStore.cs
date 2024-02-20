@@ -3,9 +3,11 @@
 
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -20,7 +22,7 @@ public class HealingTrieStore : TrieStore
     private ITrieNodeRecovery<IReadOnlyList<Hash256>>? _recovery;
 
     public HealingTrieStore(
-        IKeyValueStoreWithBatching? keyValueStore,
+        [KeyFilter(DbNames.State)] IKeyValueStoreWithBatching? keyValueStore,
         IPruningStrategy? pruningStrategy,
         IPersistenceStrategy? persistenceStrategy,
         ILogManager? logManager)

@@ -40,15 +40,11 @@ public class BaseModule : Module
 
         builder.RegisterType<EthereumJsonSerializer>()
             .As<IJsonSerializer>()
+            .SingleInstance()
             .IfNotRegistered(typeof(IJsonSerializer));
 
-        builder.RegisterType<ChainSpecBasedSpecProvider>()
-            .As<ISpecProvider>()
-            .SingleInstance();
-
-        builder.RegisterType<CryptoRandom>()
-            .As<ICryptoRandom>()
-            .SingleInstance();
+        builder.RegisterSingleton<ChainSpecBasedSpecProvider, ISpecProvider>();
+        builder.RegisterSingleton<CryptoRandom, ICryptoRandom>();
 
         builder.RegisterInstance(TimerFactory.Default)
             .As<ITimerFactory>();

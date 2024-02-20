@@ -410,7 +410,7 @@ namespace Nethermind.Synchronization.Test
                     SyncPeerPool,
                     Synchronizer.SyncModeSelector,
                     syncConfig,
-                    new WitnessCollector(new MemDb(), LimboLogs.Instance),
+                    new WitnessCollector(new MemDb(), LimboLogs.Logger),
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,
                     _logManager);

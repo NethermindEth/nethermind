@@ -308,7 +308,7 @@ public class StartBlockProducerAuRa
                         signer),
                     new EciesCipher(_api.CryptoRandom),
                     signer,
-                    _api.BaseContainer.ResolveKeyed<ProtectedPrivateKey>(PrivateKeyName.NodeKey),
+                    _api.BaseContainer.ResolveKeyed<ProtectedPrivateKey>(ComponentKey.NodeKey),
                     _api.CryptoRandom,
                     _api.LogManager);
 

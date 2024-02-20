@@ -136,7 +136,7 @@ namespace Nethermind.Consensus.AuRa
                 if (tx.Signature is not null)
                 {
                     IReleaseSpec spec = _specProvider.GetSpec(args.Block.Header);
-                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Instance);
+                    EthereumEcdsa ecdsa = new(_specProvider.ChainId, LimboLogs.Logger);
                     Address txSenderAddress = ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
                     if (tx.SenderAddress != txSenderAddress)
                     {
