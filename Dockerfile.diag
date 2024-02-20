@@ -13,15 +13,17 @@ COPY .git .git
 COPY src/Nethermind src/Nethermind
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
-    dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
-      --package-directory /tmp && \
-    dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
-      -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
+  dotnet add src/Nethermind/Nethermind.Runner package JetBrains.dotMemory.Console.linux-$arch \
+    --package-directory /tmp && \
+  dotnet add src/Nethermind/Nethermind.Runner package Pyroscope \
+    --package-directory /tmp && \
+  dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \
+    -p:BuildTimestamp=$BUILD_TIMESTAMP -p:Commit=$COMMIT_HASH
 
 RUN dotnet tool install -g dotnet-dump && \
-    dotnet tool install -g dotnet-gcdump && \
-    dotnet tool install -g dotnet-trace && \
-    dotnet tool install -g JetBrains.dotTrace.GlobalTools
+  dotnet tool install -g dotnet-gcdump && \
+  dotnet tool install -g dotnet-trace && \
+  dotnet tool install -g JetBrains.dotTrace.GlobalTools
 
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
@@ -37,10 +39,20 @@ EXPOSE 8545 8551 30303
 COPY --from=build /publish .
 COPY --from=build /root/.dotnet/tools /opt/diag-tools
 COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/dotmemory
-
-ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
+COPY --from=pyroscope/pyroscope-dotnet:latest-glibc /Pyroscope.*.so /opt/diag-tools/pyroscope/
 
 RUN apt-get update && apt-get -y install libsnappy-dev && \
   rm -rf /var/lib/apt/lists/*
+
+ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
+ENV CORECLR_ENABLE_PROFILING=1
+ENV CORECLR_PROFILER={BD1A650D-AC5D-4896-B64F-D6FA25D6B26A}
+ENV CORECLR_PROFILER_PATH=/opt/diag-tools/pyroscope/Pyroscope.Profiler.Native.so
+ENV LD_PRELOAD=/opt/diag-tools/pyroscope/Pyroscope.Linux.ApiWrapper.x64.so
+ENV PYROSCOPE_APPLICATION_NAME=nethermind
+ENV PYROSCOPE_BASIC_AUTH_USER=user
+ENV PYROSCOPE_BASIC_AUTH_PASSWORD=password
+ENV PYROSCOPE_PROFILING_ENABLED=1
+ENV PYROSCOPE_SERVER_ADDRESS=http://localhost:4040
 
 ENTRYPOINT ["./nethermind"]
