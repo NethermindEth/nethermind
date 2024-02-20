@@ -143,7 +143,7 @@ namespace Nethermind.Synchronization.Peers
                     AllocationContexts.Headers,
                     cts.Token);
             }
-            catch (OperationCanceledException)
+            catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
                 return null;

@@ -5,7 +5,7 @@ namespace Nethermind.Monitoring.Config
 {
     public class MetricsConfig : IMetricsConfig
     {
-        public string ExposeHost { get; set; } = "127.0.0.1";
+        public string ExposeHost { get; set; } = "+";
         public int? ExposePort { get; set; } = null;
         public bool Enabled { get; set; } = false;
         public bool CountersEnabled { get; set; } = false;

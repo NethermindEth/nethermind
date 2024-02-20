@@ -17,7 +17,7 @@ namespace Nethermind.Trie
 
         ReadFlags ExtraReadFlag => ReadFlags.None;
 
-        bool ShouldVisit(Hash256 nextNode);
+        bool ShouldVisit(Hash256 nodeHash);
 
         void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext);
 

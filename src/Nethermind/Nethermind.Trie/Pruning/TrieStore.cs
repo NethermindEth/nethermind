@@ -374,17 +374,13 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore)
-        {
-            return new ReadOnlyTrieStore(this, keyValueStore);
-        }
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) =>
+            new ReadOnlyTrieStore(this, keyValueStore);
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public virtual TrieNode FindCachedOrUnknown(Hash256 hash)
-        {
-            return FindCachedOrUnknown(hash, false);
-        }
+        public TrieNode FindCachedOrUnknown(Hash256? hash) =>
+            FindCachedOrUnknown(hash, false);
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
         {
@@ -530,6 +526,8 @@ namespace Nethermind.Trie.Pruning
                         {
                             throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
+
+                        node.Keccak = keccak;
                     }
                     _dirtyNodes.Remove(keccak);
 

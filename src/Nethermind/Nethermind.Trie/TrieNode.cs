@@ -502,12 +502,6 @@ namespace Nethermind.Trie
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
         {
-            Hash256? keccak = Keccak;
-            if (keccak is not null)
-            {
-                return keccak;
-            }
-
             RlpFactory rlp = _rlp;
             if (rlp is null || IsDirty)
             {
@@ -956,7 +950,8 @@ namespace Nethermind.Trie
                 }
                 else if (Value.Length > 64) // if not a storage leaf
                 {
-                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
+                    Rlp.ValueDecoderContext valueContext = Value.AsSpan().AsRlpValueContext();
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
                     if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
                     {
                         hasStorage = true;
