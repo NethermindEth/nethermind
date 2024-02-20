@@ -1335,7 +1335,7 @@ namespace Nethermind.Trie
                 }
             }
             // Full db scan
-            else if (visitingOptions.FullScanMemoryBudget != 0)
+            else if (TrieStore.Scheme == INodeStorage.KeyScheme.Hash && visitingOptions.FullScanMemoryBudget != 0)
             {
                 visitor.VisitTree(default, rootHash, trieVisitContext);
                 BatchedTrieVisitor<TNodeContext> batchedTrieVisitor = new(visitor, resolver, visitingOptions);
