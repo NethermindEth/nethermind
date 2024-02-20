@@ -44,8 +44,8 @@ public class BatchedTrieVisitor<TNodeContext>
     // Not using shared pool so GC can reclaim them later.
     private readonly ArrayPool<Job> _jobArrayPool = ArrayPool<Job>.Create();
 
-    private readonly ArrayPool<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> _trieNodePool =
-        ArrayPool<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)>.Create();
+    private readonly ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)> _trieNodePool =
+        ArrayPool<(TrieNode, TNodeContext, SmallTrieVisitContext)>.Create();
 
     private readonly int _maxBatchSize;
     private readonly long _partitionCount;
@@ -68,6 +68,8 @@ public class BatchedTrieVisitor<TNodeContext>
     {
         _visitor = visitor;
         _resolver = resolver;
+        if (resolver.Scheme != INodeStorage.KeyScheme.Hash)
+            throw new InvalidOperationException("BatchedTrieVisitor can only be used with Hash database.");
 
         _maxBatchSize = 128;
 
@@ -129,12 +131,12 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
     public void Start(
-        Hash256 root,
+        ValueHash256 root,
         TrieVisitContext trieVisitContext)
     {
         // Start with the root
         SmallTrieVisitContext rootContext = new(trieVisitContext);
-        _partitions[CalculatePartitionIdx(root)].Push(new Job(TreePath.Empty, root, default, rootContext));
+        _partitions[CalculatePartitionIdx(root)].Push(new Job(root, default, rootContext));
         _activeJobs = 1;
         _queuedJobs = 1;
 
@@ -153,7 +155,7 @@ public class BatchedTrieVisitor<TNodeContext>
         }
     }
 
-    ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)>? GetNextBatch()
+    ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? GetNextBatch()
     {
         CompactStack<Job>? theStack;
         do
@@ -188,7 +190,7 @@ public class BatchedTrieVisitor<TNodeContext>
             }
         } while (true);
 
-        ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxBatchSize);
+        ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> finalBatch = new(_trieNodePool, _maxBatchSize);
 
         if (_activeJobs < _targetCurrentItems)
         {
@@ -197,13 +199,8 @@ public class BatchedTrieVisitor<TNodeContext>
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-
-                    TrieNode node = _resolver
-                        .GetStorageTrieNodeResolver(item.Context.Storage)
-                        .FindCachedOrUnknown(item.Path, item.Key);
-
-                    finalBatch.Add((item.Path, node, item.NodeContext, item.Context));
-
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(TreePath.Empty, item.Key.ToCommitment()), item.NodeContext,
+                        item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
             }
@@ -236,11 +233,8 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver
-                    .GetStorageTrieNodeResolver(job.Context.Storage)
-                    .FindCachedOrUnknown(job.Path, job.Key);
-
-                finalBatch.Add((job.Path, node, job.NodeContext, job.Context));
+                TrieNode node = _resolver.FindCachedOrUnknown(TreePath.Empty, job.Key.ToCommitment());
+                finalBatch.Add((node, job.NodeContext, job.Context));
             }
 
             // Add back what we won't process. In reverse order.
@@ -258,25 +252,26 @@ public class BatchedTrieVisitor<TNodeContext>
     }
 
 
-    void QueueNextNodes(ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
+    void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
+        TreePath emptyPath = TreePath.Empty;
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
-            (TreePath path, TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
+            (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
             if (trieNode.NodeType == NodeType.Unknown && trieNode.FullRlp.IsNotNull)
             {
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
-                using ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
-                trieNode.ResolveNode(_resolver, path);
+                using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
+                trieNode.ResolveNode(_resolver, emptyPath);
                 Interlocked.Increment(ref _activeJobs);
-                trieNode.AcceptResolvedNode(_visitor, nodeContext, _resolver, ref path, ctx, recursiveResult);
+                trieNode.AcceptResolvedNode(_visitor, nodeContext, _resolver, ctx, recursiveResult);
                 QueueNextNodes(recursiveResult);
                 continue;
             }
 
-            Hash256 keccak = trieNode.Keccak;
+            ValueHash256 keccak = trieNode.Keccak;
             int partitionIdx = CalculatePartitionIdx(keccak);
             Interlocked.Increment(ref _activeJobs);
             Interlocked.Increment(ref _queuedJobs);
@@ -284,7 +279,7 @@ public class BatchedTrieVisitor<TNodeContext>
             var theStack = _partitions[partitionIdx];
             lock (theStack)
             {
-                theStack.Push(new Job(path, keccak, nodeContext, ctx));
+                theStack.Push(new Job(keccak, nodeContext, ctx));
             }
         }
 
@@ -294,9 +289,10 @@ public class BatchedTrieVisitor<TNodeContext>
 
     private void BatchedThread()
     {
-        using ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
+        using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
         using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
-        ArrayPoolList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
+        ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
+        TreePath emptyPath = TreePath.Empty;
         while ((currentBatch = GetNextBatch()) is not null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
@@ -304,9 +300,9 @@ public class BatchedTrieVisitor<TNodeContext>
             resolveOrdering.Clear();
             for (int i = 0; i < currentBatch.Count; i++)
             {
-                (TreePath path, TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
+                (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
 
-                cur.ResolveKey(_resolver, ref path, false);
+                cur.ResolveKey(_resolver, ref emptyPath, false);
 
                 if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null)
@@ -319,7 +315,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // take about 0.1% of the time, so not very cpu intensive in this case.
             resolveOrdering
                 .AsSpan()
-                .Sort((item1, item2) => currentBatch[item1].Item2.Keccak.CompareTo(currentBatch[item2].Item2.Keccak));
+                .Sort((item1, item2) => currentBatch[item1].Item1.Keccak.CompareTo(currentBatch[item2].Item1.Keccak));
 
             ReadFlags flags = ReadFlags.None;
             if (resolveOrdering.Count > _readAheadThreshold)
@@ -332,13 +328,11 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 int idx = resolveOrdering[i];
 
-                (TreePath path, TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
+                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[idx];
                 try
                 {
                     Hash256 theKeccak = nodeToResolve.Keccak;
-                    ITrieNodeResolver resolver = _resolver;
-                    if (ctx.IsStorage) resolver = resolver.GetStorageTrieNodeResolver(ctx.Storage);
-                    nodeToResolve.ResolveNode(resolver, path, flags);
+                    nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
                     nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                 }
                 catch (TrieException)
@@ -350,7 +344,7 @@ public class BatchedTrieVisitor<TNodeContext>
             // Going in reverse to reduce memory
             for (int i = currentBatch.Count - 1; i >= 0; i--)
             {
-                (TreePath path, TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
+                (TrieNode nodeToResolve, TNodeContext nodeContext, SmallTrieVisitContext ctx) = currentBatch[i];
 
                 nextToProcesses.Clear();
                 if (nodeToResolve.FullRlp.IsNull)
@@ -360,7 +354,7 @@ public class BatchedTrieVisitor<TNodeContext>
                     return; // missing node
                 }
 
-                nodeToResolve.AcceptResolvedNode(_visitor, nodeContext, _resolver, ref path, ctx, nextToProcesses);
+                nodeToResolve.AcceptResolvedNode(_visitor, nodeContext, _resolver, ctx, nextToProcesses);
                 QueueNextNodes(nextToProcesses);
             }
 
@@ -379,14 +373,12 @@ public class BatchedTrieVisitor<TNodeContext>
     [StructLayout(LayoutKind.Sequential, Pack = 1)]
     private readonly struct Job
     {
-        public readonly TreePath Path;
-        public readonly Hash256 Key;
+        public readonly ValueHash256 Key;
         public readonly TNodeContext NodeContext;
         public readonly SmallTrieVisitContext Context;
 
-        public Job(in TreePath path, Hash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
+        public Job(ValueHash256 key, TNodeContext nodeContext, SmallTrieVisitContext context)
         {
-            Path = path;
             Key = key;
             NodeContext = nodeContext;
             Context = context;
@@ -441,4 +433,3 @@ public interface INodeContext<out TNodeContext>
     TNodeContext Add(byte nibble);
     TNodeContext AddStorage(in ValueHash256 storage);
 }
-

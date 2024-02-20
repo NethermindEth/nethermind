@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -25,21 +25,10 @@ namespace Nethermind.Trie
         /// Like `Accept`, but does not execute its children. Instead it return the next trie to visit in the list
         /// `nextToVisit`. Also, it assume the node is already resolved.
         /// </summary>
-        /// <param name="visitor"></param>
-        /// <param name="nodeResolver"></param>
-        /// <param name="trieVisitContext"></param>
-        /// <param name="nextToVisit"></param>
-        /// <exception cref="InvalidDataException"></exception>
-        /// <exception cref="TrieException"></exception>
-        internal void AcceptResolvedNode<TNodeContext>(
-            ITreeVisitor<TNodeContext> visitor,
-            in TNodeContext nodeContext,
-            ITrieNodeResolver nodeResolver,
-            ref TreePath path,
-            SmallTrieVisitContext trieVisitContext,
-            IList<(TreePath, TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit
-        ) where TNodeContext : struct, INodeContext<TNodeContext>
+        internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
+            where TNodeContext : struct, INodeContext<TNodeContext>
         {
+            TreePath emptyPath = TreePath.Empty;
             switch (NodeType)
             {
                 case NodeType.Branch:
@@ -49,26 +38,23 @@ namespace Nethermind.Trie
 
                         for (int i = 0; i < BranchesCount; i++)
                         {
-                            TrieNode child = GetChild(nodeResolver, ref path, i);
+                            TrieNode child = GetChild(nodeResolver, ref emptyPath, i);
                             if (child is not null)
                             {
-                                int previousPathLength = AppendChildPath(ref path, i);
-                                child.ResolveKey(nodeResolver, ref path, false);
+                                child.ResolveKey(nodeResolver, ref emptyPath, false);
                                 TNodeContext childContext = nodeContext.Add((byte)i);
+
                                 if (visitor.ShouldVisit(childContext, child.Keccak!))
                                 {
                                     SmallTrieVisitContext childCtx = trieVisitContext; // Copy
                                     childCtx.BranchChildIndex = (byte?)i;
-
-                                    nextToVisit.Add((path, child, childContext, childCtx));
+                                    nextToVisit.Add((child, childContext, childCtx));
                                 }
-                                path.TruncateMut(previousPathLength);
 
                                 if (child.IsPersisted)
                                 {
                                     UnresolveChild(i);
                                 }
-
                             }
                         }
 
@@ -77,23 +63,22 @@ namespace Nethermind.Trie
                 case NodeType.Extension:
                     {
                         visitor.VisitExtension(nodeContext, this, trieVisitContext.ToVisitContext());
-                        TrieNode child = GetChild(nodeResolver, ref path, 0);
+                        TrieNode child = GetChild(nodeResolver, ref emptyPath, 0);
                         if (child is null)
                         {
                             throw new InvalidDataException($"Child of an extension {Key} should not be null.");
                         }
 
-                        int previousPathLength = AppendChildPath(ref path, 0);
-                        child.ResolveKey(nodeResolver, ref path, false);
+                        child.ResolveKey(nodeResolver, ref emptyPath, false);
                         TNodeContext childContext = nodeContext.Add(Key!);
                         if (visitor.ShouldVisit(childContext, child.Keccak!))
                         {
                             trieVisitContext.Level++;
                             trieVisitContext.BranchChildIndex = null;
 
-                            nextToVisit.Add((path, child, childContext, trieVisitContext));
+
+                            nextToVisit.Add((child, childContext, trieVisitContext));
                         }
-                        path.TruncateMut(previousPathLength);
 
                         break;
                     }
@@ -117,20 +102,13 @@ namespace Nethermind.Trie
 
                             if (account.HasStorage && visitor.ShouldVisit(childContext, account.StorageRoot))
                             {
+                                trieVisitContext.Storage = account.StorageRoot;
                                 trieVisitContext.Level++;
                                 trieVisitContext.BranchChildIndex = null;
 
-                                if (TryResolveStorageRoot(nodeResolver, ref path, out TrieNode? chStorageRoot))
+                                if (TryResolveStorageRoot(nodeResolver, ref emptyPath, out TrieNode? storageRoot))
                                 {
-                                    Hash256 storageAddr;
-                                    using (path.ScopedAppend(Key))
-                                    {
-                                        storageAddr = path.Path.ToCommitment();
-                                    }
-                                    trieVisitContext.Storage = storageAddr;
-                                    TNodeContext storageContext = childContext.AddStorage(storageAddr);
-                                    nextToVisit.Add((TreePath.Empty, chStorageRoot!, storageContext, trieVisitContext));
-                                    trieVisitContext.Storage = null;
+                                    nextToVisit.Add((storageRoot!, childContext, trieVisitContext));
                                 }
                                 else
                                 {
