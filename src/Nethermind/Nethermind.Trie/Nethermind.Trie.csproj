@@ -11,4 +11,11 @@
     <ProjectReference Include="..\Nethermind.Serialization.Rlp\Nethermind.Serialization.Rlp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="CommonHashPrefixes.dat" />
+    <EmbeddedResource Include="CommonHashPrefixes.dat">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </EmbeddedResource>
+  </ItemGroup>
+
 </Project>

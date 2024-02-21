@@ -149,4 +149,9 @@ public class NodeStorageTests
         nodeStorage.Get(address, path, Keccak.Zero, ReadFlags.HintReadAhead);
         testDb.KeyWasReadWithFlags(NodeStorage.GetHalfPathNodeStoragePath(address, path, Keccak.Zero), expectedReadFlags);
     }
+
+    public void Test_WhenKeccakIsCommon_UseHash()
+    {
+        // TODO: I've lost the list of the keccak... need to scrape it again.
+    }
 }

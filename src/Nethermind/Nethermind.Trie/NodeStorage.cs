@@ -2,7 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
+using System.Reflection;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -16,6 +21,24 @@ public class NodeStorage : INodeStorage
     private const int StoragePathLength = 74;
     private const int TopStateBoundary = 5;
 
+    private static FrozenSet<ulong> CommonHashes;
+
+    static NodeStorage()
+    {
+        var commonHashPrefixes = new List<ulong>();
+
+        using (Stream stream = typeof(NodeStorage).Assembly.GetManifestResourceStream("Nethermind.Trie.CommonHashPrefixes.dat"))
+        {
+            Span<byte> buffer = stackalloc byte[8];
+            while (stream.Read(buffer) == 8)
+            {
+                commonHashPrefixes.Add(BinaryPrimitives.ReadUInt64BigEndian(buffer));
+            }
+        }
+
+        CommonHashes = commonHashPrefixes.ToFrozenSet();
+    }
+
     public INodeStorage.KeyScheme Scheme { get; set; }
     public bool RequirePath { get; }
 
@@ -26,9 +49,17 @@ public class NodeStorage : INodeStorage
         RequirePath = requirePath;
     }
 
+    private static bool ShouldUseHash(in ValueHash256 keccak)
+    {
+        ReadOnlySpan<byte> keccakBytes = keccak.Bytes;
+        if (keccakBytes[0] < 4) return false; // Just so that it does not get saved into halfpath space.
+
+        return CommonHashes.Contains(BinaryPrimitives.ReadUInt64BigEndian(keccakBytes));
+    }
+
     public Span<byte> GetExpectedPath(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        if (Scheme == INodeStorage.KeyScheme.HalfPath && !ShouldUseHash(keccak))
         {
             return GetHalfPathNodeStoragePathSpan(pathSpan, address, path, keccak);
         }
@@ -123,7 +154,10 @@ public class NodeStorage : INodeStorage
             return EmptyTreeHashBytes;
         }
 
-        if (Scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
+        INodeStorage.KeyScheme scheme = Scheme;
+        if (scheme == INodeStorage.KeyScheme.HalfPath && ShouldUseHash(keccak)) scheme = INodeStorage.KeyScheme.Hash;
+
+        if (scheme == INodeStorage.KeyScheme.HalfPath && (readFlags & ReadFlags.HintReadAhead) != 0)
         {
             if (address == null && path.Length > TopStateBoundary)
             {
@@ -136,7 +170,7 @@ public class NodeStorage : INodeStorage
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        if (scheme == INodeStorage.KeyScheme.HalfPath)
         {
             return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
                    ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
@@ -156,7 +190,7 @@ public class NodeStorage : INodeStorage
         }
 
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
-        if (Scheme == INodeStorage.KeyScheme.HalfPath)
+        if (Scheme == INodeStorage.KeyScheme.HalfPath && !ShouldUseHash(keccak))
         {
             return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)) != null
                    || _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak)) != null;
