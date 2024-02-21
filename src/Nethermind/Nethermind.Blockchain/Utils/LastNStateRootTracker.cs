@@ -26,7 +26,7 @@ public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
         _blockTree = blockTree;
         _lastN = lastN;
 
-        _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
+        _blockTree.BlockAddedToMain += BlockTreeOnNewHeadBlock;
         if (_blockTree.Head != null) ResetAvailableStateRoots(_blockTree.Head.Header, true);
     }
 
@@ -68,9 +68,9 @@ public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
         newStateRootSet.TryAdd(newHead.StateRoot, 1);
         stateRoots.Add(newHead.StateRoot);
 
-        while (parent != null && newStateRootSet.Count < _lastN)
+        while (parent != null && stateRoots.Count < _lastN)
         {
-            _availableStateRoots.AddOrUpdate(
+            newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
                 (_) => 1,
                 (_, oldValue) => oldValue+1);
@@ -91,6 +91,6 @@ public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
 
     public void Dispose()
     {
-        _blockTree.NewHeadBlock -= BlockTreeOnNewHeadBlock;
+        _blockTree.BlockAddedToMain -= BlockTreeOnNewHeadBlock;
     }
 }
