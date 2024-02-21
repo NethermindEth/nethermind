@@ -19,15 +19,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -39,6 +38,7 @@ public class SnapServer : ISnapServer
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
+    private readonly ILastNStateRootTracker _stateRootTracker;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -47,45 +47,24 @@ public class SnapServer : ISnapServer
     // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
-    // Some cache to make sure we don't accidentally serve blocks with missing trie node.
-    // We don't know for sure if a tree was pruned with just the root hash.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _rootWithMissingNode = new LruCache<ValueHash256, DateTimeOffset>(256, "");
-
     private readonly AccountDecoder _decoder = new AccountDecoder();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store, _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        _stateRootTracker = stateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
     }
 
-    private bool IsRootMissing(in ValueHash256 rootHash)
+    private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        // TODO: Before checking missing node cache, actually check StateReader.
-        if (_rootWithMissingNode.TryGet(rootHash, out DateTimeOffset missingTime))
-        {
-            if (DateTimeOffset.Now - missingTime < TimeSpan.FromSeconds(10))
-            {
-                return true;
-            }
-
-            // So, problem is, it could be that the missing root was just not processed, so we can't just not retry
-            // forever. `DateTimeOffset.Now` is probably heavy though.
-            _rootWithMissingNode.Delete(rootHash);
-        }
-
-        return false;
-    }
-
-    private void TrackTrieNodeException(in ValueHash256 rootHash)
-    {
-        _rootWithMissingNode.Set(rootHash, DateTimeOffset.Now);
+        return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
     }
 
     public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
@@ -114,7 +93,6 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
@@ -139,7 +117,6 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
@@ -299,7 +276,6 @@ public class SnapServer : ISnapServer
         }
         catch (MissingTrieNodeException)
         {
-            TrackTrieNodeException(rootHash);
             return null;
         }
     }

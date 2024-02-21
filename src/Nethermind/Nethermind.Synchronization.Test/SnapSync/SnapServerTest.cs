@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,8 +12,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -33,7 +34,7 @@ public class SnapServerTest
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
@@ -156,7 +157,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -184,7 +185,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store, 10000);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -244,7 +245,7 @@ public class SnapServerTest
         }
         stateTree.Commit(1);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
 
         PathWithAccount[] accounts;
         // size of one PathWithAccount ranges from 39 -> 72
@@ -305,5 +306,12 @@ public class SnapServerTest
         slots.Length.Should().Be(8);
         slots[^1].Length.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
+    }
+
+    private ILastNStateRootTracker CreateAlwaysAvailableStateRootTracker()
+    {
+        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
+        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+        return tracker;
     }
 }
