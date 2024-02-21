@@ -60,7 +60,7 @@ public class SimulateBlockTracer : BlockTracer
 
         result.Calls.ForEach(callResult =>
         {
-            if (callResult.Type == (short)ResultType.Success)
+            if (callResult.Type == (ulong)ResultType.Success)
             {
                 callResult.Logs?.ForEach(log =>
                 {

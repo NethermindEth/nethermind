@@ -7,15 +7,15 @@ namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulateCallResult
 {
-    public short Type =>
+    public ulong Type =>
         Status switch
         {
-            StatusCode.Success => (short)ResultType.Success,
-            StatusCode.Failure when ReturnData is not null => (short)ResultType.Failure,
-            _ => (short)ResultType.Invalid,
+            StatusCode.Success => (ulong)ResultType.Success,
+            StatusCode.Failure when ReturnData is not null => (ulong)ResultType.Failure,
+            _ => (ulong)ResultType.Invalid,
         };
 
-    public short Status { get; set; }
+    public ulong Status { get; set; }
     public byte[]? ReturnData { get; set; }
     public ulong? GasUsed { get; set; }
     public Error? Error { get; set; }
