@@ -11,12 +11,12 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain;
 
-public class NonDistructiveBlockTreeOverlay : IBlockTree
+public class BlockTreeOverlay : IBlockTree
 {
     private readonly IBlockTree _baseTree;
     private readonly IBlockTree _overlayTree;
 
-    public NonDistructiveBlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTree)
+    public BlockTreeOverlay(IReadOnlyBlockTree baseTree, IBlockTree overlayTree)
     {
         _baseTree = baseTree ?? throw new ArgumentNullException(nameof(baseTree));
         _overlayTree = overlayTree ?? throw new ArgumentNullException(nameof(overlayTree));
@@ -26,12 +26,9 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     public ulong NetworkId => _baseTree.NetworkId;
     public ulong ChainId => _baseTree.ChainId;
     public BlockHeader? Genesis => _baseTree.Genesis;
-
     public BlockHeader? BestSuggestedHeader => _overlayTree.BestSuggestedHeader ?? _baseTree.BestSuggestedHeader;
     public Block? BestSuggestedBody => _overlayTree.BestSuggestedBody ?? _baseTree.BestSuggestedBody;
-
     public BlockHeader? BestSuggestedBeaconHeader => _overlayTree.BestSuggestedBeaconHeader ?? _baseTree.BestSuggestedBeaconHeader;
-
     public BlockHeader? LowestInsertedHeader => _overlayTree.LowestInsertedHeader ?? _baseTree.LowestInsertedHeader;
 
     public long? LowestInsertedBodyNumber
@@ -120,7 +117,6 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockBlockHash) =>
         _overlayTree.ForkChoiceUpdated(finalizedBlockHash, safeBlockBlockHash);
 
-    // Event forwarding
     public event EventHandler<BlockEventArgs>? NewBestSuggestedBlock
     {
         add
@@ -249,24 +245,9 @@ public class NonDistructiveBlockTreeOverlay : IBlockTree
     public bool IsMainChain(BlockHeader blockHeader) =>
         _baseTree.IsMainChain(blockHeader) || _overlayTree.IsMainChain(blockHeader);
 
-    public bool IsMainChain(Hash256 blockHash)
-    {
-        try
-        {
-            if (_baseTree.IsMainChain(blockHash)) return true;
-        }
-        catch
-        {
-            // ignored as we have _overlayTree to look into
-        }
+    public bool IsMainChain(Hash256 blockHash, bool throwOnMissingHash = true) =>
+        _baseTree.IsMainChain(blockHash, false) || _overlayTree.IsMainChain(blockHash, throwOnMissingHash);
 
-        return _overlayTree.IsMainChain(blockHash);
-    }
-
-    public BlockHeader FindBestSuggestedHeader()
-    {
-        BlockHeader? overlayHeader = _overlayTree.FindBestSuggestedHeader();
-        return overlayHeader ?? _baseTree.FindBestSuggestedHeader();
-    }
-
+    public BlockHeader FindBestSuggestedHeader() =>
+        _overlayTree.FindBestSuggestedHeader() ?? _baseTree.FindBestSuggestedHeader();
 }

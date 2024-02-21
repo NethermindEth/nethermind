@@ -100,7 +100,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         SpecProvider = specProvider;
         _doValidation = doValidation;
 
-        BlockTree = new NonDistructiveBlockTreeOverlay(ReadOnlyBlockTree, blockTree);
+        BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockHashProvider = new SimulateBlockHashProvider(new BlockHashProvider(BlockTree, logManager), BlockTree);
 
         //var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
