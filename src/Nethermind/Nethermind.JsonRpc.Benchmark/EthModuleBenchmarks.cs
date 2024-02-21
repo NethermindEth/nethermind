@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Benchmark
     public class EthModuleBenchmarks
     {
         private IVirtualMachine _virtualMachine;
-        private IBlockhashProvider _blockHashProvider;
+        private IBlockhashProvider _blockhashProvider;
         private EthRpcModule _ethModule;
 
         [GlobalSetup]
@@ -80,9 +80,9 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullBloomStorage.Instance,
                 new SyncConfig(),
                 LimboLogs.Instance);
-            _blockHashProvider = new BlockHashProvider(blockTree, LimboLogs.Instance);
+            _blockhashProvider = new BlockHashProvider(blockTree, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
-            _virtualMachine = new VirtualMachine(_blockHashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
+            _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, codeInfoRepository, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
             blockTree.SuggestBlock(genesisBlock);

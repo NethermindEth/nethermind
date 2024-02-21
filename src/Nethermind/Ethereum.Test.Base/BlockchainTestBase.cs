@@ -142,14 +142,14 @@ namespace Ethereum.Test.Base
             IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
-            IBlockhashProvider blockHashProvider = new BlockhashProvider(blockTree, _logManager);
+            IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, _logManager);
             ITxValidator txValidator = new TxValidator(TestBlockchainIds.ChainId);
             IHeaderValidator headerValidator = new HeaderValidator(blockTree, Sealer, specProvider, _logManager);
             IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
             IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
-                blockHashProvider,
+                blockhashProvider,
                 specProvider,
                 codeInfoRepository,
                 _logManager);
