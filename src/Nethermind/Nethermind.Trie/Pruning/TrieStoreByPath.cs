@@ -35,7 +35,6 @@ namespace Nethermind.Trie.Pruning
         private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
-        private SpanConcurrentDictionary<byte, byte[]> _readCache;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -50,7 +49,6 @@ namespace Nethermind.Trie.Pruning
             _pathStateDb = stateDb as IByPathStateDb;
             _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);
-            _readCache = new SpanConcurrentDictionary<byte, byte[]>(Bytes.SpanNibbleEqualityComparer);
         }
 
         public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
@@ -221,16 +219,9 @@ namespace Nethermind.Trie.Pruning
             byte[] keyPath = Nibbles.NibblesToByteStorage(path);
             byte[]? rlp = keyValueStore.Get(keyPath);
             if (rlp is null || rlp[0] != PathMarker)
-            {
-                if (rlp is not null && _useCommittedCache)
-                    _readCache.TryAdd(path, rlp);
                 return rlp;
-            }
 
-            rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
-            if (rlp is not null && _useCommittedCache)
-                _readCache.TryAdd(path, rlp);
-            return rlp;
+            return keyValueStore.Get(rlp.AsSpan()[1..]);
         }
 
         internal byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
@@ -304,21 +295,11 @@ namespace Nethermind.Trie.Pruning
             NodeData? nodeData = _committedNodes.GetNodeData(targetPath, keccak);
             if (nodeData is null)
             {
-                if (_readCache.TryGetValue(targetPath, out byte[] rawRlp))
+                TrieNode unknownNode = new(NodeType.Unknown, path: nodePath, keccak: keccak)
                 {
-                    Hash256 checkKeccak = Keccak.Compute(rawRlp);
-                    if (keccak == checkKeccak)
-                        nodeData = new NodeData(rawRlp, keccak);
-                }
-
-                if (nodeData is null)
-                {
-                    TrieNode unknownNode = new(NodeType.Unknown, path: nodePath, keccak: keccak)
-                    {
-                        StoreNibblePathPrefix = storagePrefix.ToArray()
-                    };
-                    return unknownNode;
-                }
+                    StoreNibblePathPrefix = storagePrefix.ToArray()
+                };
+                return unknownNode;
             }
 
             if (nodeData.RLP is null)
@@ -340,13 +321,7 @@ namespace Nethermind.Trie.Pruning
             NodeData? nodeData = _committedNodes.GetNodeDataAtRoot(rootHash, targetPath);
 
             if (nodeData is null)
-            {
-                if (_readCache.TryGetValue(targetPath, out byte[] rawRlp))
-                    nodeData = new NodeData(rawRlp, null);
-
-                if (nodeData is null)
-                    return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
-            }
+                return new TrieNode(NodeType.Unknown, nodePath, storagePrefix);
 
             if (nodeData.RLP is null)
                 return null;
@@ -909,8 +884,6 @@ namespace Nethermind.Trie.Pruning
             if (_columnsBatch is not null)
             {
                 _columnsBatch.Dispose();
-                //clear the read cache as soon as data is flushed
-                _readCache.Clear();
                 foreach (StateColumns column in Enum.GetValues(typeof(StateColumns)))
                     _currentWriteBatches[column] = null;
                 _columnsBatch = null;
