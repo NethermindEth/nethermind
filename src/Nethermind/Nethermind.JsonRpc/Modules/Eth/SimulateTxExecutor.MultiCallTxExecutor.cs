@@ -3,18 +3,15 @@
 
 using System;
 using System.Collections.Generic;
-using System.Drawing.Drawing2D;
 using System.Linq;
 using System.Threading;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Facade;
 using Nethermind.Facade.Simulate;
-using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
-using static Microsoft.FSharp.Core.ByRefKinds;
+using Newtonsoft.Json.Linq;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -79,6 +76,10 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
+        if (call.BlockStateCalls!.Length > _rpcConfig.MaxSimulateBlocksCap)
+        {
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidRequest);
+        }
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
 
         if (searchResult.IsError || searchResult.Object == null)
@@ -103,12 +104,34 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Too many blocks provided, node is configured to simulate up to {blocksLimit} while {call.BlockStateCalls?.Length} were given", ErrorCodes.InvalidParams);
         }
 
-        //todo resolve numbers and timestamps
-        //bool isInOrder = call.BlockStateCalls?
-        //    .Zip(call.BlockStateCalls?.Skip(1), (current, next) => current.BlockOverrides?.Number < next.MyProperty)
-        //    .All(x => x);
 
+        if (call.BlockStateCalls != null)
+        {
+            long lastBlockNumber = -1;
+            foreach (var blockToSimulate in call.BlockStateCalls!)
+            {
+                var givenNumber = blockToSimulate.BlockOverrides?.Number;
+                if (givenNumber == null)
+                {
+                    givenNumber = lastBlockNumber == -1 ? (ulong)header.Number : (ulong)lastBlockNumber + 1;
+                }
 
+                if (givenNumber > long.MaxValue)
+                {
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block number too big {givenNumber}!", ErrorCodes.InvalidParams);
+                }
+
+                var given = (long)givenNumber;
+                if (given > lastBlockNumber)
+                {
+                    lastBlockNumber = given;
+                }
+                else
+                {
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block number out of order {givenNumber}!", ErrorCodes.InvalidParams);
+                }
+            }
+        }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout * 100);
         SimulatePayload<TransactionWithSourceDetails>? toProcess = Prepare(call);

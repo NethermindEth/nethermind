@@ -115,15 +115,7 @@ public class SimulateBridgeHelper(
                 UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
 
                 using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(env.StateProvider.StateRoot!);
-                GasEstimator gasEstimator = new(readOnlyTransactionProcessor, env.StateProvider, specProvider, blocksConfig);
-
-                long EstimateGas(Transaction transaction)
-                {
-                    EstimateGasTracer estimateGasTracer = new();
-                    return gasEstimator.Estimate(transaction, callHeader, estimateGasTracer);
-                }
-
-
+                
                 Transaction SetTxHashAndMissingDefaults(TransactionWithSourceDetails transactionDetails, IReleaseSpec? spec)
                 {
                     Transaction? transaction = transactionDetails.Transaction;
@@ -145,16 +137,6 @@ public class SimulateBridgeHelper(
                         }
 
                         transaction.Nonce = cachedNonce;
-                    }
-
-                    if (!transactionDetails.HadGasLimitInRequest)
-                    {
-                        long limit = EstimateGas(transaction);
-                        transaction.GasLimit = limit;
-                        transaction.GasLimit = (long)callHeader.BaseFeePerGas
-                                               + Math.Max(IntrinsicGasCalculator.Calculate(transaction, spec) + 1,
-                                                   transaction.GasLimit);
-
                     }
 
                     if (payload.Validation)
@@ -179,6 +161,17 @@ public class SimulateBridgeHelper(
                     return transaction;
                 }
                 IReleaseSpec? spec = specProvider.GetSpec(parent);
+
+                var specifiedGasTxs = callInputBlock.Calls.Where(details => details.HadGasLimitInRequest).ToList();
+                var notSpecifiedGasTxs = callInputBlock.Calls.Where(details => !details.HadGasLimitInRequest).ToList();
+                var gasSpecified =
+                    specifiedGasTxs.Sum(details => details.Transaction.GasLimit);
+                var gasPerTx = callHeader.GasLimit - gasSpecified / (callInputBlock.Calls.Length - specifiedGasTxs.Count);
+                foreach (TransactionWithSourceDetails? call in notSpecifiedGasTxs)
+                {
+                    call.Transaction.GasLimit = gasPerTx;
+                }
+
                 Transaction[] transactions = callInputBlock.Calls?.Select(t => SetTxHashAndMissingDefaults(t, spec)).ToArray() ?? Array.Empty<Transaction>();
 
 

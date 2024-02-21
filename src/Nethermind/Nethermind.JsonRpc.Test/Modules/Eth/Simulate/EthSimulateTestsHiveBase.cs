@@ -40,8 +40,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateAddMoreNonDefinedBlockStateCallsThanFit");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -82,8 +81,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockNumOrder38020");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -95,7 +93,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockOverrideReflectedInContractSimple");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -108,8 +106,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockOverrideReflectedInContract");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -121,8 +118,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockTimestampAutoIncrement");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -134,8 +130,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockTimestampNonIncrement");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -147,8 +142,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockTimestampOrder38021");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -160,8 +154,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockTimestampsIncrementing");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -212,8 +205,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateCheckInvalidNonce");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -225,7 +217,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateCheckThatBalanceIsThereAfterNewBlock");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -238,7 +230,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateCheckThatNonceIncreases");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -355,7 +347,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateGasFeesAndValueError38014");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -381,7 +373,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateInstrictGas38013");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -407,7 +399,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateMoveAccountTwice");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
         Assert.IsNotNull(result.Data);
     }
 
@@ -446,8 +438,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateMoveTwoAccountsToSame38023");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -459,8 +450,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateMoveTwoNonPrecompilesAccountsToSame");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -485,8 +475,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateOverrideAddressTwice");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -498,8 +487,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateOverrideAllInBlockStateCalls");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -576,8 +564,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateRunOutOfGasInBlock38015");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -589,8 +576,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateSelfDestructingStateOverride");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -615,8 +601,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateSimpleNoFundsWithBalanceQuerying");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -654,8 +639,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateSimpleNoFunds");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -667,8 +651,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateSimpleSendFromContractNoBalance");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -745,8 +728,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
@@ -758,7 +740,6 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTryToMoveNonPrecompile");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 }

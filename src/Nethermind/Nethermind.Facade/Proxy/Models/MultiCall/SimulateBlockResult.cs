@@ -19,7 +19,7 @@ public class SimulateBlockResult
     public ulong GasUsed { get; set; }
     public Address FeeRecipient { get; set; } = Address.Zero;
     public UInt256 BaseFeePerGas { get; set; }
-    public IEnumerable<SimulateCallResult> Calls { get; set; } = Enumerable.Empty<SimulateCallResult>();
+    public List<SimulateCallResult> Calls { get; set; } = new();
     public byte[]? PrevRandao { get; set; }
 
 }

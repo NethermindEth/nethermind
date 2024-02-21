@@ -47,7 +47,7 @@ public class SimulateBlockTracer : BlockTracer
     {
         SimulateBlockResult? result = new()
         {
-            Calls = _txTracers.Select(t => t.TraceResult),
+            Calls = _txTracers.Select(t => t.TraceResult).ToList(),
             Number = (ulong)_currentBlock.Number,
             Hash = _currentBlock.Hash!,
             GasLimit = (ulong)_currentBlock.GasLimit,
