@@ -82,7 +82,7 @@ public class RangeQueryVisitorTests
 
         using RangeQueryVisitor visitor = new(startHash, limitHash, false);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
-        visitor.GetNodesAndSize().Item1.Count.Should().Be(2);
+        visitor.GetNodesAndSize().Item1.Count.Should().Be(3);
     }
 
     [Test]

@@ -105,7 +105,7 @@ public class SnapServer : ISnapServer
             switch (requestedPath.Length)
             {
                 case 0:
-                    return response.ToArray();
+                    throw new InvalidOperationException("Requested group must have at least one request");
                 case 1:
                     try
                     {
@@ -145,6 +145,8 @@ public class SnapServer : ISnapServer
                     break;
             }
         }
+
+        if (response.Count == 0) return Array.Empty<byte[]>();
         return response.ToArray();
     }
 
@@ -188,8 +190,7 @@ public class SnapServer : ISnapServer
     public (PathWithAccount[], byte[][]) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
-
-        byteLimit = Math.Min(byteLimit, HardResponseByteLimit);
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
             limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, null, null, cancellationToken);
@@ -208,8 +209,8 @@ public class SnapServer : ISnapServer
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(in ValueHash256 rootHash, PathWithAccount[] accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        byteLimit = Math.Min(byteLimit, HardResponseByteLimit);
         long responseSize = 0;
         StateTree tree = new(_storeWithReadFlag, _logManager);
 
