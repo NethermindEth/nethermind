@@ -1,0 +1,22 @@
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Nethermind.Blockchain;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Evm;
+using Nethermind.Logging;
+
+namespace Nethermind.Facade.Simulate;
+
+public sealed class SimulateBlockHashProvider(IBlockHashProvider blockHashProvider, IBlockTree blockTree)
+    : IBlockHashProvider
+{
+    public Hash256? GetBlockHash(BlockHeader currentBlock, in long number)
+    {
+        var bestKnown = blockTree.BestKnownNumber;
+        return bestKnown < number && blockTree.BestSuggestedHeader is not null
+            ? blockHashProvider.GetBlockHash(blockTree.BestSuggestedHeader!, in bestKnown)
+            : blockHashProvider.GetBlockHash(currentBlock, in number);
+    }
+}

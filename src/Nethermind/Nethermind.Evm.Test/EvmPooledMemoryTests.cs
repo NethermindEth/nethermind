@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
-                    Nethermind.Evm.Test.TestBlockhashProvider.Instance,
+                    Nethermind.Evm.Test.TestBlockHashProvider.Instance,
                     specProvider,
                     codeInfoRepository,
                     LimboLogs.Instance);

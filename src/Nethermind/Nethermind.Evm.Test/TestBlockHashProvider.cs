@@ -6,15 +6,15 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Test
 {
-    public class TestBlockhashProvider : IBlockhashProvider
+    public class TestBlockHashProvider : IBlockHashProvider
     {
-        public static TestBlockhashProvider Instance = new();
+        public static TestBlockHashProvider Instance = new();
 
-        private TestBlockhashProvider()
+        private TestBlockHashProvider()
         {
         }
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockHash(BlockHeader currentBlock, in long number)
         {
             return Keccak.Compute(number.ToString());
         }

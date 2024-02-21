@@ -36,7 +36,7 @@ internal class TransactionProcessorEip4844Tests
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(TestBlockHashProvider.Instance, _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }

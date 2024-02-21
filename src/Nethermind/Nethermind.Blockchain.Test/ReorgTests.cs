@@ -56,10 +56,10 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+        BlockHashProvider blockHashProvider = new(_blockTree, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
-            blockhashProvider,
+            blockHashProvider,
             specProvider,
             codeInfoRepository,
             LimboLogs.Instance);

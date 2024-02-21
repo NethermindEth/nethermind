@@ -42,7 +42,7 @@ namespace Nethermind.Consensus.Processing
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             CodeInfoRepository = new CodeInfoRepository();
-            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+            Machine = new VirtualMachine(BlockHashProvider, specProvider, CodeInfoRepository, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);
         }
 
