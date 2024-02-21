@@ -8,6 +8,6 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Hash256? GetBlockHash(BlockHeader currentBlock, in long number);
+        Hash256? GetBlockhash(BlockHeader currentBlock, in long number);
     }
 }

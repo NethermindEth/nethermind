@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-        public Hash256? GetBlockHash(BlockHeader currentBlock, in long number)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
         {
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
