@@ -6,11 +6,13 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Benchmark
 {
-    public class TestBlockhashProvider : IBlockhashProvider
+    public class TestBlockhashProvider : IBlockHashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockHash(BlockHeader currentBlock, in long number)
         {
             return Keccak.Compute(number.ToString());
         }
+
+
     }
 }

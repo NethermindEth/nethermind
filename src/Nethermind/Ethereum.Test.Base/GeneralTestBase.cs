@@ -66,10 +66,10 @@ namespace Ethereum.Test.Base
 
             TrieStore trieStore = new(stateDb, _logManager);
             WorldState stateProvider = new(trieStore, codeDb, _logManager);
-            IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+            IBlockHashProvider blockHashProvider = new TestBlockHashProvider();
             CodeInfoRepository codeInfoRepository = new();
             IVirtualMachine virtualMachine = new VirtualMachine(
-                blockhashProvider,
+                blockHashProvider,
                 specProvider,
                 codeInfoRepository,
                 _logManager);
