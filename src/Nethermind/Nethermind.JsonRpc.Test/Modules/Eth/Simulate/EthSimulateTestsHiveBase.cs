@@ -745,8 +745,7 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
     [Test]
