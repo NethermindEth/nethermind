@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Utils;
 
 // TODO: Move responsibility to IWorldStateManager? Could be, but if IWorldStateManager store more than 128 blocks
 // of state, that would be out of spec for snap and it would fail hive test.
-public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
+public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 {
     private IBlockTree _blockTree;
     private readonly int _lastN = 0;
@@ -48,14 +48,14 @@ public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
             _availableStateRoots.AddOrUpdate(
                 newHead.StateRoot,
                 (_) => 1,
-                (_, oldValue) => oldValue+1);
+                (_, oldValue) => oldValue + 1);
             while (_stateRootQueue.Count >= _lastN && _stateRootQueue.TryDequeue(out Hash256 oldStateRoot))
             {
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
                     (_) => 0,
                     (_,
-                        oldValue) => oldValue-1);
+                        oldValue) => oldValue - 1);
                 if (newNum == 0) _availableStateRoots.Remove(oldStateRoot, out _);
             }
             _stateRootQueue.Enqueue(newHead.StateRoot);
@@ -73,7 +73,7 @@ public class LastNStateRootTracker: ILastNStateRootTracker, IDisposable
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
                 (_) => 1,
-                (_, oldValue) => oldValue+1);
+                (_, oldValue) => oldValue + 1);
             stateRoots.Add(parent.StateRoot);
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }
