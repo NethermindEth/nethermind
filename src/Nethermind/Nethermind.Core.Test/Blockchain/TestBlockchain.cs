@@ -119,21 +119,20 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool usePrunningAndPersistenceStrategies = false)
+    protected virtual async Task<TestBlockchain> Build(
+        ISpecProvider? specProvider = null,
+        UInt256? initialValues = null,
+        bool addBlockOnStart = true,
+        bool pruning = false)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        if (!usePrunningAndPersistenceStrategies)
-        {
-            TrieStore = new TrieStore(StateDb, LogManager);
-        }
-        else
-        {
-            TrieStore = new TrieStore(StateDb, new MemoryLimit(10.KB()), new ConstantInterval(10), LogManager);
-        }
+        TrieStore = pruning
+            ? new TrieStore(StateDb, new MemoryLimit(10.KB()), new ConstantInterval(10), LogManager)
+            : new TrieStore(StateDb, LogManager);
 
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 

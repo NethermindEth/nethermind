@@ -251,22 +251,17 @@ namespace Nethermind.AccountAbstraction.Test
             }
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
-                UInt256? initialValues = null, bool addBlockOnStart = true, bool usePrunningAndPersistenceStrategies = false)
+                UInt256? initialValues = null, bool addBlockOnStart = true, bool pruning = false)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString =
-                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString)
+                foreach (string addressString in _accountAbstractionConfig.GetEntryPointAddresses())
                 {
-                    bool parsed = Address.TryParse(
-                        _addressString,
-                        out Address? entryPointContractAddress);
+                    Address.TryParse(addressString, out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
-                AccountAbstractionRpcModule =
-                    new AccountAbstractionRpcModule(UserOperationPool, entryPointContractAddresses.ToArray());
+                AccountAbstractionRpcModule = new AccountAbstractionRpcModule(UserOperationPool, entryPointContractAddresses.ToArray());
 
                 return chain;
             }
