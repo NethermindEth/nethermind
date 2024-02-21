@@ -831,7 +831,7 @@ namespace Nethermind.Trie.Pruning
                     PruneCache();
                     KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
 
-                    ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
+                    NonBlocking.ConcurrentDictionary<ValueHash256, bool> wasPersisted = new();
                     void PersistNode(TrieNode n)
                     {
                         Hash256? hash = n.Keccak;
