@@ -13,8 +13,8 @@ using Nethermind.Logging;
 
 namespace Nethermind.Blockchain
 {
-    public sealed class BlockHashProvider(IBlockTree blockTree, ILogManager? logManager)
-        : IBlockHashProvider
+    public sealed class BlockhashProvider(IBlockTree blockTree, ILogManager? logManager)
+        : IBlockhashProvider
     {
         private static readonly int _maxDepth = 256;
         private readonly IBlockTree _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

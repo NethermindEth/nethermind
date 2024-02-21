@@ -178,13 +178,13 @@ namespace Nethermind.Init.Steps
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
             // blockchain processing
-            BlockHashProvider blockHashProvider = new(
+            BlockhashProvider blockhashProvider = new(
                 _api.BlockTree, _api.LogManager);
 
             CodeInfoRepository codeInfoRepository = new();
 
             VirtualMachine virtualMachine = new(
-                blockHashProvider,
+                blockhashProvider,
                 _api.SpecProvider,
                 codeInfoRepository,
                 _api.LogManager);

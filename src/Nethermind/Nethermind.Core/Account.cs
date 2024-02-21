@@ -139,6 +139,5 @@ namespace Nethermind.Core
         public bool IsTotallyEmpty => _storageRoot == Keccak.EmptyTreeHash.ValueHash256 && IsEmpty;
         public bool IsEmpty => _codeHash == Keccak.OfAnEmptyString.ValueHash256 && Balance.IsZero && Nonce.IsZero;
         public bool IsContract => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
-        public Account ToOldAccount() => new(Nonce, Balance, StorageRoot.ToCommitment(), CodeHash.ToCommitment());
     }
 }

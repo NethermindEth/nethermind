@@ -161,24 +161,15 @@ public class TestBlockchain : IDisposable
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-        IDb blockInfoDb = DbProvider.BlockInfosDb;
-        IDb metadataDb = DbProvider.MetadataDb;
-        SyncConfig syncConfig = new();
-
-        IBlockStore blockStore = new BlockStore(DbProvider.BlocksDb);
-        IHeaderStore headerStore = new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb);
-        IDb badBlocksDb = new TestMemDb();
-        var badBlockStore = new BlockStore(badBlocksDb, 100);
-
-        BlockTree = new BlockTree(blockStore,
-            headerStore,
-            blockInfoDb,
-            metadataDb,
-            badBlockStore,
-            new ChainLevelInfoRepository(blockInfoDb),
+        BlockTree = new BlockTree(new BlockStore(DbProvider.BlocksDb),
+            new HeaderStore(DbProvider.HeadersDb, DbProvider.BlockNumbersDb),
+            DbProvider.BlockInfosDb,
+            DbProvider.MetadataDb,
+            new BlockStore(new TestMemDb(), 100),
+            new ChainLevelInfoRepository(DbProvider.BlockInfosDb),
             SpecProvider,
             NullBloomStorage.Instance,
-            syncConfig,
+            new SyncConfig(),
             LimboLogs.Instance);
 
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
@@ -193,7 +184,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
         CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockHashProvider(BlockTree, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);

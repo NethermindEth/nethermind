@@ -6,11 +6,11 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm.Test
 {
-    public class TestBlockHashProvider : IBlockHashProvider
+    public class TestBlockhashProvider : IBlockhashProvider
     {
-        public static TestBlockHashProvider Instance = new();
+        public static TestBlockhashProvider Instance = new();
 
-        private TestBlockHashProvider()
+        private TestBlockhashProvider()
         {
         }
 

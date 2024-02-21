@@ -117,7 +117,7 @@ namespace Nethermind.Clique.Test
                     transactionComparerProvider.GetDefaultComparer());
                 _pools[privateKey] = txPool;
 
-                BlockHashProvider blockHashProvider = new(blockTree, LimboLogs.Instance);
+                BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
                 _blockTrees.Add(privateKey, blockTree);
 
                 SnapshotManager snapshotManager = new(_cliqueConfig, blocksDb, blockTree, _ethereumEcdsa, nodeLogManager);
@@ -130,7 +130,7 @@ namespace Nethermind.Clique.Test
 
                 CodeInfoRepository codeInfoRepository = new();
                 TransactionProcessor transactionProcessor = new(goerliSpecProvider, stateProvider,
-                    new VirtualMachine(blockHashProvider, specProvider, codeInfoRepository, nodeLogManager),
+                    new VirtualMachine(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager),
                     codeInfoRepository,
                     nodeLogManager);
                 BlockProcessor blockProcessor = new(
@@ -149,7 +149,7 @@ namespace Nethermind.Clique.Test
                 IReadOnlyTrieStore minerTrieStore = trieStore.AsReadOnly();
 
                 WorldState minerStateProvider = new(minerTrieStore, codeDb, nodeLogManager);
-                VirtualMachine minerVirtualMachine = new(blockHashProvider, specProvider, codeInfoRepository, nodeLogManager);
+                VirtualMachine minerVirtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, nodeLogManager);
                 TransactionProcessor minerTransactionProcessor = new(goerliSpecProvider, minerStateProvider, minerVirtualMachine, codeInfoRepository, nodeLogManager);
 
                 BlockProcessor minerBlockProcessor = new(

@@ -9,14 +9,14 @@ using Nethermind.Logging;
 
 namespace Nethermind.Facade.Simulate;
 
-public sealed class SimulateBlockHashProvider(IBlockHashProvider blockHashProvider, IBlockTree blockTree)
-    : IBlockHashProvider
+public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvider, IBlockTree blockTree)
+    : IBlockhashProvider
 {
     public Hash256? GetBlockHash(BlockHeader currentBlock, in long number)
     {
         var bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
-            ? blockHashProvider.GetBlockHash(blockTree.BestSuggestedHeader!, in bestKnown)
-            : blockHashProvider.GetBlockHash(currentBlock, in number);
+            ? blockhashProvider.GetBlockHash(blockTree.BestSuggestedHeader!, in bestKnown)
+            : blockhashProvider.GetBlockHash(currentBlock, in number);
     }
 }

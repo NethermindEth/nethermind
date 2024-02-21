@@ -43,7 +43,7 @@ public class TransactionProcessorFeeTests
         _stateProvider.CommitTree(0);
 
         CodeInfoRepository codeInfoRepository = new();
-        VirtualMachine virtualMachine = new(TestBlockHashProvider.Instance, _specProvider, codeInfoRepository, LimboLogs.Instance);
+        VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, codeInfoRepository, LimboLogs.Instance);
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }

@@ -39,7 +39,7 @@ public static class StateOverridesExtensions
                 Address address = overrideData.Key;
                 AccountOverride? accountOverride = overrideData.Value;
 
-                if (!state.TryGetAccount(address, out Account? account))
+                if (!state.TryGetAccount(address, out AccountStruct account))
                 {
                     state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
                 }
@@ -59,15 +59,15 @@ public static class StateOverridesExtensions
         state.RecalculateStateRoot();
     }
 
-    private static bool TryGetAccount(this IWorldState stateProvider, Address address, out Account account)
+    private static bool TryGetAccount(this IWorldState stateProvider, Address address, out AccountStruct account)
     {
         try
         {
-            account = stateProvider.GetAccount(address).ToOldAccount();
+            account = stateProvider.GetAccount(address);
         }
         catch (TrieException)
         {
-            account = Account.TotallyEmpty;
+            account = new AccountStruct();
         }
 
         return !account.IsTotallyEmpty;
@@ -114,7 +114,7 @@ public static class StateOverridesExtensions
 
     private static void UpdateNonce(
         this IWorldState stateProvider,
-        Account account,
+        in AccountStruct account,
         AccountOverride accountOverride,
         Address address)
     {
@@ -136,7 +136,7 @@ public static class StateOverridesExtensions
     private static void UpdateBalance(
         this IWorldState stateProvider,
         IReleaseSpec spec,
-        Account account,
+        in AccountStruct account,
         AccountOverride accountOverride,
         Address address)
     {

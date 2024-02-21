@@ -54,7 +54,7 @@ namespace Nethermind.Serialization.Json
             return JsonSerializer.Serialize(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
-        private static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
+        public static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
         {
             var options = new JsonSerializerOptions
             {

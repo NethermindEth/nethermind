@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Evm
 {
-    public interface IBlockHashProvider
+    public interface IBlockhashProvider
     {
         Hash256? GetBlockHash(BlockHeader currentBlock, in long number);
     }
