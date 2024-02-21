@@ -11,7 +11,7 @@ namespace Nethermind.State
 {
     public interface IStateReader
     {
-        AccountStruct? GetAccount(Hash256 stateRoot, Address address);
+        bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account);
 
         ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
 

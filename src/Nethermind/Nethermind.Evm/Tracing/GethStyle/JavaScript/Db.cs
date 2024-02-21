@@ -47,5 +47,5 @@ public class Db
         }
     }
 
-    public bool exists(object address) => !WorldState.GetAccount(address.ToAddress()).IsTotallyEmpty;
+    public bool exists(object address) => WorldState.TryGetAccount(address.ToAddress(), out AccountStruct account) && !account.IsTotallyEmpty;
 }
