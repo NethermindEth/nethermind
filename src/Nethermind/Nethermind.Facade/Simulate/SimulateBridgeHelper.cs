@@ -115,7 +115,7 @@ public class SimulateBridgeHelper(
                 UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
 
                 using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(env.StateProvider.StateRoot!);
-                
+
                 Transaction SetTxHashAndMissingDefaults(TransactionWithSourceDetails transactionDetails, IReleaseSpec? spec)
                 {
                     Transaction? transaction = transactionDetails.Transaction;
