@@ -69,15 +69,15 @@ public class VirtualMachine : IVirtualMachine
     private readonly IVirtualMachine _evm;
 
     public VirtualMachine(
-        IBlockHashProvider? blockHashProvider,
+        IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ICodeInfoRepository codeInfoRepository,
         ILogManager? logManager)
     {
         ILogger logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _evm = logger.IsTrace
-            ? new VirtualMachine<IsTracing>(blockHashProvider, specProvider, codeInfoRepository, logger)
-            : new VirtualMachine<NotTracing>(blockHashProvider, specProvider, codeInfoRepository, logger);
+            ? new VirtualMachine<IsTracing>(blockhashProvider, specProvider, codeInfoRepository, logger)
+            : new VirtualMachine<NotTracing>(blockhashProvider, specProvider, codeInfoRepository, logger);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -151,7 +151,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 {
     private readonly byte[] _chainId;
 
-    private readonly IBlockHashProvider _blockHashProvider;
+    private readonly IBlockhashProvider _blockhashProvider;
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private IWorldState _worldState;
@@ -163,13 +163,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private readonly ICodeInfoRepository _codeInfoRepository;
 
     public VirtualMachine(
-        IBlockHashProvider? blockHashProvider,
+        IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
         ICodeInfoRepository codeInfoRepository,
         ILogger? logger)
     {
         _logger = logger ?? throw new ArgumentNullException(nameof(logger));
-        _blockHashProvider = blockHashProvider ?? throw new ArgumentNullException(nameof(blockHashProvider));
+        _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _codeInfoRepository = codeInfoRepository ?? throw new ArgumentNullException(nameof(codeInfoRepository));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
@@ -1400,7 +1400,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Hash256 blockHash = _blockHashProvider.GetBlockHash(blkCtx.Header, number);
+                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))

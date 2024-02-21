@@ -23,26 +23,25 @@ namespace Nethermind.Consensus.Processing
         public ICodeInfoRepository CodeInfoRepository { get; }
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
-            IBlockTree? blockTree,
+            IBlockTree blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
-            IReadOnlyBlockTree? readOnlyBlockTree,
+            IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager
             ) : base(worldStateManager, readOnlyBlockTree, logManager)
         {
-            //TO DO CHECK AGAIN!!!
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             CodeInfoRepository = new CodeInfoRepository();
-            Machine = new VirtualMachine(BlockHashProvider, specProvider, CodeInfoRepository, logManager);
+            Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);
         }
 

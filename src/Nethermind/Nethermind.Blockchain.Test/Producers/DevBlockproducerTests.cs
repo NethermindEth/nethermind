@@ -55,10 +55,10 @@ namespace Nethermind.Blockchain.Test.Producers
                 dbProvider.RegisteredDbs[DbNames.Code],
                 LimboLogs.Instance);
             StateReader stateReader = new(trieStore, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            BlockHashProvider blockHashProvider = new(blockTree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(blockTree, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
-                blockHashProvider,
+                blockhashProvider,
                 specProvider,
                 codeInfoRepository,
                 LimboLogs.Instance);

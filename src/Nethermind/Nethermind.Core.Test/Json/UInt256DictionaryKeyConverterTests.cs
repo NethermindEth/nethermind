@@ -14,30 +14,7 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class UInt256DictionaryKeyConverterTests
 {
-    private static readonly JsonSerializerOptions Options = new()
-    {
-        Converters =
-        {
-            new LongConverter(),
-            new UInt256Converter(),
-            new ULongConverter(),
-            new IntConverter(),
-            new ByteArrayConverter(),
-            new NullableLongConverter(),
-            new NullableULongConverter(),
-            new NullableUInt256Converter(),
-            new NullableIntConverter(),
-            new TxTypeConverter(),
-            new DoubleConverter(),
-            new DoubleArrayConverter(),
-            new BooleanConverter(),
-            new DictionaryAddressKeyConverter(),
-            new MemoryByteConverter(),
-            new BigIntegerConverter(),
-            new NullableBigIntegerConverter(),
-            new JavaScriptObjectConverter()
-        }
-    };
+    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.CreateOptions(true);
 
     [Test]
     public void ReadJson_NestedValidJson_ReturnsCorrectDictionary()
