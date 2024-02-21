@@ -524,6 +524,7 @@ public class InitializeNetwork : IStep
         ISnapServer? snapServer = null;
         if (_syncConfig.SnapServingEnabled)
         {
+            // TODO: Add a proper config for the state persistence depth.
             snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
         }
 

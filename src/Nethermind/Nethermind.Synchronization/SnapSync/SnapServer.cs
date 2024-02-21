@@ -84,7 +84,7 @@ public class SnapServer : ISnapServer
             switch (requestedPath.Length)
             {
                 case 0:
-                    throw new InvalidOperationException("Requested group must have at least one request");
+                    return null;
                 case 1:
                     try
                     {

@@ -28,13 +28,13 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext()
+    private Context CreateContext(ILastNStateRootTracker? stateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
@@ -69,6 +69,23 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestNoState()
+    {
+        Context context = CreateContext(stateRootTracker: CreateAlwaysUnavailableStateRootTracker());
+
+        (PathWithAccount[] accounts, byte[][] _) =
+            context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        accounts.Length.Should().Be(0);
+
+        (PathWithStorageSlot[][] storageSlots, byte[][]? _) =
+            context.Server.GetStorageRanges(context.Tree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
+                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+
+        storageSlots.Length.Should().Be(0);
+    }
+
+    [Test]
     public void TestGetAccountRangeMultiple()
     {
         Context context = CreateContext();
@@ -94,7 +111,7 @@ public class SnapServerTest
     }
 
     [TestCase(10, 10)]
-    [TestCase(10000, 10)]
+    [TestCase(10000, 1000)]
     [TestCase(10000, 10000000)]
     [TestCase(10000, 10000)]
     public void TestGetAccountRangeMultipleLarger(int stateSize, int byteLimit)
@@ -312,6 +329,13 @@ public class SnapServerTest
     {
         ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
         tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+        return tracker;
+    }
+
+    private ILastNStateRootTracker CreateAlwaysUnavailableStateRootTracker()
+    {
+        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
+        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
         return tracker;
     }
 }
