@@ -27,7 +27,7 @@ public class MultipleUnsignedOperations
     private ExecutionEnvironment _environment;
     private IVirtualMachine _virtualMachine;
     private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-    private readonly IBlockHashProvider _blockHashProvider = new TestBlockhashProvider();
+    private readonly IBlockhashProvider _blockHashProvider = new TestBlockhashProvider();
     private EvmState _evmState;
     private WorldState _stateProvider;
 

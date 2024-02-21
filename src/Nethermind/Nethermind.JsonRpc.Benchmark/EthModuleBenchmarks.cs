@@ -44,7 +44,7 @@ namespace Nethermind.JsonRpc.Benchmark
     public class EthModuleBenchmarks
     {
         private IVirtualMachine _virtualMachine;
-        private IBlockHashProvider _blockHashProvider;
+        private IBlockhashProvider _blockHashProvider;
         private EthRpcModule _ethModule;
 
         [GlobalSetup]
