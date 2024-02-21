@@ -119,6 +119,7 @@ public class UInt256Converter : JsonConverter<UInt256>
                     writer,
                     bytes,
                     static (w, h) => w.WritePropertyName(h),
+                    skipLeadingZeros: false,
                     addQuotations: false);
                 break;
             case NumberConversion.Decimal:
