@@ -84,18 +84,12 @@ public class JsonRpcServiceTests
     [Test]
     public void CanRunEthSimulateV1Empty()
     {
-        SimulatePayload<TransactionForRpc>? payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
-
-        EthereumJsonSerializer serializer = new();
-
-        string serializedCall = serializer.Serialize(payload);
-
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
+        string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
-        ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(x =>
+        ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(_ =>
             ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(Array.Empty<SimulateBlockResult>()));
-        JsonRpcSuccessResponse? response =
-            TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
-        Assert.IsTrue(response != null);
+        JsonRpcSuccessResponse? response = TestRequest(ethRpcModule, "eth_simulateV1", serializedCall) as JsonRpcSuccessResponse;
         Assert.That(response?.Result, Is.EqualTo(Array.Empty<SimulateBlockResult>()));
     }
 

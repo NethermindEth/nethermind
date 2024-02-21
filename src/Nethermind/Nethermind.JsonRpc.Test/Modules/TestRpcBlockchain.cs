@@ -61,14 +61,9 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);
 
-        public class Builder<T> where T : TestRpcBlockchain
+        public class Builder<T>(T blockchain) where T : TestRpcBlockchain
         {
-            private readonly TestRpcBlockchain _blockchain;
-
-            public Builder(T blockchain)
-            {
-                _blockchain = blockchain;
-            }
+            private readonly TestRpcBlockchain _blockchain = blockchain;
 
             public Builder<T> WithBlockchainBridge(IBlockchainBridge blockchainBridge)
             {
@@ -147,7 +142,6 @@ namespace Nethermind.JsonRpc.Test.Modules
             Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-
 
             ITxSigner txSigner = new WalletTxSigner(TestWallet, specProvider.ChainId);
             TxSealer = new TxSealer(txSigner, Timestamper);

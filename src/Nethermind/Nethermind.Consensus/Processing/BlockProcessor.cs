@@ -84,7 +84,7 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: move to branch processor
-    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
+    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
@@ -375,9 +375,9 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
-    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    private class TxHashCalculator(IReadOnlyList<Block> suggestedBlocks) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        public static void CalculateInBackground(IReadOnlyList<Block> suggestedBlocks)
         {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
@@ -389,7 +389,7 @@ public partial class BlockProcessor : IBlockProcessor
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
-            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
+            foreach (Block block in suggestedBlocks)
             {
                 foreach (Transaction tx in block.Transactions)
                 {

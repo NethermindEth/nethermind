@@ -16,7 +16,7 @@ namespace Nethermind.Facade.Simulate;
 
 internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 {
-    private static readonly Hash256[] _topics = { Keccak.Zero };
+    private static readonly Hash256[] _topics = [Keccak.Zero];
 
     public SimulateTxTracer(bool isTracingTransfers)
     {
@@ -39,7 +39,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
                 Address = entry.LoggersAddress,
                 Topics = entry.Topics,
                 LogIndex = (ulong)i
-            }).ToArray()
+            })
         };
     }
 
@@ -63,7 +63,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
     IEnumerable<LogEntry> ILogsTxTracer.ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        byte[]? data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
+        byte[] data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
             new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256), from, to, value);
         yield return new LogEntry(Address.Zero, data, _topics);
     }

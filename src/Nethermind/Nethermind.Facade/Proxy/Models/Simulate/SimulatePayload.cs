@@ -18,5 +18,5 @@ public class SimulatePayload<T>
     /// <summary>
     /// When true, the simulate does all validations that a normal EVM would do, except contract sender and signature checks. When false, multicall behaves like eth_call.
     /// </summary>
-    public bool Validation { get; set; } = false;
+    public bool Validation { get; set; }
 }

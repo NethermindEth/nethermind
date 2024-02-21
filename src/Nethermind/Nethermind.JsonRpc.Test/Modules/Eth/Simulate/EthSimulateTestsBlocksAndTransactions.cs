@@ -46,67 +46,42 @@ public class EthSimulateTestsBlocksAndTransactions
     {
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
-
-        PrivateKey pk = new("0xc7ba1a2892ec0ea1940eebeae739b1effe0543b3104469d5b66625f49ca86e94");
-
-        UInt256 nonceA = chain.State.GetNonce(pk.Address);
-        Transaction txMainnetAtoBtoFail =
-            GetTransferTxData(nonceA,
-                chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 10_000_000);
-
+        UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
+        Transaction txToFail = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 10_000_000);
         UInt256 nextNonceA = ++nonceA;
-        Transaction txMainnetAtoBToComplete =
-            GetTransferTxData(nextNonceA,
-                chain.EthereumEcdsa, pk, new Address("0xA143c0eA6f8059f7B3651417ccD2bAA80FC2d4Ab"), 4_000_000);
+        Transaction tx = GetTransferTxData(nextNonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 4_000_000);
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
-            {
+            BlockStateCalls =
+            [
                 new()
                 {
-                    BlockOverrides = new BlockOverride() { Number = 18000000 },
-                    Calls = new[]
+                    BlockOverrides = new BlockOverride { Number = 18000000 },
+                    Calls = [new TransactionForRpc(txToFail), new TransactionForRpc(tx)],
+                    StateOverrides = new Dictionary<Address, AccountOverride>
                     {
-                        new TransactionForRpc(txMainnetAtoBtoFail),
-                        new TransactionForRpc(txMainnetAtoBToComplete),
-                    },
-                    StateOverrides = new Dictionary<Address, AccountOverride>()
-                    {
-                        {
-                            pk.Address,
-                            new AccountOverride()
-                            {
-                                Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL)
-                            }
-                        }
+                        { TestItem.AddressA, new AccountOverride { Balance = Math.Max(420_000_004_000_001UL, 1_000_000_004_000_001UL) } }
                     }
                 }
-            },
+            ],
             TraceTransfers = true,
             Validation = true
         };
-        EthereumJsonSerializer serializer = new();
 
-        string serializedCall = serializer.Serialize(payload);
-        Console.WriteLine(serializedCall);
-
-
-        //Force persistancy of head block in main chain
+        //Force persistence of head block in main chain
         chain.BlockTree.UpdateMainChain(new List<Block> { chain.BlockFinder.Head! }, true, true);
         chain.BlockTree.UpdateHeadBlock(chain.BlockFinder.Head!.Hash!);
-        //Assert.Equals(chain.BlockTree.BestPersistedState!, chain.BlockTree.Head!.Number);
+
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
-        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
-            executor.Execute(payload, BlockParameter.Latest);
+        ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult> data = result.Data;
-
         Assert.That(data.Count, Is.EqualTo(1));
 
         foreach (SimulateBlockResult blockResult in data)
         {
-            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { ResultType.Success, ResultType.Success });
+            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
         }
     }
 
@@ -122,16 +97,11 @@ public class EthSimulateTestsBlocksAndTransactions
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
-        Transaction txMainnetAtoB =
-            GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
-        Transaction txAtoB1 =
-            GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
-        Transaction txAtoB2 =
-            GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
-        Transaction txAtoB3 =
-            GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
-        Transaction txAtoB4 =
-            GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+        Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
+        Transaction txAtoB3 = GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+        Transaction txAtoB4 = GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
         SimulatePayload<TransactionForRpc> payload = new()
         {

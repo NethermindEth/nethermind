@@ -39,7 +39,7 @@ public class BlockOverride
 
         Address newFeeRecipientAddress = FeeRecipient ?? parent.Beneficiary!;
         UInt256 newDifficulty = parent.Difficulty == 0 ? 0 : parent.Difficulty + 1;
-        BlockHeader? result = new(
+        BlockHeader result = new(
             parent.Hash!,
             Keccak.OfAnEmptySequenceRlp,
             newFeeRecipientAddress,

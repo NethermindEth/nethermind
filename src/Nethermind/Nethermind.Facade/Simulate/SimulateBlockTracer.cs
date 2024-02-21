@@ -11,19 +11,13 @@ using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBlockTracer : BlockTracer
+public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 {
-    private readonly bool _isTracingLogs;
     public List<SimulateBlockResult> Results { get; } = new();
 
     private readonly List<SimulateTxTracer> _txTracers = new();
 
     private Block _currentBlock = null!;
-
-    public SimulateBlockTracer(bool isTracingLogs)
-    {
-        _isTracingLogs = isTracingLogs;
-    }
 
     public override void StartNewBlockTrace(Block block)
     {
@@ -35,7 +29,7 @@ public class SimulateBlockTracer : BlockTracer
     {
         if (tx?.Hash is not null)
         {
-            SimulateTxTracer result = new(_isTracingLogs);
+            SimulateTxTracer result = new(isTracingLogs);
             _txTracers.Add(result);
             return result;
         }
@@ -51,11 +45,11 @@ public class SimulateBlockTracer : BlockTracer
             Number = (ulong)_currentBlock.Number,
             Hash = _currentBlock.Hash!,
             GasLimit = (ulong)_currentBlock.GasLimit,
-            GasUsed = _txTracers.Aggregate(0ul, (s, t) => s + t.TraceResult!.GasUsed.Value),
+            GasUsed = _txTracers.Aggregate(0ul, (s, t) => s + t.TraceResult!.GasUsed ?? 0ul),
             Timestamp = _currentBlock.Timestamp,
             FeeRecipient = _currentBlock.Beneficiary!,
             BaseFeePerGas = _currentBlock.BaseFeePerGas,
-            PrevRandao = _currentBlock.Header!.Random!.BytesToArray(),
+            PrevRandao = _currentBlock.Header!.Random?.BytesToArray(),
         };
 
         result.Calls.ForEach(callResult =>

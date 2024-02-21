@@ -17,14 +17,6 @@ namespace Nethermind.Facade;
 
 public static class StateOverridesExtensions
 {
-
-    public static void ApplyStateOverrides(
-        this IWorldState state,
-
-        long blockNumber)
-    {
-    }
-
     public static void ApplyStateOverrides(
         this IWorldState state,
         OverridableCodeInfoRepository overridableCodeInfoRepository,
@@ -34,11 +26,8 @@ public static class StateOverridesExtensions
     {
         if (overrides is not null)
         {
-            foreach (KeyValuePair<Address, AccountOverride> overrideData in overrides)
+            foreach ((Address address, AccountOverride accountOverride) in overrides)
             {
-                Address address = overrideData.Key;
-                AccountOverride? accountOverride = overrideData.Value;
-
                 if (!state.TryGetAccount(address, out AccountStruct account))
                 {
                     state.CreateAccount(address, accountOverride.Balance ?? UInt256.Zero, accountOverride.Nonce ?? UInt256.Zero);
@@ -77,9 +66,9 @@ public static class StateOverridesExtensions
     {
         void ApplyState(Dictionary<UInt256, Hash256> diff)
         {
-            foreach (KeyValuePair<UInt256, Hash256> storage in diff)
+            foreach ((UInt256 index, Hash256 value) in diff)
             {
-                stateProvider.Set(new StorageCell(address, storage.Key), storage.Value.Bytes.WithoutLeadingZeros().ToArray());
+                stateProvider.Set(new StorageCell(address, index), value.Bytes.WithoutLeadingZeros().ToArray());
             }
         }
 
@@ -118,9 +107,9 @@ public static class StateOverridesExtensions
         AccountOverride accountOverride,
         Address address)
     {
-        UInt256 nonce = account.Nonce;
         if (accountOverride.Nonce is not null)
         {
+            UInt256 nonce = account.Nonce;
             UInt256 newNonce = accountOverride.Nonce.Value;
             if (nonce > newNonce)
             {

@@ -29,11 +29,9 @@ namespace Nethermind.Facade
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
         CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
-
         CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
         CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
-
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock, object? address = null, IEnumerable<object>? topics = null);
@@ -42,14 +40,11 @@ namespace Nethermind.Facade
         Hash256[] GetBlockFilterChanges(int filterId);
         Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
-
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
-
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
         bool HasStateForRoot(Hash256 stateRoot);
