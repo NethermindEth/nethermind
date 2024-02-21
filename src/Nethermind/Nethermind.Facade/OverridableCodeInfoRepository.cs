@@ -8,20 +8,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Evm.CodeAnalysis;
-using Nethermind.Evm.Precompiles;
 using Nethermind.State;
 
 namespace Nethermind.Facade;
 
-public class OverridableCodeInfoRepository : ICodeInfoRepository
+public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository) : ICodeInfoRepository
 {
-    private readonly ICodeInfoRepository _codeInfoRepository;
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
-
-    public OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepository)
-    {
-        _codeInfoRepository = codeInfoRepository;
-    }
 
     public void SetCodeOverwrite(
         IWorldState worldState,
@@ -38,16 +31,12 @@ public class OverridableCodeInfoRepository : ICodeInfoRepository
         _codeOverwrites[key] = value;
     }
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-    {
-        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result) ? result : _codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
-    }
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
+        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result) ? result : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
 
     public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) =>
-        _codeInfoRepository.GetOrAdd(codeHash, initCode);
+        codeInfoRepository.GetOrAdd(codeHash, initCode);
 
-    public void InsertCode(IWorldState state, byte[] code, Address codeOwner, IReleaseSpec spec) =>
-        _codeInfoRepository.InsertCode(state, code, codeOwner, spec);
-
-    public void Clear() => _codeOverwrites.Clear();
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
+        codeInfoRepository.InsertCode(state, code, codeOwner, spec);
 }

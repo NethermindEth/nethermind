@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
@@ -20,22 +21,30 @@ namespace Nethermind.Evm;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly Dictionary<Address, CodeInfo>? _precompiles;
+    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles;
     private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     static CodeInfoRepository()
     {
-        _precompiles = new Dictionary<Address, CodeInfo>
+        _precompiles = InitializePrecompiledContracts();
+    }
+
+    private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
+    {
+        return new Dictionary<AddressAsKey, CodeInfo>
         {
             [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
             [Ripemd160Precompile.Address] = new(Ripemd160Precompile.Instance),
             [IdentityPrecompile.Address] = new(IdentityPrecompile.Instance),
+
             [Bn254AddPrecompile.Address] = new(Bn254AddPrecompile.Instance),
             [Bn254MulPrecompile.Address] = new(Bn254MulPrecompile.Instance),
             [Bn254PairingPrecompile.Address] = new(Bn254PairingPrecompile.Instance),
             [ModExpPrecompile.Address] = new(ModExpPrecompile.Instance),
+
             [Blake2FPrecompile.Address] = new(Blake2FPrecompile.Instance),
+
             [G1AddPrecompile.Address] = new(G1AddPrecompile.Instance),
             [G1MulPrecompile.Address] = new(G1MulPrecompile.Instance),
             [G1MultiExpPrecompile.Address] = new(G1MultiExpPrecompile.Instance),
@@ -45,19 +54,15 @@ public class CodeInfoRepository : ICodeInfoRepository
             [PairingPrecompile.Address] = new(PairingPrecompile.Instance),
             [MapToG1Precompile.Address] = new(MapToG1Precompile.Instance),
             [MapToG2Precompile.Address] = new(MapToG2Precompile.Instance),
+
             [PointEvaluationPrecompile.Address] = new(PointEvaluationPrecompile.Instance),
-        };
+        }.ToFrozenDictionary();
     }
 
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
     {
         if (codeSource.IsPrecompile(vmSpec))
         {
-            if (_precompiles is null)
-            {
-                throw new InvalidOperationException("EVM precompile have not been initialized properly.");
-            }
-
             return _precompiles[codeSource];
         }
 
@@ -68,9 +73,8 @@ public class CodeInfoRepository : ICodeInfoRepository
             cachedCodeInfo = CodeInfo.Empty;
         }
 
-        bool haveCached = _codeCache.TryGet(codeHash, out cachedCodeInfo);
-
-        if (!haveCached)
+        cachedCodeInfo ??= _codeCache.Get(codeHash);
+        if (cachedCodeInfo is null)
         {
             byte[]? code = worldState.GetCode(codeHash);
 
@@ -113,13 +117,13 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
 
-    public void InsertCode(IWorldState state, byte[] code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
     {
         var codeInfo = new CodeInfo(code);
         // Start generating the JumpDestinationBitmap in background.
         ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
 
-        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.AsSpan());
+        Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
         _codeCache.Set(codeHash, codeInfo);
     }

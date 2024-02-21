@@ -360,8 +360,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
-                            var code = callResult.Output;
-                            _codeInfoRepository.InsertCode(_state, code.ToArray(), callCodeOwner, spec);
+                            ReadOnlyMemory<byte> code = callResult.Output;
+                            _codeInfoRepository.InsertCode(_state, code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
 
@@ -654,7 +654,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
         }
 
-        if (env.CodeInfo.MachineCode is { Length: 0 })
+        if (env.CodeInfo.MachineCode.Length == 0)
         {
             if (!vmState.IsTopLevel)
             {
@@ -2446,8 +2446,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
 
-        ValueHash256 codeHash = ValueKeccak.Compute(initCode.Span);
-        CodeInfo codeInfo = _codeInfoRepository.GetOrAdd(codeHash, initCode.Span);
+        // Do not add the initCode to the cache as it is
+        // pointing to data in this tx and will become invalid
+        // for another tx as returned to pool.
+        CodeInfo codeInfo = new(initCode);
 
         ExecutionEnvironment callEnv = new
         (
