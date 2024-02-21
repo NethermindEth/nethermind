@@ -20,7 +20,7 @@ namespace Nethermind.Blockchain.FullPruning
     /// <remarks>
     /// During visiting of the state trie at specified state root it copies the existing trie into <see cref="IPruningContext"/>.
     /// </remarks>
-    public class CopyTreeVisitor : ITreeVisitor<TreePathContextWithStorage>, IDisposable
+    public class CopyTreeVisitor<TContext> : ICopyTreeVisitor, ITreeVisitor<TContext> where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
     {
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
@@ -48,9 +48,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         public ReadFlags ExtraReadFlag => ReadFlags.SkipDuplicateRead;
 
-        public bool ShouldVisit(in TreePathContextWithStorage context, Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
+        public bool ShouldVisit(in TContext context, Hash256 nextNode) => !_cancellationToken.IsCancellationRequested;
 
-        public void VisitTree(in TreePathContextWithStorage nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(in TContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
             _stopwatch.Start();
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
@@ -58,7 +58,7 @@ namespace Nethermind.Blockchain.FullPruning
 
         [DoesNotReturn]
         [StackTraceHidden]
-        public void VisitMissingNode(in TreePathContextWithStorage ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(in TContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
             {
@@ -69,13 +69,13 @@ namespace Nethermind.Blockchain.FullPruning
             throw new TrieException($"Trie {nodeHash} missing");
         }
 
-        public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitBranch(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitExtension(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(ctx.Storage, ctx.Path, node);
+        public void VisitLeaf(in TContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value) => PersistNode(ctx.Storage, ctx.Path, node);
 
-        public void VisitCode(in TreePathContextWithStorage ctx, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
+        public void VisitCode(in TContext ctx, Hash256 codeHash, TrieVisitContext trieVisitContext) { }
 
         private void PersistNode(Hash256 storage, in TreePath path, TrieNode node)
         {
@@ -113,5 +113,10 @@ namespace Nethermind.Blockchain.FullPruning
             LogProgress("Finished");
             _concurrentWriteBatcher.Dispose();
         }
+    }
+
+    public interface ICopyTreeVisitor : IDisposable
+    {
+        void Finish();
     }
 }

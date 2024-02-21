@@ -423,10 +423,16 @@ public struct TreePathContext : INodeContext<TreePathContext>
     }
 }
 
-public struct TreePathContextWithStorage : INodeContext<TreePathContextWithStorage>
+public interface ITreePathContextWithStorage
 {
-    public TreePath Path = TreePath.Empty;
-    public Hash256? Storage = null; // Not using ValueHash as value is shared with many context.
+    public TreePath Path { get; }
+    public Hash256? Storage { get; }
+}
+
+public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
+{
+    public TreePath Path { get; init; } = TreePath.Empty;
+    public Hash256? Storage { get; init; } = null; // Not using ValueHash as value is shared with many context.
 
     public TreePathContextWithStorage()
     {
@@ -458,6 +464,31 @@ public struct TreePathContextWithStorage : INodeContext<TreePathContextWithStora
             Storage = Path.Path.ToCommitment(),
         };
     }
+}
+
+/// <summary>
+/// Used as a substitute for TreePathContextWithStorage but does not actually keep track of path and storage.
+/// Used for hash only database pruning to reduce memory usage.
+/// </summary>
+public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
+{
+    public NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    {
+        return this;
+    }
+
+    public NoopTreePathContextWithStorage Add(byte nibble)
+    {
+        return this;
+    }
+
+    public readonly NoopTreePathContextWithStorage AddStorage(in ValueHash256 storage)
+    {
+        return this;
+    }
+
+    public TreePath Path => TreePath.Empty;
+    public Hash256? Storage => null;
 }
 
 

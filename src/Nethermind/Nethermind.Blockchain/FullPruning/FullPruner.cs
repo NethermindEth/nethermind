@@ -253,19 +253,30 @@ namespace Nethermind.Blockchain.FullPruning
                     targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
                 }
 
-                using CopyTreeVisitor copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
-
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
-                _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+
+                ICopyTreeVisitor visitor = null;
+                if (targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
+                {
+                    using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+                    visitor = copyTreeVisitor;
+                    _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+                }
+                else
+                {
+                    using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+                    visitor = copyTreeVisitor;
+                    _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+                }
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    copyTreeVisitor.Finish();
+                    visitor.Finish();
 
                     _nodeStorage.Scheme = targetNodeStorage.Scheme;
                     // Note: This does means that during full pruning some of the key copied will be of old key scheme.
