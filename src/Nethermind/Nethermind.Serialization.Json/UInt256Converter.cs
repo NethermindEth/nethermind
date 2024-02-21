@@ -53,7 +53,7 @@ public class UInt256Converter : JsonConverter<UInt256>
         }
         else if (hex[0] != (byte)'0')
         {
-            if (UInt256.TryParse(Encoding.UTF8.GetString(hex), out var result))
+            if (UInt256.TryParse(Encoding.UTF8.GetString(hex), out UInt256 result))
             {
                 return result;
             }
@@ -115,7 +115,11 @@ public class UInt256Converter : JsonConverter<UInt256>
             case NumberConversion.Hex:
                 Span<byte> bytes = stackalloc byte[32];
                 value.ToBigEndian(bytes);
-                writer.WritePropertyName(bytes);
+                ByteArrayConverter.Convert(
+                    writer,
+                    bytes,
+                    static (w, h) => w.WritePropertyName(h),
+                    addQuotations: false);
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
