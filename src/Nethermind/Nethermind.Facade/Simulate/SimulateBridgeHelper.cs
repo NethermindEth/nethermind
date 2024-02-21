@@ -166,10 +166,13 @@ public class SimulateBridgeHelper(
                 var notSpecifiedGasTxs = callInputBlock.Calls.Where(details => !details.HadGasLimitInRequest).ToList();
                 var gasSpecified =
                     specifiedGasTxs.Sum(details => details.Transaction.GasLimit);
-                var gasPerTx = callHeader.GasLimit - gasSpecified / (callInputBlock.Calls.Length - specifiedGasTxs.Count);
-                foreach (TransactionWithSourceDetails? call in notSpecifiedGasTxs)
+                if (notSpecifiedGasTxs.Any())
                 {
-                    call.Transaction.GasLimit = gasPerTx;
+                    var gasPerTx = callHeader.GasLimit - gasSpecified / notSpecifiedGasTxs.Count;
+                    foreach (TransactionWithSourceDetails? call in notSpecifiedGasTxs)
+                    {
+                        call.Transaction.GasLimit = gasPerTx;
+                    }
                 }
 
                 Transaction[] transactions = callInputBlock.Calls?.Select(t => SetTxHashAndMissingDefaults(t, spec)).ToArray() ?? Array.Empty<Transaction>();
