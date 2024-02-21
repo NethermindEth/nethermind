@@ -10,8 +10,6 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
@@ -19,7 +17,6 @@ using Nethermind.Db.Blooms;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Trie.Pruning;
@@ -104,7 +101,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         _doValidation = doValidation;
 
         BlockTree = new NonDistructiveBlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+        BlockhashProvider = new SimulateBlockhashProvider(BlockTree, logManager);
 
         //var store = new TrieStore(DbProvider.StateDb, LimboLogs.Instance);
         //StateProvider = new WorldState(store, DbProvider.CodeDb, LimboLogs.Instance);

@@ -61,15 +61,9 @@ namespace Nethermind.Api
 {
     public class NethermindApi : INethermindApi
     {
-        public NethermindApi(
-            IConfigProvider configProvider,
-            IJsonSerializer jsonSerializer,
-            ILogManager logManager,
-            ChainSpec chainSpec,
-            ISpecProvider? specProvider = null)
+        public NethermindApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
         {
             ConfigProvider = configProvider;
-            SpecProvider = specProvider ?? new ChainSpecBasedSpecProvider(chainSpec, logManager);
             EthereumJsonSerializer = jsonSerializer;
             LogManager = logManager;
             ChainSpec = chainSpec;

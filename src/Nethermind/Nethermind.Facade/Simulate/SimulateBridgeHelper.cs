@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Transactions;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -13,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;

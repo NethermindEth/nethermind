@@ -14,16 +14,16 @@ namespace Nethermind.Blockchain
     public class BlockhashProvider : IBlockhashProvider
     {
         private static readonly int _maxDepth = 256;
-        private readonly IBlockTree _blockTree;
+        protected readonly IBlockTree BlockTree;
         private readonly ILogger _logger;
 
         public BlockhashProvider(IBlockTree blockTree, ILogManager? logManager)
         {
-            _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            BlockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public virtual Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
         {
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
@@ -33,7 +33,7 @@ namespace Nethermind.Blockchain
 
             bool isFastSyncSearch = false;
 
-            BlockHeader header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            BlockHeader header = BlockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {
                 throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
@@ -47,18 +47,18 @@ namespace Nethermind.Blockchain
                     return header.Hash;
                 }
 
-                header = _blockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                header = BlockTree.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (header is null)
                 {
                     throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
                 }
 
-                if (_blockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
+                if (BlockTree.IsMainChain(header.Hash) && !isFastSyncSearch)
                 {
                     try
                     {
                         BlockHeader currentHeader = header;
-                        header = _blockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+                        header = BlockTree.FindHeader(number, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                         if (header is null)
                         {
                             isFastSyncSearch = true;
@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain
                         }
                         else
                         {
-                            if (!_blockTree.IsMainChain(header))
+                            if (!BlockTree.IsMainChain(header))
                             {
                                 header = currentHeader;
                                 throw new InvalidOperationException("Invoke fast blocks chain search");
