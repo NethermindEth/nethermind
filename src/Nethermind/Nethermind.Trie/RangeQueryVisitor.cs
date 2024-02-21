@@ -29,8 +29,7 @@ namespace Nethermind.Trie;
 public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 {
     private bool _skipStarthashComparison = false;
-    private ValueHash256 _startHash;
-    private TreePath[] _truncatedStartHashes;
+    private TreePath _startHash;
     private readonly ValueHash256 _limitHash;
 
     private readonly bool _isAccountVisitor;
@@ -65,22 +64,17 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         ReadFlags readFlags = ReadFlags.None,
         CancellationToken cancellationToken = default)
     {
-        _startHash = startHash;
         _limitHash = limitHash;
-        if (_startHash == ValueKeccak.Zero) _skipStarthashComparison = true;
+        if (startHash == ValueKeccak.Zero)
+            _skipStarthashComparison = true;
+        else
+            _startHash = new TreePath(startHash, 64);
 
         _cancellationToken = cancellationToken;
         _isAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
         ExtraReadFlag = readFlags;
-
-        TreePath startHashPath = new TreePath(startHash, 64);
-        _truncatedStartHashes = new TreePath[65];
-        for (int i = 0; i < 65; i++)
-        {
-            _truncatedStartHashes[i] = startHashPath.Truncate(i);
-        }
     }
 
     private bool ShouldVisit(in TreePath path)
@@ -111,10 +105,8 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
         if (!_skipStarthashComparison)
         {
-            // TODO: Make a specific prefix comparator.
-            if (path.CompareTo(_truncatedStartHashes[path.Length]) < 0)
+            if (_startHash.CompareToTruncated(path, path.Length) > 0)
             {
-                StoppedEarly = true;
                 return false;
             }
         }
