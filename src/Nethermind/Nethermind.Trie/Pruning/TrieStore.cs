@@ -86,9 +86,9 @@ namespace Nethermind.Trie.Pruning
 
             public bool IsNodeCached(Hash256 hash) => _objectsCache.ContainsKey(hash);
 
-            public ConcurrentDictionary<ValueHash256, TrieNode> AllNodes => _objectsCache;
+            public ConcurrentDictionary<Hash256AsKey, TrieNode> AllNodes => _objectsCache;
 
-            private readonly ConcurrentDictionary<ValueHash256, TrieNode> _objectsCache = new();
+            private readonly ConcurrentDictionary<Hash256AsKey, TrieNode> _objectsCache = new();
 
             private int _count = 0;
 
@@ -107,7 +107,7 @@ namespace Nethermind.Trie.Pruning
                 if (_trieStore._logger.IsTrace)
                 {
                     _trieStore._logger.Trace($"Trie node dirty cache ({Count})");
-                    foreach (KeyValuePair<ValueHash256, TrieNode> keyValuePair in _objectsCache)
+                    foreach (KeyValuePair<Hash256AsKey, TrieNode> keyValuePair in _objectsCache)
                     {
                         _trieStore._logger.Trace($"  {keyValuePair.Value}");
                     }
@@ -513,7 +513,7 @@ namespace Nethermind.Trie.Pruning
             Stopwatch stopwatch = Stopwatch.StartNew();
 
             long newMemory = 0;
-            foreach ((ValueHash256 key, TrieNode node) in _dirtyNodes.AllNodes)
+            foreach ((Hash256AsKey key, TrieNode node) in _dirtyNodes.AllNodes)
             {
                 if (node.IsPersisted)
                 {
@@ -829,7 +829,7 @@ namespace Nethermind.Trie.Pruning
 
                     // This should clear most nodes. For some reason, not all.
                     PruneCache();
-                    KeyValuePair<ValueHash256, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
+                    KeyValuePair<Hash256AsKey, TrieNode>[] nodesCopy = _dirtyNodes.AllNodes.ToArray();
 
                     NonBlocking.ConcurrentDictionary<Hash256AsKey, bool> wasPersisted = new();
                     void PersistNode(TrieNode n)
@@ -860,7 +860,7 @@ namespace Nethermind.Trie.Pruning
         private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
-                   && _dirtyNodes.AllNodes.TryGetValue(new ValueHash256(key), out TrieNode? trieNode)
+                   && _dirtyNodes.AllNodes.TryGetValue(new Hash256(key), out TrieNode? trieNode)
                    && trieNode is not null
                    && trieNode.NodeType != NodeType.Unknown
                    && trieNode.FullRlp.IsNotNull
