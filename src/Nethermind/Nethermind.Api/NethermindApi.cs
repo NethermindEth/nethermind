@@ -71,14 +71,9 @@ namespace Nethermind.Api
             DisposeStack.Push(CryptoRandom);
         }
 
-        private IReadOnlyDbProvider? _readOnlyDbProvider;
-        private IReadOnlyDbProvider? _simulateReadOnlyDbProvider;
-
         public IBlockchainBridge CreateBlockchainBridge()
         {
             ReadOnlyBlockTree readOnlyTree = BlockTree!.AsReadOnly();
-            LazyInitializer.EnsureInitialized(ref _readOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, false));
-            LazyInitializer.EnsureInitialized(ref _simulateReadOnlyDbProvider, () => new ReadOnlyDbProvider(DbProvider, true));
 
             // TODO: reuse the same trie cache here
             ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(
@@ -87,20 +82,20 @@ namespace Nethermind.Api
                 SpecProvider,
                 LogManager);
 
-            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnv = new SimulateReadOnlyBlocksProcessingEnvFactory(
-                WorldStateManager!,
-                readOnlyTree,
-                _simulateReadOnlyDbProvider,
-                SpecProvider!,
-                LogManager);
-
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateReadOnlyBlocksProcessingEnvFactory =
+                new SimulateReadOnlyBlocksProcessingEnvFactory(
+                    WorldStateManager!,
+                    readOnlyTree,
+                    DbProvider!,
+                    SpecProvider!,
+                    LogManager);
 
             IMiningConfig miningConfig = ConfigProvider.GetConfig<IMiningConfig>();
             IBlocksConfig blocksConfig = ConfigProvider.GetConfig<IBlocksConfig>();
 
             return new BlockchainBridge(
                 readOnlyTxProcessingEnv,
-                simulateReadOnlyBlocksProcessingEnv,
+                simulateReadOnlyBlocksProcessingEnvFactory,
                 TxPool,
                 ReceiptFinder,
                 FilterStore,

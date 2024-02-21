@@ -26,16 +26,16 @@ namespace Nethermind.Facade.Simulate;
 public class SimulateReadOnlyBlocksProcessingEnvFactory(
     IWorldStateManager worldStateManager,
     IReadOnlyBlockTree baseBlockTree,
-    IReadOnlyDbProvider readOnlyDbProvider,
+    IDbProvider dbProvider,
     ISpecProvider specProvider,
     ILogManager? logManager = null)
 {
     public SimulateReadOnlyBlocksProcessingEnv Create(bool traceTransfers, bool validate)
     {
-        IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(readOnlyDbProvider, true);
+        IReadOnlyDbProvider editableDbProvider = new ReadOnlyDbProvider(dbProvider, true);
         OverlayTrieStore overlayTrieStore = new(editableDbProvider.StateDb, worldStateManager.TrieStore, logManager);
         OverlayWorldStateManager overlayWorldStateManager = new(editableDbProvider, overlayTrieStore, logManager);
-        BlockTree tempBlockTree = CreateTempBlockTree(readOnlyDbProvider, specProvider, logManager, editableDbProvider);
+        BlockTree tempBlockTree = CreateTempBlockTree(editableDbProvider, specProvider, logManager, editableDbProvider);
 
         return new SimulateReadOnlyBlocksProcessingEnv(
             traceTransfers,

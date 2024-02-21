@@ -63,6 +63,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    [SetCulture("en-US")]
     public async Task Eth_get_eth_feeHistory()
     {
         using Context ctx = await Context.Create();
