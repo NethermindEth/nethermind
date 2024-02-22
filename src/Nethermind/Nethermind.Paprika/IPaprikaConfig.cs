@@ -27,9 +27,9 @@ public interface IPaprikaConfig : IConfig
 /// </summary>
 public class PaprikaConfig : IPaprikaConfig
 {
-    public ushort CacheStateBeyond { get; set; } = 16;
+    public ushort CacheStateBeyond { get; set; } = 8;
     public int CacheStatePerBlock { get; set; } = 5000;
 
-    public ushort CacheMerkleBeyond { get; set; } = 16;
+    public ushort CacheMerkleBeyond { get; set; } = 8;
     public int CacheMerklePerBlock { get; set; } = 5000;
 }
