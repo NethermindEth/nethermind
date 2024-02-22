@@ -773,6 +773,57 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
+    public T ReadDeserialize<T, TDeserializer>(TDeserializer deserializer, ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) where TDeserializer : Core.ISpanDeserializer<T>
+    {
+        return ReadDeserializeWithColumnFamily<T, TDeserializer>(deserializer, key, null, _readaheadIterators, flags);
+    }
+
+    internal T ReadDeserializeWithColumnFamily<T, TDeserializer>(
+        TDeserializer deserializer,
+        ReadOnlySpan<byte> key,
+        ColumnFamilyHandle? cf,
+        ManagedIterators readaheadIterators,
+        ReadFlags flags = ReadFlags.None) where TDeserializer : Core.ISpanDeserializer<T>
+    {
+        ObjectDisposedException.ThrowIf(_isDisposing, this);
+
+        UpdateReadMetrics();
+
+        try
+        {
+            if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
+            {
+
+                if (!readaheadIterators.IsValueCreated)
+                {
+                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
+                }
+
+                Iterator iterator = readaheadIterators.Value!;
+                iterator.Seek(key);
+                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                {
+                    return deserializer.Deserialize(iterator.Value());
+                }
+            }
+
+            Span<byte> span = _db.GetSpan(key, cf, (flags & ReadFlags.HintCacheMiss) != 0 ? _hintCacheMissOptions : _defaultReadOptions);
+            try
+            {
+                return deserializer.Deserialize(span);
+            }
+            finally
+            {
+                DangerousReleaseMemory(span);
+            }
+        }
+        catch (RocksDbSharpException e)
+        {
+            CreateMarkerIfCorrupt(e);
+            throw;
+        }
+    }
+
     public void PutSpan(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value, WriteFlags writeFlags)
     {
         SetWithColumnFamily(key, null, value, writeFlags);

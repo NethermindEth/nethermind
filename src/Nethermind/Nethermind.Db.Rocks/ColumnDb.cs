@@ -45,6 +45,11 @@ public class ColumnDb : IDb
         return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, flags);
     }
 
+    public T ReadDeserialize<T, TDeserializer>(TDeserializer deserializer, ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) where TDeserializer : Core.ISpanDeserializer<T>
+    {
+        return _mainDb.ReadDeserializeWithColumnFamily<T, TDeserializer>(deserializer, key, _columnFamily, _readaheadIterators, flags);
+    }
+
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
     {
         _mainDb.SetWithColumnFamily(key, _columnFamily, value, flags);
