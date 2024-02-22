@@ -111,7 +111,7 @@ public class NodeBucket
     {
         lock (_nodeBucketLock)
         {
-            NodeBucketItem item = new(nodeToRemove, DateTime.Now);
+            NodeBucketItem item = new(nodeToRemove, DateTime.UtcNow);
             if (_items.Remove(item))
             {
                 AddNode(nodeToAdd);

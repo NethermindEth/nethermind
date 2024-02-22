@@ -39,7 +39,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
         _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
-        TimeSpan timePassed = DateTime.Now - _lastRefresh;
+        TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
             Refresh(headBlockhash, headParentBlockhash, finalizedBlockhash);
@@ -58,7 +58,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
     private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
-        _lastRefresh = DateTime.Now;
+        _lastRefresh = DateTime.UtcNow;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
             _ = StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
