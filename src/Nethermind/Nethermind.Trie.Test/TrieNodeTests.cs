@@ -11,6 +11,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -64,7 +65,7 @@ namespace Nethermind.Trie.Test
         public void Forward_read_flags_on_resolve()
         {
             ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-            resolver.LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
+            resolver.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
             TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
             try
             {
@@ -73,7 +74,7 @@ namespace Nethermind.Trie.Test
             catch (TrieException)
             {
             }
-            resolver.Received().LoadRlp(TestItem.KeccakA, ReadFlags.HintReadAhead);
+            resolver.Received().LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, TestItem.KeccakA, ReadFlags.HintReadAhead);
         }
 
         [Test]
@@ -834,7 +835,7 @@ namespace Nethermind.Trie.Test
             trieNode.Seal();
 
             ITrieNodeResolver trieStore = Substitute.For<ITrieNodeResolver>();
-            trieStore.LoadRlp(Arg.Any<Hash256>()).Throws(new TrieException());
+            trieStore.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, Arg.Any<Hash256>()).Throws(new TrieException());
             child.ResolveKey(trieStore, false);
             child.IsPersisted = true;
 

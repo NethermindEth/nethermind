@@ -95,6 +95,9 @@ namespace Nethermind.Core
 
         // Used for witness collector to skip collecting read
         SkipWitness = 8,
+
+        // Used for trie store to not throw on missing node
+        DontThrowOnMissingNode = 16,
     }
 
     [Flags]

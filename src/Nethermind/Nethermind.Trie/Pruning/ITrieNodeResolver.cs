@@ -22,13 +22,7 @@ namespace Nethermind.Trie.Pruning
         /// </summary>
         /// <param name="hash"></param>
         /// <returns></returns>
-        byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
-
-        /// <summary>
-        /// Loads RLP of the node.
-        /// </summary>
-        /// <param name="hash"></param>
-        /// <returns></returns>
-        byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
+        T LoadRlp<T, TDeserializer>(TDeserializer deserializer, Hash256 hash, ReadFlags flags = ReadFlags.None)
+            where TDeserializer : ISpanDeserializer<T>;
     }
 }

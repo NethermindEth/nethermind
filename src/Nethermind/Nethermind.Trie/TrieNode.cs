@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -348,7 +349,9 @@ namespace Nethermind.Trie
                         ThrowMissingKeccak();
                     }
 
-                    CappedArray<byte> fullRlp = tree.LoadRlp(keccak, readFlags);
+                    // TODO: Allocate from bufferPool
+                    CappedArray<byte> fullRlp = new CappedArray<byte>(tree.LoadRlp<byte[]?, ToArraySpanDeserializer>(
+                        ToArraySpanDeserializer.Instance, keccak, readFlags));
 
                     if (fullRlp.IsNull)
                     {
@@ -416,7 +419,7 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        var fullRlp = tree.TryLoadRlp(keccak, readFlags);
+                        var fullRlp = tree.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, keccak, readFlags | ReadFlags.DontThrowOnMissingNode);
 
                         if (fullRlp is null)
                         {

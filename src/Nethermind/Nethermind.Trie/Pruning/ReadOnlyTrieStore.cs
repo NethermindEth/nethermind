@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -26,8 +24,10 @@ namespace Nethermind.Trie.Pruning
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.TryLoadRlp(hash, flags | ReadFlags.SkipWitness);
-        public byte[] LoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.LoadRlp(hash, flags | ReadFlags.SkipWitness);
+        public T LoadRlp<T, TDeserializer>(TDeserializer deserializer, Hash256 hash, ReadFlags flags = ReadFlags.None) where TDeserializer : ISpanDeserializer<T>
+        {
+            return _trieStore.LoadRlp<T, TDeserializer>(deserializer, hash, flags | ReadFlags.SkipWitness);
+        }
 
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
 

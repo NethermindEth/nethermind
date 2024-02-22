@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -305,7 +306,7 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
 
             using TrieStore trieStore = new(memDb, _logManager);
-            trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
+            trieStore.LoadRlp<byte[]?, ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, Keccak.Zero).Should().NotBeNull();
         }
 
         [Test]
@@ -592,7 +593,7 @@ namespace Nethermind.Trie.Test.Pruning
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
 
             IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
-            readOnlyTrieStore.LoadRlp(node.Keccak);
+            readOnlyTrieStore.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, node.Keccak);
 
             witnessCollector.Collected.Should().BeEmpty();
         }

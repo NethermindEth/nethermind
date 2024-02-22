@@ -33,17 +33,22 @@ public class HealingTrieStore : TrieStore
         _recovery = recovery;
     }
 
-    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public override T LoadRlp<T, TDeserializer>(TDeserializer deserializer, Hash256 keccak, ReadFlags flags = ReadFlags.None)
     {
+        if ((flags & ReadFlags.DontThrowOnMissingNode) != 0)
+        {
+            return base.LoadRlp<T, TDeserializer>(deserializer, keccak, flags);
+        }
+
         try
         {
-            return base.LoadRlp(keccak, readFlags);
+            return base.LoadRlp<T, TDeserializer>(deserializer, keccak, flags);
         }
         catch (TrieNodeException)
         {
             if (TryRecover(keccak, out byte[] rlp))
             {
-                return rlp;
+                return deserializer.Deserialize(rlp);
             }
 
             throw;
