@@ -44,7 +44,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 nodesLength += Rlp.LengthOf(message.Nodes[i]);
             }
 
-            return (nodesLength + Rlp.LengthOf(message.RequestId), nodesLength);
+            return (Rlp.LengthOfSequence(nodesLength) + Rlp.LengthOf(message.RequestId), nodesLength);
         }
     }
 }
