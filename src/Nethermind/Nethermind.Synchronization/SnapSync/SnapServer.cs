@@ -70,13 +70,13 @@ public class SnapServer : ISnapServer
         // TODO: Before checking missing node cache, actually check StateReader.
         if (_rootWithMissingNode.TryGet(rootHash, out DateTimeOffset missingTime))
         {
-            if (DateTimeOffset.Now - missingTime < TimeSpan.FromSeconds(10))
+            if (DateTimeOffset.UtcNow - missingTime < TimeSpan.FromSeconds(10))
             {
                 return true;
             }
 
             // So, problem is, it could be that the missing root was just not processed, so we can't just not retry
-            // forever. `DateTimeOffset.Now` is probably heavy though.
+            // forever. `DateTimeOffset.UtcNow` is probably heavy though.
             _rootWithMissingNode.Delete(rootHash);
         }
 
@@ -85,7 +85,7 @@ public class SnapServer : ISnapServer
 
     private void TrackTrieNodeException(in ValueHash256 rootHash)
     {
-        _rootWithMissingNode.Set(rootHash, DateTimeOffset.Now);
+        _rootWithMissingNode.Set(rootHash, DateTimeOffset.UtcNow);
     }
 
     public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)

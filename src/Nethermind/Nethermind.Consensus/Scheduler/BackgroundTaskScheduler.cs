@@ -86,7 +86,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                     // from its deadline, we re-queue it. We do this in case there are some task in the queue that already
                     // reached deadline during block processing in which case, it will need to execute in order to handle
                     // its cancellation.
-                    if (DateTimeOffset.Now < activity.Deadline)
+                    if (DateTimeOffset.UtcNow < activity.Deadline)
                     {
                         await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
                         // Throttle deque to prevent infinite loop.
@@ -114,7 +114,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
     {
         timeout ??= DefaultTimeout;
-        DateTimeOffset deadline = DateTimeOffset.Now + timeout.Value;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout.Value;
 
         IActivity activity = new Activity<TReq>()
         {
@@ -149,7 +149,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         public async Task Do(CancellationToken cancellationToken)
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            DateTimeOffset now = DateTimeOffset.Now;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             TimeSpan timeToComplete = Deadline - now;
             if (timeToComplete <= TimeSpan.Zero)
             {

@@ -170,7 +170,7 @@ namespace Nethermind.TxPool
                 return;
             }
 
-            DateTimeOffset now = DateTimeOffset.Now;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             if (_lastPersistedTxBroadcast + _minTimeBetweenPersistedTxBroadcast > now)
             {
                 if (_logger.IsTrace) _logger.Trace($"Minimum time between persistent tx broadcast not reached.");
