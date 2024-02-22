@@ -52,13 +52,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                 }
                 else
                 {
-                    using ArrayPoolList<Hash256> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
+                    ArrayPoolList<Hash256> hashesToRequest = new(MaxNumberOfTxsInOneMsg);
                     for (int i = 0; i < discoveredTxHashes.Count; i++)
                     {
                         if (hashesToRequest.Count % MaxNumberOfTxsInOneMsg == 0 && hashesToRequest.Count > 0)
                         {
                             RequestPooledTransactionsEth66(send, hashesToRequest);
-                            hashesToRequest.Clear();
+                            hashesToRequest = new(MaxNumberOfTxsInOneMsg);
                         }
 
                         hashesToRequest.Add(discoveredTxHashes[i]);
@@ -80,7 +80,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             if (discoveredTxHashesAndSizes.Count != 0)
             {
                 int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-                using ArrayPoolList<Hash256> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
+                ArrayPoolList<Hash256> hashesToRequest = new(discoveredTxHashesAndSizes.Count);
 
                 for (int i = 0; i < discoveredTxHashesAndSizes.Count; i++)
                 {
@@ -90,7 +90,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
                     if (txSize > packetSizeLeft && hashesToRequest.Count > 0)
                     {
                         RequestPooledTransactionsEth66(send, hashesToRequest);
-                        hashesToRequest.Clear();
+                        hashesToRequest = new ArrayPoolList<Hash256>(discoveredTxHashesAndSizes.Count);
                         packetSizeLeft = TransactionsMessage.MaxPacketSize;
                     }
 
