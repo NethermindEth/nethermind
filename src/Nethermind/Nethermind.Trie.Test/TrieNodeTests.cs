@@ -65,7 +65,7 @@ namespace Nethermind.Trie.Test
         public void Forward_read_flags_on_resolve()
         {
             ITrieNodeResolver resolver = Substitute.For<ITrieNodeResolver>();
-            resolver.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
+            resolver.LoadRlp<CappedArray<byte>, TrieNode.CopyToPooledCappedArray>(new TrieNode.CopyToPooledCappedArray(null), TestItem.KeccakA, ReadFlags.HintReadAhead).Returns((byte[])null);
             TrieNode trieNode = new(NodeType.Unknown, TestItem.KeccakA);
             try
             {
@@ -74,7 +74,7 @@ namespace Nethermind.Trie.Test
             catch (TrieException)
             {
             }
-            resolver.Received().LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, TestItem.KeccakA, ReadFlags.HintReadAhead);
+            resolver.Received().LoadRlp<CappedArray<byte>, TrieNode.CopyToPooledCappedArray>(new TrieNode.CopyToPooledCappedArray(null), TestItem.KeccakA, ReadFlags.HintReadAhead);
         }
 
         [Test]
