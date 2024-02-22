@@ -4,8 +4,10 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain.Utils;
@@ -19,7 +21,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
 
     private Hash256? _lastQueuedStateRoot = null;
     private Queue<Hash256> _stateRootQueue = new Queue<Hash256>();
-    private ConcurrentDictionary<Hash256, int> _availableStateRoots = new();
+    private NonBlocking.ConcurrentDictionary<Hash256AsKey, int> _availableStateRoots = new();
 
     public LastNStateRootTracker(IBlockTree blockTree, int lastN)
     {
@@ -40,7 +42,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
         if (_availableStateRoots.TryGetValue(newHead.StateRoot, out int num) && num > 0) return;
 
         BlockHeader? parent = _blockTree.FindParentHeader(newHead, BlockTreeLookupOptions.All);
-        if (parent == null) return; // What? I don't wanna know...
+        if (parent is null) return; // What? I don't wanna know...
 
         if (!resetQueue && _lastQueuedStateRoot == parent.StateRoot)
         {
@@ -54,8 +56,7 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
                 int newNum = _availableStateRoots.AddOrUpdate(
                     oldStateRoot,
                     (_) => 0,
-                    (_,
-                        oldValue) => oldValue - 1);
+                    (_, oldValue) => oldValue - 1);
                 if (newNum == 0) _availableStateRoots.Remove(oldStateRoot, out _);
             }
             _stateRootQueue.Enqueue(newHead.StateRoot);
@@ -63,12 +64,12 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
             return;
         }
 
-        List<Hash256> stateRoots = new();
-        ConcurrentDictionary<Hash256, int> newStateRootSet = new();
+        using ArrayPoolList<Hash256> stateRoots = new(128);
+        NonBlocking.ConcurrentDictionary<Hash256AsKey, int> newStateRootSet = new();
         newStateRootSet.TryAdd(newHead.StateRoot, 1);
         stateRoots.Add(newHead.StateRoot);
 
-        while (parent != null && stateRoots.Count < _lastN)
+        while (parent is not null && stateRoots.Count < _lastN)
         {
             newStateRootSet.AddOrUpdate(
                 parent.StateRoot,
