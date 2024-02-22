@@ -79,9 +79,8 @@ public class LastNStateRootTracker : ILastNStateRootTracker, IDisposable
             parent = _blockTree.FindParentHeader(parent, BlockTreeLookupOptions.All);
         }
 
-        stateRoots.Reverse();
         _availableStateRoots = newStateRootSet;
-        _stateRootQueue = new Queue<Hash256>(stateRoots);
+        _stateRootQueue = new Queue<Hash256>(stateRoots.Reverse());
         _lastQueuedStateRoot = newHead.StateRoot;
     }
 
