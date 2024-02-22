@@ -156,7 +156,7 @@ namespace Nethermind.Synchronization.Peers
         {
             foreach (var peer in _peers)
             {
-                peer.Value.TryToWakeUp(DateTime.Now, TimeSpan.Zero);
+                peer.Value.TryToWakeUp(DateTime.UtcNow, TimeSpan.Zero);
             }
         }
 

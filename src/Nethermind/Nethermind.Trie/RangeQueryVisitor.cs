@@ -16,14 +16,12 @@
 //
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
@@ -31,24 +29,23 @@ namespace Nethermind.Trie;
 public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 {
     private bool _skipStarthashComparison = false;
-    private ValueHash256? _startHash;
-    private TreePath[] _truncatedStartHashes;
-    private readonly ValueHash256? _limitHash;
+    private TreePath _startHash;
+    private readonly ValueHash256 _limitHash;
 
     private readonly bool _isAccountVisitor;
 
     private long _currentBytesCount;
+    private bool _lastNodeFound = false;
     private readonly Dictionary<ValueHash256, byte[]> _collectedNodes = new();
 
     // For determining proofs
-    private TreePath? _leftmostLeafPath;
-    private TreePath? _rightmostLeafPath;
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
     private (TreePath, TrieNode)?[] _rightmostNodes = new (TreePath, TrieNode)?[65];
+    private (TreePath, TrieNode)? _leftLeafProof = null;
+    private TreePath _rightmostLeafPath;
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
-    private readonly long _hardByteLimit;
 
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
@@ -62,41 +59,33 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         in ValueHash256 startHash,
         in ValueHash256 limitHash,
         bool isAccountVisitor,
-        long byteLimit = -1,
-        long hardByteLimit = 200000,
+        long byteLimit = 200000,
         int nodeLimit = 10000,
         ReadFlags readFlags = ReadFlags.None,
         CancellationToken cancellationToken = default)
     {
-        if (startHash != ValueKeccak.Zero)
-        {
-            _startHash = startHash;
-        }
-
-        if (limitHash != ValueKeccak.MaxValue)
-        {
-            _limitHash = limitHash;
-        }
+        _limitHash = limitHash;
+        if (startHash == ValueKeccak.Zero)
+            _skipStarthashComparison = true;
+        else
+            _startHash = new TreePath(startHash, 64);
 
         _cancellationToken = cancellationToken;
         _isAccountVisitor = isAccountVisitor;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
-        _hardByteLimit = hardByteLimit;
         ExtraReadFlag = readFlags;
-
-        TreePath startHashPath = new TreePath(startHash, 64);
-        _truncatedStartHashes = new TreePath[65];
-        for (int i = 0; i < 65; i++)
-        {
-            _truncatedStartHashes[i] = startHashPath.Truncate(i);
-        }
     }
 
-    // to check if the node should be visited on the based of its path and limitHash
     private bool ShouldVisit(in TreePath path)
     {
         if (_cancellationToken.IsCancellationRequested)
+        {
+            StoppedEarly = true;
+            return false;
+        }
+
+        if (_lastNodeFound)
         {
             StoppedEarly = true;
             return false;
@@ -108,34 +97,16 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             return false;
         }
 
-        if (_byteLimit != -1 && _currentBytesCount >= _byteLimit)
+        if (_currentBytesCount >= _byteLimit)
         {
             StoppedEarly = true;
             return false;
         }
 
-        if (_currentBytesCount >= _hardByteLimit)
+        if (!_skipStarthashComparison)
         {
-            StoppedEarly = true;
-            return false;
-        }
-
-        int compResult = 0;
-        if (!_skipStarthashComparison && _startHash is not null)
-        {
-            compResult = path.CompareTo(_truncatedStartHashes[path.Length]);
-            if (compResult < 0)
+            if (_startHash.CompareToTruncated(path, path.Length) > 0)
             {
-                return false;
-            }
-        }
-
-        if (_limitHash is not null)
-        {
-            compResult = path.Path.CompareTo(_limitHash.Value);
-            if (compResult > 0)
-            {
-                StoppedEarly = true;
                 return false;
             }
         }
@@ -156,37 +127,35 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public byte[][] GetProofs()
     {
-        if (_leftmostLeafPath is null) return Array.Empty<byte[]>();
+        if (_leftLeafProof is null) return Array.Empty<byte[]>();
 
         HashSet<byte[]> proofs = new();
-        if (_startHash != Keccak.Zero)
+        // Note: although nethermind works just fine without left proof if start with zero starting hash,
+        // its out of spec.
+        (TreePath leftmostPath, TrieNode leftmostLeafProof) = _leftLeafProof.Value;
+        proofs.Add(leftmostLeafProof.FullRlp.ToArray());
+
+        for (int i = 64; i >= 0; i--)
         {
-            TreePath leftmostPath = _leftmostLeafPath.Value;
-            for (int i = 64; i >= 0; i--)
-            {
-                if (!_leftmostNodes[i].HasValue) continue;
+            if (!_leftmostNodes[i].HasValue) continue;
 
-                (TreePath path, TrieNode node) = _leftmostNodes[i].Value;
-                leftmostPath.TruncateMut(i);
-                if (leftmostPath != path) continue;
+            (TreePath path, TrieNode node) = _leftmostNodes[i].Value;
+            leftmostPath.TruncateMut(i);
+            if (leftmostPath != path) continue;
 
-                proofs.Add(node.FullRlp.ToArray());
-            }
+            proofs.Add(node.FullRlp.ToArray());
         }
 
-        if (StoppedEarly)
+        TreePath rightmostPath = _rightmostLeafPath;
+        for (int i = 64; i >= 0; i--)
         {
-            TreePath rightmostPath = _rightmostLeafPath.Value;
-            for (int i = 64; i >= 0; i--)
-            {
-                if (!_rightmostNodes[i].HasValue) continue;
+            if (!_rightmostNodes[i].HasValue) continue;
 
-                (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
-                rightmostPath.TruncateMut(i);
-                if (rightmostPath != path) continue;
+            (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
+            rightmostPath.TruncateMut(i);
+            if (rightmostPath != path) continue;
 
-                proofs.Add(node.FullRlp.ToArray());
-            }
+            proofs.Add(node.FullRlp.ToArray());
         }
 
         return proofs.ToArray();
@@ -216,20 +185,28 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         TreePath path = ctx.Path.Append(node.Key);
-        if (!ShouldVisit(path)) return;
-        CollectNode(path, node.Value);
-        // We found at least one leaf, don't compare with startHash anymore
-        if (_startHash is not null)
+        _rightmostNodes[ctx.Path.Length] = (ctx.Path, node); // Yes, this is needed. Yes, you can make a special variable like _rightLeafProof.
+        if (!ShouldVisit(path))
         {
-            _skipStarthashComparison = true;
+            if (!_lastNodeFound) _leftLeafProof = (path, node);
+            return;
         }
+
+        _leftLeafProof ??= (path, node);
+
+        if (path.Path.CompareTo(_limitHash) >= 0)
+        {
+            // This leaf is after or at limitHash. This will cause all further ShouldVisit to return false.
+            _lastNodeFound = true;
+        }
+
+        CollectNode(path, node.Value);
+
+        // We found at least one leaf, don't compare with startHash anymore
+        _skipStarthashComparison = true;
     }
 
     public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
-    {
-    }
-
-    public void VisitAccount(in TreePathContext path, TrieNode node, TrieVisitContext trieVisitContext, Account account)
     {
     }
 
@@ -240,10 +217,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     private void CollectNode(TreePath path, CappedArray<byte> value)
     {
-        if (_leftmostLeafPath is null)
-        {
-            _leftmostLeafPath = path;
-        }
         _rightmostLeafPath = path;
 
         byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(value) : value.ToArray();
