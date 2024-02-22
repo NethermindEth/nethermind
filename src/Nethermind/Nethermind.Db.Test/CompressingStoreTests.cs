@@ -77,6 +77,23 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
+        public void EOAWithSpanDeserialize()
+        {
+            Context ctx = new();
+
+            Rlp encoded = new AccountDecoder().Encode((Account)new(1));
+            ctx.Compressed.PutSpan(Key, encoded.Bytes);
+
+            CollectionAssert.AreEqual(encoded.Bytes, ctx.Compressed[Key]);
+
+            Account decodedAccount =
+                ctx.Compressed.ReadDeserialize<Account, RlpValueDecoderSpanDeserializer<Account, AccountDecoder>>(
+                    new RlpValueDecoderSpanDeserializer<Account, AccountDecoder>(new AccountDecoder()), Key);
+
+            decodedAccount.Balance.IsOne.Should().BeTrue();
+        }
+
+        [Test]
         public void Backward_compatible_read()
         {
             Context ctx = new();

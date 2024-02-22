@@ -39,6 +39,25 @@ namespace Nethermind.Core
         }
 
         void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
+
+        T ReadDeserialize<T, TDeserializer>(TDeserializer deserializer, ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+            where TDeserializer: ISpanDeserializer<T>
+        {
+            Span<byte> bytes = GetSpan(key, flags);
+            try
+            {
+                return deserializer.Deserialize(bytes);
+            }
+            finally
+            {
+                DangerousReleaseMemory(bytes);
+            }
+        }
+    }
+
+    public interface ISpanDeserializer<T>
+    {
+        T Deserialize(ReadOnlySpan<byte> span);
     }
 
     public interface IWriteOnlyKeyValueStore
