@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     ReportIn(getPooledTxMsg, size);
-                    BackgroundTaskScheduler.ScheduleTask(getPooledTxMsg, Handle);
+                    BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)

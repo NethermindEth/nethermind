@@ -185,7 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
                     ReportIn(getBlockHeadersMessage, size);
-                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -195,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     ReportIn(getBodiesMsg, size);
-                    ScheduleSyncServe(getBodiesMsg, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBodiesMsg, Handle);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -261,7 +261,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             IList<Transaction> iList = msg.Transactions;
 
-            BackgroundTaskScheduler.ScheduleTask((iList, 0), HandleSlow);
+            BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
         }
 
         private Task HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
@@ -276,7 +276,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 if (cancellationToken.IsCancellationRequested)
                 {
                     // Reschedule and with different start index
-                    BackgroundTaskScheduler.ScheduleTask((transactions, i), HandleSlow);
+                    BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
                     return Task.CompletedTask;
                 }
 

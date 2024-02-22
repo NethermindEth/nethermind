@@ -20,6 +20,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -40,7 +41,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         public virtual bool IncludeInTxPool => true;
         protected ISyncServer SyncServer { get; }
-        protected IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
+        protected BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
 
         public long HeadNumber { get; set; }
         public Hash256 HeadHash { get; set; }
@@ -83,7 +84,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             ILogManager logManager) : base(session, statsManager, serializer, logManager)
         {
             SyncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-            BackgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler));
+            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
             _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
@@ -446,25 +447,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers;
         }
 
-        protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
-        {
-            BackgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
-        }
-
-        // I just don't want to create a closure.. so this happens.
-        private async Task BackgroundSyncSender<TReq, TRes>(
-            (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
-        {
-            try
-            {
-                TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-                Send(response);
-            }
-            catch (EthSyncException e)
-            {
-                Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
-            }
-        }
 
         #region Cleanup
 
