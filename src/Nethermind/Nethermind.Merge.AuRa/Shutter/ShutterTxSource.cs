@@ -24,7 +24,7 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    public DecryptionKeys decryptionKeys = new();
+    public ShutterP2P.DecryptionKeys DecryptionKeys = new();
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
     private static readonly UInt256 EncryptedGasLimit = 300;
@@ -51,20 +51,8 @@ public class ShutterTxSource : ITxSource
     {
         // todo: cache? check changes in header?
 
-        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(decryptionKeys.Eon, (int)decryptionKeys.TxPointer);
-        return sequencedTransactions.Zip(decryptionKeys.Keys).Select((x) => DecryptSequencedTransaction(x.Item1, x.Item2));
-    }
-
-    // todo: how / where will libp2p set this?
-    public struct DecryptionKeys
-    {
-        public ulong InstanceId;
-        public ulong Eon;
-        public ulong Slot;
-        public ulong TxPointer;
-        public IEnumerable<(byte[], byte[])> Keys; // (identity, key)
-        public IEnumerable<ulong> SignerIndices;
-        public IEnumerable<byte> Signatures;
+        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.TxPointer);
+        return sequencedTransactions.Zip(DecryptionKeys.Keys).Select((x) => DecryptSequencedTransaction(x.Item1, x.Item2));
     }
 
     internal IEnumerable<TransactionSubmittedEvent> GetEvents()

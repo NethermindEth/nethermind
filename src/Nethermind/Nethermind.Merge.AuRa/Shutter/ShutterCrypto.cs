@@ -13,6 +13,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Crypto;
+using Nethermind.Serialization.Ssz;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -194,5 +195,45 @@ internal class ShutterCrypto
         }
 
         return acc;
+    }
+
+    public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity)
+    {
+        // todo: check against version in spec
+        return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
+    }
+
+    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, byte[] signature, Address keyperAddress)
+    {
+        Hash256 h = GenerateHash(instanceId, eon, slot, identities);
+        Ecdsa ecdsa = new();
+        PublicKey? expectedPubkey = ecdsa.RecoverPublicKey(new Signature(signature), h);
+
+        if (expectedPubkey is null)
+        {
+            return false;
+        }
+        else
+        {
+            return keyperAddress == expectedPubkey.Address;
+        }
+    }
+
+    // todo: should keyperIndex and txPointer be included?
+    public static Hash256 GenerateHash(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities)
+    {
+        Span<byte> container = stackalloc byte[40 + identities.Count() * 64];
+
+        Ssz.Encode(container[..8], instanceId);
+        Ssz.Encode(container[8..16], eon);
+        Ssz.Encode(container[16..24], slot);
+
+        foreach ((G1 identity, int index) in identities.WithIndex())
+        {
+            int offset = 24 + index * 64;
+            Ssz.Encode(container[offset..(offset + 64)], identity.compress());
+        }
+
+        return new(container);
     }
 }

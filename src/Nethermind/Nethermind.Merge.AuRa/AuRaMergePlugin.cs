@@ -90,10 +90,7 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-            // todo
-            // link to libp2p?
-
-            ITxSource? shutterTxSource = null;
+            ShutterTxSource? shutterTxSource = null;
 
             if (_auraConfig!.UseShutter)
             {
@@ -110,6 +107,8 @@ namespace Nethermind.Merge.AuRa
 
                 LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
+
+                ShutterP2P shutterP2P = new((ShutterP2P.DecryptionKeys decryptionKeys) => shutterTxSource.DecryptionKeys = decryptionKeys);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
