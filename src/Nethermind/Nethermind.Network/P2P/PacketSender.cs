@@ -33,6 +33,7 @@ namespace Nethermind.Network.P2P
             }
 
             IByteBuffer buffer = _messageSerializationService.ZeroSerialize(message);
+            message.Dispose();
             int length = buffer.ReadableBytes;
 
             // Running in background
