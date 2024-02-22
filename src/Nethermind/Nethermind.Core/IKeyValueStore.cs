@@ -92,6 +92,9 @@ namespace Nethermind.Core
 
         // Used for full pruning db to skip duplicate read
         SkipDuplicateRead = 4,
+
+        // Used for witness collector to skip collecting read
+        SkipWitness = 8,
     }
 
     [Flags]

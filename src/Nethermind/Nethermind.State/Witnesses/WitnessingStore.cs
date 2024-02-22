@@ -43,7 +43,7 @@ namespace Nethermind.State.Witnesses
                 throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
             }
 
-            Touch(key);
+            if ((flags & ReadFlags.SkipWitness) == 0) Touch(key);
             return _wrapped.Get(key, flags);
         }
 

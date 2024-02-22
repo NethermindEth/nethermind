@@ -15,27 +15,25 @@ namespace Nethermind.Trie.Pruning
     public class ReadOnlyTrieStore : IReadOnlyTrieStore
     {
         private readonly TrieStore _trieStore;
-        private readonly IKeyValueStore? _readOnlyStore;
         private readonly IReadOnlyKeyValueStore _publicStore;
 
-        public ReadOnlyTrieStore(TrieStore trieStore, IKeyValueStore? readOnlyStore)
+        public ReadOnlyTrieStore(TrieStore trieStore)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _readOnlyStore = readOnlyStore;
             _publicStore = _trieStore.TrieNodeRlpStore;
         }
 
         public TrieNode FindCachedOrUnknown(Hash256 hash) =>
             _trieStore.FindCachedOrUnknown(hash, true);
 
-        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.TryLoadRlp(hash, _readOnlyStore, flags);
-        public byte[] LoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
+        public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.TryLoadRlp(hash, flags | ReadFlags.SkipWitness);
+        public byte[] LoadRlp(Hash256 hash, ReadFlags flags) => _trieStore.LoadRlp(hash, flags | ReadFlags.SkipWitness);
 
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore)
+        public IReadOnlyTrieStore AsReadOnly()
         {
-            return new ReadOnlyTrieStore(_trieStore, keyValueStore);
+            return new ReadOnlyTrieStore(_trieStore);
         }
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags flags = WriteFlags.None) { }

@@ -585,12 +585,13 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb originalStore = new MemDb();
             WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            using IDisposable tracker = witnessCollector.TrackOnThisThread();
             IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
             using TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
 
-            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
             readOnlyTrieStore.LoadRlp(node.Keccak);
 
             witnessCollector.Collected.Should().BeEmpty();
@@ -616,7 +617,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (beThreadSafe)
             {
-                trieStore = trieStore.AsReadOnly(memDb);
+                trieStore = trieStore.AsReadOnly();
             }
 
             void CheckChildren()

@@ -374,8 +374,8 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) =>
-            new ReadOnlyTrieStore(this, keyValueStore);
+        public IReadOnlyTrieStore AsReadOnly() =>
+            new ReadOnlyTrieStore(this);
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
