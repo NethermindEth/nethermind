@@ -29,57 +29,24 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         ScheduleBackgroundTask((request, fulfillFunc), BackgroundSyncSenderValueTask);
     }
 
-    internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc)
-    {
-        backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandler);
-    }
-
     internal void ScheduleBackgroundTask<TReq>(TReq request, Func<TReq, CancellationToken, ValueTask> fulfillFunc)
     {
         backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundTaskFailureHandlerValueTask);
     }
 
     // I just don't want to create a closure.. so this happens.
-    private async Task BackgroundSyncSender<TReq, TRes>(
+    private async ValueTask BackgroundSyncSender<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        try
-        {
-            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-            handler.Send(response);
-        }
-        catch (EthSyncException e)
-        {
-            handler.Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
-        }
+        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        handler.Send(response);
     }
 
-    private async Task BackgroundSyncSenderValueTask<TReq, TRes>(
+    private async ValueTask BackgroundSyncSenderValueTask<TReq, TRes>(
         (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
     {
-        try
-        {
-            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-            handler.Send(response);
-        }
-        catch (EthSyncException e)
-        {
-            handler.Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
-        }
-    }
-
-    // Yes, I do feels like... am I overcomplicating this?
-    private async Task BackgroundTaskFailureHandler<TReq>((TReq Request, Func<TReq, CancellationToken, Task> BackgroundTask) input, CancellationToken cancellationToken)
-    {
-        try
-        {
-            await input.BackgroundTask.Invoke(input.Request, cancellationToken);
-        }
-        catch (Exception e)
-        {
-            handler.Session.InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, e.Message);
-            if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
-        }
+        TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
+        handler.Send(response);
     }
 
     private async Task BackgroundTaskFailureHandlerValueTask<TReq>((TReq Request, Func<TReq, CancellationToken, ValueTask> BackgroundTask) input, CancellationToken cancellationToken)
@@ -90,7 +57,15 @@ public class BackgroundTaskSchedulerWrapper(ProtocolHandlerBase handler, IBackgr
         }
         catch (Exception e)
         {
-            handler.Session.InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, e.Message);
+            if (e is EthSyncException)
+            {
+                handler.Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
+            }
+            else
+            {
+                handler.Session.InitiateDisconnect(DisconnectReason.BackgroundTaskFailure, e.Message);
+            }
+
             if (handler.Logger.IsDebug) handler.Logger.Debug($"Failure running background task on session {handler.Session}, {e}");
         }
     }

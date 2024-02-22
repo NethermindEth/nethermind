@@ -264,7 +264,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
         }
 
-        private Task HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        private ValueTask HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IList<Transaction> transactions = request.txs;
             int startIdx = request.startIndex;
@@ -277,12 +277,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     // Reschedule and with different start index
                     BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
-                    return Task.CompletedTask;
+                    return ValueTask.CompletedTask;
                 }
 
                 PrepareAndSubmitTransaction(transactions[i], isTrace);
             }
-            return Task.CompletedTask;
+            return ValueTask.CompletedTask;
         }
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)

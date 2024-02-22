@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private async Task Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             Metrics.Eth65GetPooledTransactionsReceived++;
 

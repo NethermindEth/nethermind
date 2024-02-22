@@ -89,7 +89,7 @@ namespace Nethermind.Network.Test.P2P
             await context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
 
-        private class TestMessage: P2PMessage
+        private class TestMessage : P2PMessage
         {
             public override int PacketType { get; } = 0;
             public override string Protocol { get; } = "";
