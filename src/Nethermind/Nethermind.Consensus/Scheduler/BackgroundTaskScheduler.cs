@@ -106,7 +106,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Error processing background task {e}.");
+                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
             }
         }
     }
