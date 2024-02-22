@@ -17,9 +17,7 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -60,6 +58,31 @@ public class RangeQueryVisitorTests
         );
     }
 
+    [Test]
+    public void AccountRangeFetchWithSparserTree()
+    {
+        StateTree tree = new StateTree();
+        tree.Set(new Hash256("0100000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.Set(new Hash256("0200000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.Set(new Hash256("0300000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.UpdateRootHash();
+
+        var startHash = new Hash256("0150000000000000000000000000000000000000000000000000000000000000");
+        var limitHash = new Hash256("0350000000000000000000000000000000000000000000000000000000000000");
+
+        using RangeQueryVisitor visitor = new(startHash, limitHash, false);
+        tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
+        (IDictionary<ValueHash256, byte[]> nodes, long _) = visitor.GetNodesAndSize();
+
+        nodes.Count.Should().Be(3);
+
+        nodes.ContainsKey(new Hash256("0200000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
+        nodes.ContainsKey(new Hash256("0300000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
+        nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
+    }
+
     private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
 
     [Test]
@@ -82,7 +105,7 @@ public class RangeQueryVisitorTests
 
         using RangeQueryVisitor visitor = new(startHash, limitHash, false);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
-        visitor.GetNodesAndSize().Item1.Count.Should().Be(2);
+        visitor.GetNodesAndSize().Item1.Count.Should().Be(3);
     }
 
     [Test]
