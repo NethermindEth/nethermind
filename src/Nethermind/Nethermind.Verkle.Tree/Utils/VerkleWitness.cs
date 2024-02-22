@@ -85,10 +85,9 @@ public class VerkleWitness : IVerkleWitness
     {
         var gas = isValueTransfer
             ? AccessAccount(contractAddress,
-                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.Balance |
-                AccountHeaderAccess.CodeHash, true)
+                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.Balance, true)
             : AccessAccount(contractAddress,
-                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.CodeHash, true);
+                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce, true);
         // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {isValueTransfer} {gas}");
 
         return gas;
