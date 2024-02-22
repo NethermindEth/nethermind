@@ -333,10 +333,9 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
+        public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
         {
-            keyValueStore ??= _keyValueStore;
-            byte[]? rlp = keyValueStore.Get(keccak.Bytes, readFlags);
+            byte[]? rlp = _keyValueStore.Get(keccak.Bytes, readFlags);
 
             if (rlp is not null)
             {
@@ -346,9 +345,9 @@ namespace Nethermind.Trie.Pruning
             return rlp;
         }
 
-        public byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
+        public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
         {
-            byte[]? rlp = TryLoadRlp(keccak, keyValueStore, readFlags);
+            byte[]? rlp = TryLoadRlp(keccak, readFlags);
             if (rlp is null)
             {
                 throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
@@ -356,9 +355,6 @@ namespace Nethermind.Trie.Pruning
 
             return rlp;
         }
-
-        public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
-        public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => TryLoadRlp(keccak, null, readFlags);
 
         public bool IsPersisted(in ValueHash256 keccak)
         {
