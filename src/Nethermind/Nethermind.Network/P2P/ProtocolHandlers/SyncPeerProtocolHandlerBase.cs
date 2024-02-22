@@ -241,7 +241,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected virtual void SendNewTransactionsCore(IEnumerable<Transaction> txs, bool sendFullTx)
         {
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
-            using ArrayPoolList<Transaction> txsToSend = new(1024);
+            ArrayPoolList<Transaction> txsToSend = new(1024);
 
             foreach (Transaction tx in txs)
             {
@@ -265,6 +265,10 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             if (txsToSend.Count > 0)
             {
                 SendMessage(txsToSend);
+            }
+            else
+            {
+                txsToSend.Dispose();
             }
         }
 

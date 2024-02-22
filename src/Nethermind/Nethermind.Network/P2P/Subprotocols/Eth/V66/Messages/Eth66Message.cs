@@ -24,5 +24,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 
         public override string ToString()
             => $"{GetType().Name}Eth66({RequestId},{EthMessage})";
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            EthMessage.Dispose();
+        }
     }
 }
