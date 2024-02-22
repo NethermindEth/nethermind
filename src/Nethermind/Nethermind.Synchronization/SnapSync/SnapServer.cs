@@ -19,15 +19,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -39,6 +38,7 @@ public class SnapServer : ISnapServer
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
+    private readonly ILastNStateRootTracker _stateRootTracker;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -47,20 +47,17 @@ public class SnapServer : ISnapServer
     // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
-    // Some cache to make sure we don't accidentally serve blocks with missing trie node.
-    // We don't know for sure if a tree was pruned with just the root hash.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _rootWithMissingNode = new LruCache<ValueHash256, DateTimeOffset>(256, "");
-
     private readonly AccountDecoder _decoder = new AccountDecoder();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        _stateRootTracker = stateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
 
@@ -70,27 +67,9 @@ public class SnapServer : ISnapServer
         }
     }
 
-    private bool IsRootMissing(in ValueHash256 rootHash)
+    private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        // TODO: Before checking missing node cache, actually check StateReader.
-        if (_rootWithMissingNode.TryGet(rootHash, out DateTimeOffset missingTime))
-        {
-            if (DateTimeOffset.Now - missingTime < TimeSpan.FromSeconds(10))
-            {
-                return true;
-            }
-
-            // So, problem is, it could be that the missing root was just not processed, so we can't just not retry
-            // forever. `DateTimeOffset.Now` is probably heavy though.
-            _rootWithMissingNode.Delete(rootHash);
-        }
-
-        return false;
-    }
-
-    private void TrackTrieNodeException(in ValueHash256 rootHash)
-    {
-        _rootWithMissingNode.Set(rootHash, DateTimeOffset.Now);
+        return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
     }
 
     public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
@@ -119,7 +98,6 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
@@ -145,12 +123,13 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
             }
         }
+
+        if (response.Count == 0) return Array.Empty<byte[]>();
         return response.ToArray();
     }
 
@@ -173,10 +152,11 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            // TODO: handle empty code in the DB itself?
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 response.Add(Array.Empty<byte>());
+                currentByteCount += 1;
+                continue;
             }
 
             byte[]? code = _codeDb[codeHash.Bytes];
@@ -193,9 +173,10 @@ public class SnapServer : ISnapServer
     public (PathWithAccount[], byte[][]) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, null, cancellationToken);
+            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, null, null, cancellationToken);
 
         PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
         int index = 0;
@@ -211,6 +192,7 @@ public class SnapServer : ISnapServer
     public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(in ValueHash256 rootHash, PathWithAccount[] accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         long responseSize = 0;
         StateTree tree = new(_storeWithReadFlag, _logManager);
@@ -248,7 +230,6 @@ public class SnapServer : ISnapServer
                 startingHash1,
                 limitHash1,
                 byteLimit - responseSize,
-                HardResponseByteLimit - responseSize,
                 storagePath,
                 accountNeth.StorageRoot,
                 cancellationToken);
@@ -276,11 +257,11 @@ public class SnapServer : ISnapServer
     }
 
     private (IDictionary<ValueHash256, byte[]>?, long, byte[][], bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
-        long byteLimit, long hardByteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
+        long byteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
     {
         bool isStorage = storage is not null;
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
@@ -301,7 +282,6 @@ public class SnapServer : ISnapServer
         }
         catch (MissingTrieNodeException)
         {
-            TrackTrieNodeException(rootHash);
             return null;
         }
     }

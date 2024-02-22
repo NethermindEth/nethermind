@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -524,7 +525,8 @@ public class InitializeNetwork : IStep
         ISnapServer? snapServer = null;
         if (_syncConfig.SnapServingEnabled)
         {
-            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, _api.LogManager);
+            // TODO: Add a proper config for the state persistence depth.
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
         }
 
         _api.ProtocolsManager = new ProtocolsManager(
