@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.Scheduler;
 /// - Task will not run if block processing is happening and it still have some time left.
 ///   It is up to the task to determine what happen if cancelled, maybe it will reschedule for later, or resume later, but
 ///   preferably, stop execution immediately. Don't hang BTW. Other background task need to cancel too.
+/// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
 ///
 /// Note: Yes, I know there is a built in TaskScheduler that can do some magical stuff that stop execution on async
 /// and stuff, but that is complicated and I don't wanna explain why you need `async Task.Yield()` in the middle of a loop,
@@ -106,7 +107,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Error processing background task {e}.");
+                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
             }
         }
     }

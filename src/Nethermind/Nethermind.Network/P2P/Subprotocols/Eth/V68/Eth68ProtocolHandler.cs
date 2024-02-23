@@ -123,18 +123,18 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             return;
         }
 
-        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
-                types.Clear();
-                sizes.Clear();
-                hashes.Clear();
+                types = new(NewPooledTransactionHashesMessage68.MaxCount);
+                sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+                hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
             }
 
             if (tx.Hash is not null)
@@ -149,6 +149,12 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         if (hashes.Count != 0)
         {
             SendMessage(types, sizes, hashes);
+        }
+        else
+        {
+            types.Dispose();
+            sizes.Dispose();
+            hashes.Dispose();
         }
     }
 
