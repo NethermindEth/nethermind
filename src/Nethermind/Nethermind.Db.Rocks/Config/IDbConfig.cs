@@ -207,6 +207,9 @@ public interface IDbConfig : IConfig
     long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     bool StateDbUseHashSkipListMemtable { get; set; }
     int StateDbBlockRestartInterval { get; set; }
+    double StateDbMemtablePrefixBloomSizeRatio { get; set; }
+    bool StateDbAdviseRandomOnOpen { get; set; }
+    int StateDbBloomFilterBitsPerKey { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
