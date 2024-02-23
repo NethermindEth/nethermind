@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Utils;
@@ -34,7 +33,7 @@ public class SnapServerTest
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
@@ -71,7 +70,7 @@ public class SnapServerTest
     [Test]
     public void TestNoState()
     {
-        Context context = CreateContext(stateRootTracker: CreateAlwaysUnavailableStateRootTracker());
+        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
 
         (PathWithAccount[] accounts, byte[][] _) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
@@ -174,7 +173,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -202,7 +201,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store, 10000);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -262,7 +261,7 @@ public class SnapServerTest
         }
         stateTree.Commit(1);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, CreateAlwaysAvailableStateRootTracker(), LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         PathWithAccount[] accounts;
         // size of one PathWithAccount ranges from 39 -> 72
@@ -325,17 +324,10 @@ public class SnapServerTest
         proofs.Should().NotBeEmpty();
     }
 
-    private ILastNStateRootTracker CreateAlwaysAvailableStateRootTracker()
+    private ILastNStateRootTracker CreateConstantStateRootTracker(bool available)
     {
         ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
-        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
-        return tracker;
-    }
-
-    private ILastNStateRootTracker CreateAlwaysUnavailableStateRootTracker()
-    {
-        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
-        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(false);
+        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(available);
         return tracker;
     }
 }

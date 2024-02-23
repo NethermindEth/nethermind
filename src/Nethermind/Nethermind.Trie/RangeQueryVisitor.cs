@@ -147,15 +147,18 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         }
 
         TreePath rightmostPath = _rightmostLeafPath;
-        for (int i = 64; i >= 0; i--)
+        if (rightmostPath.Length != 0)
         {
-            if (!_rightmostNodes[i].HasValue) continue;
+            for (int i = 64; i >= 0; i--)
+            {
+                if (!_rightmostNodes[i].HasValue) continue;
 
-            (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
-            rightmostPath.TruncateMut(i);
-            if (rightmostPath != path) continue;
+                (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
+                rightmostPath.TruncateMut(i);
+                if (rightmostPath != path) continue;
 
-            proofs.Add(node.FullRlp.ToArray());
+                proofs.Add(node.FullRlp.ToArray());
+            }
         }
 
         return proofs.ToArray();
@@ -168,6 +171,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitMissingNode(in TreePathContext ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
     {
+        throw new TrieException($"Missing node {ctx.Path} {nodeHash}");
     }
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
