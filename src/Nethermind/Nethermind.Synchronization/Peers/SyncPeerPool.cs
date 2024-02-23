@@ -235,7 +235,7 @@ namespace Nethermind.Synchronization.Peers
 
             PeerInfo peerInfo = new(syncPeer);
             _peers.TryAdd(syncPeer.Node.Id, peerInfo);
-            UpdatePeerCountMetric(peerInfo.PeerClientType);
+            UpdatePeerCountMetric(peerInfo.PeerClientType, 1);
 
             if (syncPeer.IsPriority)
             {
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Peers
                 return;
             }
 
-            UpdatePeerCountMetric(syncPeer.ClientType);
+            UpdatePeerCountMetric(syncPeer.ClientType, -1);
 
             if (syncPeer.IsPriority)
             {
@@ -685,10 +685,9 @@ namespace Nethermind.Synchronization.Peers
             _upgradeTimer?.Dispose();
         }
 
-        private void UpdatePeerCountMetric(NodeClientType clientType)
+        private void UpdatePeerCountMetric(NodeClientType clientType, int delta)
         {
-            long count = _peers.Count(k => k.Value.PeerClientType == clientType);
-            Metrics.SyncPeers[clientType] = count;
+            Metrics.SyncPeers.AddOrUpdate(clientType, delta, (_, l) => l + delta);
         }
 
         private class RefreshTotalDiffTask

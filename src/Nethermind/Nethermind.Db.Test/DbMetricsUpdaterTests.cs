@@ -21,12 +21,28 @@ namespace Nethermind.Db.Test
             Metrics.DbStats.Clear();
         }
 
-        [Test]
-        public void ProcessCompactionStats_AllDataExist()
+        [SetCulture("en-US")]
+        [TestCase("files", 94)]
+        [TestCase("files_compacting", 0)]
+        [TestCase("score", 0.1)]
+        [TestCase("size", 1309965025.28)]
+        [TestCase("read", 0.2)]
+        [TestCase("rn", 0.3)]
+        [TestCase("rnp1", 0.4)]
+        [TestCase("write", 0.5)]
+        [TestCase("wnew", 0.6)]
+        [TestCase("moved", 0.7)]
+        [TestCase("wamp", 0.8)]
+        [TestCase("rd", 0.9)]
+        [TestCase("wr", 1.0)]
+        [TestCase("comp_sec", 1.1)]
+        [TestCase("comp_merge_cpu_sec", 1.2)]
+        [TestCase("comp_total", 1.3)]
+        public void ProcessCompactionStats_AllDataExist(string metric, double expectedValue)
         {
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
-            string testDump = File.ReadAllText(@"InputFiles/CompactionStatsExample_AllData.txt");
+            string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
             new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
@@ -34,22 +50,7 @@ namespace Nethermind.Db.Test
             // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
             // L0     94/0    1.22 GB   0.1      0.2     0.3      0.4      0.5     0.6       0.7   0.8      0.9     1.0    1.1            1.2      1.3    1.4       0      0       0.0       0.0
 
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "files")], Is.EqualTo(94));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "files_compacting")], Is.EqualTo(0));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "score")], Is.EqualTo(0.1));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "size")], Is.EqualTo(1309965025.28));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "read")], Is.EqualTo(0.2));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "rn")], Is.EqualTo(0.3));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "rnp1")], Is.EqualTo(0.4));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "write")], Is.EqualTo(0.5));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "wnew")], Is.EqualTo(0.6));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "moved")], Is.EqualTo(0.7));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "wamp")], Is.EqualTo(0.8));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "rd")], Is.EqualTo(0.9));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "wr")], Is.EqualTo(1.0));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "comp_sec")], Is.EqualTo(1.1));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "comp_merge_cpu_sec")], Is.EqualTo(1.2));
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, "comp_total")], Is.EqualTo(1.3));
+            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
         }
 
         [Test]

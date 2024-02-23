@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization
         [GaugeMetric]
         [Description("Number of sync peers.")]
         [KeyIsLabel("client_type")]
-        public static ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
+        public static NonBlocking.ConcurrentDictionary<NodeClientType, long> SyncPeers { get; set; } = new();
 
         [GaugeMetric]
         [Description("Number of priority peers.")]

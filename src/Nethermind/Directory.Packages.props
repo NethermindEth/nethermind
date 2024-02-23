@@ -51,6 +51,7 @@
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.2.8" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.1.0" />
+    <PackageVersion Include="NonBlocking" Version="2.1.2" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
     <PackageVersion Include="NUnit" Version="3.14.0" />
     <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
