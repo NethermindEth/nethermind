@@ -687,7 +687,7 @@ namespace Nethermind.Synchronization.Peers
 
         private void UpdatePeerCountMetric(NodeClientType clientType, int delta)
         {
-            Metrics.SyncPeers.AddOrUpdate(clientType, delta, (_, l) => l + delta);
+            Metrics.SyncPeers.AddOrUpdate(clientType, Math.Max(0, delta), (_, l) => l + delta);
         }
 
         private class RefreshTotalDiffTask
