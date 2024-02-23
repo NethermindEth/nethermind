@@ -17,5 +17,7 @@ public interface IPatriciaTree
     void Commit(long blockNumber, bool skipRoot = false, WriteFlags writeFlags = WriteFlags.None);
 
     ITrieStore TrieStore { get; }
-    void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null);
+
+    void Accept(ITreeVisitor visitor, Hash256 rootHash, VisitingOptions? visitingOptions = null,
+        Hash256? storageAddr = null);
 }

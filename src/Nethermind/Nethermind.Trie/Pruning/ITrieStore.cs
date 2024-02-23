@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -17,7 +19,7 @@ namespace Nethermind.Trie.Pruning
 
         bool IsPersisted(in ValueHash256 keccak);
 
-        IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
+        IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null);
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -26,7 +28,7 @@ namespace Nethermind.Trie.Pruning
 
         // Used by healing
         void Set(in ValueHash256 hash, byte[] rlp);
-
+        bool HasRoot(Hash256 stateRoot);
         void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None);
         void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? keyValueStore = null, WriteFlags writeFlags = WriteFlags.None);
 
@@ -36,5 +38,10 @@ namespace Nethermind.Trie.Pruning
         void DeleteByRange(Span<byte> startKey, Span<byte> endKey, IWriteBatch writeBatch = null);
         bool CanAccessByPath();
         bool ShouldResetObjectsOnRootChange();
+    }
+
+    public interface IPruningTrieStore
+    {
+        public void PersistCache(CancellationToken cancellationToken);
     }
 }

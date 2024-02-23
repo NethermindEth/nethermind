@@ -14,6 +14,8 @@ namespace Nethermind.Trie
 {
     public static class Nibbles
     {
+        private const int StackAllocLengthLimit = 255;
+
         private static readonly byte PathPointerOdd = 0xfe;
 
         public static Nibble[] FromBytes(params byte[] bytes)
@@ -173,6 +175,36 @@ namespace Nethermind.Trie
             return bytes;
         }
 
+        public static byte[] CompactToHexEncode(byte[] compactPath)
+        {
+            if (compactPath.Length == 0)
+            {
+                return compactPath;
+            }
+            int nibblesCount = compactPath.Length * 2 + 1;
+            byte[]? array = null;
+            Span<byte> nibbles = nibblesCount < StackAllocLengthLimit
+                ? stackalloc byte[nibblesCount]
+                : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
+
+            BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+            nibbles[^1] = 16;
+
+            if (nibbles[0] < 2)
+            {
+                nibbles = nibbles[..^1];
+            }
+
+            int chop = 2 - (nibbles[0] & 1);
+            byte[] result = nibbles[chop..].ToArray();
+            if (array is not null)
+            {
+                ArrayPool<byte>.Shared.Return(array);
+            }
+
+            return result;
+        }
+
         public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)
         {
             int oddity = nibbles.Length % 2;
@@ -310,34 +342,6 @@ namespace Nethermind.Trie
         {
             Debug.Assert(nibbles.Length == bytes.Length * 2);
             BytesToNibbleBytes(bytes, nibbles);
-        }
-
-        public static byte[] CompactToHexEncode(byte[] compactPath)
-        {
-            if (compactPath.Length == 0)
-            {
-                return compactPath;
-            }
-            int nibblesCount = compactPath.Length * 2 + 1;
-            byte[] array = ArrayPool<byte>.Shared.Rent(nibblesCount);
-            try
-            {
-                Span<byte> nibbles = array.Slice(0, nibblesCount);
-                BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
-                nibbles[^1] = 16;
-
-                if (nibbles[0] < 2)
-                {
-                    nibbles = nibbles[..^1];
-                }
-
-                int chop = 2 - (nibbles[0] & 1);
-                return nibbles[chop..].ToArray();
-            }
-            finally
-            {
-                ArrayPool<byte>.Shared.Return(array);
-            }
         }
 
         public static Span<byte> IncrementNibble(this Span<byte> nibbles, bool trimHighest = false)

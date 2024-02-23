@@ -10,6 +10,7 @@ using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -48,15 +49,15 @@ public class SnapProtocolHandlerTests
         public INodeStatsManager NodeStatsManager { get; set; } = Substitute.For<INodeStatsManager>();
 
 
-        private SnapProtocolHandler _snapProtocolHandler;
+        private SnapProtocolHandler? _snapProtocolHandler;
         public SnapProtocolHandler SnapProtocolHandler
         {
             get => _snapProtocolHandler ??= new SnapProtocolHandler(
                 Session,
                 NodeStatsManager,
                 MessageSerializationService,
-                LimboLogs.Instance
-            );
+                RunImmediatelyScheduler.Instance,
+                LimboLogs.Instance);
             set
             {
                 _snapProtocolHandler = value;

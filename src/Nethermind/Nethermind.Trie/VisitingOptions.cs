@@ -39,14 +39,13 @@ namespace Nethermind.Trie
         /// </summary>
         public long FullScanMemoryBudget { get; set; }
 
-        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism)
-        {
-            if (rawMaxDegreeOfParallelism == 0)
-                return Math.Max(Environment.ProcessorCount / 4, 1);
-            if (rawMaxDegreeOfParallelism <= -1)
-                return Environment.ProcessorCount;
-            return rawMaxDegreeOfParallelism;
-        }
+        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism) =>
+            rawMaxDegreeOfParallelism switch
+            {
+                0 => Math.Max(Environment.ProcessorCount / 4, 1),
+                <= -1 => Environment.ProcessorCount,
+                _ => rawMaxDegreeOfParallelism
+            };
 
         public bool KeepTrackOfAbsolutePath { get; init; } = false;
     }

@@ -42,7 +42,7 @@ public class ColumnDb : IDb
 
     public Span<byte> GetSpan(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily);
+        return _mainDb.GetSpanWithColumnFamily(key, _columnFamily, flags);
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)

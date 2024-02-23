@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -11,7 +11,7 @@ namespace Nethermind.TxPool;
 
 public class NonceManager : INonceManager
 {
-    private readonly ConcurrentDictionary<Address, AddressNonceManager> _addressNonceManagers = new();
+    private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
 
     public NonceManager(IAccountStateProvider accounts)

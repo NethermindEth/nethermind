@@ -4,9 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
-
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -31,17 +33,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly LruKeyCache<Hash256> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
+        private readonly LruKeyCache<Hash256AsKey> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, statsManager, syncServer, logManager)
+            : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
         {
             _floodController = new TxFloodController(this, Timestamper.Default, Logger);
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
@@ -182,7 +185,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     GetBlockHeadersMessage getBlockHeadersMessage
                         = Deserialize<GetBlockHeadersMessage>(message.Content);
                     ReportIn(getBlockHeadersMessage, size);
-                    Handle(getBlockHeadersMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -192,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     ReportIn(getBodiesMsg, size);
-                    Handle(getBodiesMsg);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBodiesMsg, Handle);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -258,41 +261,28 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             IList<Transaction> iList = msg.Transactions;
 
-            if (iList is ArrayPoolList<Transaction> apl)
-            {
-                HandleFast(apl.AsSpan());
-            }
-            else if (iList is Transaction[] array)
-            {
-                HandleFast(array.AsSpan());
-            }
-            else if (iList is List<Transaction> list)
-            {
-                HandleFast(CollectionsMarshal.AsSpan(list));
-            }
-            else
-            {
-                HandleSlow(iList);
-            }
+            BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
         }
 
-        private void HandleFast(Span<Transaction> transactions)
+        private ValueTask HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
-            bool isTrace = Logger.IsTrace;
-            for (int i = 0; i < transactions.Length; i++)
-            {
-                PrepareAndSubmitTransaction(transactions[i], isTrace);
-            }
-        }
+            IList<Transaction> transactions = request.txs;
+            int startIdx = request.startIndex;
 
-        private void HandleSlow(IList<Transaction> transactions)
-        {
             bool isTrace = Logger.IsTrace;
             int count = transactions.Count;
-            for (int i = 0; i < count; i++)
+            for (int i = startIdx; i < count; i++)
             {
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    // Reschedule and with different start index
+                    BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
+                    return ValueTask.CompletedTask;
+                }
+
                 PrepareAndSubmitTransaction(transactions[i], isTrace);
             }
+            return ValueTask.CompletedTask;
         }
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)
@@ -305,7 +295,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
             AcceptTxResult accepted = _txPool.SubmitTx(tx, TxHandlingOptions.None);
             _floodController.Report(accepted);
-
             if (isTrace) Log(tx, accepted);
 
             void Log(Transaction tx, in AcceptTxResult accepted)

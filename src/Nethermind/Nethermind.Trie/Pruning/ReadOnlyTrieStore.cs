@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
@@ -63,8 +65,6 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
 
-        public void Dispose() { }
-
         public byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash)
         {
             throw new NotImplementedException();
@@ -94,18 +94,11 @@ namespace Nethermind.Trie.Pruning
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 
-        private class ReadOnlyValueStore : IKeyValueStore
+        public bool HasRoot(Hash256 stateRoot)
         {
-            private readonly IKeyValueStore _keyValueStore;
-
-            public ReadOnlyValueStore(IKeyValueStore keyValueStore)
-            {
-                _keyValueStore = keyValueStore;
-            }
-
-            public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => _keyValueStore.Get(key, flags);
-            public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None) { }
-            public void DeleteByRange(Span<byte> startKey, Span<byte> endKey) { }
+            return _trieStore.HasRoot(stateRoot);
         }
+
+        public void Dispose() { }
     }
 }

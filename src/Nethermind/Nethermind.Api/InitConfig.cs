@@ -36,6 +36,7 @@ namespace Nethermind.Api
         public bool UsePathBasedState { get; set; } = false;
         public bool DisableMallocOpts { get; set; } = false;
         public long? ExitOnBlockNumber { get; set; } = null;
+        public int BackgroundTaskConcurrency { get; set; } = 1;
 
         [Obsolete("Use DiagnosticMode with MemDb instead")]
         public bool UseMemDb

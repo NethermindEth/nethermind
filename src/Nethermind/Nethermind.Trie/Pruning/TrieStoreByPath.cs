@@ -162,9 +162,8 @@ namespace Nethermind.Trie.Pruning
                     BlockCommitSet set = CurrentPackage;
                     if (set is not null)
                     {
-                        set.Root = root;
-                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {set.Root}, block {set.BlockNumber}");
-                        set.Seal();
+                        if (_logger.IsTrace) _logger.Trace($"Current root (block {blockNumber}): {root}, block {set.BlockNumber}");
+                        set.Seal(root);
                     }
                     if (blockNumber == 0) // special case for genesis
                     {
@@ -446,6 +445,12 @@ namespace Nethermind.Trie.Pruning
             currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
 
             PersistedNodesCount++;
+        }
+
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            return FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>()).NodeType != NodeType.Unknown ||
+                   IsPersisted(stateRoot, Array.Empty<byte>());
         }
 
         public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None)

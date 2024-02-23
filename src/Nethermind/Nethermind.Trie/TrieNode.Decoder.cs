@@ -178,7 +178,7 @@ namespace Nethermind.Trie
             private static int GetChildrenRlpLength(ITrieNodeResolver tree, TrieNode item, ICappedArrayPool? bufferPool)
             {
                 int totalLength = 0;
-                item.InitData();
+                item.EnsureInitialized();
                 ValueRlpStream rlpStream = item.RlpStream;
                 item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)
@@ -218,7 +218,7 @@ namespace Nethermind.Trie
             private static void WriteChildrenRlp(ITrieNodeResolver tree, TrieNode item, Span<byte> destination, ICappedArrayPool? bufferPool)
             {
                 int position = 0;
-                item.InitData();
+                item.EnsureInitialized();
                 ValueRlpStream rlpStream = item.RlpStream;
                 item.SeekChild(ref rlpStream, 0);
                 for (int i = 0; i < BranchesCount; i++)

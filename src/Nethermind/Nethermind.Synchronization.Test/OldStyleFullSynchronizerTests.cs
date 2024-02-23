@@ -25,10 +25,7 @@ using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Stats;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -388,7 +385,7 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB });
+            byte[]?[] data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Length, Is.EqualTo(2), "data.Length");

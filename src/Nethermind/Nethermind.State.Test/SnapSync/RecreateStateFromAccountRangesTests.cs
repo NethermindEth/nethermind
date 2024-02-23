@@ -28,7 +28,7 @@ namespace Nethermind.Store.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree(null);
+            _inputTree = TestItem.Tree.GetStateTree();
         }
 
         //[Test]

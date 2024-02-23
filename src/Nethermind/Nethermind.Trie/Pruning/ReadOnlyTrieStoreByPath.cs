@@ -69,6 +69,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public void Set(in ValueHash256 hash, byte[] rlp) { }
+        public bool HasRoot(Hash256 stateRoot) => _trieStore.HasRoot(stateRoot);
 
         public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }

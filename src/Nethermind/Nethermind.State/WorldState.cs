@@ -27,7 +27,7 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private readonly ITrieStore? _trieStore;
+        private readonly ITrieStore _trieStore;
 
         public Hash256 StateRoot
         {
@@ -212,9 +212,7 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor visitor = new();
-            Accept(visitor, stateRoot);
-            return visitor.HasRoot;
+            return _trieStore.HasRoot(stateRoot);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)

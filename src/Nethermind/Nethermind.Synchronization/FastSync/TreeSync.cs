@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -71,13 +71,12 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<StateSyncItem, HashSet<DependentItem>> _dependencies = new();
-        private readonly LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly HashSet<Hash256> _codesSameAsNodes = new();
+        private readonly LruKeyCache<Hash256AsKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256AsKey> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly HashSet<Hash256AsKey> _codesSameAsNodes = new();
         private readonly ConcurrentDictionary<Hash256, List<byte>> _additionalLeafNibbles;
         private byte[] farRightPath = new byte[64];
         private bool rootChanged = false;
-
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
         private long _blockNumber;
@@ -555,35 +554,15 @@ namespace Nethermind.Synchronization.FastSync
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
-                //LruKeyCache<Hash256> alreadySavedCache =
-                //    syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
-                //if (alreadySavedCache.Get(syncItem.Hash))
-                //{
-                //    Interlocked.Increment(ref _data.CheckWasCached);
-                //    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
-                //    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
-                //    return AddNodeResult.AlreadySaved;
-                //}
-
-                // Keccak hashToCheckInCache = syncItem.Hash;
-
-                // Keccak hashToCheckInCache;
-                // if (syncItem.NodeDataType != NodeDataType.Code && _stateStore.Capability == TrieNodeResolverCapability.Path)
-                // {
-                //     hashToCheckInCache = Keccak.Compute(syncItem.Hash.Bytes.Concat(syncItem.PathNibbles).ToArray());
-                // }
-                // else
-                // {
-                //     hashToCheckInCache = syncItem.Hash;
-                // }
-
-                // if (alreadySavedCache.Get(hashToCheckInCache))
-                // {
-                //     Interlocked.Increment(ref _data.CheckWasCached);
-                //     _logger.Info($"Node already in the DB - skipping {syncItem.Hash}");
-                //     _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
-                //     return AddNodeResult.AlreadySaved;
-                // }
+                LruKeyCache<Hash256AsKey> alreadySavedCache =
+                    syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
+                if (alreadySavedCache.Get(syncItem.Hash))
+                {
+                    Interlocked.Increment(ref _data.CheckWasCached);
+                    if (_logger.IsTrace) _logger.Trace($"Node already in the DB - skipping {syncItem.Hash}");
+                    _branchProgress.ReportSynced(syncItem, NodeProgressState.AlreadySaved);
+                    return AddNodeResult.AlreadySaved;
+                }
 
                 ReaderWriterLockSlim lockToTake = syncItem.NodeDataType == NodeDataType.Code ? _codeDbLock : _stateDbLock;
                 lockToTake.EnterReadLock();

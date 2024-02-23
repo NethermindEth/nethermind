@@ -79,8 +79,6 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
@@ -137,15 +135,6 @@ public class InitializeStateDb : IStep
 
             // TODO: Needed by node serving. Probably should use `StateReader` instead.
             setApi.TrieStore = trieStore;
-
-            if (pruningConfig.Mode.IsFull())
-            {
-                IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-                fullPruningDb.PruningStarted += (_, args) =>
-                {
-                    ((TrieStore)trieStore).PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-                };
-            }
         }
 
         //IWorldState worldState = syncConfig.TrieHealing
@@ -203,7 +192,8 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        if (!pathStateConfig.Enabled)
+            InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, (trieStore as TrieStore)!);
 
         return Task.CompletedTask;
     }
@@ -217,7 +207,8 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        TrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -249,7 +240,7 @@ public class InitializeStateDb : IStep
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
                 FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                    drive, trieStore, api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

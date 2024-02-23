@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -28,6 +29,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -103,6 +105,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    RunImmediatelyScheduler.Instance,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,
@@ -114,6 +117,7 @@ namespace Nethermind.Network.Test
                     forkInfo,
                     _gossipPolicy,
                     new NetworkConfig(),
+                    Substitute.For<ISnapServer>(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());

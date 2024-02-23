@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 codesLength += Rlp.LengthOf(message.Codes[i]);
             }
 
-            return (codesLength + Rlp.LengthOf(message.RequestId), codesLength);
+            return (Rlp.LengthOfSequence(codesLength) + Rlp.LengthOf(message.RequestId), codesLength);
         }
     }
 }

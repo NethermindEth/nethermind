@@ -188,6 +188,10 @@ public class HealingTreeTests
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 
         public void Set(in ValueHash256 hash, byte[] rlp) { }
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            return true;
+        }
 
         public void PersistNode(TrieNode trieNode, IWriteBatch? batch = null, bool withDelete = false, WriteFlags writeFlags = WriteFlags.None) { }
 

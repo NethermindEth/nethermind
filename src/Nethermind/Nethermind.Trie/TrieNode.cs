@@ -137,7 +137,7 @@ namespace Nethermind.Trie
             get => _data?[0] as byte[];
             internal set
             {
-                InitData();
+                EnsureInitialized();
                 if (IsSealed)
                 {
                     if ((_data[0] as byte[]).AsSpan().SequenceEqual(value))
@@ -163,7 +163,7 @@ namespace Nethermind.Trie
         {
             get
             {
-                InitData();
+                EnsureInitialized();
                 if (IsLeaf)
                 {
                     object? data = _data![1];
@@ -215,7 +215,7 @@ namespace Nethermind.Trie
 
         private void SetValue(in CappedArray<byte> value, bool overrideSealed = false)
         {
-            InitData();
+            EnsureInitialized();
             var index = IsLeaf ? 1 : BranchesCount;
             ref var data = ref index >= _data.Length ? ref Unsafe.NullRef<object>() : ref _data[index];
             if (!overrideSealed && IsSealed)
@@ -628,12 +628,6 @@ namespace Nethermind.Trie
 
         public Hash256? GenerateKey(ITrieNodeResolver tree, bool isRoot, ICappedArrayPool? bufferPool = null)
         {
-            Hash256? keccak = Keccak;
-            if (keccak is not null)
-            {
-                return keccak;
-            }
-
             RlpFactory rlp = _rlp;
             if (rlp is null || IsDirty)
             {
@@ -887,7 +881,7 @@ namespace Nethermind.Trie
                 throw new InvalidOperationException();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
             _data[index] = child;
         }
@@ -899,7 +893,7 @@ namespace Nethermind.Trie
                 ThrowAlreadySealed();
             }
 
-            InitData();
+            EnsureInitialized();
             int index = IsExtension ? i + 1 : i;
             _data[index] = node ?? _nullNode;
             Keccak = null;
@@ -1017,7 +1011,7 @@ namespace Nethermind.Trie
             object?[] data = _data;
             if (data is not null)
             {
-                trieNode.InitData();
+                trieNode.EnsureInitialized();
                 for (int i = 0; i < data.Length; i++)
                 {
                     trieNode._data[i] = data[i];
@@ -1190,49 +1184,59 @@ namespace Nethermind.Trie
 
         private bool TryResolveStorageRoot(ITrieNodeResolver resolver, Span<byte> storagePrefix, out TrieNode? storageRoot)
         {
+            bool hasStorage = false;
             storageRoot = _storageRoot;
-            if (!IsLeaf) return false;
 
-            if (storageRoot is not null) return true;
-            if (!(Value.Length > 64)) return false; // is not a storage leaf
-
-            Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-            if (storageRootKey == Core.Crypto.Keccak.EmptyTreeHash) return false;
-
-            _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, Array.Empty<byte>(), storagePrefix);
-            return true;
+            if (IsLeaf)
+            {
+                if (storageRoot is not null)
+                {
+                    hasStorage = true;
+                }
+                else if (Value.Length > 64) // if not a storage leaf
+                {
+                    Rlp.ValueDecoderContext valueContext = Value.AsSpan().AsRlpValueContext();
+                    Hash256 storageRootKey = _accountDecoder.DecodeStorageRootOnly(ref valueContext);
+                    if (storageRootKey != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
+                    {
+                        hasStorage = true;
+                        _storageRoot = storageRoot = resolver.FindCachedOrUnknown(storageRootKey, Array.Empty<byte>(), storagePrefix);
+                    }
+                }
+            }
+            return hasStorage;
         }
 
         [MemberNotNull(nameof(_data))]
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        private void InitData()
+        private void EnsureInitialized()
         {
             if (_data is null)
             {
                 Initialize(NodeType);
             }
-        }
 
-        [MethodImpl(MethodImplOptions.NoInlining)]
-        private void Initialize(NodeType nodeType)
-        {
-            var data = nodeType switch
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Initialize(NodeType nodeType)
             {
-                NodeType.Unknown => ThrowCannotResolveException(),
-                NodeType.Branch => new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount],
-                _ => new object[2],
-            };
+                var data = nodeType switch
+                {
+                    NodeType.Unknown => ThrowCannotResolveException(),
+                    NodeType.Branch => new object[AllowBranchValues ? BranchesCount + 1 : BranchesCount],
+                    _ => new object[2],
+                };
 
-            // Only initialize the array if not already initialized.
-            Interlocked.CompareExchange(ref _data, data, null);
-            // Set NodeType after setting key as it alters code path to one that expects the key to be set.
-            NodeType = nodeType;
+                // Only initialize the array if not already initialized.
+                Interlocked.CompareExchange(ref _data, data, null);
+                // Set NodeType after setting key as it alters code path to one that expects the key to be set.
+                NodeType = nodeType;
 
-            [DoesNotReturn]
-            [StackTraceHidden]
-            static object[] ThrowCannotResolveException()
-            {
-                throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                [DoesNotReturn]
+                [StackTraceHidden]
+                static object[] ThrowCannotResolveException()
+                {
+                    throw new InvalidOperationException($"Cannot resolve children of an {nameof(NodeType.Unknown)} node");
+                }
             }
         }
 
@@ -1284,7 +1288,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                InitData();
+                EnsureInitialized();
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel
@@ -1374,7 +1378,7 @@ namespace Nethermind.Trie
             }
             else
             {
-                InitData();
+                EnsureInitialized();
                 if (_data![i] is null)
                 {
                     // Allows to load children in parallel

@@ -4,9 +4,11 @@
 #nullable disable
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
@@ -23,6 +25,8 @@ namespace Nethermind.Store.Test.SnapSync
         private TrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
+        private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
+        private Hash256 _accountAddr;
         protected readonly TrieNodeResolverCapability _resolverCapability;
 
         public RecreateStateFromStorageRangesTests(TrieNodeResolverCapability capability)
@@ -34,7 +38,7 @@ namespace Nethermind.Store.Test.SnapSync
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            (_inputStateTree, _inputStorageTree, _accountAddr) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]

@@ -19,6 +19,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
@@ -129,6 +130,13 @@ namespace Nethermind.Init.Steps
             setApi.FilterManager = new FilterManager(filterStore, mainBlockProcessor, txPool, getApi.LogManager);
             setApi.HealthHintService = CreateHealthHintService();
             setApi.BlockProductionPolicy = CreateBlockProductionPolicy();
+
+            BackgroundTaskScheduler backgroundTaskScheduler = new BackgroundTaskScheduler(
+                mainBlockProcessor,
+                initConfig.BackgroundTaskConcurrency,
+                _api.LogManager);
+            setApi.BackgroundTaskScheduler = backgroundTaskScheduler;
+            _api.DisposeStack.Push(backgroundTaskScheduler);
 
             return Task.CompletedTask;
         }

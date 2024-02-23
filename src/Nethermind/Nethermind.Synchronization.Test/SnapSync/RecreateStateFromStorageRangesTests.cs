@@ -33,6 +33,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
         private ITrieStore _store;
         private IStateTree _inputStateTree;
         private StorageTree _inputStorageTree;
+        private Hash256 _storage;
 
         [OneTimeSetUp]
         public void Setup()
@@ -45,11 +46,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             };
             if (_resolverCapability == TrieNodeResolverCapability.Hash)
             {
-                (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+                (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTrees(_store);
             }
             else
             {
-                (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTreesByPath(_store);
+                (_inputStateTree, _inputStorageTree, _storage) = TestItem.Tree.GetTreesByPath(_store);
             }
         }
 

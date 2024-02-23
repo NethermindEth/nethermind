@@ -85,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int pwasLength = 0;
             if (message.PathsWithAccounts is null || message.PathsWithAccounts.Length == 0)
             {
-                pwasLength = 1;
+                pwasLength = 0;
             }
             else
             {
@@ -104,7 +104,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int proofsLength = 0;
             if (message.Proofs is null || message.Proofs.Length == 0)
             {
-                proofsLength = 1;
+                proofsLength = 0;
             }
             else
             {

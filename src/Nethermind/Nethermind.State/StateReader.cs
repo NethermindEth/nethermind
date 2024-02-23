@@ -19,13 +19,13 @@ namespace Nethermind.State
         private readonly IKeyValueStore _codeDb;
         private readonly ILogger _logger;
         private readonly IStateTree _state;
-        private readonly ITrieStore? _trieStore;
+        private readonly ITrieStore _trieStore;
 
         public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _trieStore = trieStore;
             _state = trieStore.Capability == TrieNodeResolverCapability.Path ? new StateTreeByPath(trieStore, logManager) : new StateTree(trieStore, logManager);
         }
 
@@ -66,15 +66,7 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            if (_trieStore.Capability == TrieNodeResolverCapability.Hash)
-            {
-                RootCheckVisitor visitor = new();
-                RunTreeVisitor(visitor, stateRoot);
-                return visitor.HasRoot;
-            }
-
-            return _trieStore.FindCachedOrUnknown(stateRoot, Array.Empty<byte>(), Array.Empty<byte>()).NodeType != NodeType.Unknown ||
-                _trieStore.IsPersisted(stateRoot, Array.Empty<byte>());
+            return _trieStore.HasRoot(stateRoot);
         }
 
         public byte[] GetCode(Hash256 stateRoot, Address address)
