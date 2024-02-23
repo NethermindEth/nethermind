@@ -22,7 +22,7 @@ namespace Nethermind.Blockchain
 
         public virtual Hash256 StateRoot { get; }
 
-        public AccountStruct GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? Account.TotallyEmpty.ToStruct();
+        public AccountStruct GetAccount(Address address) => _stateReader.GetAccount(StateRoot, address) ?? AccountStruct.TotallyEmpty;
 
         public bool IsContract(Address address) => GetAccount(address).IsContract;
 
