@@ -3,8 +3,11 @@
 
 using System;
 using System.IO;
+using System.Net.Http;
+using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Http;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -20,6 +23,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
+using Nethermind.Network;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
@@ -77,12 +81,19 @@ namespace Nethermind.Init.Steps
             IMiningConfig miningConfig = _get.Config<IMiningConfig>();
             if (miningConfig.Enabled)
             {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
                 if (!string.IsNullOrEmpty(miningConfig.Signer))
-                    signer = await SetupExternalSigner(miningConfig.Signer, _get.SpecProvider!.ChainId, _get.Config<IKeyStoreConfig>().BlockAuthorAccount);
-                else
+                {
+                    ClefSigner signerAndStore =
+                        await SetupExternalSigner(miningConfig.Signer, _get.SpecProvider!.ChainId, _get.Config<IKeyStoreConfig>().BlockAuthorAccount);
                     signer = signerAndStore;
-                signerStore = signerAndStore;
+                    signerStore = signerAndStore;
+                }
+                else
+                {
+                    Signer signerAndStore = new Signer(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
+                    signer = signerAndStore;
+                    signerStore = signerAndStore;
+                }
             }                               
 
             _set.EngineSigner = signer;
@@ -121,10 +132,19 @@ namespace Nethermind.Init.Steps
 
         }
 
-        private async Task<ISigner> SetupExternalSigner(string urlSigner, ulong chainId, string blockAuthorAccount)
+        private async Task<ClefSigner> SetupExternalSigner(string urlSigner, ulong chainId, string blockAuthorAccount)
         {
-            Address? address = string.IsNullOrEmpty(blockAuthorAccount) ? null : new Address(blockAuthorAccount);   
-            return await RemoteSigner.Create(new BasicJsonRpcClient(new Uri(urlSigner), _get.EthereumJsonSerializer, _get.LogManager), chainId, address);
+            try
+            {
+                Address? address = string.IsNullOrEmpty(blockAuthorAccount) ? null : new Address(blockAuthorAccount);
+                BasicJsonRpcClient rpcClient = new(new Uri(urlSigner), _get.EthereumJsonSerializer, _get.LogManager, TimeSpan.FromSeconds(10));
+                _get.DisposeStack.Push(rpcClient);
+                return await ClefSigner.Create(rpcClient, chainId, address);
+            }
+            catch (HttpRequestException e)
+            {
+                throw new NetworkingException($"Remote signer at {urlSigner} did not respond.", NetworkExceptionType.TargetUnreachable, e);
+            }
         }
     }
 }

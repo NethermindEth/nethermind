@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.Clique
         private readonly IDb _blocksDb;
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private static readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {
@@ -83,6 +84,18 @@ namespace Nethermind.Consensus.Clique
             Hash256 sigHash = blockHeader.CalculateHash();
             blockHeader.ExtraData = fullExtraData;
             return sigHash;
+        }
+
+        public static byte[] CalculateCliqueRlp(BlockHeader header)
+        {
+            int extraSeal = 65;
+            int shortExtraLength = header.ExtraData.Length - extraSeal;
+            byte[] fullExtraData = header.ExtraData;
+            byte[] shortExtraData = header.ExtraData.Slice(0, shortExtraLength);
+            header.ExtraData = shortExtraData;
+            byte[] rlp = _headerDecoder.Encode(header).Bytes;
+            header.ExtraData = fullExtraData;
+            return rlp;
         }
 
         private readonly object _snapshotCreationLock = new();

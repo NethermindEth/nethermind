@@ -10,19 +10,23 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Client
 {
-    public class BasicJsonRpcClient : IJsonRpcClient
+    public class BasicJsonRpcClient : IJsonRpcClient, IDisposable
     {
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
+        private bool disposedValue;
 
-        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager)
+        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager):
+            this(uri, jsonSerializer, logManager, /*support long block traces better, default 100s might be too small*/ TimeSpan.FromMinutes(5))
+        {}
+        public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager, TimeSpan timeout)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _jsonSerializer = jsonSerializer;
 
             _client = new HttpClient { BaseAddress = uri };
-            _client.Timeout = TimeSpan.FromMinutes(5); // support long block traces better, default 100s might be too small
+            _client.Timeout = timeout; 
             _client.DefaultRequestHeaders.Accept.Clear();
             _client.DefaultRequestHeaders.Accept.Add(new MediaTypeWithQualityHeaderValue("application/json"));
             AddAuthorizationHeader();
@@ -66,6 +70,10 @@ namespace Nethermind.JsonRpc.Client
             {
                 throw;
             }
+            catch (TaskCanceledException)
+            {
+                throw;
+            }
             catch (Exception)
             {
                 throw new DataException($"Cannot deserialize {responseString}");
@@ -101,5 +109,23 @@ namespace Nethermind.JsonRpc.Client
 
         private static string Base64Encode(string plainText)
             => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
+
+        protected virtual void Dispose(bool disposing)
+        {
+            if (!disposedValue)
+            {
+                if (disposing)
+                {
+                    _client?.Dispose();
+                }
+                disposedValue = true;
+            }
+        }
+
+        public void Dispose()
+        {
+            Dispose(disposing: true);
+            GC.SuppressFinalize(this);
+        }
     }
 }

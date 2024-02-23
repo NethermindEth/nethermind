@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Consensus;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.KeyStore.Config;
@@ -60,7 +61,11 @@ namespace Nethermind.Init.Steps
                 INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
                 ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
 
-                set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+                IMiningConfig miningConfig = get.Config<IMiningConfig>();
+                //Don't load the local key if an external signer is configured  
+                if (!miningConfig.Enabled && string.IsNullOrEmpty(miningConfig.Signer))
+                    set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
+
                 IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
                 IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
 

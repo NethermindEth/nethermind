@@ -151,6 +151,11 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
+            if (blockProducer is IDisposable disposable)
+            {
+                getFromApi.DisposeStack.Push(disposable);
+            }
+
             return Task.FromResult(blockProducer);
         }
 
