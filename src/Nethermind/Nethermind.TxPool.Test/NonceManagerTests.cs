@@ -117,15 +117,26 @@ public class NonceManagerTests
     {
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
         AccountStruct account = new(0);
-        accountStateProvider.GetAccount(TestItem.AddressA).Returns(account);
+        accountStateProvider.TryGetAccount(TestItem.AddressA,out Arg.Any<AccountStruct>()).Returns(x =>
+        {
+            x[1] = account;
+            return true;
+        });
         _nonceManager = new NonceManager(accountStateProvider);
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(0);
         }
 
-        accountStateProvider.GetAccount(TestItem.AddressA).Returns(new AccountStruct(10, account.Balance));
-        using (NonceLocker locker = _nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
+        accountStateProvider.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(
+            x =>
+            {
+                x[1] = new AccountStruct(10, account.Balance);
+                return true;
+            });
+
+        using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(10);
         }

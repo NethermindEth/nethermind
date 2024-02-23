@@ -15,8 +15,8 @@ namespace Nethermind.State
     {
         public static byte[] GetCode(this IWorldState stateProvider, Address address)
         {
-            AccountStruct account = stateProvider.GetAccount(address);
-            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash);
+            stateProvider.TryGetAccount(address, out AccountStruct account);
+            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
         }
 
         public static void InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)

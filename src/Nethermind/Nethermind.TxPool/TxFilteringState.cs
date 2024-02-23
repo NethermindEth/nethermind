@@ -7,7 +7,6 @@ namespace Nethermind.TxPool;
 
 public class TxFilteringState
 {
-
     private readonly IAccountStateProvider _accounts;
     private readonly Transaction _tx;
 
@@ -18,5 +17,17 @@ public class TxFilteringState
     }
 
     private AccountStruct? _senderAccount = null;
-    public AccountStruct SenderAccount { get { return _senderAccount ??= _accounts.GetAccount(_tx.SenderAddress!); } }
+    public AccountStruct SenderAccount
+    {
+        get
+        {
+            if (_senderAccount is null)
+            {
+                _accounts.TryGetAccount(_tx.SenderAddress!, out AccountStruct account);
+                _senderAccount = account;
+            }
+
+            return _senderAccount.Value;
+        }
+    }
 }

@@ -13,17 +13,20 @@ namespace Nethermind.State
     {
         public static UInt256 GetNonce(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.Nonce ?? UInt256.Zero;
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            return account.Nonce;
         }
 
         public static UInt256 GetBalance(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.Balance ?? UInt256.Zero;
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            return account.Balance;
         }
 
         public static ValueHash256 GetStorageRoot(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.StorageRoot ?? Keccak.EmptyTreeHash;
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            return account.StorageRoot;
         }
 
         public static byte[] GetCode(this IStateReader stateReader, Hash256 stateRoot, Address address)
@@ -33,7 +36,8 @@ namespace Nethermind.State
 
         public static ValueHash256 GetCodeHash(this IStateReader stateReader, Hash256 stateRoot, Address address)
         {
-            return stateReader.GetAccount(stateRoot, address)?.CodeHash ?? Keccak.OfAnEmptyString;
+            stateReader.TryGetAccount(stateRoot, address, out AccountStruct account);
+            return account.CodeHash;
         }
 
         public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
