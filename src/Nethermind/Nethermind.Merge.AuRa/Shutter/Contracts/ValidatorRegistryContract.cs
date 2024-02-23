@@ -15,11 +15,11 @@ using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.TxPool;
-using static Nethermind.Merge.AuRa.Shutter.IValidatorRegistryContract;
+using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
-namespace Nethermind.Merge.AuRa.Shutter;
+namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
 public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
 {

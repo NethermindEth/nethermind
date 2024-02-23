@@ -6,7 +6,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
-namespace Nethermind.Merge.AuRa.Shutter;
+namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
 public interface IValidatorRegistryContract
 {

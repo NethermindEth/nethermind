@@ -7,12 +7,16 @@
 
   <ItemGroup>
     <None Remove="Contracts\WithdrawalContract.json" />
-    <None Remove="Shutter\ValidatorRegistryContract.json" />
+    <None Remove="Shutter\Contracts\ValidatorRegistryContract.json" />
+    <None Remove="Shutter\Contracts\KeyBroadcastContract.json" />
+    <None Remove="Shutter\Contracts\KeyperSetManagerContract.json" />
   </ItemGroup>
 
   <ItemGroup>
     <EmbeddedResource Include="Contracts\WithdrawalContract.json" />
-    <EmbeddedResource Include="Shutter\ValidatorRegistryContract.json" />
+    <EmbeddedResource Include="Shutter\Contracts\ValidatorRegistryContract.json" />
+    <EmbeddedResource Include="Shutter\Contracts\KeyBroadcastContract.json" />
+    <EmbeddedResource Include="Shutter\Contracts\KeyperSetManagerContract.json" />
   </ItemGroup>
 
   <ItemGroup>

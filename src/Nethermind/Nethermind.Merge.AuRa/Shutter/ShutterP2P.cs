@@ -12,10 +12,10 @@ using System.IO;
 using System.Linq;
 using System.Collections.Generic;
 using System.Buffers.Binary;
-using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Crypto;
 using Multiaddr = Nethermind.Libp2p.Core.Multiaddr;
 using Nethermind.Core;
+using Nethermind.Api;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -23,10 +23,16 @@ public class ShutterP2P
 {
     public static readonly ulong InstanceId = 0;
     private readonly Action<DecryptionKeys> _onDecryptionKeysReceived;
+    private readonly Contracts.IKeyBroadcastContract _keyBroadcastContract;
+    private readonly Contracts.IKeyperSetManagerContract _keyperSetManagerContract;
+    private readonly INethermindApi _api;
 
-    public ShutterP2P(Action<DecryptionKeys> OnDecryptionKeysReceived)
+    public ShutterP2P(Action<DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
+        _keyBroadcastContract = keyBroadcastContract;
+        _keyperSetManagerContract = keyperSetManagerContract;
+        _api = api;
 
         var key = File.ReadAllLines("/src/play/work/keyper-dkg-external/keyper-0.toml").First(l => l.StartsWith("P2PKey = ")).Replace("P2PKey = ", "").Trim('\'');
 
@@ -110,7 +116,7 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(DecryptionKeys decryptionKeys, ulong eon, int threshold)
     {
-        Bls.P2 eonKey = new(); //todo: get this from a contract?
+        Bls.P2 eonKey = new(_keyBroadcastContract.GetEonKey(_api.BlockTree!.Head!.Header, eon));
         ulong slot = 0;
 
         if (decryptionKeys.InstanceId != InstanceId || decryptionKeys.Eon != eon)
@@ -146,8 +152,7 @@ public class ShutterP2P
         IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select(((byte[], byte[]) x) => new Bls.P1(x.Item2));
         foreach ((ulong signerIndex, byte[] signature) in decryptionKeys.SignerIndices.Zip(decryptionKeys.Signatures))
         {
-            // lookup keyper address with signer index?
-            Address keyperAddress = Address.Zero;
+            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_api.BlockTree!.Head.Header, signerIndex).Item1;
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceId, eon, slot, identities, signature, keyperAddress))
             {
                 return false;

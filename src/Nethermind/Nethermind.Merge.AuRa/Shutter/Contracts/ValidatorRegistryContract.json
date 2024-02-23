@@ -44,17 +44,17 @@
       {
         "components": [
           {
-            "internalType": "bytes",
+            "internaltype": "bytes",
             "name": "message",
             "type": "bytes"
           },
           {
-            "internalType": "bytes",
+            "internaltype": "bytes",
             "name": "signature",
             "type": "bytes"
           }
         ],
-        "internalType": "struct IValidatorRegistryContract.Update",
+        "internaltype": "struct ivalidatorregistrycontract.update",
         "name": "",
         "type": "tuple"
       }

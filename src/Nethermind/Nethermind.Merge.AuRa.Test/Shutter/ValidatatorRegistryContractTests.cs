@@ -14,7 +14,7 @@ using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.Merge.AuRa.Shutter;
+using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;

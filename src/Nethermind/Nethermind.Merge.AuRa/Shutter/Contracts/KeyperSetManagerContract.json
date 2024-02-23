@@ -1,0 +1,32 @@
+[
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "index",
+        "type": "uint64"
+      }
+    ],
+    "name": "getKeyperSetAddress",
+    "outputs": [
+      {
+        "components": [
+          {
+            "internaltype": "address",
+            "name": "",
+            "type": "address"
+          },
+          {
+            "internaltype": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
+        "name": "",
+        "type": "tuple"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
+  }
+]

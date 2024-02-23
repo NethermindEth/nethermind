@@ -34,4 +34,13 @@ public interface IAuraConfig : IConfig
     [ConfigItem(Description = "The address of the Shutter validator registry contract.",
         DefaultValue = "null")]
     string ShutterValidatorRegistryContractAddress { get; set; }
+
+
+    [ConfigItem(Description = "The address of the Shutter key broadcast contract.",
+        DefaultValue = "null")]
+    string ShutterKeyBroadcastContractAddress { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter keyper set manager contract.",
+        DefaultValue = "null")]
+    string ShutterKeyperSetManagerContractAddress { get; set; }
 }

@@ -18,5 +18,7 @@ namespace Nethermind.Consensus.AuRa.Config
         public bool UseShutter { get; set; }
         public string ShutterValidatorRegistryContractAddress { get; set; }
         public string ShutterSequencerContractAddress { get; set; }
+        public string ShutterKeyBroadcastContractAddress { get; set; }
+        public string ShutterKeyperSetManagerContractAddress { get; set; }
     }
 }

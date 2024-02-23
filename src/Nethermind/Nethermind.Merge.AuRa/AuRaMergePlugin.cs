@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -98,7 +99,7 @@ namespace Nethermind.Merge.AuRa
                 ReadOnlyTxProcessingEnv readonlyTxProcessorSource = new(_api.WorldStateManager!, _api.BlockTree, _api.SpecProvider, _api.LogManager);
                 ValidatorContract validatorContract = new(_api.TransactionProcessor!, _api.AbiEncoder, validatorContractAddress, _api.WorldState!, readonlyTxProcessorSource, _api.EngineSigner!);
                 BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
-                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!), validatorContract, blockHeader);
+                Shutter.Contracts.ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!), validatorContract, blockHeader);
                 if (validatorRegistryContract.IsRegistered(blockHeader))
                 {
                     // todo: safe to do this in another thread?
@@ -108,7 +109,10 @@ namespace Nethermind.Merge.AuRa
                 LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
 
-                ShutterP2P shutterP2P = new((ShutterP2P.DecryptionKeys decryptionKeys) => shutterTxSource.DecryptionKeys = decryptionKeys);
+                Action<ShutterP2P.DecryptionKeys> onDecryptionKeysReceived = (ShutterP2P.DecryptionKeys decryptionKeys) => shutterTxSource.DecryptionKeys = decryptionKeys;
+                Shutter.Contracts.KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
+                Shutter.Contracts.KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
+                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, _api);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
