@@ -4,7 +4,9 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.Trie;
 
 namespace Nethermind.State
@@ -39,6 +41,17 @@ namespace Nethermind.State
         public static bool HasStateForBlock(this IStateReader stateReader, BlockHeader header)
         {
             return stateReader.HasStateForRoot(header.StateRoot!);
+        }
+
+        public static TrieStats CollectStats(this IStateReader stateProvider, Hash256 root, IKeyValueStore codeStorage, ILogManager logManager)
+        {
+            TrieStatsCollector collector = new(codeStorage, logManager);
+            stateProvider.RunTreeVisitor(collector, root, new VisitingOptions
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
+            });
+            return collector.Stats;
         }
     }
 }
