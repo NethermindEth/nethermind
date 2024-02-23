@@ -44,9 +44,10 @@ public class ClefSigner : ISigner, ISignerStore
     public PrivateKey? Key => throw new InvalidOperationException("Cannot get private keys from remote signer.");
 
     /// <summary>
-    /// Clef will not sign data directly, but will evaluate data and decide itself how to sign.
+    /// Clef will not sign data directly, but will evaluate and sign data in the format: 
+    /// keccak256("\x19Ethereum Signed Message:\n${message length}${message}")
     /// </summary>
-    /// <param name="message">Data to be signed.</param>
+    /// <param name="message">Message to be signed.</param>
     /// <returns><see cref="Signature"/> of <paramref name="message"/>.</returns>
     public Signature Sign(Hash256 message)
     {
@@ -78,7 +79,7 @@ public class ClefSigner : ISigner, ISignerStore
             ThrowInvalidOperationSignFailed();
         var bytes = Bytes.FromHexString(signed);
 
-        //clef will set recid to 0/1, but we expect it to be 27/28
+        //Clef will set recid to 0/1, but we expect it to be 27/28
         if (bytes.Length == 65 && bytes[64] == 0 || bytes[64] == 1)
             //We expect V to be 27/28
             bytes[64] += 27; 
@@ -86,14 +87,8 @@ public class ClefSigner : ISigner, ISignerStore
         return new Signature(bytes);
     }
 
-    public async ValueTask Sign(Transaction tx)
-    {
-        TransactionForRpc transactionModel = new(tx);
-        var signed = await rpcClient.Post<RemoteTxSignResponse>("account_signTransaction", transactionModel);
-        if (signed == null)
-            ThrowInvalidOperationSignFailed();
-        tx.Signature = new Signature(signed.Tx.R.Value!, signed.Tx.S.Value!, (ulong)signed.Tx.V);
-    }
+    public ValueTask Sign(Transaction tx) =>
+        throw new NotImplementedException("Remote signing of transactions is not supported.");
 
     private async Task SetSignerAddress(Address? blockAuthorAccount)
     {
