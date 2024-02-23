@@ -81,6 +81,10 @@ namespace Nethermind.State
             return value;
         }
 
+        protected override void OnCellUpdatePushed(in StorageCell cell)
+        {
+            // TODO: implement prefetch
+        }
 
         /// <summary>
         /// Called by Commit

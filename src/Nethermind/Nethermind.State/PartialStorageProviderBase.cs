@@ -248,6 +248,12 @@ namespace Nethermind.State
             IncrementChangePosition();
             stack.Push(_currentPosition);
             _changes[_currentPosition] = new Change(ChangeType.Update, cell, value);
+
+            OnCellUpdatePushed(cell);
+        }
+
+        protected virtual void OnCellUpdatePushed(in StorageCell cell)
+        {
         }
 
         /// <summary>
