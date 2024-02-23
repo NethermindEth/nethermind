@@ -65,7 +65,7 @@ public class PerTableDbConfig
     public long? MaxWriteBufferSizeToMaintain => ReadConfig<long?>(nameof(MaxWriteBufferSizeToMaintain));
     public bool UseHashSkipListMemtable => ReadConfig<bool>(nameof(UseHashSkipListMemtable));
     public int BlockRestartInterval => ReadConfig<int>(nameof(BlockRestartInterval));
-    public double MemtablePrefixBloomSizeRatio => ReadConfig<int>(nameof(MemtablePrefixBloomSizeRatio));
+    public double MemtablePrefixBloomSizeRatio => ReadConfig<double>(nameof(MemtablePrefixBloomSizeRatio));
     public bool AdviseRandomOnOpen => ReadConfig<bool>(nameof(AdviseRandomOnOpen));
     public bool LevelCompactionDynamicLevelBytes => ReadConfig<bool>(nameof(LevelCompactionDynamicLevelBytes));
     public int BloomFilterBitsPerKey => ReadConfig<int>(nameof(BloomFilterBitsPerKey));
