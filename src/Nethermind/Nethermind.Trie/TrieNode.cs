@@ -526,13 +526,25 @@ namespace Nethermind.Trie
                 {
                     if (rplStream is null)
                     {
-                        Hash256 keccak = Keccak;
-                        if (keccak is null)
-                        {
-                            return false;
-                        }
+                        byte[]? fullRlp = null;
 
-                        var fullRlp = tree.TryLoadRlp(keccak, readFlags);
+                        if (tree.Capability == TrieNodeResolverCapability.Hash)
+                        {
+                            Hash256 keccak = Keccak;
+                            if (keccak is null)
+                                return false;
+
+                            fullRlp = tree.TryLoadRlp(keccak, readFlags);
+                        }
+                        else if (tree.Capability == TrieNodeResolverCapability.Path)
+                        {
+                            if (PathToNode is null)
+                                return false;
+                            fullRlp = tree.TryLoadRlp(FullPath, null);
+                            //if node was created as unknown, the hash may be different and needs to be recalculated - maybe should throw an exception here?
+                            //diagnostic code - check keccak of loaded RLP
+                            Keccak = null;
+                        }
 
                         if (fullRlp is null)
                         {

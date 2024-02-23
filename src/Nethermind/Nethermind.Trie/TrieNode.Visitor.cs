@@ -281,51 +281,58 @@ namespace Nethermind.Trie
 
                         TNodeContext leafContext = nodeContext.Add(Key!);
 
-                        if (!trieVisitContext.IsStorage && trieVisitContext.ExpectAccounts) // can combine these conditions
+                        using (trieVisitContext.AbsolutePathNext(Key!))
                         {
-                            Account account = _accountDecoder.Decode(Value.AsRlpStream());
-                            if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
-                            {
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
-                                visitor.VisitCode(leafContext, account.CodeHash, trieVisitContext);
-                                trieVisitContext.Level--;
-                            }
 
-                            if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
+                            if (!trieVisitContext.IsStorage &&
+                                trieVisitContext.ExpectAccounts) // can combine these conditions
                             {
-                                trieVisitContext.IsStorage = true;
-                                trieVisitContext.Level++;
-                                trieVisitContext.BranchChildIndex = null;
-
-                                using (trieVisitContext.AbsolutePathNext(new byte[] { 8, 0 }))
+                                Account account = _accountDecoder.Decode(Value.AsRlpStream());
+                                if (account.HasCode && visitor.ShouldVisit(leafContext, account.CodeHash))
                                 {
-                                    if (TryResolveStorageRoot(nodeResolver, CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles), out TrieNode? storageRoot))
-                                    {
-                                        try
-                                        {
-                                            if (nodeResolver.Capability == TrieNodeResolverCapability.Path)
-                                            {
-                                                storageRoot.ResolveNode(nodeResolver);
-                                                storageRoot.ResolveKey(nodeResolver, true);
-                                                if (storageRoot.Keccak != account.StorageRoot)
-                                                    throw new ArgumentException("Storage root not matching");
-                                            }
+                                    trieVisitContext.Level++;
+                                    trieVisitContext.BranchChildIndex = null;
+                                    visitor.VisitCode(leafContext, account.CodeHash, trieVisitContext);
+                                    trieVisitContext.Level--;
+                                }
 
-                                            storageRoot!.Accept(visitor, leafContext, nodeResolver, trieVisitContext);
+                                if (account.HasStorage && visitor.ShouldVisit(leafContext, account.StorageRoot))
+                                {
+                                    trieVisitContext.IsStorage = true;
+                                    trieVisitContext.Level++;
+                                    trieVisitContext.BranchChildIndex = null;
+
+                                    using (trieVisitContext.AbsolutePathNext(new byte[] { 8, 0 }))
+                                    {
+                                        if (TryResolveStorageRoot(nodeResolver,
+                                                CollectionsMarshal.AsSpan(trieVisitContext.AbsolutePathNibbles),
+                                                out TrieNode? storageRoot))
+                                        {
+                                            try
+                                            {
+                                                if (nodeResolver.Capability == TrieNodeResolverCapability.Path)
+                                                {
+                                                    storageRoot.ResolveNode(nodeResolver);
+                                                    storageRoot.ResolveKey(nodeResolver, true);
+                                                    if (storageRoot.Keccak != account.StorageRoot)
+                                                        throw new ArgumentException("Storage root not matching");
+                                                }
+
+                                                storageRoot!.Accept(visitor, leafContext, nodeResolver, trieVisitContext);
+                                            }
+                                            catch (TrieException)
+                                            {
+                                                visitor.VisitMissingNode(leafContext, account.StorageRoot, trieVisitContext);
+                                            }
                                         }
-                                        catch (TrieException)
+                                        else
                                         {
                                             visitor.VisitMissingNode(leafContext, account.StorageRoot, trieVisitContext);
                                         }
                                     }
-                                    else
-                                    {
-                                        visitor.VisitMissingNode(leafContext, account.StorageRoot, trieVisitContext);
-                                    }
+                                    trieVisitContext.Level--;
+                                    trieVisitContext.IsStorage = false;
                                 }
-                                trieVisitContext.Level--;
-                                trieVisitContext.IsStorage = false;
                             }
                         }
                         break;
