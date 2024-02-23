@@ -541,7 +541,7 @@ namespace Nethermind.State
                             if (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis)
                             {
                                 if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                                SetState(change.Address, change.Account);
+                                SetState(change.Address, change.Account, true);
                                 if (isTracing)
                                 {
                                     trace[change.Address] = new ChangeTrace(change.Account);
@@ -664,10 +664,10 @@ namespace Nethermind.State
             return _owner.State.TryGet(address, out account);
         }
 
-        private void SetState(Address address, Account? account)
+        private void SetState(Address address, Account? account, bool isNewHint = false)
         {
             Metrics.StateTreeWrites++;
-            _owner.State.Set(address, account);
+            _owner.State.Set(address, account, isNewHint);
         }
 
         private Account? GetAndAddToCache(Address address)

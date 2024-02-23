@@ -142,7 +142,7 @@ public class PaprikaStateFactory : IStateFactory
 
     class State(IWorldState wrapped, PaprikaStateFactory factory) : IState
     {
-        public void Set(Address address, Account? account)
+        public void Set(Address address, Account? account, bool isNewHint = false)
         {
             PaprikaKeccak key = Convert(address);
 
@@ -154,7 +154,7 @@ public class PaprikaStateFactory : IStateFactory
             {
                 PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
                     Convert(account.StorageRoot));
-                wrapped.SetAccount(key, actual);
+                wrapped.SetAccount(key, actual, isNewHint);
             }
         }
 
