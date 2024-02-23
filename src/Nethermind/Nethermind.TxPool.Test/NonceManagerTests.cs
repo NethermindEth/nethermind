@@ -116,12 +116,7 @@ public class NonceManagerTests
     public void should_pick_account_nonce_as_initial_value()
     {
         IAccountStateProvider accountStateProvider = Substitute.For<IAccountStateProvider>();
-        AccountStruct account = new(0);
-        accountStateProvider.TryGetAccount(TestItem.AddressA,out Arg.Any<AccountStruct>()).Returns(x =>
-        {
-            x[1] = account;
-            return true;
-        });
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns(UInt256.Zero);
         _nonceManager = new NonceManager(accountStateProvider);
 
         using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
@@ -129,13 +124,7 @@ public class NonceManagerTests
             nonce.Should().Be(0);
         }
 
-        accountStateProvider.TryGetAccount(TestItem.AddressA, out Arg.Any<AccountStruct>()).Returns(
-            x =>
-            {
-                x[1] = new AccountStruct(10, account.Balance);
-                return true;
-            });
-
+        accountStateProvider.GetNonce(TestItem.AddressA).Returns((UInt256)10);
         using (_nonceManager.ReserveNonce(TestItem.AddressA, out UInt256 nonce))
         {
             nonce.Should().Be(10);
