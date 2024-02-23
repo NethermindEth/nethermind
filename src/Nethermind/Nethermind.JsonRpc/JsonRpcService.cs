@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Text;
@@ -12,14 +11,14 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Nethermind.Core;
-using Nethermind.Core.Attributes;
-using Nethermind.Core.Collections;
-using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
+
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider.ResolvedMethodInfo;
 
 namespace Nethermind.JsonRpc;
 
@@ -86,21 +85,20 @@ public class JsonRpcService : IJsonRpcService
     {
         string methodName = rpcRequest.Method.Trim();
 
-        (MethodInfo MethodInfo, ParameterInfo[] expectedParameters, bool ReadOnly) result = _rpcModuleProvider.Resolve(methodName);
-        return result.MethodInfo is not null
+        ResolvedMethodInfo? result = _rpcModuleProvider.Resolve(methodName);
+        return result?.MethodInfo is not null
             ? await ExecuteAsync(rpcRequest, methodName, result, context)
             : GetErrorResponse(methodName, ErrorCodes.MethodNotFound, "Method not found", $"{rpcRequest.Method}", rpcRequest.Id);
     }
 
-    private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName,
-        (MethodInfo Info, ParameterInfo[] expectedParameters, bool ReadOnly) method, JsonRpcContext context)
+    private async Task<JsonRpcResponse> ExecuteAsync(JsonRpcRequest request, string methodName, ResolvedMethodInfo method, JsonRpcContext context)
     {
         JsonElement providedParameters = request.Params;
 
-        LogRequest(methodName, providedParameters, method.expectedParameters);
+        LogRequest(methodName, providedParameters, method.ExpectedParameters);
 
         var providedParametersLength = providedParameters.ValueKind == JsonValueKind.Array ? providedParameters.GetArrayLength() : 0;
-        int missingParamsCount = method.expectedParameters.Length - providedParametersLength;
+        int missingParamsCount = method.ExpectedParameters.Length - providedParametersLength;
         if (providedParametersLength > 0)
         {
             foreach (JsonElement item in providedParameters.EnumerateArray())
@@ -122,8 +120,8 @@ public class JsonRpcService : IJsonRpcService
                 hasIncorrectParameters = false;
                 for (int i = 0; i < missingParamsCount; i++)
                 {
-                    int parameterIndex = method.expectedParameters.Length - missingParamsCount + i;
-                    bool nullable = IsNullableParameter(method.expectedParameters[parameterIndex]);
+                    int parameterIndex = method.ExpectedParameters.Length - missingParamsCount + i;
+                    bool nullable = method.ExpectedParameters[parameterIndex].IsNullable;
 
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
@@ -133,7 +131,7 @@ public class JsonRpcService : IJsonRpcService
                     {
                         explicitNullableParamsCount += 1;
                     }
-                    if (!method.expectedParameters[method.expectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
+                    if (!method.ExpectedParameters[method.ExpectedParameters.Length - missingParamsCount + i].IsOptional && !nullable)
                     {
                         hasIncorrectParameters = true;
                         break;
@@ -143,7 +141,7 @@ public class JsonRpcService : IJsonRpcService
 
             if (hasIncorrectParameters)
             {
-                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.expectedParameters.Length}, actual: {method.expectedParameters.Length - missingParamsCount}", request.Id);
+                return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", $"Incorrect parameters count, expected: {method.ExpectedParameters.Length}, actual: {method.ExpectedParameters.Length - missingParamsCount}", request.Id);
             }
         }
 
@@ -151,9 +149,10 @@ public class JsonRpcService : IJsonRpcService
 
         //prepare parameters
         object[]? parameters = null;
-        if (method.expectedParameters.Length > 0)
+        bool hasMissing = false;
+        if (method.ExpectedParameters.Length > 0)
         {
-            parameters = DeserializeParameters(method.expectedParameters, providedParameters, missingParamsCount);
+            (parameters, hasMissing) = DeserializeParameters(method.ExpectedParameters, providedParameters, missingParamsCount);
             if (parameters is null)
             {
                 if (_logger.IsWarn) _logger.Warn($"Incorrect JSON RPC parameters when calling {methodName} with params [{string.Join(", ", providedParameters)}]");
@@ -172,7 +171,10 @@ public class JsonRpcService : IJsonRpcService
         Action? returnAction = returnImmediately ? null : () => _rpcModuleProvider.Return(methodName, rpcModule);
         try
         {
-            object invocationResult = method.Info.Invoke(rpcModule, parameters);
+            object invocationResult = hasMissing ?
+                method.MethodInfo.Invoke(rpcModule, parameters) :
+                method.Invoker.Invoke(rpcModule, new Span<object?>(parameters));
+
             switch (invocationResult)
             {
                 case IResultWrapper wrapper:
@@ -192,7 +194,7 @@ public class JsonRpcService : IJsonRpcService
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidParams, "Invalid params", e.InnerException?.ToString(), request.Id, returnAction);
         }
-        catch (Exception e) when (e.InnerException is OperationCanceledException)
+        catch (Exception e) when (e is OperationCanceledException || e.InnerException is OperationCanceledException)
         {
             string errorMessage = $"{methodName} request was canceled due to enabled timeout.";
             return GetErrorResponse(methodName, ErrorCodes.Timeout, errorMessage, null, request.Id, returnAction);
@@ -223,7 +225,7 @@ public class JsonRpcService : IJsonRpcService
             : GetSuccessResponse(methodName, resultWrapper.Data, request.Id, returnAction);
     }
 
-    private void LogRequest(string methodName, JsonElement providedParameters, ParameterInfo[] expectedParameters)
+    private void LogRequest(string methodName, JsonElement providedParameters, ExpectedParameter[] expectedParameters)
     {
         if (_logger.IsDebug && !_methodsLoggingFiltering.Contains(methodName))
         {
@@ -240,7 +242,7 @@ public class JsonRpcService : IJsonRpcService
             {
                 foreach (JsonElement param in providedParameters.EnumerateArray())
                 {
-                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount)?.Name == "passphrase"
+                    string? parameter = expectedParameters.ElementAtOrDefault(paramsCount).Info?.Name == "passphrase"
                         ? "{passphrase}"
                         : param.GetRawText();
 
@@ -269,9 +271,9 @@ public class JsonRpcService : IJsonRpcService
         }
     }
 
-    private static object? DeserializeParameter(JsonElement providedParameter, ParameterInfo expectedParameter)
+    private static object? DeserializeParameter(JsonElement providedParameter, ExpectedParameter expectedParameter)
     {
-        Type paramType = expectedParameter.ParameterType;
+        Type paramType = expectedParameter.Info.ParameterType;
         if (paramType.IsByRef)
         {
             paramType = paramType.GetElementType();
@@ -279,7 +281,7 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && IsNullableParameter(expectedParameter))
+            if (providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable)
             {
                 return null;
             }
@@ -290,17 +292,17 @@ public class JsonRpcService : IJsonRpcService
         }
 
         object? executionParam;
-        if (paramType.IsAssignableTo(typeof(IJsonRpcParam)))
-        {
-            IJsonRpcParam jsonRpcParam = (IJsonRpcParam)Activator.CreateInstance(paramType);
-            jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
-            executionParam = jsonRpcParam;
-        }
-        else if (paramType == typeof(string))
+        if (paramType == typeof(string))
         {
             executionParam = providedParameter.ValueKind == JsonValueKind.String ?
                 providedParameter.GetString() :
                 providedParameter.GetRawText();
+        }
+        else if (expectedParameter.IsIJsonRpcParam)
+        {
+            IJsonRpcParam jsonRpcParam = expectedParameter.CreateRpcParam();
+            jsonRpcParam!.ReadJson(providedParameter, EthereumJsonSerializer.JsonOptions);
+            executionParam = jsonRpcParam;
         }
         else
         {
@@ -325,15 +327,16 @@ public class JsonRpcService : IJsonRpcService
         return executionParam;
     }
 
-    private object[]? DeserializeParameters(ParameterInfo[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
+    private (object[]? parameters, bool hasMissing) DeserializeParameters(ExpectedParameter[] expectedParameters, JsonElement providedParameters, int missingParamsCount)
     {
         const int parallelThreshold = 4;
         try
         {
+            bool hasMissing = false;
             int arrayLength = providedParameters.GetArrayLength();
             int totalLength = arrayLength + missingParamsCount;
 
-            if (totalLength == 0) return Array.Empty<object>();
+            if (totalLength == 0) return (Array.Empty<object>(), false);
 
             object[] executionParameters = new object[totalLength];
 
@@ -342,9 +345,14 @@ public class JsonRpcService : IJsonRpcService
                 for (int i = 0; i < arrayLength; i++)
                 {
                     JsonElement providedParameter = providedParameters[i];
-                    ParameterInfo expectedParameter = expectedParameters[i];
+                    ExpectedParameter expectedParameter = expectedParameters[i];
 
-                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
+                    executionParameters[i] = parameter;
+                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
+                    {
+                        hasMissing = true;
+                    }
                 }
             }
             else if (arrayLength > parallelThreshold)
@@ -352,9 +360,14 @@ public class JsonRpcService : IJsonRpcService
                 Parallel.For(0, arrayLength, (int i) =>
                 {
                     JsonElement providedParameter = providedParameters[i];
-                    ParameterInfo expectedParameter = expectedParameters[i];
+                    ExpectedParameter expectedParameter = expectedParameters[i];
 
-                    executionParameters[i] = DeserializeParameter(providedParameter, expectedParameter);
+                    object? parameter = DeserializeParameter(providedParameter, expectedParameter);
+                    executionParameters[i] = parameter;
+                    if (!hasMissing && ReferenceEquals(parameter, Type.Missing))
+                    {
+                        hasMissing = true;
+                    }
                 });
             }
 
@@ -362,35 +375,14 @@ public class JsonRpcService : IJsonRpcService
             {
                 executionParameters[i] = Type.Missing;
             }
-
-            return executionParameters;
+            hasMissing |= arrayLength < totalLength;
+            return (executionParameters, hasMissing);
         }
         catch (Exception e)
         {
             if (_logger.IsWarn) _logger.Warn("Error while parsing JSON RPC request parameters " + e);
-            return null;
+            return (null, false);
         }
-    }
-
-    private static bool IsNullableParameter(ParameterInfo parameterInfo)
-    {
-        Type parameterType = parameterInfo.ParameterType;
-        if (parameterType.IsValueType)
-        {
-            return Nullable.GetUnderlyingType(parameterType) is not null;
-        }
-
-        CustomAttributeData nullableAttribute = parameterInfo.CustomAttributes
-            .FirstOrDefault(x => x.AttributeType.FullName == "System.Runtime.CompilerServices.NullableAttribute");
-        if (nullableAttribute is not null)
-        {
-            CustomAttributeTypedArgument attributeArgument = nullableAttribute.ConstructorArguments.FirstOrDefault();
-            if (attributeArgument.ArgumentType == typeof(byte))
-            {
-                return (byte)attributeArgument.Value! == 2;
-            }
-        }
-        return false;
     }
 
     private static JsonRpcResponse GetSuccessResponse(string methodName, object result, object id, Action? disposableAction)

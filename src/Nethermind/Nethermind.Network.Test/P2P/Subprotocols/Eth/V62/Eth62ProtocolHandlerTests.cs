@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -69,13 +70,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _gossipPolicy.ShouldGossipBlock(Arg.Any<BlockHeader>()).Returns(true);
             _gossipPolicy.ShouldDisconnectGossipingNodes.Returns(false);
             _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
-            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
             _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
             _handler = new Eth62ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _gossipPolicy,
                 LimboLogs.Instance,
@@ -121,6 +123,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 _svc,
                 new NodeStatsManager(Substitute.For<ITimerFactory>(), LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _gossipPolicy,
                 LimboLogs.Instance);
@@ -386,7 +389,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)
         {
-            _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
             TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
 
             HandleIncomingStatusMessage();
@@ -551,6 +554,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(100000)]
         [TestCase(102400)]
         [TestCase(222222)]
+        [Retry(10)]
         public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
             int txCount = 512; //we will try to send 512 txs

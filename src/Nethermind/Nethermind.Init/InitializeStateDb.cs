@@ -34,7 +34,7 @@ namespace Nethermind.Init;
 public class InitializeStateDb : IStep
 {
     private readonly INethermindApi _api;
-    private ILogger? _logger;
+    private ILogger _logger;
 
     public InitializeStateDb(INethermindApi api)
     {
@@ -125,15 +125,6 @@ public class InitializeStateDb : IStep
                 codeDb,
                 getApi.LogManager);
 
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
-            {
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-            };
-        }
-
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
@@ -177,7 +168,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, trieStore);
 
         return Task.CompletedTask;
     }
@@ -191,7 +182,8 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        TrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -223,7 +215,7 @@ public class InitializeStateDb : IStep
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
                 FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                    drive, trieStore, api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

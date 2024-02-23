@@ -61,7 +61,7 @@ namespace Nethermind.Synchronization.FastBlocks
         /// <summary>
         /// Responses received from peers but waiting in a queue for some other requests to be handled first
         /// </summary>
-        private readonly ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
+        private readonly NonBlocking.ConcurrentDictionary<long, HeadersSyncBatch> _dependencies = new();
         // Stop gap method to reduce allocations from non-struct enumerator
         // https://github.com/dotnet/runtime/pull/38296
 
@@ -212,7 +212,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
             // Resume logic
             BlockHeader? lowestInserted = _blockTree.LowestInsertedHeader;
-            if (lowestInserted != null && lowestInserted!.Number < _pivotNumber)
+            if (lowestInserted is not null && lowestInserted!.Number < _pivotNumber)
             {
                 SetExpectedNextHeaderToParent(lowestInserted);
                 _lowestRequestedHeaderNumber = lowestInserted.Number;
@@ -293,7 +293,7 @@ namespace Nethermind.Synchronization.FastBlocks
             get
             {
                 long? lowest = LowestInsertedBlockHeader?.Number;
-                return lowest != null && _dependencies.ContainsKey(lowest.Value - 1);
+                return lowest is not null && _dependencies.ContainsKey(lowest.Value - 1);
             }
         }
 
@@ -354,7 +354,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 lock (_handlerLock)
                 {
-                    ConcurrentDictionary<long, string> all = new();
+                    Dictionary<long, string> all = new();
                     StringBuilder builder = new();
                     builder.AppendLine($"SENT {_sent.Count} PENDING {_pending.Count} DEPENDENCIES {_dependencies.Count}");
                     foreach (var headerDependency in _dependencies)

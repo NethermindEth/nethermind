@@ -14,7 +14,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "Whether to create session-only accounts and delete them on shutdown.", DefaultValue = "false")]
     bool KeepDevWalletInMemory { get; set; }
 
-    [ConfigItem(Description = "Whether to enable WebSocket service for the defaut JSON-RPC port on startup.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to enable WebSocket service for the default JSON-RPC port on startup.", DefaultValue = "true")]
     bool WebSocketsEnabled { get; set; }
 
     [ConfigItem(Description = "Whether to enable the node discovery. If disabled, Nethermind doesn't look for other nodes beyond the bootnodes specified.", DefaultValue = "true")]
@@ -74,7 +74,7 @@ public interface IInitConfig : IConfig
     [ConfigItem(Description = "The hint on the max memory limit, in bytes, to configure the database and networking memory allocations.", DefaultValue = "null")]
     long? MemoryHint { get; set; }
 
-    [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored to disk.", DefaultValue = "100")]
+    [ConfigItem(Description = "The maximum number of bad blocks observed on the network that will be stored on disk.", DefaultValue = "100")]
     long? BadBlocksStored { get; set; }
 
     [ConfigItem(Description = "[TECHNICAL] Disable garbage collector on newPayload", DefaultValue = "true", HiddenFromDocs = true)]
@@ -85,6 +85,9 @@ public interface IInitConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Exit when block number is reached. Useful for scripting and testing.", DefaultValue = "null", HiddenFromDocs = true)]
     long? ExitOnBlockNumber { get; set; }
+
+    [ConfigItem(Description = "[TECHNICAL] Specify concurrency limit for background task.", DefaultValue = "1", HiddenFromDocs = true)]
+    int BackgroundTaskConcurrency { get; set; }
 }
 
 public enum DiagnosticMode

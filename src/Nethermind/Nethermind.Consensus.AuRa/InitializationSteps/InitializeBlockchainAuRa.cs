@@ -292,7 +292,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
 
     private void ReportTxPriorityRules(TxPriorityContract? txPriorityContract, TxPriorityContract.LocalDataSource? localDataSource)
     {
-        ILogger? logger = _api.LogManager.GetClassLogger();
+        ILogger logger = _api.LogManager.GetClassLogger();
 
         if (localDataSource?.FilePath is not null)
         {

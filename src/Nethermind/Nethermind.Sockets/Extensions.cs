@@ -16,14 +16,14 @@ namespace Nethermind.Sockets
         public static void UseWebSocketsModules(this IApplicationBuilder app)
         {
             IWebSocketsManager? webSocketsManager;
-            ILogger? logger;
+            ILogger logger;
             using (var scope = app.ApplicationServices.CreateScope())
             {
                 webSocketsManager = scope.ServiceProvider.GetService<IWebSocketsManager>();
-                logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger();
+                logger = scope.ServiceProvider.GetService<ILogManager>()?.GetClassLogger() ?? default;
             }
 
-            app.Use(async (context, next) =>
+            app.Run(async (context) =>
             {
                 string id = string.Empty;
                 string clientName = string.Empty;
@@ -48,28 +48,28 @@ namespace Nethermind.Sockets
                         ? clientValues.FirstOrDefault() ?? string.Empty
                         : string.Empty;
 
-                    if (logger?.IsDebug == true) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
+                    if (logger.IsDebug) logger.Info($"Initializing WebSockets for client: '{clientName}'.");
 
-                    var webSocket = await context.WebSockets.AcceptWebSocketAsync();
-                    var socketsClient =
+                    using WebSocket webSocket = await context.WebSockets.AcceptWebSocketAsync();
+                    using ISocketsClient socketsClient =
                         module.CreateClient(webSocket, clientName, context);
                     id = socketsClient.Id;
-                    await socketsClient.ReceiveAsync();
+                    await socketsClient.ReceiveLoopAsync();
                 }
                 catch (WebSocketException ex)
                 {
-                    logger?.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
+                    logger.Error($"WebSockets error {ex.WebSocketErrorCode}: {ex.WebSocketErrorCode} {ex.Message}", ex);
                 }
                 catch (Exception ex)
                 {
-                    logger?.Error($"WebSockets error {ex.Message}", ex);
+                    logger.Error($"WebSockets error {ex.Message}", ex);
                 }
                 finally
                 {
                     if (module is not null && !string.IsNullOrWhiteSpace(id))
                     {
                         module.RemoveClient(id);
-                        if (logger?.IsDebug == true) logger.Info($"Closing WebSockets for client: '{clientName}'.");
+                        if (logger.IsDebug) logger.Info($"Closing WebSockets for client: '{clientName}'.");
                     }
                 }
             });

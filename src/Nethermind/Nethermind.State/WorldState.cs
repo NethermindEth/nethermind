@@ -27,6 +27,7 @@ namespace Nethermind.State
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
+        private readonly ITrieStore _trieStore;
 
         public Hash256 StateRoot
         {
@@ -40,6 +41,7 @@ namespace Nethermind.State
 
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
+            _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore, codeDb, logManager);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
@@ -57,6 +59,11 @@ namespace Nethermind.State
             return _stateProvider.GetAccount(address);
         }
 
+        AccountStruct IAccountStateProvider.GetAccount(Address address)
+        {
+            return _stateProvider.GetAccount(address).ToStruct();
+        }
+
         public bool IsContract(Address address)
         {
             return _stateProvider.IsContract(address);
@@ -66,7 +73,7 @@ namespace Nethermind.State
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public byte[] Get(in StorageCell storageCell)
+        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
         {
             return _persistentStorageProvider.Get(storageCell);
         }
@@ -74,7 +81,7 @@ namespace Nethermind.State
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public byte[] GetTransientState(in StorageCell storageCell)
+        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
         {
             return _transientStorageProvider.Get(storageCell);
         }
@@ -106,9 +113,9 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall, bool isGenesis = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, code, spec, isGenesis, isSystemCall);
+            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis, isSystemCall);
         }
         public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
         {
@@ -142,7 +149,7 @@ namespace Nethermind.State
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
-        public void TouchCode(Hash256 codeHash)
+        public void TouchCode(in ValueHash256 codeHash)
         {
             _stateProvider.TouchCode(codeHash);
         }
@@ -155,7 +162,7 @@ namespace Nethermind.State
         {
             return _stateProvider.GetBalance(address);
         }
-        public Hash256 GetStorageRoot(Address address)
+        public ValueHash256 GetStorageRoot(Address address)
         {
             return _stateProvider.GetStorageRoot(address);
         }
@@ -167,10 +174,22 @@ namespace Nethermind.State
         {
             return _stateProvider.GetCode(codeHash);
         }
+
+        public byte[] GetCode(ValueHash256 codeHash)
+        {
+            return _stateProvider.GetCode(codeHash);
+        }
+
         public Hash256 GetCodeHash(Address address)
         {
             return _stateProvider.GetCodeHash(address);
         }
+
+        ValueHash256 IReadOnlyStateProvider.GetCodeHash(Address address)
+        {
+            return _stateProvider.GetCodeHash(address);
+        }
+
         public void Accept(ITreeVisitor visitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null)
         {
             _stateProvider.Accept(visitor, stateRoot, visitingOptions);
@@ -190,9 +209,7 @@ namespace Nethermind.State
 
         public bool HasStateForRoot(Hash256 stateRoot)
         {
-            RootCheckVisitor visitor = new();
-            Accept(visitor, stateRoot);
-            return visitor.HasRoot;
+            return _trieStore.HasRoot(stateRoot);
         }
 
         public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)

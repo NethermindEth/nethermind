@@ -1,0 +1,16 @@
+Source: nethermind
+Section: net
+Priority: optional
+Maintainer: Demerzel Solutions Limited <devops@nethermind.io>
+Build-Depends: debhelper-compat (= 11)
+Standards-Version: 4.6.0
+Homepage: https://nethermind.io/nethermind-client
+Vcs-Browser: https://github.com/NethermindEth/nethermind
+Vcs-Git: https://github.com/NethermindEth/nethermind.git
+Rules-Requires-Root: no
+
+Package: nethermind
+Architecture: amd64 arm64
+Depends: ${misc:Depends}, ${shlibs:Depends}, libsnappy-dev
+Description: A robust execution client for Ethereum node operators.
+ Nethermind is a high-performance, highly configurable Ethereum execution client built on .NET that runs on Linux, Windows, and macOS and supports Clique, Aura, and Ethash. With breakneck sync speeds and support for external plugins, it provides reliable access to rich on-chain data thanks to a high-performance JSON-RPC interface and node health monitoring with Grafana and Seq.

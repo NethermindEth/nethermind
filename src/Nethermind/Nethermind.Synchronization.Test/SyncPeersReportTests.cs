@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network;
@@ -152,7 +153,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.TryAllocate(AllocationContexts.All);
 
             PeerInfo syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
-            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.Now);
+            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.UtcNow);
 
             PeerInfo[] peers = { syncPeer, syncPeer2 };
 
@@ -181,6 +182,7 @@ namespace Nethermind.Synchronization.Test
                     serializer,
                     statsManager,
                     syncServer,
+                    RunImmediatelyScheduler.Instance,
                     NoErrorLimboLogs.Instance)
             {
                 IsInitialized = initialized;

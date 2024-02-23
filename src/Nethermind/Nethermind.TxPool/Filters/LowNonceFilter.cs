@@ -25,7 +25,7 @@ namespace Nethermind.TxPool.Filters
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space
             // efficiently. One call to get account from state is not that costly and it only happens after previous checks.
             // This was modeled by OpenEthereum behavior.
-            Account account = state.SenderAccount;
+            AccountStruct account = state.SenderAccount;
             UInt256 currentNonce = account.Nonce;
             if (tx.Nonce < currentNonce)
             {

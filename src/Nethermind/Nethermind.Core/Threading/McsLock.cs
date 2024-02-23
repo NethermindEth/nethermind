@@ -116,7 +116,7 @@ public class McsLock
             ThreadNode node = _lock._node.Value!;
 
             // If there is no next node, it means this thread might be the last in the queue.
-            if (node.Next == null)
+            if (node.Next is null)
             {
                 // Attempt to atomically set the tail to null, indicating no thread is waiting.
                 // If it is still 'node', then there are no other waiting threads.
@@ -130,7 +130,7 @@ public class McsLock
                 // If another thread is in the process of enqueuing itself,
                 // wait until it finishes setting its node as the 'Next' node.
                 SpinWait sw = default;
-                while (node.Next == null)
+                while (node.Next is null)
                 {
                     sw.SpinOnce();
                 }

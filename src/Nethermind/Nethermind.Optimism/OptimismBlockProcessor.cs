@@ -8,6 +8,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
@@ -18,7 +19,7 @@ namespace Nethermind.Optimism;
 
 public class OptimismBlockProcessor : BlockProcessor
 {
-    private Create2DeployerContractRewriter? _contractRewriter;
+    private readonly Create2DeployerContractRewriter? _contractRewriter;
 
     public OptimismBlockProcessor(
         ISpecProvider? specProvider,

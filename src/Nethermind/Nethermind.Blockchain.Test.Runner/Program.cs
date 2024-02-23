@@ -14,7 +14,7 @@ namespace Nethermind.Blockchain.Test.Runner
     internal class Program
     {
         private static readonly List<string> AllFailingTests = new List<string>();
-        private static long _totalMs;
+        private static double _totalMs;
 
         public static async Task Main(params string[] args)
         {
@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.Test.Runner
             var result = stateTest.RunTests().ToList();
             var failedTestsInCategory = result.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
-            long categoryTimeInMs = result.Sum(t => t.TimeInMs);
+            long categoryTimeInMs = (long)result.Sum(t => t.TimeInMs);
             _totalMs += result.Sum(t => t.TimeInMs);
 
             if (result.Any())
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test.Runner
 
             var failedTestsInCategory = testResults.Where(r => !r.Pass).Select(t => t.Name + " " + t.LoadFailure).ToArray();
             AllFailingTests.AddRange(failedTestsInCategory);
-            long categoryTimeInMs = testResults.Sum(t => t.TimeInMs);
+            long categoryTimeInMs = (long)testResults.Sum(t => t.TimeInMs);
             _totalMs += testResults.Sum(t => t.TimeInMs);
 
             if (testResults.Any())

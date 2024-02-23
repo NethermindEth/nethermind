@@ -60,9 +60,12 @@ public interface IMergeConfig : IConfig
             - A positive number to release memory after that many Engine API calls
 
 
-            """, DefaultValue = "75")]
+            """, DefaultValue = "25")]
     public int CollectionsPerDecommit { get; set; }
 
     [ConfigItem(Description = "The timeout, in seconds, for the `engine_newPayload` method.", DefaultValue = "7", HiddenFromDocs = true)]
     public int NewPayloadTimeout { get; }
+
+    [ConfigItem(Description = "[TECHNICAL] Simulate block production for every possible slot. Just for stress-testing purposes.", DefaultValue = "false", HiddenFromDocs = true)]
+    bool SimulateBlockProduction { get; set; }
 }

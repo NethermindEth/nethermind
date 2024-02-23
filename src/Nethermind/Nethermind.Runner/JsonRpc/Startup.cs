@@ -59,7 +59,7 @@ namespace Nethermind.Runner.JsonRpc
                 options.ConfigureHttpsDefaults(co => co.SslProtocols |= SslProtocols.Tls13);
             });
             Bootstrap.Instance.RegisterJsonRpcServices(services);
-            services.AddControllers();
+
             string corsOrigins = Environment.GetEnvironmentVariable("NETHERMIND_CORS_ORIGINS") ?? "*";
             services.AddCors(c => c.AddPolicy("Cors",
                 p => p.AllowAnyMethod().AllowAnyHeader().WithOrigins(corsOrigins)));
@@ -77,12 +77,6 @@ namespace Nethermind.Runner.JsonRpc
 
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env, IJsonRpcProcessor jsonRpcProcessor, IJsonRpcService jsonRpcService, IJsonRpcLocalStats jsonRpcLocalStats, IJsonSerializer jsonSerializer)
         {
-            void SerializeTimeoutException(IJsonRpcService service, IBufferWriter<byte> resultStream)
-            {
-                JsonRpcErrorResponse? error = service.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
-                jsonSerializer.Serialize(resultStream, error);
-            }
-
             if (env.IsDevelopment())
             {
                 app.UseDeveloperExceptionPage();
@@ -153,11 +147,8 @@ namespace Nethermind.Runner.JsonRpc
                 {
                     if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
                     {
-                        JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(ErrorCodes.InvalidRequest, "Authentication error");
-                        ctx.Response.ContentType = "application/json";
-                        ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
-                        jsonSerializer.Serialize(ctx.Response.BodyWriter, response);
-                        await ctx.Response.CompleteAsync();
+                        await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest,
+                            "Authentication error");
                         return;
                     }
 
@@ -229,11 +220,11 @@ namespace Nethermind.Runner.JsonRpc
                             }
                             catch (Exception e) when (e.InnerException is OperationCanceledException)
                             {
-                                SerializeTimeoutException(jsonRpcService, resultWriter);
+                                SerializeTimeoutException(resultWriter);
                             }
                             catch (OperationCanceledException)
                             {
-                                SerializeTimeoutException(jsonRpcService, resultWriter);
+                                SerializeTimeoutException(resultWriter);
                             }
                             finally
                             {
@@ -254,11 +245,28 @@ namespace Nethermind.Runner.JsonRpc
                     catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)
                     {
                         if (logger.IsDebug) logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                        await PushErrorResponse(e.StatusCode, e.StatusCode == StatusCodes.Status413PayloadTooLarge
+                                                ? ErrorCodes.LimitExceeded
+                                                : ErrorCodes.InvalidRequest,
+                                                e.Message);
                     }
                     finally
                     {
                         Interlocked.Add(ref Metrics.JsonRpcBytesReceivedHttp, ctx.Request.ContentLength ?? request.Length);
                     }
+                }
+                void SerializeTimeoutException(IBufferWriter<byte> resultStream)
+                {
+                    JsonRpcErrorResponse? error = jsonRpcService.GetErrorResponse(ErrorCodes.Timeout, "Request was canceled due to enabled timeout.");
+                    jsonSerializer.Serialize(resultStream, error);
+                }
+                async Task PushErrorResponse(int statusCode, int errorCode, string message)
+                {
+                    JsonRpcErrorResponse? response = jsonRpcService.GetErrorResponse(errorCode, message);
+                    ctx.Response.ContentType = "application/json";
+                    ctx.Response.StatusCode = statusCode;
+                    jsonSerializer.Serialize(ctx.Response.BodyWriter, response);
+                    await ctx.Response.CompleteAsync();
                 }
             });
         }
