@@ -153,7 +153,7 @@ namespace Nethermind.Consensus.Clique
 
             getFromApi.DisposeStack.Push(blockProducer);
 
-            return Task.FromResult(blockProducer);
+            return Task.FromResult((IBlockProducer)blockProducer);
         }
 
         public Task InitNetworkProtocol()
