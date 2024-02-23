@@ -161,6 +161,6 @@ jobs:
           cd sedge
           docker compose stop
           cd ..
-          rm -rf sedge
-          rm -rf $GITHUB_WORKSPACE/sedge
+          sudo rm -rf sedge
+          sudo rm -rf $GITHUB_WORKSPACE/sedge
           docker system prune -a -f --volumes
