@@ -83,6 +83,26 @@ public class RangeQueryVisitorTests
         nodes.ContainsKey(new Hash256("0400000000000000000000000000000000000000000000000000000000000000")).Should().BeTrue();
     }
 
+    [Test]
+    public void AccountRangeFetch_AfterTree()
+    {
+        StateTree tree = new StateTree();
+        tree.Set(new Hash256("0400000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.Set(new Hash256("0500000000000000000000000000000000000000000000000000000000000000"), TestItem.GenerateRandomAccount());
+        tree.UpdateRootHash();
+
+        var startHash = new Hash256("0510000000000000000000000000000000000000000000000000000000000000");
+        var limitHash = new Hash256("0600000000000000000000000000000000000000000000000000000000000000");
+
+        using RangeQueryVisitor visitor = new(startHash, limitHash, false);
+        tree.Accept(visitor, tree.RootHash, CreateVisitingOptions());
+        (IDictionary<ValueHash256, byte[]> nodes, long _) = visitor.GetNodesAndSize();
+
+        nodes.Count.Should().Be(0);
+        Action act = () => visitor.GetProofs();
+        act.Should().NotThrow();
+    }
+
     private static VisitingOptions CreateVisitingOptions() => new() { ExpectAccounts = false };
 
     [Test]
