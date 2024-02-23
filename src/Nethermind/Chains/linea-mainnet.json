@@ -40,9 +40,7 @@
     "eip1559FeeCollectorTransition": "0x0",
     "eip3198Transition": "0x0",
     "eip3529Transition": "0x0",
-    "eip3541Transition": "0x0",
-
-    "terminalTotalDifficulty": "0"
+    "eip3541Transition": "0x0"
   },
   "genesis": {
     "seal": {
