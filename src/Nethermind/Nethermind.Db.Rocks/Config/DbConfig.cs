@@ -207,6 +207,9 @@ public class DbConfig : IDbConfig
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
     public int StateDbBlockRestartInterval { get; set; } = 16;
+    public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
+    public bool StateDbAdviseRandomOnOpen { get; set; } = true;
+    public int StateDbBloomFilterBitsPerKey { get; set; } = 10;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
