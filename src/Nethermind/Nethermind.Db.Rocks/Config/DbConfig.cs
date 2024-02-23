@@ -43,6 +43,11 @@ public class DbConfig : IDbConfig
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool UseHashSkipListMemtable { get; set; } = false;
     public int BlockRestartInterval { get; set; } = 16;
+    public double MemtablePrefixBloomSizeRatio { get; set; } = 0.02;
+    public bool AdviseRandomOnOpen { get; set; } = true;
+    public bool LevelCompactionDynamicLevelBytes { get; set; } = false;
+    public int BloomFilterBitsPerKey { get; set; } = 10;
+    public ulong BytesPerSync { get; set; } = 0;
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;

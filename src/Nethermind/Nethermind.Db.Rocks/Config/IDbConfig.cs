@@ -44,6 +44,11 @@ public interface IDbConfig : IConfig
     long? MaxWriteBufferSizeToMaintain { get; set; }
     bool UseHashSkipListMemtable { get; set; }
     int BlockRestartInterval { get; set; }
+    double MemtablePrefixBloomSizeRatio { get; set; }
+    bool AdviseRandomOnOpen { get; set; }
+    bool LevelCompactionDynamicLevelBytes { get; set; }
+    int BloomFilterBitsPerKey { get; set; }
+    ulong BytesPerSync { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }

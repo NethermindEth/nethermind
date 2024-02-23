@@ -378,7 +378,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         tableOptions.SetFormatVersion(5);
-        tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        if (dbConfig.BloomFilterBitsPerKey != 0)
+        {
+            // Bloom filter size for the sst files.
+            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey, false));
+        }
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
@@ -441,8 +445,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
         // block cache and then finally the LSM/SST files.
         #region WriteBuffer
+
+        // The memtable have a bloom filter whose size depends on the `prefix_bloom_size_ratio`, which is not actually
+        // just for prefix.
         _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
-        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
+        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, dbConfig.MemtablePrefixBloomSizeRatio);
 
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
         ulong writeBufferSize = dbConfig.WriteBufferSize;
@@ -510,6 +517,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
+        // Set to true to enable dynamic level bytes. Its drastically different than standard compaction.
+        options.SetLevelCompactionDynamicLevelBytes(dbConfig.LevelCompactionDynamicLevelBytes);
+
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
 
@@ -523,6 +533,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
+
+        // How many bytes before the SST files get synced to disk.
+        options.SetBytesPerSync(dbConfig.BytesPerSync);
 
         // For reducing temporarily used disk space but come at the cost of parallel compaction.
         if (dbConfig.MaxCompactionBytes.HasValue)
@@ -556,7 +569,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         options.SetCreateIfMissing();
-        options.SetAdviseRandomOnOpen(true);
+
+        // From looking into the source code, this does not have an effect on Windows.
+        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
+
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
