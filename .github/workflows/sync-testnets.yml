@@ -158,5 +158,7 @@ jobs:
       - name: Clean Up
         if: always()
         run: |
-          rm -r sedge
-          rm -r $GITHUB_WORKSPACE/sedge
+          rm -rf sedge
+          rm -rf $GITHUB_WORKSPACE/sedge
+          docker compose stop
+          docker system prune -a -f --volumes
