@@ -14,6 +14,7 @@ using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
@@ -25,7 +26,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
 {
     private readonly ISyncServer _syncServer;
     private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
-    private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+    private readonly BackgroundTaskSchedulerWrapper _backgroundTaskScheduler;
 
     public override string Name => "nodedata1";
     protected override TimeSpan InitTimeout => Timeouts.Eth;
@@ -42,7 +43,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         : base(session, statsManager, serializer, logManager)
     {
         _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
-        _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler)); ;
+        _backgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler))); ;
         _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
     }
     public override void Init()
@@ -75,7 +76,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
                 GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                 Metrics.GetNodeDataReceived++;
                 ReportIn(getNodeDataMessage, size);
-                ScheduleSyncServe(getNodeDataMessage, Handle);
+                _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                 break;
             case NodeDataMessageCode.NodeData:
                 NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -101,26 +102,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         byte[][] nodeData = _syncServer.GetNodeData(msg.Hashes, cancellationToken);
 
         return new NodeDataMessage(nodeData);
-    }
-
-    protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, Task<TRes>> fulfillFunc) where TRes : P2PMessage
-    {
-        _backgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
-    }
-
-    // I just don't want to create a closure.. so this happens.
-    private async Task BackgroundSyncSender<TReq, TRes>(
-        (TReq Request, Func<TReq, CancellationToken, Task<TRes>> FullfillFunc) input, CancellationToken cancellationToken) where TRes : P2PMessage
-    {
-        try
-        {
-            TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-            Send(response);
-        }
-        catch (EthSyncException e)
-        {
-            Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
-        }
     }
 
     private void Handle(NodeDataMessage msg, int size)

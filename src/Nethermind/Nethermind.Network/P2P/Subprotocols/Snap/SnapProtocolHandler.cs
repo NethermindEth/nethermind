@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
@@ -13,14 +12,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
+using Nethermind.Network.P2P.Utils;
 using Nethermind.Network.Rlpx;
 using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.SnapSync;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap
@@ -39,7 +37,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         );
 
         private ISnapServer? SyncServer { get; }
-        private IBackgroundTaskScheduler BackgroundTaskScheduler { get; }
+        private BackgroundTaskSchedulerWrapper BackgroundTaskScheduler { get; }
         private bool ServingEnabled { get; }
 
         public override string Name => "snap1";
@@ -70,7 +68,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             _getByteCodesRequests = new(Send);
             _getTrieNodesRequests = new(Send);
             SyncServer = snapServer;
-            BackgroundTaskScheduler = backgroundTaskScheduler;
+            BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler);
             ServingEnabled = SyncServer is not null;
         }
 
@@ -101,7 +99,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     {
                         GetAccountRangeMessage getAccountRangeMessage = Deserialize<GetAccountRangeMessage>(message.Content);
                         ReportIn(getAccountRangeMessage, size);
-                        ScheduleSyncServe(getAccountRangeMessage, Handle);
+                        BackgroundTaskScheduler.ScheduleSyncServe(getAccountRangeMessage, Handle);
                     }
 
                     break;
@@ -115,7 +113,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     {
                         GetStorageRangeMessage getStorageRangesMessage = Deserialize<GetStorageRangeMessage>(message.Content);
                         ReportIn(getStorageRangesMessage, size);
-                        ScheduleSyncServe(getStorageRangesMessage, Handle);
+                        BackgroundTaskScheduler.ScheduleSyncServe(getStorageRangesMessage, Handle);
                     }
 
                     break;
@@ -129,7 +127,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     {
                         GetByteCodesMessage getByteCodesMessage = Deserialize<GetByteCodesMessage>(message.Content);
                         ReportIn(getByteCodesMessage, size);
-                        ScheduleSyncServe(getByteCodesMessage, Handle);
+                        BackgroundTaskScheduler.ScheduleSyncServe(getByteCodesMessage, Handle);
                     }
 
                     break;
@@ -143,7 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     {
                         GetTrieNodesMessage getTrieNodesMessage = Deserialize<GetTrieNodesMessage>(message.Content);
                         ReportIn(getTrieNodesMessage, size);
-                        ScheduleSyncServe(getTrieNodesMessage, Handle);
+                        BackgroundTaskScheduler.ScheduleSyncServe(getTrieNodesMessage, Handle);
                     }
 
                     break;
@@ -364,28 +362,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                 static (request) => request.ToString(),
                 token);
         }
-
-        protected void ScheduleSyncServe<TReq, TRes>(TReq request, Func<TReq, CancellationToken, ValueTask<TRes>> fulfillFunc) where TRes : P2PMessage
-        {
-            BackgroundTaskScheduler.ScheduleTask((request, fulfillFunc), BackgroundSyncSender);
-        }
-
-        // I just don't want to create a closure.. so this happens.
-        private async Task BackgroundSyncSender<TReq, TRes>(
-            (TReq Request, Func<TReq, CancellationToken, ValueTask<TRes>> FullfillFunc) input,
-            CancellationToken cancellationToken)
-            where TRes : P2PMessage
-        {
-            try
-            {
-                TRes response = await input.FullfillFunc.Invoke(input.Request, cancellationToken);
-                Send(response);
-            }
-            catch (EthSyncException e)
-            {
-                Session.InitiateDisconnect(DisconnectReason.EthSyncException, e.Message);
-            }
-        }
-
     }
 }
