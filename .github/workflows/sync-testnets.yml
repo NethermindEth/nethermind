@@ -153,4 +153,14 @@ jobs:
       - name: Get Consensus Logs
         if: always()
         run: |
-          docker logs sedge-consensus-client
+          docker logs sedge-consensus-client      
+
+      - name: Clean Up
+        if: always()
+        run: |
+          cd sedge
+          docker compose stop
+          cd ..
+          sudo rm -rf sedge
+          sudo rm -rf $GITHUB_WORKSPACE/sedge
+          docker system prune -a -f --volumes
