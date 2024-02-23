@@ -37,5 +37,6 @@ namespace Nethermind.Core
         {
             TryGetAccount(address, out AccountStruct account);
             return account.CodeHash;
-        }    }
+        }
+    }
 }
