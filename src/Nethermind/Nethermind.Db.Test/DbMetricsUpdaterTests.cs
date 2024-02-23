@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
+using System.Threading;
 using Nethermind.Db.Rocks.Statistics;
 using NUnit.Framework;
 using NSubstitute;
@@ -21,36 +24,59 @@ namespace Nethermind.Db.Test
             Metrics.DbStats.Clear();
         }
 
-        [SetCulture("en-US")]
-        [TestCase("files", 94)]
-        [TestCase("files_compacting", 0)]
-        [TestCase("score", 0.1)]
-        [TestCase("size", 1309965025.28)]
-        [TestCase("read", 0.2)]
-        [TestCase("rn", 0.3)]
-        [TestCase("rnp1", 0.4)]
-        [TestCase("write", 0.5)]
-        [TestCase("wnew", 0.6)]
-        [TestCase("moved", 0.7)]
-        [TestCase("wamp", 0.8)]
-        [TestCase("rd", 0.9)]
-        [TestCase("wr", 1.0)]
-        [TestCase("comp_sec", 1.1)]
-        [TestCase("comp_merge_cpu_sec", 1.2)]
-        [TestCase("comp_total", 1.3)]
-        public void ProcessCompactionStats_AllDataExist(string metric, double expectedValue)
+
+        private static IEnumerable<TestCaseData> ProcessCompactionStatsTests
         {
+            get
+            {
+                CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
+                InterfaceLogger logger = Substitute.For<InterfaceLogger>();
+
+                string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
+                new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
+
+                // Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
+                // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+                // L0     94/0    1.22 GB   0.1      0.2     0.3      0.4      0.5     0.6       0.7   0.8      0.9     1.0    1.1            1.2      1.3    1.4       0      0       0.0       0.0
+
+                yield return new TestCaseData("files", 94.0);
+                yield return new TestCaseData("files_compacting", 0.0);
+                yield return new TestCaseData("score", 0.1);
+                yield return new TestCaseData("size", 1309965025.28);
+                yield return new TestCaseData("read", 0.2);
+                yield return new TestCaseData("rn", 0.3);
+                yield return new TestCaseData("rnp1", 0.4);
+                yield return new TestCaseData("write", 0.5);
+                yield return new TestCaseData("wnew", 0.6);
+                yield return new TestCaseData("moved", 0.7);
+                yield return new TestCaseData("wamp", 0.8);
+                yield return new TestCaseData("rd", 0.9);
+                yield return new TestCaseData("wr", 1.0);
+                yield return new TestCaseData("comp_sec", 1.1);
+                yield return new TestCaseData("comp_merge_cpu_sec", 1.2);
+                yield return new TestCaseData("comp_total", 1.3);
+            }
+        }
+
+        [TestCaseSource(nameof(ProcessCompactionStatsTests))]
+        public void ProcessCompactionStats_DbCompactionStats_Correct(string metric, double expectedValue)
+        {
+            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
+        }
+
+        [SetCulture("en-US")]
+        [Test]
+        public void ProcessCompactionStats_DbStats_Correct()
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+
             InterfaceLogger logger = Substitute.For<InterfaceLogger>();
 
             string testDump = File.ReadAllText("InputFiles/CompactionStatsExample_AllData.txt");
             new DbMetricsUpdater<DbOptions>("Test", null, null, null, null, new(logger)).ProcessCompactionStats(testDump);
 
             Assert.That(Metrics.DbStats.Count, Is.EqualTo(5));
-            // Level    Files   Size     Score Read(GB)  Rn(GB) Rnp1(GB) Write(GB) Wnew(GB) Moved(GB) W-Amp Rd(MB/s) Wr(MB/s) Comp(sec) CompMergeCPU(sec) Comp(cnt) Avg(sec) KeyIn KeyDrop Rblob(GB) Wblob(GB)
-            // ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
-            // L0     94/0    1.22 GB   0.1      0.2     0.3      0.4      0.5     0.6       0.7   0.8      0.9     1.0    1.1            1.2      1.3    1.4       0      0       0.0       0.0
-
-            Assert.That(Metrics.DbCompactionStats[("TestDb", 0, metric)], Is.EqualTo(expectedValue));
         }
 
         [Test]
