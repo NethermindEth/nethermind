@@ -163,7 +163,7 @@ public partial class DbMetricsUpdater<T>(string dbName, Options<T> dbOptions, Ro
         RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractIntervalRegex();
 
-    [GeneratedRegex("^(?<name>\\S+)(?<value>.*)$", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
+    [GeneratedRegex("^(?<name>\\S+)(?<value>.*)$", RegexOptions.Multiline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
     private static partial Regex ExtractStatsRegex2();
 
     [GeneratedRegex("(?<subName>\\S+) \\: (?<subValue>\\S+)", RegexOptions.Singleline | RegexOptions.NonBacktracking | RegexOptions.ExplicitCapture)]
