@@ -137,7 +137,7 @@ namespace Nethermind.Consensus.Clique
 
             IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
 
-            IBlockProducer blockProducer = new CliqueBlockProducer(
+            CliqueBlockProducer blockProducer = new (
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
                 producerEnv.StateProvider,
@@ -151,10 +151,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            if (blockProducer is IDisposable disposable)
-            {
-                getFromApi.DisposeStack.Push(disposable);
-            }
+            getFromApi.DisposeStack.Push(blockProducer);
 
             return Task.FromResult(blockProducer);
         }
