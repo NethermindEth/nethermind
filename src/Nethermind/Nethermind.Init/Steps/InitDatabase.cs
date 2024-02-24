@@ -7,6 +7,7 @@ using System.Reflection;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -39,6 +40,7 @@ namespace Nethermind.Init.Steps
             ISyncConfig syncConfig = _api.Config<ISyncConfig>();
             IInitConfig initConfig = _api.Config<IInitConfig>();
             ITxPoolConfig txPoolConfig = _api.Config<ITxPoolConfig>();
+            IReceiptConfig receiptConfig = _api.Config<IReceiptConfig>();
             IPaprikaConfig paprikaConfig = _api.Config<IPaprikaConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
@@ -48,9 +50,9 @@ namespace Nethermind.Init.Steps
 
             try
             {
-                bool useReceiptsDb = initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
+                bool useReceiptsDb = receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
-                InitDbApi(initConfig, dbConfig, paprikaConfig, initConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                InitDbApi(initConfig, dbConfig, paprikaConfig, receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb

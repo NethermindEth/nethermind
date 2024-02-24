@@ -38,6 +38,8 @@ namespace Nethermind.Benchmarks.Store
 
         private StateTree _fullTree;
 
+        private TrieStore _memoryTrieStore;
+
         // All entries
         private const int _entryCount = 1024 * 4;
         private (Hash256, Account)[] _entries;
@@ -256,6 +258,8 @@ namespace Nethermind.Benchmarks.Store
             {
                 _uncommittedFullTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
+
+            _memoryTrieStore = new TrieStore(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
         }
 
         [Benchmark]
@@ -304,6 +308,28 @@ namespace Nethermind.Benchmarks.Store
             for (int i = 0; i < _entryCount; i++)
             {
                 _uncommittedFullTree.Get(_entriesShuffled[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithMemoryTrieStore()
+        {
+            StateTree tempTree = new StateTree(_memoryTrieStore, NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entries[i].Item1);
+            }
+        }
+
+        [Benchmark]
+        public void ReadWithMemoryTrieStoreReadOnly()
+        {
+            StateTree tempTree = new StateTree(_memoryTrieStore.AsReadOnly(), NullLogManager.Instance);
+            tempTree.RootHash = _rootHash;
+            for (int i = 0; i < _entryCount; i++)
+            {
+                tempTree.Get(_entries[i].Item1);
             }
         }
 

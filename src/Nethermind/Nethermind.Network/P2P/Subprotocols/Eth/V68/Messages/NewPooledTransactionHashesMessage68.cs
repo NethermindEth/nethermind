@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
@@ -28,5 +29,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         }
 
         public override string ToString() => $"{nameof(NewPooledTransactionHashesMessage68)}({Hashes.Count})";
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            if (Types is IDisposable disposable) disposable.Dispose();
+            if (Sizes is IDisposable disposable2) disposable2.Dispose();
+            if (Hashes is IDisposable disposable3) disposable3.Dispose();
+        }
     }
 }

@@ -103,7 +103,14 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
         Array.Copy(_array, 0, array!, index, _count);
     }
 
-    public int Count => _count;
+    public int Count
+    {
+        get
+        {
+            GuardDispose();
+            return _count;
+        }
+    }
 
     public int Capacity => _capacity;
 

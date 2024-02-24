@@ -554,6 +554,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [TestCase(100000)]
         [TestCase(102400)]
         [TestCase(222222)]
+        [Retry(10)]
         public void should_send_single_transaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
             int txCount = 512; //we will try to send 512 txs

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -65,10 +65,10 @@ namespace Nethermind.Synchronization.FastSync
         // concurrent request handling with the read lock.
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
-        private Dictionary<Hash256, HashSet<DependentItem>> _dependencies = new();
-        private readonly LruKeyCache<Hash256> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly LruKeyCache<Hash256> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly HashSet<Hash256> _codesSameAsNodes = new();
+        private Dictionary<Hash256AsKey, HashSet<DependentItem>> _dependencies = new();
+        private readonly LruKeyCache<Hash256AsKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<Hash256AsKey> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly HashSet<Hash256AsKey> _codesSameAsNodes = new();
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -508,7 +508,7 @@ namespace Nethermind.Synchronization.FastSync
                     _branchProgress.ReportSynced(syncItem, NodeProgressState.Requested);
                 }
 
-                LruKeyCache<Hash256> alreadySavedCache =
+                LruKeyCache<Hash256AsKey> alreadySavedCache =
                     syncItem.NodeDataType == NodeDataType.Code ? _alreadySavedCode : _alreadySavedNode;
                 if (alreadySavedCache.Get(syncItem.Hash))
                 {
@@ -712,7 +712,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = new Dictionary<Hash256, HashSet<DependentItem>>();
+                _dependencies = new Dictionary<Hash256AsKey, HashSet<DependentItem>>();
                 // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 

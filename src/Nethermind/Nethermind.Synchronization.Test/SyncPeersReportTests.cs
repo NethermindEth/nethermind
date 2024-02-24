@@ -153,7 +153,7 @@ namespace Nethermind.Synchronization.Test
             syncPeer.TryAllocate(AllocationContexts.All);
 
             PeerInfo syncPeer2 = BuildPeer(true, direction: ConnectionDirection.In);
-            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.Now);
+            syncPeer2.PutToSleep(AllocationContexts.All, DateTime.UtcNow);
 
             PeerInfo[] peers = { syncPeer, syncPeer2 };
 
