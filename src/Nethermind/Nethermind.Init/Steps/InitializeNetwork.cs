@@ -41,6 +41,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
+using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps;
@@ -526,7 +527,10 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled)
         {
             // TODO: Add a proper config for the state persistence depth.
-            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
+            snapServer = new SnapServer(
+               new TrieStore(new MemDb(), null).AsReadOnly(), // TODO: provide tree nodes here
+               _api.DbProvider.CodeDb,
+               new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
         }
 
         _api.ProtocolsManager = new ProtocolsManager(
