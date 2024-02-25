@@ -139,8 +139,8 @@ namespace Nethermind.Core
         public UInt256 Balance { get; }
         public ValueHash256 StorageRoot => _storageRoot;
         public ValueHash256 CodeHash => _codeHash;
-        public bool IsTotallyEmpty => _storageRoot == Keccak.EmptyTreeHash.ValueHash256 && IsEmpty;
-        public bool IsEmpty => _codeHash == Keccak.OfAnEmptyString.ValueHash256 && Balance.IsZero && Nonce.IsZero;
+        public bool IsTotallyEmpty => IsEmpty && _storageRoot == Keccak.EmptyTreeHash.ValueHash256;
+        public bool IsEmpty => Balance.IsZero && Nonce.IsZero && _codeHash == Keccak.OfAnEmptyString.ValueHash256;
         public bool IsContract => _codeHash != Keccak.OfAnEmptyString.ValueHash256;
     }
 }
