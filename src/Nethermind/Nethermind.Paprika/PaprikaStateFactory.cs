@@ -10,6 +10,7 @@ using Paprika.Store;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.Paprika;
 
@@ -19,6 +20,8 @@ public class PaprikaStateFactory : IStateFactory
     private static readonly long _mainnet = 256.GiB();
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromSeconds(10);
+
+    public static readonly byte[] ZeroByte = new byte[] { 0 };
 
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
@@ -118,6 +121,7 @@ public class PaprikaStateFactory : IStateFactory
             return true;
         }
 
+        [SkipLocalsInit]
         public byte[] GetStorageAt(in StorageCell cell)
         {
             // bytes are used for two purposes, first for the key encoding and second, for the result handling
@@ -125,14 +129,15 @@ public class PaprikaStateFactory : IStateFactory
             GetKey(cell.Index, bytes);
 
             Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            return value.IsEmpty ? ZeroByte : value.ToArray();
         }
 
+        [SkipLocalsInit]
         public byte[] GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
             Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            return value.IsEmpty ? ZeroByte : value.ToArray();
         }
 
         public Hash256 StateRoot => Convert(wrapped.Hash);
@@ -182,6 +187,7 @@ public class PaprikaStateFactory : IStateFactory
             return true;
         }
 
+        [SkipLocalsInit]
         public byte[] GetStorageAt(in StorageCell cell)
         {
             // bytes are used for two purposes, first for the key encoding and second, for the result handling
@@ -189,14 +195,15 @@ public class PaprikaStateFactory : IStateFactory
             GetKey(cell.Index, bytes);
 
             Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            return value.IsEmpty ? ZeroByte : value.ToArray();
         }
 
+        [SkipLocalsInit]
         public byte[] GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
             Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            return value.IsEmpty ? ZeroByte : value.ToArray();
         }
 
         public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
@@ -205,7 +212,7 @@ public class PaprikaStateFactory : IStateFactory
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
             wrapped.SetStorage(converted, new PaprikaKeccak(key),
-                value.IsZero() ? ReadOnlySpan<byte>.Empty : value);
+                value.IsZero() ? default : value);
         }
 
         public void Commit(long blockNumber)
