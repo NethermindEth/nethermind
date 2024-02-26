@@ -2,7 +2,7 @@
   "profiles": {
     "Nethermind.Tools.Kute": {
       "commandName": "Project",
-      "commandLineArgs": "-i C:\\Users\\kamil\\Documents\\CoW\\rpc -a http://172.234.249.142:8545 -s C:\\Users\\kamil\\Documents\\CoW\\193secret.txt -p --rps 100 "
+      "commandLineArgs": ""
     }
   }
 }
