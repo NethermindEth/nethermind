@@ -1,8 +1,8 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -11,8 +11,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Synchronization.Test.SnapSync;
@@ -27,13 +27,13 @@ public class SnapServerTest
         internal MemDb ClientStateDb { get; init; } = null!;
     }
 
-    private Context CreateContext()
+    private Context CreateContext(ILastNStateRootTracker? stateRootTracker = null)
     {
         MemDb stateDbServer = new();
         MemDb codeDbServer = new();
         TrieStore store = new(stateDbServer, LimboLogs.Instance);
         StateTree tree = new(store, LimboLogs.Instance);
-        SnapServer server = new(store.AsReadOnly(), codeDbServer, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
@@ -68,6 +68,23 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestNoState()
+    {
+        Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
+
+        (PathWithAccount[] accounts, byte[][] _) =
+            context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
+
+        accounts.Length.Should().Be(0);
+
+        (PathWithStorageSlot[][] storageSlots, byte[][]? _) =
+            context.Server.GetStorageRanges(context.Tree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
+                Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
+
+        storageSlots.Length.Should().Be(0);
+    }
+
+    [Test]
     public void TestGetAccountRangeMultiple()
     {
         Context context = CreateContext();
@@ -93,7 +110,7 @@ public class SnapServerTest
     }
 
     [TestCase(10, 10)]
-    [TestCase(10000, 10)]
+    [TestCase(10000, 1000)]
     [TestCase(10000, 10000000)]
     [TestCase(10000, 10000)]
     public void TestGetAccountRangeMultipleLarger(int stateSize, int byteLimit)
@@ -156,7 +173,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -184,7 +201,7 @@ public class SnapServerTest
 
         (StateTree InputStateTree, StorageTree InputStorageTree, Hash256 account) = TestItem.Tree.GetTrees(store, 10000);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         IDbProvider dbProviderClient = new DbProvider();
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
@@ -244,7 +261,7 @@ public class SnapServerTest
         }
         stateTree.Commit(1);
 
-        SnapServer server = new(store.AsReadOnly(), codeDb, LimboLogs.Instance);
+        SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
         PathWithAccount[] accounts;
         // size of one PathWithAccount ranges from 39 -> 72
@@ -305,5 +322,12 @@ public class SnapServerTest
         slots.Length.Should().Be(8);
         slots[^1].Length.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
+    }
+
+    private ILastNStateRootTracker CreateConstantStateRootTracker(bool available)
+    {
+        ILastNStateRootTracker tracker = Substitute.For<ILastNStateRootTracker>();
+        tracker.HasStateRoot(Arg.Any<Hash256>()).Returns(available);
+        return tracker;
     }
 }

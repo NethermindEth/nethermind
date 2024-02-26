@@ -76,7 +76,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     GetPooledTransactionsMessage getPooledTxMsg
                         = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     ReportIn(getPooledTxMsg, size);
-                    BackgroundTaskScheduler.ScheduleTask(getPooledTxMsg, Handle);
+                    BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
@@ -121,7 +121,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private async Task Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
+        private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             Metrics.Eth65GetPooledTransactionsReceived++;
 
@@ -135,7 +135,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         internal Task<PooledTransactionsMessage> FulfillPooledTransactionsRequest(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
-            using ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
+            ArrayPoolList<Transaction> txsToSend = new(msg.Hashes.Count);
 
             int packetSizeLeft = TransactionsMessage.MaxPacketSize;
             for (int i = 0; i < msg.Hashes.Count; i++)
@@ -168,7 +168,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 return;
             }
 
-            using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
+            ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage.MaxCount);
 
             foreach (Transaction tx in txs)
             {
@@ -188,6 +188,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             if (hashes.Count > 0)
             {
                 SendMessage(hashes);
+            }
+            else
+            {
+                hashes.Dispose();
             }
         }
 
