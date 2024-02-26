@@ -55,10 +55,10 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
             {
                 currentMessageLength += result.Read;
 
-                    if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
-                    {
-                        throw new InvalidOperationException("Message too long");
-                    }
+                if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
+                {
+                    throw new InvalidOperationException("Message too long");
+                }
 
                 if (result.EndOfMessage)
                 {
@@ -66,25 +66,25 @@ public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMes
                     await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
                     currentMessageLength = 0; // reset message length
 
-                        // if we grew the buffer too big lets reset it
-                        if (buffer.Length > 2 * standardBufferLength)
-                        {
-                            ArrayPool<byte>.Shared.Return(buffer);
-                            buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
-                        }
-                    }
-                    else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
+                    // if we grew the buffer too big lets reset it
+                    if (buffer.Length > 2 * standardBufferLength)
                     {
-                        // grow the buffer 4x, but not more than max
-                        int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
-                        if (newLength > buffer.Length)
-                        {
-                            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
-                            buffer.CopyTo(newBuffer, 0);
-                            ArrayPool<byte>.Shared.Return(buffer);
-                            buffer = newBuffer;
-                        }
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
                     }
+                }
+                else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
+                {
+                    // grow the buffer 4x, but not more than max
+                    int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+                    if (newLength > buffer.Length)
+                    {
+                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
+                        buffer.CopyTo(newBuffer, 0);
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = newBuffer;
+                    }
+                }
 
                 // receive only new bytes, leave already filled buffer alone
                 result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength));

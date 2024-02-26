@@ -32,7 +32,7 @@ namespace Nethermind.Evm.TransactionProcessing
         public TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             _transactionProcessor.BuildUp(transaction, in blCtx, txTracer);
 
-        public TransactionResult Trace(Transaction transaction, in  BlockExecutionContext blCtx, ITxTracer txTracer) =>
+        public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             _transactionProcessor.Trace(transaction, in blCtx, txTracer);
 
 
