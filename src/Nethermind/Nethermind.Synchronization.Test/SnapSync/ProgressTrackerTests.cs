@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -26,7 +27,7 @@ public class ProgressTrackerTests
         ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
-            Accounts = Array.Empty<PathWithAccount>(),
+            Accounts = ArrayPoolList<PathWithAccount>.Empty(),
         });
 
         int loopIteration = 100000;

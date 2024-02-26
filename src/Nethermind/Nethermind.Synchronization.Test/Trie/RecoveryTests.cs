@@ -59,7 +59,7 @@ public class RecoveryTests
             });
         _peerEth67 = new(_syncPeerEth67);
 
-        _snapRequest = new GetTrieNodesRequest { AccountAndStoragePaths = Array.Empty<PathGroup>() };
+        _snapRequest = new GetTrieNodesRequest { AccountAndStoragePaths = ArrayPoolList<PathGroup>.Empty() };
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _snapRecovery = new SnapTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataRecovery = new GetNodeDataTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);

@@ -9,6 +9,7 @@ using System.Text;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -214,8 +215,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             Interlocked.Increment(ref _activeStorageRequests);
 
-            // TODO: optimize this
-            List<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
+            ArrayPoolList<PathWithAccount> storagesToQuery = new(STORAGE_BATCH_SIZE);
             for (int i = 0; i < STORAGE_BATCH_SIZE && StoragesToRetrieve.TryDequeue(out PathWithAccount storage); i++)
             {
                 storagesToQuery.Add(storage);
@@ -224,7 +224,7 @@ namespace Nethermind.Synchronization.SnapSync
             StorageRange storageRange = new()
             {
                 RootHash = rootHash,
-                Accounts = storagesToQuery.ToArray(),
+                Accounts = storagesToQuery,
                 StartingHash = ValueKeccak.Zero,
                 BlockNumber = blockNumber
             };
@@ -242,7 +242,7 @@ namespace Nethermind.Synchronization.SnapSync
             slotRange.RootHash = rootHash;
             slotRange.BlockNumber = blockNumber;
 
-            LogRequest($"NextSlotRange:{slotRange.Accounts.Length}");
+            LogRequest($"NextSlotRange:{slotRange.Accounts.Count}");
 
             request.StorageRangeRequest = slotRange;
 
@@ -332,11 +332,11 @@ namespace Nethermind.Synchronization.SnapSync
             AccountsToRefresh.Enqueue(new AccountWithStorageStartingHash() { PathAndAccount = pathWithAccount, StorageStartingHash = startingHash.GetValueOrDefault() });
         }
 
-        public void ReportFullStorageRequestFinished(ReadOnlySpan<PathWithAccount> storages = default)
+        public void ReportFullStorageRequestFinished(IEnumerable<PathWithAccount> storages = default)
         {
-            for (int index = 0; index < storages.Length; index++)
+            foreach (PathWithAccount pathWithAccount in storages)
             {
-                EnqueueAccountStorage(storages[index]);
+                EnqueueAccountStorage(pathWithAccount);
             }
 
             Interlocked.Decrement(ref _activeStorageRequests);

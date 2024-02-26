@@ -3,6 +3,7 @@
 
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using NUnit.Framework;
@@ -31,7 +32,7 @@ public class SnapSyncBatchTests
             {
                 BlockNumber = 123,
                 RootHash = Keccak.Zero,
-                Accounts = new PathWithAccount[9],
+                Accounts = new PathWithAccount[9].ToPooledList(),
                 StartingHash = Keccak.MaxValue,
                 LimitHash = Keccak.Compute("abc"),
             }

@@ -9,6 +9,7 @@ using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Logging;
@@ -85,7 +86,7 @@ public class SnapProtocolHandlerTests
 
                         IByteBuffer buffer = MessageSerializationService.ZeroSerialize(new AccountRangeMessage()
                         {
-                            PathsWithAccounts = new[] { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) }
+                            PathsWithAccounts = new ArrayPoolList<PathWithAccount>() { new PathWithAccount(Keccak.Zero, Account.TotallyEmpty) }
                         });
                         buffer.ReadByte(); // Need to skip adaptive type
 

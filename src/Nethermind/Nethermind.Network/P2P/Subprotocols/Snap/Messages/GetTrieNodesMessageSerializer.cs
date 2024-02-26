@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.Encode(message.RequestId);
             stream.Encode(message.RootHash);
 
-            if (message.Paths is null || message.Paths.Length == 0)
+            if (message.Paths is null || message.Paths.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 stream.StartSequence(allPathsLength);
 
-                for (int i = 0; i < message.Paths.Length; i++)
+                for (int i = 0; i < message.Paths.Count; i++)
                 {
                     PathGroup group = message.Paths[i];
 
@@ -58,7 +58,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             message.RequestId = stream.DecodeLong();
             message.RootHash = stream.DecodeKeccak();
             PathGroup defaultValue = _defaultPathGroup;
-            message.Paths = stream.DecodeArray(DecodeGroup, defaultElement: defaultValue);
+            message.Paths = stream.DecodeArrayPoolList(DecodeGroup, defaultElement: defaultValue);
 
             message.Bytes = stream.DecodeLong();
 
@@ -77,15 +77,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength += Rlp.LengthOf(message.RootHash);
 
             int allPathsLength = 0;
-            int[] pathsLengths = new int[message.Paths.Length];
+            int[] pathsLengths = new int[message.Paths.Count];
 
-            if (message.Paths is null || message.Paths.Length == 0)
+            if (message.Paths is null || message.Paths.Count == 0)
             {
                 allPathsLength = 1;
             }
             else
             {
-                for (var i = 0; i < message.Paths.Length; i++)
+                for (var i = 0; i < message.Paths.Count; i++)
                 {
                     PathGroup pathGroup = message.Paths[i];
                     int groupLength = 0;

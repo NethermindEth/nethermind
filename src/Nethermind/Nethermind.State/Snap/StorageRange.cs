@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.State.Snap
@@ -17,7 +19,7 @@ namespace Nethermind.State.Snap
         /// <summary>
         /// Accounts of the storage tries to serve
         /// </summary>
-        public PathWithAccount[] Accounts { get; set; }
+        public IReadOnlyList<PathWithAccount> Accounts { get; set; }
 
         /// <summary>
         /// Account hash of the first to retrieve

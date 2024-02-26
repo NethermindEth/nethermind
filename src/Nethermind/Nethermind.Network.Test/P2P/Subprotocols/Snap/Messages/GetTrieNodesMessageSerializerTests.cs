@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -21,7 +22,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = Array.Empty<PathGroup>(),
+                Paths = ArrayPoolList<PathGroup>.Empty(),
                 Bytes = 10
             };
             GetTrieNodesMessageSerializer serializer = new();
@@ -36,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new PathGroup[]
+                Paths = new ArrayPoolList<PathGroup>()
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA}}
                     },
@@ -54,7 +55,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new PathGroup[]
+                Paths = new ArrayPoolList<PathGroup>()
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB}},
                         new PathGroup(){Group = new []{TestItem.RandomDataC}}
@@ -73,7 +74,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new PathGroup[]
+                Paths = new ArrayPoolList<PathGroup>()
                     {
                         new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}},
                         new PathGroup(){Group = new []{TestItem.RandomDataC}},
