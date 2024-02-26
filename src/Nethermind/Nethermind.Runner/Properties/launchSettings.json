@@ -182,13 +182,6 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Joc-CliqueTest": {
-      "commandName": "Project",
-      "commandLineArgs": "-c clique-test -dd .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
     "Docker": {
       "commandName": "Docker",
       "commandLineArgs": "-c sepolia -dd /data --JsonRpc.EngineHost 0.0.0.0 --JsonRpc.EnginePort 8551 --JsonRpc.Host 0.0.0.0"
