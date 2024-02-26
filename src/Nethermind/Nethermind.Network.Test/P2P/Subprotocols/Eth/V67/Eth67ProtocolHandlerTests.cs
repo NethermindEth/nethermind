@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -101,7 +102,7 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_get_node_data()
     {
-        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
         var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();

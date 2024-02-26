@@ -8,6 +8,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
@@ -64,7 +65,7 @@ public class NodeDataProtocolHandlerTests
     [Test]
     public void Can_handle_get_node_data()
     {
-        var msg = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+        var msg = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
 
         HandleZeroMessage(msg, NodeDataMessageCode.GetNodeData);
         _session.Received().DeliverMessage(Arg.Any<NodeDataMessage>());

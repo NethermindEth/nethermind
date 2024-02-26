@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Hash256[] keys)
         {
-            GetReceiptsMessage message = new(keys);
+            GetReceiptsMessage message = new(keys.ToPooledList());
             GetReceiptsMessageSerializer serializer = new();
             var serialized = serializer.Serialize(message);
             GetReceiptsMessage deserialized = serializer.Deserialize(serialized);

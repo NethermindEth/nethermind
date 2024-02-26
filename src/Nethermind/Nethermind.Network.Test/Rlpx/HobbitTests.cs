@@ -129,7 +129,7 @@ namespace Nethermind.Network.Test.Rlpx
                 hashes[i] = Keccak.Compute(i.ToString());
             }
 
-            GetReceiptsMessage message = new(hashes);
+            GetReceiptsMessage message = new(hashes.ToPooledList());
 
             GetReceiptsMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);

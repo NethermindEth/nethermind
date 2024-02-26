@@ -174,7 +174,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             {
                 if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
-                    SendMessage(hashes);
+                    SendNewPooledTransactionMessage(hashes);
                     hashes = new(NewPooledTransactionHashesMessage.MaxCount);
                 }
 
@@ -187,7 +187,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
             if (hashes.Count > 0)
             {
-                SendMessage(hashes);
+                SendNewPooledTransactionMessage(hashes);
             }
             else
             {
@@ -195,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void SendMessage(IReadOnlyList<Hash256> hashes)
+        private void SendNewPooledTransactionMessage(IDisposableReadOnlyList<Hash256> hashes)
         {
             NewPooledTransactionHashesMessage msg = new(hashes);
             Send(msg);

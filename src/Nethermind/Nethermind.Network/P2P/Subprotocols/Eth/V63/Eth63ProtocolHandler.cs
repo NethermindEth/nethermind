@@ -11,6 +11,7 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -140,7 +141,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 return ArrayPoolList<byte[]>.Empty();
             }
 
-            GetNodeDataMessage msg = new(keys);
+            GetNodeDataMessage msg = new(keys.ToPooledList());
 
             // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
             // on a sample 3M blocks Goerli fast sync
@@ -155,7 +156,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             }
 
             IDisposableReadOnlyList<TxReceipt[]> txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
-                await SendRequest(new GetReceiptsMessage(clampedBlockHashes), token));
+                await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList()), token));
 
             return txReceipts;
         }

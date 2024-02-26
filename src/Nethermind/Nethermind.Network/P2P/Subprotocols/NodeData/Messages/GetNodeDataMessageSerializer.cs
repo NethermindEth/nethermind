@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 
@@ -11,7 +12,7 @@ public class GetNodeDataMessageSerializer : HashesMessageSerializer<GetNodeDataM
 {
     public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
     {
-        Hash256[] keys = DeserializeHashes(byteBuffer);
+        IDisposableReadOnlyList<Hash256> keys = DeserializeHashesArrayPool(byteBuffer);
         return new GetNodeDataMessage(keys);
     }
 }

@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
@@ -20,7 +22,7 @@ public class GetNodeDataMessageTests
     public void Sets_values_from_constructor_argument()
     {
         Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
-        GetNodeDataMessage message = new(keys);
+        GetNodeDataMessage message = new(keys.ToPooledList());
         keys.Should().BeEquivalentTo(message.Hashes);
     }
 
@@ -33,7 +35,7 @@ public class GetNodeDataMessageTests
     [Test]
     public void To_string()
     {
-        GetNodeDataMessage message = new(new List<Hash256>());
+        GetNodeDataMessage message = new(new ArrayPoolList<Hash256>());
         _ = message.ToString();
     }
 
@@ -41,7 +43,7 @@ public class GetNodeDataMessageTests
     public void Packet_type_and_protocol_are_correct()
     {
         Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB };
-        GetNodeDataMessage message = new(keys);
+        GetNodeDataMessage message = new(keys.ToPooledList());
 
         message.PacketType.Should().Be(NodeDataMessageCode.GetNodeData);
         message.Protocol.Should().Be(Protocol.NodeData);

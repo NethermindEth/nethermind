@@ -108,7 +108,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         {
             Context ctx = new();
             GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 513).ToArray());
+                Enumerable.Repeat(Keccak.Zero, 513).ToPooledList());
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
@@ -124,7 +124,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
             GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 512).ToArray());
+                Enumerable.Repeat(Keccak.Zero, 512).ToPooledList());
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 

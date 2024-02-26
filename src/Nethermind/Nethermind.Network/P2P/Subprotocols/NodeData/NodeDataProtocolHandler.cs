@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -117,7 +118,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
             return ArrayPoolList<byte[]>.Empty();
         }
 
-        GetNodeDataMessage msg = new(keys);
+        GetNodeDataMessage msg = new(keys.ToPooledList());
         IDisposableReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
         return nodeData;
     }

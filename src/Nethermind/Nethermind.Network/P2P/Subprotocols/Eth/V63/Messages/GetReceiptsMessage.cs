@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
@@ -11,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public override int PacketType { get; } = Eth63MessageCode.GetReceipts;
         public override string Protocol { get; } = "eth";
 
-        public GetReceiptsMessage(IReadOnlyList<Hash256> blockHashes)
+        public GetReceiptsMessage(IDisposableReadOnlyList<Hash256> blockHashes)
             : base(blockHashes)
         {
         }
