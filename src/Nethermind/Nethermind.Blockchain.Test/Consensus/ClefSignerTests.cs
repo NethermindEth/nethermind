@@ -3,18 +3,11 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using NSubstitute;
 using NUnit.Framework;
 
