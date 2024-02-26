@@ -145,7 +145,7 @@ public partial class BlockProcessor : IBlockProcessor
         }
         catch (Exception ex) // try to restore at all cost
         {
-            _logger.Trace($"Encountered exception {ex} while processing blocks.");
+            _logger.Warn($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
