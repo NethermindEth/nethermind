@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -687,6 +688,12 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
 
                 Iterator iterator = readaheadIterators.Value!;
+
+                if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+                {
+                    return closeRes;
+                }
+
                 iterator.Seek(key);
                 if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
                 {
@@ -701,6 +708,72 @@ public class DbOnTheRocks : IDb, ITunableDb
             CreateMarkerIfCorrupt(e);
             throw;
         }
+    }
+
+    /// <summary>
+    /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
+    /// Here we attempt to do that first. To prevent futile attempt some logic is added to approximately detect
+    /// if the requested key is too far from the current key and skip this entirely.
+    /// </summary>
+    /// <param name="iterator"></param>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    private bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    {
+        // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
+        if (key.Length <= 32)
+        {
+            result = null;
+            return false;
+        }
+
+        iterator.Next();
+        ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
+        int compareResult = currentKey.SequenceCompareTo(key);
+        if (compareResult == 0)
+        {
+            result = iterator.Value();
+            return true; // This happens A LOT.
+        }
+
+        result = null;
+        if (compareResult > 0)
+        {
+            return false;
+        }
+
+        // This happens, 0.5% of the time.
+        // This is only useful for state as storage have way too different different address range between different
+        // contract. That said, there isn't any real good threshold. Threshold is for some reasonably high value
+        // above the average distance.
+        ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
+        ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
+        ulong distance = requestedKeyInt - currentKeyInt;
+        if (distance > 1_000_000_000)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < 5 && compareResult < 0; i++)
+        {
+            iterator.Next();
+            compareResult = iterator.GetKeySpan().SequenceCompareTo(key);
+        }
+
+        if (compareResult == 0)
+        {
+            result = iterator.Value();
+            return true;
+        }
+
+        if (compareResult > 0)
+        {
+            // We've skipped it somehow
+            result = null;
+            return true;
+        }
+
+        return false;
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
