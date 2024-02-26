@@ -17,6 +17,6 @@ namespace Nethermind.Core.Collections;
 ///
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public interface IDisposableReadOnlyList<T>: IReadOnlyList<T>, IDisposable
+public interface IDisposableReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
 }

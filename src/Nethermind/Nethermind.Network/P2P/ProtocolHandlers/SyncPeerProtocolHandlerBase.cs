@@ -403,7 +403,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            ArrayPoolList<TxReceipt[]> txReceipts = new (getReceiptsMessage.Hashes.Count);
+            ArrayPoolList<TxReceipt[]> txReceipts = new(getReceiptsMessage.Hashes.Count);
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)

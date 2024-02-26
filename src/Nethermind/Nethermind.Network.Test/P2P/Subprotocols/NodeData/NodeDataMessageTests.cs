@@ -16,7 +16,7 @@ public class NodeDataMessageTests
     [Test]
     public void Accepts_nulls_inside()
     {
-        ArrayPoolList<byte[]> data = new () { new byte[] { 1, 2, 3 }, null };
+        ArrayPoolList<byte[]> data = new() { new byte[] { 1, 2, 3 }, null };
         NodeDataMessage message = new(data);
         data.Should().BeEquivalentTo(message.Data);
     }
@@ -31,7 +31,7 @@ public class NodeDataMessageTests
     [Test]
     public void Sets_values_from_constructor_argument()
     {
-        ArrayPoolList<byte[]> data = new () { new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 } };
+        ArrayPoolList<byte[]> data = new() { new byte[] { 1, 2, 3 }, new byte[] { 4, 5, 6 } };
         NodeDataMessage message = new(data);
         data.Should().BeEquivalentTo(message.Data);
     }
@@ -46,7 +46,7 @@ public class NodeDataMessageTests
     [Test]
     public void Packet_type_and_protocol_are_correct()
     {
-        ArrayPoolList<byte[]> data = new () { new byte[] { 1, 2, 3 }, null };
+        ArrayPoolList<byte[]> data = new() { new byte[] { 1, 2, 3 }, null };
         NodeDataMessage message = new(data);
 
         message.PacketType.Should().Be(NodeDataMessageCode.NodeData);

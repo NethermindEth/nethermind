@@ -23,14 +23,14 @@ public class NodeDataMessageSerializerTests
     [Test]
     public void Roundtrip()
     {
-        ArrayPoolList<byte[]> data = new () { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+        ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 
     [Test]
     public void Zero_roundtrip()
     {
-        ArrayPoolList<byte[]> data = new () { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+        ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
         Test(data);
     }
 

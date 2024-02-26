@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTrip()
         {
-            ArrayPoolList<byte[]> data = new () { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+            ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             ContractCodesMessage message = new(data, 13452, 134);
 
             ContractCodesMessageSerializer serializer = new();

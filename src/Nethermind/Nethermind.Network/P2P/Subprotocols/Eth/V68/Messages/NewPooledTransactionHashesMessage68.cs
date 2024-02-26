@@ -26,7 +26,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
             IDisposableReadOnlyList<byte> types,
             IDisposableReadOnlyList<int> sizes,
             IDisposableReadOnlyList<Hash256> hashes
-        ) {
+        )
+        {
             Types = types;
             Sizes = sizes;
             Hashes = hashes;

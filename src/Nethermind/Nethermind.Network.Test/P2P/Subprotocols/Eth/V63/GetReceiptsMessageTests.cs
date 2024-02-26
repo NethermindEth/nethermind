@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_contructor_argument()
         {
-            ArrayPoolList<Hash256> hashes = new () { TestItem.KeccakA, TestItem.KeccakB };
+            ArrayPoolList<Hash256> hashes = new() { TestItem.KeccakA, TestItem.KeccakB };
             GetReceiptsMessage message = new(hashes);
             Assert.That(message.Hashes, Is.SameAs(hashes));
         }

@@ -780,7 +780,7 @@ namespace Nethermind.Synchronization.Test
                         .GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)))
                         .ToPooledList();
                     receipts[^1] = null;
-                    return (IDisposableReadOnlyList<TxReceipt[]?>) receipts;
+                    return (IDisposableReadOnlyList<TxReceipt[]?>)receipts;
                 });
 
             syncPeer.TotalDifficulty.Returns(_ => syncPeerInternal.TotalDifficulty);

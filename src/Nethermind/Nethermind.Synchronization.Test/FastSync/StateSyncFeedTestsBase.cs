@@ -264,7 +264,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
-                ArrayPoolList<byte[]> responses = new (hashes.Count, hashes.Count);
+                ArrayPoolList<byte[]> responses = new(hashes.Count, hashes.Count);
 
                 int i = 0;
                 foreach (Hash256 item in hashes)
