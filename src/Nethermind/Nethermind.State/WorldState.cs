@@ -88,6 +88,12 @@ namespace Nethermind.State
         }
         public void Reset()
         {
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
+            _transientStorageProvider.Reset();
+        }
+        public void FullReset()
+        {
             _state.Reset();
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();

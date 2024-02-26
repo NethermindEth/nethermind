@@ -38,7 +38,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public void Dispose()
         {
-            _stateProvider.Reset();
+            _stateProvider.FullReset();
         }
     }
 }
