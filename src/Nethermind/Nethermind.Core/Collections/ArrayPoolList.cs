@@ -77,7 +77,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         return Count - 1;
     }
 
-    public void AddRange(Span<T> items)
+    public void AddRange(ReadOnlySpan<T> items)
     {
         GuardResize(items.Length);
         items.CopyTo(_array.AsSpan(_count, items.Length));

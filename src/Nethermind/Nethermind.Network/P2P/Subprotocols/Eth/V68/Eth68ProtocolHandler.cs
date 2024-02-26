@@ -111,7 +111,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
+            SendMessage(
+                new ArrayPoolList<byte>() { (byte)tx.Type },
+                new ArrayPoolList<int> { tx.GetLength() },
+                new ArrayPoolList<Hash256> { tx.Hash }
+            );
         }
     }
 
@@ -158,7 +162,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
+    private void SendMessage(IDisposableReadOnlyList<byte> types, IDisposableReadOnlyList<int> sizes, IDisposableReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

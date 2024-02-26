@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
 
@@ -17,12 +18,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public override int PacketType { get; } = Eth68MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 
-        public readonly IReadOnlyList<byte> Types;
-        public readonly IReadOnlyList<int> Sizes;
-        public readonly IReadOnlyList<Hash256> Hashes;
+        public readonly IDisposableReadOnlyList<byte> Types;
+        public readonly IDisposableReadOnlyList<int> Sizes;
+        public readonly IDisposableReadOnlyList<Hash256> Hashes;
 
-        public NewPooledTransactionHashesMessage68(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
-        {
+        public NewPooledTransactionHashesMessage68(
+            IDisposableReadOnlyList<byte> types,
+            IDisposableReadOnlyList<int> sizes,
+            IDisposableReadOnlyList<Hash256> hashes
+        ) {
             Types = types;
             Sizes = sizes;
             Hashes = hashes;
@@ -33,9 +37,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public override void Dispose()
         {
             base.Dispose();
-            if (Types is IDisposable disposable) disposable.Dispose();
-            if (Sizes is IDisposable disposable2) disposable2.Dispose();
-            if (Hashes is IDisposable disposable3) disposable3.Dispose();
+            Types.Dispose();
+            Sizes.Dispose();
+            Hashes.Dispose();
         }
     }
 }

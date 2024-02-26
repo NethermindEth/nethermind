@@ -1331,6 +1331,11 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.ByteSpanToArray(DecodeByteArraySpan());
         }
 
+        public ArrayPoolList<byte> DecodeByteArrayPoolList()
+        {
+            return Rlp.ByteSpanToArrayPool(DecodeByteArraySpan());
+        }
+
         public ReadOnlySpan<byte> DecodeByteArraySpan()
         {
             int prefix = ReadByte();
