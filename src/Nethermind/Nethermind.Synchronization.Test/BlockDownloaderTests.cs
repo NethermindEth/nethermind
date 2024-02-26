@@ -13,7 +13,9 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -568,7 +570,7 @@ namespace Nethermind.Synchronization.Test
             };
             BlockDownloader downloader = ctx.BlockDownloader;
 
-            BlockHeader[] blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            IDisposableReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -582,7 +584,7 @@ namespace Nethermind.Synchronization.Test
 
             sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
             sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
-            sealValidator.Received().ValidateSeal(blockHeaders[^1], true);
+            sealValidator.Received().ValidateSeal(blockHeaders![^1], true);
         }
 
         private class ThrowingPeer : ISyncPeer
@@ -615,12 +617,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new Exception();
             }
@@ -1098,7 +1100,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public async Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 bool justFirst = _flags.HasFlag(Response.JustFirst);
                 bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
@@ -1114,7 +1116,7 @@ namespace Nethermind.Synchronization.Test
                     headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None)!;
                 }
 
-                BlockHeadersMessage message = new(headers);
+                BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
@@ -1140,7 +1142,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1187,7 +1189,7 @@ namespace Nethermind.Synchronization.Test
                 _testHeaderMapping = testHeaderMapping;
             }
 
-            public async Task<BlockHeader[]> BuildHeaderResponse(long startNumber, int number, Response flags)
+            public async Task<IDisposableReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
             {
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1235,7 +1237,7 @@ namespace Nethermind.Synchronization.Test
                     _headers[header.Hash!] = header;
                 }
 
-                BlockHeadersMessage message = new(headers);
+                BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }

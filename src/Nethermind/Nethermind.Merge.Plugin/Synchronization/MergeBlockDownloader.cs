@@ -11,6 +11,8 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -322,12 +324,12 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return blocksSynced;
         }
 
-        protected override async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected override async Task<IDisposableReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             // Override PoW's RequestHeaders so that it won't request beyond PoW.
             // This fixes `Incremental Sync` hive test.
-            BlockHeader[] response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
-            if (response.Length > 0)
+            IDisposableReadOnlyList<BlockHeader> response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
+            if (response.Count > 0)
             {
                 BlockHeader lastBlockHeader = response[^1];
                 bool lastBlockIsPostMerge = _poSSwitcher.GetBlockConsensusInfo(response[^1]).IsPostMerge;
@@ -335,8 +337,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 {
                     response = response
                         .TakeWhile((header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
-                        .ToArray();
-                    if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Length} sized batch.");
+                        .ToPooledList();
+                    if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
                 }
             }
             return response;

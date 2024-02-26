@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Core.Extensions
 {
@@ -10,5 +11,8 @@ namespace Nethermind.Core.Extensions
     {
         public static ISet<T> AsSet<T>(this IEnumerable<T> enumerable) =>
             enumerable is ISet<T> set ? set : enumerable.ToHashSet();
+
+        public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable) =>
+            new ArrayPoolList<T>(0, enumerable);
     }
 }

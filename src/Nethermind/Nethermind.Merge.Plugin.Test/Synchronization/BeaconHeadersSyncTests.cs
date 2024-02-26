@@ -8,7 +8,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -291,7 +293,7 @@ public class BeaconHeadersSyncTests
             syncedBlockTree.FindHeader(99, BlockTreeLookupOptions.None));
         ctx.Feed.InitializeFeed();
         HeadersSyncBatch? batch = ctx.Feed.PrepareRequest().Result;
-        batch!.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false);
+        batch!.Response = syncedBlockTree.FindHeaders(syncedBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0, false)!;
         ctx.Feed.HandleResponse(batch);
 
         Hash256 lastHeader = syncedBlockTree.FindHeader(batch.EndNumber, BlockTreeLookupOptions.None)!.GetOrCalculateHash();
@@ -332,7 +334,7 @@ public class BeaconHeadersSyncTests
         request!.Should().NotBeNull();
         request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
-            .ToArray();
+            .ToPooledList();
 
         ctx.Feed.HandleResponse(request);
 
@@ -347,7 +349,7 @@ public class BeaconHeadersSyncTests
         // We respond it again
         request!.Response = Enumerable.Range((int)request.StartNumber, request.RequestSize)
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
-            .ToArray();
+            .ToPooledList();
         ctx.Feed.HandleResponse(request);
 
         // It should complete successfully
@@ -416,8 +418,8 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        BlockHeader[] headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
-        batch.Response = headers;
+        IDisposableReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
+        batch.Response = headers!;
     }
 
     private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)

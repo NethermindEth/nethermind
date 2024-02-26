@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -127,7 +128,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_block_headers()
         {
-            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>())).Do(callInfo =>
@@ -144,7 +145,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_block_headers()
         {
-            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             HandleIncomingStatusMessage();

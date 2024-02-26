@@ -11,6 +11,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -110,7 +111,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
                 batch.ResponseSourcePeer = peerInfo;
             }
 
@@ -168,7 +169,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
             await feed.PrepareRequest();
@@ -216,7 +217,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
             // First batch need to be handled first before handle dependencies can do anything
@@ -290,7 +291,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             {
                 batch.Response = remoteBlockTree.FindHeaders(
                     remoteBlockTree.FindHeader(batch.StartNumber, BlockTreeLookupOptions.None)!.Hash, batch.RequestSize, 0,
-                    false);
+                    false)!;
             }
 
             HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
@@ -443,7 +444,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             BlockHeader randomBlockHeader = Build.A.BlockHeader.WithNumber(999999).TestObject;
             await foreach (HeadersSyncBatch headersSyncBatch in batchToProcess.Reader.ReadAllAsync())
             {
-                headersSyncBatch.Response = new[] { randomBlockHeader };
+                headersSyncBatch.Response = new ArrayPoolList<BlockHeader?>() { randomBlockHeader };
                 feed.HandleResponse(headersSyncBatch);
             }
 

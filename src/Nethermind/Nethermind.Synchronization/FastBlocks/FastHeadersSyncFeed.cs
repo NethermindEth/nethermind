@@ -13,6 +13,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -108,7 +109,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long count = 0;
             while (enumerator.MoveNext())
             {
-                count += enumerator.Current.Value.Response?.Length ?? 0;
+                count += enumerator.Current.Value.Response?.Count ?? 0;
             }
 
             // Stop gap method to reduce allocations from non-struct enumerator
@@ -400,7 +401,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     return SyncResponseHandlingResult.Ignored;
                 }
 
-                if ((batch.Response?.Length ?? 0) == 0)
+                if ((batch.Response?.Count ?? 0) == 0)
                 {
                     batch.MarkHandlingStart();
                     if (_logger.IsTrace) _logger.Trace($"{batch} - came back EMPTY");
@@ -460,7 +461,7 @@ namespace Nethermind.Synchronization.FastBlocks
             dependentBatch.MinNumber = batch.MinNumber;
             dependentBatch.Response = batch.Response!
                 .Skip((int)(addedEarliest - batch.StartNumber))
-                .Take((int)(addedLast - addedEarliest + 1)).ToArray();
+                .Take((int)(addedLast - addedEarliest + 1)).ToPooledList();
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }
@@ -472,16 +473,16 @@ namespace Nethermind.Synchronization.FastBlocks
                 return 0;
             }
 
-            if (batch.Response.Length > batch.RequestSize)
+            if (batch.Response.Count > batch.RequestSize)
             {
                 if (_logger.IsDebug)
-                    _logger.Debug($"Peer sent too long response ({batch.Response.Length}) to {batch}");
+                    _logger.Debug($"Peer sent too long response ({batch.Response.Count}) to {batch}");
                 if (batch.ResponseSourcePeer is not null)
                 {
                     _syncPeerPool.ReportBreachOfProtocol(
                         batch.ResponseSourcePeer,
                         DisconnectReason.HeaderResponseTooLong,
-                        $"response too long ({batch.Response.Length})");
+                        $"response too long ({batch.Response.Count})");
                 }
 
                 _pending.Enqueue(batch);
@@ -491,7 +492,7 @@ namespace Nethermind.Synchronization.FastBlocks
             long addedLast = batch.StartNumber - 1;
             long addedEarliest = batch.EndNumber + 1;
             int skippedAtTheEnd = 0;
-            for (int i = batch.Response.Length - 1; i >= 0; i--)
+            for (int i = batch.Response.Count - 1; i >= 0; i--)
             {
                 BlockHeader? header = batch.Response[i];
                 if (header is null)
@@ -513,7 +514,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     break;
                 }
 
-                bool isFirst = i == batch.Response.Length - 1 - skippedAtTheEnd;
+                bool isFirst = i == batch.Response.Count - 1 - skippedAtTheEnd;
                 if (isFirst)
                 {
                     BlockHeader lowestInserted = LowestInsertedBlockHeader;
@@ -573,7 +574,7 @@ namespace Nethermind.Synchronization.FastBlocks
                             throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                         }
 
-                        for (int j = 0; j < batch.Response.Length; j++)
+                        for (int j = 0; j < batch.Response.Count; j++)
                         {
                             BlockHeader? current = batch.Response[j];
                             if (current is not null)

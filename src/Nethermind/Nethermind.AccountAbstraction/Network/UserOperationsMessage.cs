@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
@@ -18,6 +19,12 @@ namespace Nethermind.AccountAbstraction.Network
         public UserOperationsMessage(IList<UserOperationWithEntryPoint> userOperations)
         {
             UserOperationsWithEntryPoint = userOperations;
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            if (UserOperationsWithEntryPoint is IDisposable disposable) disposable.Dispose();
         }
 
         public override string ToString() => $"{nameof(UserOperationsMessage)}({UserOperationsWithEntryPoint?.Count})";

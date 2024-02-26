@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -217,7 +218,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             headers[2] = Build.A.BlockHeader.TestObject;
 
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
-            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true).Returns(headers);
+            _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true).Returns(headers.ToPooledList());
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
 
@@ -230,7 +231,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 3));
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Count == 3));
             _syncManager.Received().FindHash(100);
         }
 
@@ -253,7 +254,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
 
             _syncManager.FindHash(100).Returns(TestItem.KeccakA);
             _syncManager.FindHeaders(TestItem.KeccakA, 5, 1, true)
-                .Returns(headers);
+                .Returns(headers.ToPooledList());
 
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
@@ -267,7 +268,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
 
-            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Length == 5));
+            _session.Received().DeliverMessage(Arg.Is<BlockHeadersMessage>(bhm => bhm.BlockHeaders.Count == 5));
             _syncManager.Received().FindHash(100);
         }
 
@@ -474,7 +475,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_headers()
         {
-            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3));
+            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
 
             ((ISyncPeer)_handler).GetBlockHeaders(1, 1, 1, CancellationToken.None);
             HandleIncomingStatusMessage();
@@ -484,7 +485,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Throws_when_receiving_a_headers_message_that_has_not_been_requested()
         {
-            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3));
+            BlockHeadersMessage msg = new(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
 
             HandleIncomingStatusMessage();
             Assert.Throws<SubprotocolException>(() => HandleZeroMessage(msg, Eth62MessageCode.BlockHeaders));

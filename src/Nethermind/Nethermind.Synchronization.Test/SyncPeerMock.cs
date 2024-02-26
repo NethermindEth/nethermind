@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -90,13 +91,13 @@ namespace Nethermind.Synchronization.Test
             return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+        public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
+            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
-                return Task.FromResult(result);
+                return Task.FromResult<IDisposableReadOnlyList<BlockHeader>?>(result);
             }
 
             for (int i = 0; i < maxBlocks; i++)
@@ -104,16 +105,16 @@ namespace Nethermind.Synchronization.Test
                 result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical)!;
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult<IDisposableReadOnlyList<BlockHeader>?>(result);
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
+            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
-                return Task.FromResult(result);
+                return Task.FromResult<IDisposableReadOnlyList<BlockHeader>>(result)!;
             }
 
             for (int i = 0; i < maxBlocks; i++)
@@ -129,7 +130,7 @@ namespace Nethermind.Synchronization.Test
                 }
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult<IDisposableReadOnlyList<BlockHeader>>(result)!;
         }
 
         public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)

@@ -16,6 +16,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -385,7 +386,7 @@ namespace Nethermind.Synchronization
             return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
-        public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        public IDisposableReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }

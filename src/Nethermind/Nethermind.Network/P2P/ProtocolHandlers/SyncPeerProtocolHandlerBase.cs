@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -54,7 +55,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly ITimestamper _timestamper;
         protected readonly TxDecoder _txDecoder;
 
-        protected readonly MessageQueue<GetBlockHeadersMessage, BlockHeader[]> _headersRequests;
+        protected readonly MessageQueue<GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
         private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
@@ -87,7 +88,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
-            _headersRequests = new MessageQueue<GetBlockHeadersMessage, BlockHeader[]>(Send);
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
 
         }
@@ -127,11 +128,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IDisposableReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
-                return Array.Empty<BlockHeader>();
+                return ArrayPoolList<BlockHeader>.Empty();
             }
 
             GetBlockHeadersMessage msg = new();
@@ -140,11 +141,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Skip = skip;
             msg.StartBlockNumber = number;
 
-            BlockHeader[] headers = await SendRequest(msg, token);
+            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers;
         }
 
-        protected virtual async Task<BlockHeader[]> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
+        protected virtual async Task<IDisposableReadOnlyList<BlockHeader>> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -172,15 +173,15 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Reverse = 0;
             msg.Skip = 0;
 
-            BlockHeader[] headers = await SendRequest(msg, token);
-            return headers.Length > 0 ? headers[0] : null;
+            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
+            return headers.Count > 0 ? headers[0] : null;
         }
 
-        async Task<BlockHeader[]> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<IDisposableReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
-                return Array.Empty<BlockHeader>();
+                return ArrayPoolList<BlockHeader>.Empty();
             }
 
             GetBlockHeadersMessage msg = new();
@@ -189,7 +190,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Reverse = 0;
             msg.Skip = skip;
 
-            BlockHeader[] headers = await SendRequest(msg, token);
+            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers;
         }
 
@@ -324,9 +325,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
-            BlockHeader[] headers =
+            IDisposableReadOnlyList<BlockHeader> headers =
                 startingHash is null
-                    ? Array.Empty<BlockHeader>()
+                    ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
 
             headers = FixHeadersForGeth(headers);
@@ -423,12 +424,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static BlockHeader[] FixHeadersForGeth(BlockHeader[] headers)
+        private static IDisposableReadOnlyList<BlockHeader> FixHeadersForGeth(IDisposableReadOnlyList<BlockHeader> headers)
         {
             int emptyBlocksAtTheEnd = 0;
-            for (int i = 0; i < headers.Length; i++)
+            for (int i = 0; i < headers.Count; i++)
             {
-                if (headers[headers.Length - 1 - i] is null)
+                if (headers[headers.Count - 1 - i] is null)
                 {
                     emptyBlocksAtTheEnd++;
                 }
@@ -440,8 +441,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
             if (emptyBlocksAtTheEnd != 0)
             {
-                BlockHeader[] gethFriendlyHeaders = headers.AsSpan(0, headers.Length - emptyBlocksAtTheEnd).ToArray();
-                headers = gethFriendlyHeaders;
+                int toTake = headers.Count - emptyBlocksAtTheEnd;
+                if (headers is ArrayPoolList<BlockHeader> asArrayPoolList)
+                {
+                    asArrayPoolList.Truncate(toTake);
+                    return headers;
+                }
+
+                ArrayPoolList<BlockHeader> newList = new ArrayPoolList<BlockHeader>(toTake, headers.Take(toTake));
+                headers.Dispose();
+                return newList;
             }
 
             return headers;

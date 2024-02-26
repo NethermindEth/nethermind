@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     /// </summary>
     public class Eth66ProtocolHandler : Eth65ProtocolHandler
     {
-        private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]> _headersRequests66;
+        private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
         private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests66;
@@ -49,7 +49,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
         {
-            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, BlockHeader[]>(Send);
+            _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
             _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)>(Send);
@@ -210,7 +210,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                              $"in {stopwatch.Elapsed.TotalMilliseconds}ms");
         }
 
-        protected override async Task<BlockHeader[]> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
+        protected override async Task<IDisposableReadOnlyList<BlockHeader>> SendRequest(V62.Messages.GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

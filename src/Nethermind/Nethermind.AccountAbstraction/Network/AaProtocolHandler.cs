@@ -131,7 +131,7 @@ namespace Nethermind.AccountAbstraction.Network
         public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)
         {
             const int maxCapacity = 256;
-            using ArrayPoolList<UserOperationWithEntryPoint> uopsToSend = new(maxCapacity);
+            ArrayPoolList<UserOperationWithEntryPoint> uopsToSend = new(maxCapacity);
 
             foreach (UserOperationWithEntryPoint uop in uops)
             {
@@ -152,6 +152,10 @@ namespace Nethermind.AccountAbstraction.Network
             if (uopsToSend.Count > 0)
             {
                 SendMessage(uopsToSend);
+            }
+            else
+            {
+                uopsToSend.Dispose();
             }
         }
 

@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
@@ -16,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Roundtrip()
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = new[] { Build.A.BlockHeader.TestObject };
+            message.BlockHeaders = new ArrayPoolList<BlockHeader>() { Build.A.BlockHeader.TestObject };
 
             BlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
@@ -25,7 +27,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             Assert.That(expectedBytes.ToHexString(), Is.EqualTo(bytes.ToHexString()), "bytes");
 
             BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.That(deserialized.BlockHeaders.Length, Is.EqualTo(message.BlockHeaders.Length), "length");
+            Assert.That(deserialized.BlockHeaders.Count, Is.EqualTo(message.BlockHeaders.Count), "length");
             Assert.That(deserialized.BlockHeaders[0].Hash, Is.EqualTo(message.BlockHeaders[0].Hash), "hash");
 
             SerializerTester.TestZero(serializer, message);
@@ -35,13 +37,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Roundtrip_nulls()
         {
             BlockHeadersMessage message = new();
-            message.BlockHeaders = new[] { Build.A.BlockHeader.TestObject, null };
+            message.BlockHeaders = new ArrayPoolList<BlockHeader>() { Build.A.BlockHeader.TestObject, null };
 
             BlockHeadersMessageSerializer serializer = new();
             byte[] bytes = serializer.Serialize(message);
 
             BlockHeadersMessage deserialized = serializer.Deserialize(bytes);
-            Assert.That(deserialized.BlockHeaders.Length, Is.EqualTo(message.BlockHeaders.Length), "length");
+            Assert.That(deserialized.BlockHeaders.Count, Is.EqualTo(message.BlockHeaders.Count), "length");
             Assert.That(deserialized.BlockHeaders[0].Hash, Is.EqualTo(message.BlockHeaders[0].Hash), "hash");
             Assert.Null(message.BlockHeaders[1]);
 
@@ -56,7 +58,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             // 249 -> 258 -> 129 127 0 0 0 ... 0 (strange?)
             BlockHeadersMessageSerializer serializer = new();
             BlockHeadersMessage message = serializer.Deserialize(rlp.Bytes);
-            Assert.That(message.BlockHeaders.Length, Is.EqualTo(8));
+            Assert.That(message.BlockHeaders.Count, Is.EqualTo(8));
         }
 
         [Test]

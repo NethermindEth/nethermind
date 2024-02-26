@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
@@ -131,25 +132,24 @@ namespace Nethermind.Synchronization.Peers
 
         public static async Task<BlockHeader?> FetchHeaderFromPeer(this ISyncPeerPool syncPeerPool, Hash256 hash, CancellationToken cancellationToken = default)
         {
-            BlockHeader[]? headers = null;
             try
             {
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                headers = await syncPeerPool.AllocateAndRun(
+                using IDisposableReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
                     peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
                     BySpeedStrategy.FastestHeader,
                     AllocationContexts.Headers,
                     cts.Token);
+
+                return headers?.Count == 1 ? headers[0] : null;
             }
             catch (Exception ex) when (ex is OperationCanceledException or TimeoutException)
             {
                 // Timeout or no peer.
                 return null;
             }
-
-            return headers?.Length == 1 ? headers[0] : null;
         }
     }
 }

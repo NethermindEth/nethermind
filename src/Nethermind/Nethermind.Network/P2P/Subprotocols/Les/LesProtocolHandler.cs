@@ -263,7 +263,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             {
                 (Hash256 hash, _) = cht.Get(request.Key);
                 var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
-                if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
+                if (headerResult.Count != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
             }
             proofNodes.AddRange(Synchronization.LesSync.CanonicalHashTrie.BuildProof(request.Key, request.SectionIndex, request.FromLevel));

@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections;
 
-public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDisposable
+public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<T>
 {
     private readonly ArrayPool<T> _arrayPool;
     private T[] _array;
@@ -19,16 +19,24 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
     private int _capacity;
     private bool _disposed;
 
-    public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
+    public ArrayPoolList(int capacity = 0) : this(ArrayPool<T>.Shared, capacity) { }
+
+    public ArrayPoolList(int capacity, int count) : this(ArrayPool<T>.Shared, capacity, count) { }
 
     public ArrayPoolList(int capacity, IEnumerable<T> enumerable) : this(capacity) => this.AddRange(enumerable);
 
-    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity)
+    public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
     {
         _arrayPool = arrayPool;
+        // TODO: Make it possible to have 0 capacity
         if (capacity == 0) capacity = 16; // minimum with arraypool is 16 anyway...
         _array = arrayPool.Rent(capacity);
+        for (int i = 0; i < startingCount; i++)
+        {
+            _array[i] = default!;
+        }
         _capacity = _array.Length;
+        _count = startingCount;
     }
 
     public IEnumerator<T> GetEnumerator()
@@ -195,6 +203,13 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
         return isValid;
     }
 
+    public void Truncate(int newLength)
+    {
+        GuardDispose();
+        GuardIndex(newLength, allowEqualToCount: true);
+        _count = newLength;
+    }
+
     public T this[int index]
     {
         get
@@ -243,6 +258,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IReadOnlyList<T>, IDispo
     }
 
     private static bool IsCompatibleObject(object? value) => value is T || value is null && default(T) is null;
+
+    public static ArrayPoolList<BlockHeader> Empty()
+    {
+        return new ArrayPoolList<BlockHeader>(0);
+    }
 
     private struct ArrayPoolListEnumerator : IEnumerator<T>
     {

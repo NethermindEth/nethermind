@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
@@ -10,7 +11,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public long StartNumber { get; set; }
         public long EndNumber => StartNumber + RequestSize - 1;
         public int RequestSize { get; set; }
-        public BlockHeader?[]? Response { get; set; }
+        public IDisposableReadOnlyList<BlockHeader?>? Response { get; set; }
 
         public override string ToString()
         {
