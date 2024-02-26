@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -25,6 +26,7 @@ namespace Nethermind.TxPool.Collections
         protected McsPriorityLock Lock { get; } = new();
 
         private readonly int _capacity;
+        private readonly ILogger _logger;
 
         // comparer for a bucket
         private readonly IComparer<TValue> _groupComparer;
@@ -48,7 +50,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="capacity">Max capacity, after surpassing it elements will be removed based on last by <see cref="comparer"/>.</param>
         /// <param name="comparer">Comparer to sort items.</param>
-        protected SortedPool(int capacity, IComparer<TValue> comparer)
+        protected SortedPool(int capacity, IComparer<TValue> comparer, ILogManager logManager)
         {
             _capacity = capacity;
             // ReSharper disable VirtualMemberCallInConstructor
@@ -57,6 +59,7 @@ namespace Nethermind.TxPool.Collections
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, EnhancedSortedSet<TValue>>();
             _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -312,6 +315,8 @@ namespace Nethermind.TxPool.Collections
                     {
                         if (!RemoveLast(out removed) || _cacheMap.Count > _capacity)
                         {
+                            if (_cacheMap.Count > _capacity && _logger.IsWarn)
+                                _logger.Warn($"(TryInsert) Failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
                             UpdateWorstValue();
                             RemoveLast(out removed);
                         }
@@ -453,6 +458,43 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        protected void EnsureCapacity()
+        {
+            if (Count <= _capacity)
+                return;
+
+            if (_logger.IsWarn)
+                _logger.Warn($"{ShortPoolName} exceeds the config size {Count}/{_capacity}. Trying to repair the pool");
+
+            int maxIterations = 10;
+            int iterations = 0;
+            while (Count > _capacity)
+            {
+                ++iterations;
+                if (RemoveLast(out TValue? removed))
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info($"Removed the last item {removed} from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                }
+                else
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                    UpdateWorstValue();
+                }
+
+                if (iterations >= maxIterations) break;
+            }
+        }
+
+        private string GetInfoAboutWorstValues()
+        {
+            TKey? key = _worstValue.GetValueOrDefault().Value;
+            var isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value != null;
+            return
+                $"Worst value {_worstValue}, items in worstSortedValues {_worstSortedValues.Count}, GetVakye: {_worstValue.GetValueOrDefault()} current max in worst values {_worstSortedValues.Max}, IsWorstValueInPool {isWorstValueInPool}";
+        }
+
         public void UpdatePool(Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
             using var lockRelease = Lock.Acquire();
@@ -485,5 +527,7 @@ namespace Nethermind.TxPool.Collections
                 change?.Invoke(value);
             }
         }
+
+        protected virtual string ShortPoolName => "SortedPool";
     }
 }
