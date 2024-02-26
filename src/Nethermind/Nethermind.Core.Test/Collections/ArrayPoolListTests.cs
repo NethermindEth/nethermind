@@ -292,4 +292,14 @@ public class ArrayPoolListTests
         ((IList)list).IsSynchronized.Should().BeFalse();
         ((IList)list).SyncRoot.Should().Be(list);
     }
+
+    [Test]
+    public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
+    {
+        var list = new ArrayPoolList<int>(0);
+        list.Dispose();
+
+        Action act = () => _ = list.Count;
+        act.Should().NotThrow();
+    }
 }

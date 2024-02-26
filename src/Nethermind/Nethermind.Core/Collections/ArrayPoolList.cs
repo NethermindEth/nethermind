@@ -28,14 +28,21 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
     public ArrayPoolList(ArrayPool<T> arrayPool, int capacity, int startingCount = 0)
     {
         _arrayPool = arrayPool;
-        // TODO: Make it possible to have 0 capacity
-        if (capacity == 0) capacity = 16; // minimum with arraypool is 16 anyway...
-        _array = arrayPool.Rent(capacity);
-        for (int i = 0; i < startingCount; i++)
+
+        if (capacity != 0)
         {
-            _array[i] = default!;
+            _array = arrayPool.Rent(capacity);
+            for (int i = 0; i < startingCount; i++)
+            {
+                _array[i] = default!;
+            }
+        }
+        else
+        {
+            _array = Array.Empty<T>();
         }
         _capacity = _array.Length;
+
         _count = startingCount;
     }
 
@@ -164,6 +171,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         if (newCount > _capacity)
         {
             int newCapacity = _capacity * 2;
+            if (newCapacity == 0) newCapacity = 1;
             while (newCount > newCapacity)
             {
                 newCapacity *= 2;
@@ -219,7 +227,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         }
         set
         {
-            Console.Out.WriteLine($"index {index} {_count}");
             GuardIndex(index);
             _array[index] = value;
         }
@@ -289,9 +296,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         public readonly void Dispose() { }
     }
 
-    // TODO: On dispose, just return array
     public void Dispose()
     {
+        // Noop for empty array as sometimes this is used as part of an empty shared response.
+        if (_capacity == 0) return;
+
         if (!_disposed)
         {
             _arrayPool.Return(_array);
