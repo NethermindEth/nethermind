@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Les.Messages;
@@ -16,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTrip()
         {
             TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.WithTxType(TxType.AccessList).TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
-            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = new(data);
+            Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage ethMessage = new(data.ToPooledList());
             ReceiptsMessage receiptsMessage = new(ethMessage, 1, 2000);
 
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);

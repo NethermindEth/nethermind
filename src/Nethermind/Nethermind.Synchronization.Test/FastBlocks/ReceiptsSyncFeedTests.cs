@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -363,11 +364,13 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         {
             LoadScenario(_1024BodiesWithOneTxEach);
             ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-            batch!.Response = new TxReceipt[batch.Infos.Length][];
+            var response = new ArrayPoolList<TxReceipt[]?>(batch!.Infos.Length, batch!.Infos.Length);
 
             // default receipts that we use when constructing receipt root for tests have stats code 0
             // so by using 1 here we create a different tx root
-            batch.Response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+            response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+
+            batch!.Response = response!;
 
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
@@ -380,11 +383,13 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)
         {
-            batch.Response = new TxReceipt[batch.Infos.Length][];
-            for (int i = 0; i < batch.Response.Length; i++)
+            var response = new ArrayPoolList<TxReceipt[]?>(batch.Infos.Length, batch.Infos.Length);
+            for (int i = 0; i < response.Count; i++)
             {
-                batch.Response[i] = new[] { Build.A.Receipt.TestObject };
+                response[i] = new[] { Build.A.Receipt.TestObject };
             }
+
+            batch.Response = response;
         }
 
         [Test]

@@ -478,12 +478,12 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
-                Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
+                Task<IDisposableReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
-                TxReceipt[][] result = request.Result;
+                IDisposableReadOnlyList<TxReceipt[]> result = request.Result;
 
-                for (int i = 0; i < result.Length; i++)
+                for (int i = 0; i < result.Count; i++)
                 {
                     TxReceipt[] txReceipts = result[i];
                     Block block = context.GetBlockByRequestIdx(i + offset);
@@ -498,12 +498,12 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                if (result.Length == 0)
+                if (result.Count == 0)
                 {
                     throw new EthSyncException("Empty receipts response received");
                 }
 
-                offset += result.Length;
+                offset += result.Count;
             }
         }
 

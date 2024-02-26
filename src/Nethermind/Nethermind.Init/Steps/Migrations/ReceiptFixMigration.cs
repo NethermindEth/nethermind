@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Stats;
@@ -122,7 +123,7 @@ namespace Nethermind.Init.Steps.Migrations
                 {
                     try
                     {
-                        TxReceipt[]?[] receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
+                        IDisposableReadOnlyList<TxReceipt[]?> receipts = await currentSyncPeer.GetReceipts(new List<Hash256> { block.Hash }, _cancellationToken);
                         TxReceipt[]? txReceipts = receipts.FirstOrDefault();
                         if (txReceipts is not null)
                         {

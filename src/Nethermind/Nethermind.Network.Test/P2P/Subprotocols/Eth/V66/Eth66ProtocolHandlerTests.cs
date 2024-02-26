@@ -268,7 +268,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_receipts()
         {
-            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetReceiptsMessage>>())).Do(callInfo =>
@@ -285,7 +285,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_receipts()
         {
-            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();

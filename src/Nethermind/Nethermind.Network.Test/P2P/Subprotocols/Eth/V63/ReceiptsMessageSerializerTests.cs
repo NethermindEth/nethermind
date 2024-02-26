@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Linq;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Receipts;
@@ -17,20 +18,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class ReceiptsMessageSerializerTests
     {
-        private static void Test(TxReceipt[][] txReceipts)
+        private static void Test(TxReceipt[][]? txReceipts)
         {
-            ReceiptsMessage message = new(txReceipts);
+            ReceiptsMessage message = new(txReceipts?.ToPooledList());
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
             var serialized = serializer.Serialize(message);
             ReceiptsMessage deserialized = serializer.Deserialize(serialized);
 
             if (txReceipts is null)
             {
-                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(0));
+                Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(0));
             }
             else
             {
-                Assert.That(deserialized.TxReceipts.Length, Is.EqualTo(txReceipts.Length), "length");
+                Assert.That(deserialized.TxReceipts.Count, Is.EqualTo(txReceipts.Length), "length");
                 for (int i = 0; i < txReceipts.Length; i++)
                 {
                     if (txReceipts[i] is null)
@@ -120,7 +121,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         public void Deserialize_non_empty_but_bytebuffer_starts_with_empty()
         {
             TxReceipt[][] data = { new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.WithBlockNumber(0).TestObject }, new[] { Build.A.Receipt.WithAllFieldsFilled.TestObject, Build.A.Receipt.WithAllFieldsFilled.TestObject } };
-            ReceiptsMessage message = new(data);
+            ReceiptsMessage message = new(data.ToPooledList());
             ReceiptsMessageSerializer serializer = new(MainnetSpecProvider.Instance);
 
             IByteBuffer buffer = Unpooled.Buffer(serializer.GetLength(message, out int _) + 1);
@@ -130,7 +131,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             serializer.Serialize(buffer, message);
             ReceiptsMessage deserialized = serializer.Deserialize(buffer);
 
-            deserialized.TxReceipts.Length.Should().Be(data.Length);
+            deserialized.TxReceipts.Count.Should().Be(data.Length);
         }
 
         [Test]

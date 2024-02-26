@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -70,7 +71,7 @@ public class ReceiptSyncFeedTests
         syncFeed.InitializeFeed();
 
         ReceiptsSyncBatch req = (await syncFeed.PrepareRequest())!;
-        req.Response = req.Infos.Take(8).Select((info) => syncingFromReceiptStore.Get(info!.BlockHash)).ToArray();
+        req.Response = req.Infos.Take(8).Select((info) => syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList()!;
 
         receiptStorage
             .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>(), Arg.Any<bool>()))

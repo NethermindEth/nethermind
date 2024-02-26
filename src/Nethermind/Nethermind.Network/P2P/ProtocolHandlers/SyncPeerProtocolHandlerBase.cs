@@ -194,7 +194,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return headers;
         }
 
-        public virtual Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+        public virtual Task<IDisposableReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
@@ -403,12 +403,12 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected Task<ReceiptsMessage> FulfillReceiptsRequest(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            TxReceipt[][] txReceipts = new TxReceipt[getReceiptsMessage.Hashes.Count][];
+            ArrayPoolList<TxReceipt[]> txReceipts = new (getReceiptsMessage.Hashes.Count);
 
             ulong sizeEstimate = 0;
             for (int i = 0; i < getReceiptsMessage.Hashes.Count; i++)
             {
-                txReceipts[i] = SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]);
+                txReceipts.Add(SyncServer.GetReceipts(getReceiptsMessage.Hashes[i]));
                 for (int j = 0; j < txReceipts[i].Length; j++)
                 {
                     sizeEstimate += MessageSizeEstimator.EstimateSize(txReceipts[i][j]);
@@ -416,7 +416,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
                 if (sizeEstimate > SoftOutgoingMessageSizeLimit || cancellationToken.IsCancellationRequested)
                 {
-                    Array.Resize(ref txReceipts, i + 1);
                     break;
                 }
             }
