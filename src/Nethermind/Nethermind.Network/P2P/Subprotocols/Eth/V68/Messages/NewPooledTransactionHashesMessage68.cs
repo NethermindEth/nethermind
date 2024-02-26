@@ -18,14 +18,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V68.Messages
         public override int PacketType { get; } = Eth68MessageCode.NewPooledTransactionHashes;
         public override string Protocol { get; } = "eth";
 
-        public readonly IDisposableReadOnlyList<byte> Types;
-        public readonly IDisposableReadOnlyList<int> Sizes;
-        public readonly IDisposableReadOnlyList<Hash256> Hashes;
+        public readonly IOwnedReadOnlyList<byte> Types;
+        public readonly IOwnedReadOnlyList<int> Sizes;
+        public readonly IOwnedReadOnlyList<Hash256> Hashes;
 
         public NewPooledTransactionHashesMessage68(
-            IDisposableReadOnlyList<byte> types,
-            IDisposableReadOnlyList<int> sizes,
-            IDisposableReadOnlyList<Hash256> hashes
+            IOwnedReadOnlyList<byte> types,
+            IOwnedReadOnlyList<int> sizes,
+            IOwnedReadOnlyList<Hash256> hashes
         )
         {
             Types = types;

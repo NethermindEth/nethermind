@@ -17,9 +17,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public override int PacketType { get; } = Eth62MessageCode.Transactions;
         public override string Protocol { get; } = "eth";
-        public IDisposableReadOnlyList<Transaction> Transactions { get; }
+        public IOwnedReadOnlyList<Transaction> Transactions { get; }
 
-        public TransactionsMessage(IDisposableReadOnlyList<Transaction> transactions)
+        public TransactionsMessage(IOwnedReadOnlyList<Transaction> transactions)
         {
             Transactions = transactions;
         }

@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 Stopwatch sw = Stopwatch.StartNew();
-                IDisposableReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
                 BlockHeader? startHeader = (startHeaderHash is null)
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                IDisposableReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
                 if (headers.Count < 2)
                 {
                     // Peer dont have new header
@@ -424,15 +424,15 @@ namespace Nethermind.Synchronization.Blocks
             return default;
         }
 
-        protected virtual async Task<IDisposableReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected virtual async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
-            Task<IDisposableReadOnlyList<BlockHeader>> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
+            Task<IOwnedReadOnlyList<BlockHeader>> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
             await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
 
             cancellation.ThrowIfCancellationRequested();
 
-            IDisposableReadOnlyList<BlockHeader> headers = headersRequest.Result;
+            IOwnedReadOnlyList<BlockHeader> headers = headersRequest.Result;
             ValidateSeals(headers, cancellation);
             ValidateBatchConsistencyAndSetParents(peer, headers);
             return headers;
@@ -478,10 +478,10 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
-                Task<IDisposableReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
+                Task<IOwnedReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
-                IDisposableReadOnlyList<TxReceipt[]> result = request.Result;
+                IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
 
                 for (int i = 0; i < result.Count; i++)
                 {

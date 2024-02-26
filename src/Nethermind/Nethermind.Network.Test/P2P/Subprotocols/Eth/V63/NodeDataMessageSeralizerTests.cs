@@ -12,7 +12,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     [Parallelizable(ParallelScope.All)]
     public class NodeDataMessageSerializerTests
     {
-        private static void Test(IDisposableReadOnlyList<byte[]> data)
+        private static void Test(IOwnedReadOnlyList<byte[]> data)
         {
             NodeDataMessage message = new(data);
 

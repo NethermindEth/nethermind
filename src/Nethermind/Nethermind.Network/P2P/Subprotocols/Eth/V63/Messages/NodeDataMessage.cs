@@ -10,11 +10,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class NodeDataMessage : P2PMessage
     {
-        public IDisposableReadOnlyList<byte[]> Data { get; }
+        public IOwnedReadOnlyList<byte[]> Data { get; }
         public override int PacketType { get; } = Eth63MessageCode.NodeData;
         public override string Protocol { get; } = "eth";
 
-        public NodeDataMessage(IDisposableReadOnlyList<byte[]>? data)
+        public NodeDataMessage(IOwnedReadOnlyList<byte[]>? data)
         {
             Data = data ?? ArrayPoolList<byte[]>.Empty();
         }

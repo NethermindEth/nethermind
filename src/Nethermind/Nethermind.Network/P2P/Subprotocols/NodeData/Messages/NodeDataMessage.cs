@@ -10,7 +10,7 @@ public class NodeDataMessage : Eth.V63.Messages.NodeDataMessage
     public override int PacketType { get; } = NodeDataMessageCode.NodeData;
     public override string Protocol { get; } = "nodedata";
 
-    public NodeDataMessage(IDisposableReadOnlyList<byte[]>? data)
+    public NodeDataMessage(IOwnedReadOnlyList<byte[]>? data)
         : base(data)
     {
     }

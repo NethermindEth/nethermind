@@ -195,7 +195,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             }
         }
 
-        private void SendNewPooledTransactionMessage(IDisposableReadOnlyList<Hash256> hashes)
+        private void SendNewPooledTransactionMessage(IOwnedReadOnlyList<Hash256> hashes)
         {
             NewPooledTransactionHashesMessage msg = new(hashes);
             Send(msg);

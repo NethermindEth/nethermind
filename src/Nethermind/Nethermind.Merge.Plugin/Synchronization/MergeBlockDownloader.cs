@@ -324,11 +324,11 @@ namespace Nethermind.Merge.Plugin.Synchronization
             return blocksSynced;
         }
 
-        protected override async Task<IDisposableReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected override async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             // Override PoW's RequestHeaders so that it won't request beyond PoW.
             // This fixes `Incremental Sync` hive test.
-            IDisposableReadOnlyList<BlockHeader> response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
+            IOwnedReadOnlyList<BlockHeader> response = await base.RequestHeaders(peer, cancellation, currentNumber, headersToRequest);
             if (response.Count > 0)
             {
                 BlockHeader lastBlockHeader = response[^1];

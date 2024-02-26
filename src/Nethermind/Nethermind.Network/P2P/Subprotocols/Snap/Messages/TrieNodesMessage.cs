@@ -8,14 +8,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class TrieNodesMessage : SnapMessageBase
     {
-        public TrieNodesMessage(IDisposableReadOnlyList<byte[]>? data)
+        public TrieNodesMessage(IOwnedReadOnlyList<byte[]>? data)
         {
             Nodes = data ?? ArrayPoolList<byte[]>.Empty();
         }
 
         public override int PacketType => SnapMessageCode.TrieNodes;
 
-        public IDisposableReadOnlyList<byte[]> Nodes { get; set; }
+        public IOwnedReadOnlyList<byte[]> Nodes { get; set; }
 
         public override void Dispose()
         {

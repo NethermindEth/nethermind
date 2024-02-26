@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public override int PacketType { get; } = Eth63MessageCode.GetNodeData;
         public override string Protocol { get; } = "eth";
 
-        public GetNodeDataMessage(IDisposableReadOnlyList<Hash256> keys)
+        public GetNodeDataMessage(IOwnedReadOnlyList<Hash256> keys)
             : base(keys)
         {
         }

@@ -7,16 +7,15 @@ using System.Collections.Generic;
 namespace Nethermind.Core.Collections;
 
 /// <summary>
-/// Represent a list that that should be disposed.
+/// Mark a list that is owned by the containing class/struct and should be disposed together with the class.
 /// Conventionally:
 /// - If this is returned from a method, the method caller should dispose it.
-/// - If this is passed to a method, the object for the method should dispose it.
-/// Maybe should be called `IOwnedReadOnlyList<t>` instead.
+/// - If this is passed to a method, the receiving object for the method should dispose it.
+/// You give it to me, I own it. I give it to you, you now own it. You own it, you clean it up la...
 ///
 /// TODO: One day, check if https://github.com/dotnet/roslyn-analyzers/issues/1617 has progressed.
-///
 /// </summary>
 /// <typeparam name="T"></typeparam>
-public interface IDisposableReadOnlyList<T> : IReadOnlyList<T>, IDisposable
+public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
 }

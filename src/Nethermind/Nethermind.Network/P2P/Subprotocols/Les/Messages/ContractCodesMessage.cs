@@ -12,13 +12,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public override string Protocol { get; } = Contract.P2P.Protocol.Les;
         public long RequestId;
         public int BufferValue;
-        public IDisposableReadOnlyList<byte[]> Codes;
+        public IOwnedReadOnlyList<byte[]> Codes;
 
         public ContractCodesMessage()
         {
         }
 
-        public ContractCodesMessage(IDisposableReadOnlyList<byte[]> codes, long requestId, int bufferValue)
+        public ContractCodesMessage(IOwnedReadOnlyList<byte[]> codes, long requestId, int bufferValue)
         {
             Codes = codes;
             RequestId = requestId;

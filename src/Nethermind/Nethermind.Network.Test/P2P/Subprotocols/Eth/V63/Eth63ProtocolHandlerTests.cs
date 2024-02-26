@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Packet receiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
-            Task<IDisposableReadOnlyList<TxReceipt[]>> task = ctx.ProtocolHandler.GetReceipts(
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = ctx.ProtocolHandler.GetReceipts(
                 Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
@@ -74,7 +74,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage>()))
                 .Do((info => receiptsMessage = (GetReceiptsMessage)info[0]));
 
-            Task<IDisposableReadOnlyList<TxReceipt[]>> receiptsTask = ctx.ProtocolHandler.GetReceipts(
+            Task<IOwnedReadOnlyList<TxReceipt[]>> receiptsTask = ctx.ProtocolHandler.GetReceipts(
                 Enumerable.Repeat(Keccak.Zero, 1000).ToPooledList(),
                 CancellationToken.None);
 

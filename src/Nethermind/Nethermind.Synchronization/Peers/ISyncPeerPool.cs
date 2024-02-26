@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization.Peers
                 using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 cts.CancelAfter(Timeouts.DefaultFetchHeaderTimeout);
 
-                using IDisposableReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
+                using IOwnedReadOnlyList<BlockHeader>? headers = await syncPeerPool.AllocateAndRun(
                     peer => peer.GetBlockHeaders(hash, 1, 0, cancellationToken),
                     BySpeedStrategy.FastestHeader,
                     AllocationContexts.Headers,

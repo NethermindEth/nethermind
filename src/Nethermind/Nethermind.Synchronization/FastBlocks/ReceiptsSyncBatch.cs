@@ -9,7 +9,7 @@ namespace Nethermind.Synchronization.FastBlocks
     public class ReceiptsSyncBatch : FastBlocksBatch
     {
         public BlockInfo?[] Infos { get; }
-        public IDisposableReadOnlyList<TxReceipt[]?>? Response { get; set; }
+        public IOwnedReadOnlyList<TxReceipt[]?>? Response { get; set; }
 
         public ReceiptsSyncBatch(BlockInfo?[] infos)
         {

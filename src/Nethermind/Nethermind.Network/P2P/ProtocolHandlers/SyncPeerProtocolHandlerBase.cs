@@ -55,7 +55,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected readonly ITimestamper _timestamper;
         protected readonly TxDecoder _txDecoder;
 
-        protected readonly MessageQueue<GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader?>> _headersRequests;
+        protected readonly MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader?>> _headersRequests;
         protected readonly MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests;
 
         private readonly LatencyAndMessageSizeBasedRequestSizer _bodiesRequestSizer = new(
@@ -88,7 +88,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             BackgroundTaskScheduler = new BackgroundTaskSchedulerWrapper(this, backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(BackgroundTaskScheduler)));
             _timestamper = Timestamper.Default;
             _txDecoder = new TxDecoder();
-            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>>(Send);
+            _headersRequests = new MessageQueue<GetBlockHeadersMessage, IOwnedReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests = new MessageQueue<GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
 
         }
@@ -128,7 +128,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                 token);
         }
 
-        async Task<IDisposableReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -141,11 +141,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Skip = skip;
             msg.StartBlockNumber = number;
 
-            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
+            IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers;
         }
 
-        protected virtual async Task<IDisposableReadOnlyList<BlockHeader>> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
+        protected virtual async Task<IOwnedReadOnlyList<BlockHeader>> SendRequest(GetBlockHeadersMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -173,11 +173,11 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Reverse = 0;
             msg.Skip = 0;
 
-            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
+            IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers.Count > 0 ? headers[0] : null;
         }
 
-        async Task<IDisposableReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+        async Task<IOwnedReadOnlyList<BlockHeader>> ISyncPeer.GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
         {
             if (maxBlocks == 0)
             {
@@ -190,16 +190,16 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Reverse = 0;
             msg.Skip = skip;
 
-            IDisposableReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
+            IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers;
         }
 
-        public virtual Task<IDisposableReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+        public virtual Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
 
-        public virtual Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+        public virtual Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
         {
             throw new NotSupportedException("Fast sync not supported by eth62 protocol");
         }
@@ -274,7 +274,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        private void SendMessage(IDisposableReadOnlyList<Transaction> txsToSend)
+        private void SendMessage(IOwnedReadOnlyList<Transaction> txsToSend)
         {
             TransactionsMessage msg = new(txsToSend);
             Send(msg);
@@ -325,7 +325,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Hash256 startingHash = msg.StartBlockHash;
             startingHash ??= SyncServer.FindHash(msg.StartBlockNumber);
 
-            IDisposableReadOnlyList<BlockHeader> headers =
+            IOwnedReadOnlyList<BlockHeader> headers =
                 startingHash is null
                     ? ArrayPoolList<BlockHeader>.Empty()
                     : SyncServer.FindHeaders(startingHash, (int)msg.MaxHeaders, (int)msg.Skip, msg.Reverse == 1);
@@ -423,7 +423,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             return Task.FromResult(new ReceiptsMessage(txReceipts));
         }
 
-        private static IDisposableReadOnlyList<BlockHeader> FixHeadersForGeth(IDisposableReadOnlyList<BlockHeader> headers)
+        private static IOwnedReadOnlyList<BlockHeader> FixHeadersForGeth(IOwnedReadOnlyList<BlockHeader> headers)
         {
             int emptyBlocksAtTheEnd = 0;
             for (int i = 0; i < headers.Count; i++)

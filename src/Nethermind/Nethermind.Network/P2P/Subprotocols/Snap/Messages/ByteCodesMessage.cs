@@ -8,13 +8,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
     public class ByteCodesMessage : SnapMessageBase
     {
-        public ByteCodesMessage(IDisposableReadOnlyList<byte[]>? data)
+        public ByteCodesMessage(IOwnedReadOnlyList<byte[]>? data)
         {
             Codes = data ?? ArrayPoolList<byte[]>.Empty();
         }
 
         public override int PacketType => SnapMessageCode.ByteCodes;
 
-        public IDisposableReadOnlyList<byte[]> Codes { get; }
+        public IOwnedReadOnlyList<byte[]> Codes { get; }
     }
 }

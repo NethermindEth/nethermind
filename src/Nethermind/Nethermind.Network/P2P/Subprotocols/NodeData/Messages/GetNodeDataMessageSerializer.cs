@@ -12,7 +12,7 @@ public class GetNodeDataMessageSerializer : HashesMessageSerializer<GetNodeDataM
 {
     public override GetNodeDataMessage Deserialize(IByteBuffer byteBuffer)
     {
-        IDisposableReadOnlyList<Hash256> keys = DeserializeHashesArrayPool(byteBuffer);
+        IOwnedReadOnlyList<Hash256> keys = DeserializeHashesArrayPool(byteBuffer);
         return new GetNodeDataMessage(keys);
     }
 }

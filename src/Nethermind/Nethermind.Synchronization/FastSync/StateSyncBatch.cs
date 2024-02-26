@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.FastSync
 
         public IList<StateSyncItem>? RequestedNodes { get; }
 
-        public IDisposableReadOnlyList<byte[]>? Responses { get; set; }
+        public IOwnedReadOnlyList<byte[]>? Responses { get; set; }
 
         public int ConsumerId { get; set; }
 

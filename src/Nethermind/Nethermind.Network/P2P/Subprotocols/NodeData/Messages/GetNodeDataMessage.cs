@@ -12,7 +12,7 @@ public class GetNodeDataMessage : Eth.V63.Messages.GetNodeDataMessage
     public override int PacketType { get; } = NodeDataMessageCode.GetNodeData;
     public override string Protocol { get; } = "nodedata";
 
-    public GetNodeDataMessage(IDisposableReadOnlyList<Hash256> keys)
+    public GetNodeDataMessage(IOwnedReadOnlyList<Hash256> keys)
         : base(keys)
     {
     }

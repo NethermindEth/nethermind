@@ -93,7 +93,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         CancellationToken token)
     {
         // headBlockhash is obtained together with headParentBlockhash
-        Task<IDisposableReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
         Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
@@ -102,7 +102,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         try
         {
-            IDisposableReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
+            IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
             if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");

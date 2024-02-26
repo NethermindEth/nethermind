@@ -37,7 +37,7 @@ namespace Nethermind.Synchronization.StateSync
             }
 
             ISyncPeer peer = peerInfo.SyncPeer;
-            Task<IDisposableReadOnlyList<byte[]>> task = null;
+            Task<IOwnedReadOnlyList<byte[]>> task = null;
             HashList? hashList = null;
             // Use GETNODEDATA if possible. Firstly via dedicated NODEDATA protocol
             if (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler))

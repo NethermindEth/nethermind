@@ -223,13 +223,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _stateDb;
 
             private Hash256[]? _filter;
-            private readonly Func<IReadOnlyList<Hash256>, Task<IDisposableReadOnlyList<byte[]>>>? _executorResultFunction;
+            private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Hash256>, Task<IDisposableReadOnlyList<byte[]>>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
@@ -255,7 +255,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -305,12 +305,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -330,7 +330,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

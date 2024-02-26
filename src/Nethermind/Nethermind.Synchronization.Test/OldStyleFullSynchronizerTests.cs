@@ -377,7 +377,7 @@ namespace Nethermind.Synchronization.Test
         public void Can_retrieve_node_values()
         {
             _stateDb.Set(TestItem.KeccakA, TestItem.RandomDataA);
-            IDisposableReadOnlyList<byte[]?> data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
+            IOwnedReadOnlyList<byte[]?> data = _syncServer.GetNodeData(new[] { TestItem.KeccakA, TestItem.KeccakB }, CancellationToken.None);
 
             Assert.That(data, Is.Not.Null);
             Assert.That(data.Count, Is.EqualTo(2), "data.Length");

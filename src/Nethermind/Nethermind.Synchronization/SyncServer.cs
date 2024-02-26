@@ -387,12 +387,12 @@ namespace Nethermind.Synchronization
             return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
-        public IDisposableReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public IDisposableReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
             ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
             for (int i = 0; i < keys.Count; i++)

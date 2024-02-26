@@ -162,7 +162,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void SendMessage(IDisposableReadOnlyList<byte> types, IDisposableReadOnlyList<int> sizes, IDisposableReadOnlyList<Hash256> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

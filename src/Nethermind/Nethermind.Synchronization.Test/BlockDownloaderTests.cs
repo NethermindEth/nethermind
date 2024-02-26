@@ -571,7 +571,7 @@ namespace Nethermind.Synchronization.Test
             };
             BlockDownloader downloader = ctx.BlockDownloader;
 
-            IDisposableReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -618,12 +618,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new Exception();
             }
@@ -645,12 +645,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -725,7 +725,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<IDisposableReadOnlyList<TxReceipt[]?>>(new TimeoutException()));
+                .Returns(Task.FromException<IOwnedReadOnlyList<TxReceipt[]?>>(new TimeoutException()));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -780,7 +780,7 @@ namespace Nethermind.Synchronization.Test
                         .GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)))
                         .ToPooledList();
                     receipts[^1] = null;
-                    return (IDisposableReadOnlyList<TxReceipt[]?>)receipts;
+                    return (IOwnedReadOnlyList<TxReceipt[]?>)receipts;
                 });
 
             syncPeer.TotalDifficulty.Returns(_ => syncPeerInternal.TotalDifficulty);
@@ -1103,7 +1103,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 bool justFirst = _flags.HasFlag(Response.JustFirst);
                 bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
@@ -1124,7 +1124,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
-            public async Task<IDisposableReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
                 int i = 0;
@@ -1145,7 +1145,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1165,7 +1165,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1192,7 +1192,7 @@ namespace Nethermind.Synchronization.Test
                 _testHeaderMapping = testHeaderMapping;
             }
 
-            public async Task<IDisposableReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
+            public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
             {
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1318,7 +1318,7 @@ namespace Nethermind.Synchronization.Test
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<IDisposableReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
+            public async Task<IOwnedReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHashes.Count][];
                 for (int i = 0; i < receipts.Length; i++)

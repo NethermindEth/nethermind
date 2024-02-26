@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
         public PooledTransactionsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            IDisposableReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(rlpStream);
+            IOwnedReadOnlyList<Transaction> txs = TransactionsMessageSerializer.DeserializeTxs(rlpStream);
             return new PooledTransactionsMessage(txs);
         }
 

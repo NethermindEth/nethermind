@@ -140,11 +140,11 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(new OwnedBlockBodies(result));
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 if (_causeTimeoutOnHeaders)
                 {
-                    return Task.FromException<IDisposableReadOnlyList<BlockHeader>?>(new TimeoutException());
+                    return Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(new TimeoutException());
                 }
 
                 int filled = 0;
@@ -168,10 +168,10 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                return Task.FromResult<IDisposableReadOnlyList<BlockHeader>?>(result);
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -213,12 +213,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<IDisposableReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

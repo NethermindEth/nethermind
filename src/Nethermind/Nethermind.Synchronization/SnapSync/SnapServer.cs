@@ -67,7 +67,7 @@ public class SnapServer : ISnapServer
         return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
     }
 
-    public IDisposableReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
@@ -127,7 +127,7 @@ public class SnapServer : ISnapServer
         return response;
     }
 
-    public IDisposableReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
         ArrayPoolList<byte[]> response = new(requestedHashes.Count);

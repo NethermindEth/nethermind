@@ -80,14 +80,14 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(new OwnedBlockBodies(Array.Empty<BlockBody>()));
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult<IDisposableReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
             }
 
-            public Task<IDisposableReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
-                return Task.FromResult<IDisposableReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(ArrayPoolList<BlockHeader>.Empty());
             }
 
             public async Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
@@ -119,14 +119,14 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<IDisposableReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
-                return Task.FromResult<IDisposableReadOnlyList<TxReceipt[]?>>(ArrayPoolList<TxReceipt[]?>.Empty());
+                return Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(ArrayPoolList<TxReceipt[]?>.Empty());
             }
 
-            public Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
-                return Task.FromResult<IDisposableReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
+                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
             }
 
             private int? _headerResponseTime;

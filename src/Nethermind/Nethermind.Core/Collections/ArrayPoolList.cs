@@ -11,7 +11,7 @@ using System.Threading;
 
 namespace Nethermind.Core.Collections;
 
-public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<T>
+public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 {
     private readonly ArrayPool<T> _arrayPool;
     private T[] _array;

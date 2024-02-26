@@ -27,7 +27,7 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Hash25
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueHash256 rlpHash, ISyncPeer peer, IReadOnlyList<Hash256> request, CancellationTokenSource cts)
     {
-        using IDisposableReadOnlyList<byte[]> rlp = await (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler)
+        using IOwnedReadOnlyList<byte[]> rlp = await (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler)
             ? nodeDataHandler.GetNodeData(request, cts.Token)
             : peer.GetNodeData(request, cts.Token));
 

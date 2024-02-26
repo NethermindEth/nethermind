@@ -201,7 +201,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, IDisposableReadOnlyList<byte[]> response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
         {
             int respLength = response.Count;
             ITrieStore store = _trieStorePool.Get();
@@ -270,7 +270,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueHash256[] requestedHashes, IDisposableReadOnlyList<byte[]> codes)
+        public void AddCodes(ValueHash256[] requestedHashes, IOwnedReadOnlyList<byte[]> codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 

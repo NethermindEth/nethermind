@@ -11,12 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessage : P2PMessage
     {
-        protected HashesMessage(IDisposableReadOnlyList<Hash256> hashes)
+        protected HashesMessage(IOwnedReadOnlyList<Hash256> hashes)
         {
             Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
         }
 
-        public IDisposableReadOnlyList<Hash256> Hashes { get; }
+        public IOwnedReadOnlyList<Hash256> Hashes { get; }
 
         public override string ToString()
         {

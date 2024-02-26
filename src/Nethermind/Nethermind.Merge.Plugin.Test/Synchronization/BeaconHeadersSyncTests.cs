@@ -418,7 +418,7 @@ public class BeaconHeadersSyncTests
             return;
         }
 
-        IDisposableReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
+        IOwnedReadOnlyList<BlockHeader> headers = blockTree.FindHeaders(startHeader.Hash!, batch.RequestSize, 0, false);
         batch.Response = headers!;
     }
 

@@ -139,13 +139,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
             return discoveredTxHashesAndSizes;
         }
 
-        private static void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IDisposableReadOnlyList<Hash256> hashesToRequest)
+        private static void RequestPooledTransactions(Action<GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashesToRequest)
         {
             send(new GetPooledTransactionsMessage(hashesToRequest));
             Metrics.Eth65GetPooledTransactionsRequested++;
         }
 
-        private static void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IDisposableReadOnlyList<Hash256> hashesToRequest)
+        private static void RequestPooledTransactionsEth66(Action<V66.Messages.GetPooledTransactionsMessage> send, IOwnedReadOnlyList<Hash256> hashesToRequest)
         {
             GetPooledTransactionsMessage msg65 = new(hashesToRequest);
             send(new V66.Messages.GetPooledTransactionsMessage() { EthMessage = msg65 });

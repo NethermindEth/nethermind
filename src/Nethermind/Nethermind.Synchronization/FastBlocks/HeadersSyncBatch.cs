@@ -11,7 +11,7 @@ namespace Nethermind.Synchronization.FastBlocks
         public long StartNumber { get; set; }
         public long EndNumber => StartNumber + RequestSize - 1;
         public int RequestSize { get; set; }
-        public IDisposableReadOnlyList<BlockHeader?>? Response { get; set; }
+        public IOwnedReadOnlyList<BlockHeader?>? Response { get; set; }
 
         public override string ToString()
         {

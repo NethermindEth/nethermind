@@ -10,14 +10,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
     public class ReceiptsMessage : P2PMessage
     {
-        public IDisposableReadOnlyList<TxReceipt[]?> TxReceipts { get; }
+        public IOwnedReadOnlyList<TxReceipt[]?> TxReceipts { get; }
         public override int PacketType { get; } = Eth63MessageCode.Receipts;
         public override string Protocol { get; } = "eth";
 
         private static ReceiptsMessage? _empty;
         public static ReceiptsMessage Empty => _empty ??= new ReceiptsMessage(null);
 
-        public ReceiptsMessage(IDisposableReadOnlyList<TxReceipt[]> txReceipts)
+        public ReceiptsMessage(IOwnedReadOnlyList<TxReceipt[]> txReceipts)
         {
             TxReceipts = txReceipts ?? ArrayPoolList<TxReceipt[]>.Empty();
         }

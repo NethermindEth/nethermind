@@ -25,8 +25,8 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapServer
 {
-    IDisposableReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
-    IDisposableReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
+    IOwnedReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
+    IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
     (PathWithAccount[], byte[][]) GetAccountRanges(
         in ValueHash256 rootHash,

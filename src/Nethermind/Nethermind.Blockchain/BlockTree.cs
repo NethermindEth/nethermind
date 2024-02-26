@@ -537,7 +537,7 @@ namespace Nethermind.Blockchain
             return GetBlockHashOnMainOrBestDifficultyHash(number);
         }
 
-        public IDisposableReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256? blockHash, int numberOfBlocks, int skip, bool reverse)
         {
             if (numberOfBlocks == 0)
             {

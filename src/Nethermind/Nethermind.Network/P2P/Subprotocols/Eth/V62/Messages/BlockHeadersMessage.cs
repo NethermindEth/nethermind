@@ -14,13 +14,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override int PacketType { get; } = Eth62MessageCode.BlockHeaders;
         public override string Protocol { get; } = "eth";
 
-        public IDisposableReadOnlyList<BlockHeader>? BlockHeaders { get; set; }
+        public IOwnedReadOnlyList<BlockHeader>? BlockHeaders { get; set; }
 
         public BlockHeadersMessage()
         {
         }
 
-        public BlockHeadersMessage(IDisposableReadOnlyList<BlockHeader>? blockHeaders)
+        public BlockHeadersMessage(IOwnedReadOnlyList<BlockHeader>? blockHeaders)
         {
             BlockHeaders = blockHeaders;
         }

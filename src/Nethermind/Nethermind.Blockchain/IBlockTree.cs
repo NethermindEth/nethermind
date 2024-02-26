@@ -151,7 +151,7 @@ namespace Nethermind.Blockchain
 
         Hash256 FindHash(long blockNumber);
 
-        IDisposableReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
 

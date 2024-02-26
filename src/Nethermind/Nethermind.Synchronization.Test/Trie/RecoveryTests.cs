@@ -43,12 +43,12 @@ public class RecoveryTests
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult<IDisposableReadOnlyList<byte[]>>(new ArrayPoolList<byte[]> { _returnedRlp }));
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]> { _returnedRlp }));
         _peerEth66 = new(_syncPeerEth66);
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c => Task.FromResult<IDisposableReadOnlyList<byte[]>>(new ArrayPoolList<byte[]> { _returnedRlp }));
+            .Returns(c => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]> { _returnedRlp }));
         _syncPeerEth67 = Substitute.For<ISyncPeer>();
         _syncPeerEth67.ProtocolVersion.Returns(EthVersions.Eth67);
         _syncPeerEth67.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
@@ -86,7 +86,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth66_empty_response()
     {
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IDisposableReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
         byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth66);
         rlp.Should().BeNull();
     }
@@ -117,7 +117,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth67_empty_response()
     {
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IDisposableReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
         byte[]? rlp = await Recover(_snapRecovery, _snapRequest, _peerEth67);
         rlp.Should().BeNull();
     }
