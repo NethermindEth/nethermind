@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -16,9 +17,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         AddRangeResult AddStorageRange(StorageRange request, SlotsAndProofs response);
 
-        void AddCodes(ValueHash256[] requestedHashes, byte[][] codes);
+        void AddCodes(ValueHash256[] requestedHashes, IDisposableReadOnlyList<byte[]> codes);
 
-        void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response);
+        void RefreshAccounts(AccountsToRefreshRequest request, IDisposableReadOnlyList<byte[]> response);
 
         void RetryRequest(SnapSyncBatch batch);
 

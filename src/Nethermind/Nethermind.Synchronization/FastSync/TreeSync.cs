@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     int requestLength = batch.RequestedNodes?.Count ?? 0;
-                    int responseLength = batch.Responses?.Length ?? 0;
+                    int responseLength = batch.Responses?.Count ?? 0;
 
                     void AddAgainAllItems()
                     {
@@ -207,7 +207,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         /* if the peer has limit on number of requests in a batch then the response will possibly be
                            shorter than the request */
-                        if (batch.Responses.Length < i + 1)
+                        if (batch.Responses.Count < i + 1)
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             continue;

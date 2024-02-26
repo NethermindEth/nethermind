@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -25,11 +27,11 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Hash25
 
     protected override async Task<byte[]?> RecoverRlpFromPeerBase(ValueHash256 rlpHash, ISyncPeer peer, IReadOnlyList<Hash256> request, CancellationTokenSource cts)
     {
-        byte[][] rlp = await (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler)
+        using IDisposableReadOnlyList<byte[]> rlp = await (peer.TryGetSatelliteProtocol(Protocol.NodeData, out INodeDataPeer nodeDataHandler)
             ? nodeDataHandler.GetNodeData(request, cts.Token)
             : peer.GetNodeData(request, cts.Token));
 
-        if (rlp.Length == 1)
+        if (rlp.Count() == 1)
         {
             byte[] recoveredRlp = rlp[0];
             if (ValueKeccak.Compute(recoveredRlp) == rlpHash)

@@ -67,14 +67,14 @@ public class SnapServer : ISnapServer
         return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
     }
 
-    public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
+    public IDisposableReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return Array.Empty<byte[]>();
+        if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
         if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Length}");
         // TODO: use cache to reduce node retrieval from disk
         int pathLength = pathSet.Length;
-        using ArrayPoolList<byte[]> response = new(pathLength);
+        ArrayPoolList<byte[]> response = new(pathLength);
         StateTree tree = new(_store, _logManager);
         bool abort = false;
 
@@ -123,14 +123,14 @@ public class SnapServer : ISnapServer
             }
         }
 
-        if (response.Count == 0) return Array.Empty<byte[]>();
-        return response.ToArray();
+        if (response.Count == 0) return ArrayPoolList<byte[]>.Empty();
+        return response;
     }
 
-    public byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
+    public IDisposableReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        using ArrayPoolList<byte[]> response = new(requestedHashes.Count);
+        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
 
         if (byteLimit > HardResponseByteLimit)
         {
@@ -161,7 +161,7 @@ public class SnapServer : ISnapServer
             }
         }
 
-        return response.ToArray();
+        return response;
     }
 
     public (PathWithAccount[], byte[][]) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)

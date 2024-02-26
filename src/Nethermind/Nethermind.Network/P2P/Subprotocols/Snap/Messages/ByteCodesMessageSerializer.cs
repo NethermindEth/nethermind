@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -17,7 +18,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
             rlpStream.StartSequence(codesLength);
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 rlpStream.Encode(message.Codes[i]);
             }
@@ -30,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             long requestId = rlpStream.DecodeLong();
-            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            IDisposableReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
 
             return new ByteCodesMessage(result) { RequestId = requestId };
         }
@@ -38,7 +39,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public static (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
         {
             int codesLength = 0;
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 codesLength += Rlp.LengthOf(message.Codes[i]);
             }

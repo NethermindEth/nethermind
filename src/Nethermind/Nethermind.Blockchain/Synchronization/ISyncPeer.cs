@@ -38,6 +38,6 @@ namespace Nethermind.Blockchain.Synchronization
         Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
         Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
+        Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
     }
 }

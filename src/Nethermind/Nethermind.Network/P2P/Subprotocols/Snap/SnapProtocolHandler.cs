@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -27,7 +28,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
     {
         public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
         public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
-        private static TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(Array.Empty<byte[]>());
+        private static TrieNodesMessage EmptyTrieNodesMessage = new TrieNodesMessage(ArrayPoolList<byte[]>.Empty());
 
         private readonly LatencyBasedRequestSizer _requestSizer = new(
             minRequestLimit: 50000,
@@ -264,7 +265,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private ByteCodesMessage FulfillByteCodesMessage(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
-            if (SyncServer is null) return new ByteCodesMessage(Array.Empty<byte[]>());
+            if (SyncServer is null) return new ByteCodesMessage(ArrayPoolList<byte[]>.Empty());
             var byteCodes = SyncServer.GetByteCodes(getByteCodesMessage.Hashes, getByteCodesMessage.Bytes, cancellationToken);
             return new ByteCodesMessage(byteCodes);
         }
@@ -297,7 +298,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return new SlotsAndProofs() { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
-        public async Task<byte[][]> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+        public async Task<IDisposableReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
         {
             ByteCodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetByteCodesMessage()
@@ -311,19 +312,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Codes;
         }
 
-        public async Task<byte[][]> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+        public async Task<IDisposableReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
         {
             PathGroup[] groups = GetPathGroups(request);
 
             return await GetTrieNodes(request.RootHash, groups, token);
         }
 
-        public async Task<byte[][]> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+        public async Task<IDisposableReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
         {
             return await GetTrieNodes(request.RootHash, request.AccountAndStoragePaths, token);
         }
 
-        private async Task<byte[][]> GetTrieNodes(ValueHash256 rootHash, PathGroup[] groups, CancellationToken token)
+        private async Task<IDisposableReadOnlyList<byte[]>> GetTrieNodes(ValueHash256 rootHash, PathGroup[] groups, CancellationToken token)
         {
             TrieNodesMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
                 SendRequest(new GetTrieNodesMessage()

@@ -229,7 +229,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_node_data()
         {
-            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>())).Do(callInfo =>
@@ -246,7 +246,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_node_data()
         {
-            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();

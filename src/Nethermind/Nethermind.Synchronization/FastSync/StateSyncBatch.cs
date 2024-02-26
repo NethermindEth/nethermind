@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Synchronization.FastSync
@@ -23,13 +24,13 @@ namespace Nethermind.Synchronization.FastSync
 
         public IList<StateSyncItem>? RequestedNodes { get; }
 
-        public byte[][]? Responses { get; set; }
+        public IDisposableReadOnlyList<byte[]>? Responses { get; set; }
 
         public int ConsumerId { get; set; }
 
         public override string ToString()
         {
-            return $"{RequestedNodes?.Count ?? 0} state sync requests with {Responses?.Length ?? 0} responses";
+            return $"{RequestedNodes?.Count ?? 0} state sync requests with {Responses?.Count ?? 0} responses";
         }
     }
 }

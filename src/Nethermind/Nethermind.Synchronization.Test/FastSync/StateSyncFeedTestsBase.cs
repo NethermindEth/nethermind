@@ -223,13 +223,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _stateDb;
 
             private Hash256[]? _filter;
-            private readonly Func<IReadOnlyList<Hash256>, Task<byte[][]>>? _executorResultFunction;
+            private readonly Func<IReadOnlyList<Hash256>, Task<IDisposableReadOnlyList<byte[]>>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Hash256>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<IDisposableReadOnlyList<byte[]>>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
@@ -255,7 +255,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public async Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -264,7 +264,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
-                byte[][] responses = new byte[hashes.Count][];
+                ArrayPoolList<byte[]> responses = new (hashes.Count, hashes.Count);
 
                 int i = 0;
                 foreach (Hash256 item in hashes)

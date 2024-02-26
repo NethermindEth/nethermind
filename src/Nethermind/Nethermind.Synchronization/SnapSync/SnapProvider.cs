@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -200,9 +201,9 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IDisposableReadOnlyList<byte[]> response)
         {
-            int respLength = response.Length;
+            int respLength = response.Count;
             ITrieStore store = _trieStorePool.Get();
             try
             {
@@ -269,13 +270,13 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueHash256[] requestedHashes, byte[][] codes)
+        public void AddCodes(ValueHash256[] requestedHashes, IDisposableReadOnlyList<byte[]> codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
             using (IWriteBatch writeBatch = _dbProvider.CodeDb.StartWriteBatch())
             {
-                for (int i = 0; i < codes.Length; i++)
+                for (int i = 0; i < codes.Count; i++)
                 {
                     byte[] code = codes[i];
                     ValueHash256 codeHash = ValueKeccak.Compute(code);
@@ -288,7 +289,7 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
 
             _progressTracker.ReportCodeRequestFinished(set.ToArray());
         }

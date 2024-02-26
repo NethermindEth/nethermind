@@ -31,7 +31,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
     {
         private readonly MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>> _headersRequests66;
         private readonly MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)> _bodiesRequests66;
-        private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]> _nodeDataRequests66;
+        private readonly MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, IDisposableReadOnlyList<byte[]>> _nodeDataRequests66;
         private readonly MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests66;
         private readonly IPooledTxsRequestor _pooledTxsRequestor;
         private readonly Action<GetPooledTransactionsMessage> _sendAction;
@@ -51,7 +51,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
         {
             _headersRequests66 = new MessageDictionary<GetBlockHeadersMessage, V62.Messages.GetBlockHeadersMessage, IDisposableReadOnlyList<BlockHeader>>(Send);
             _bodiesRequests66 = new MessageDictionary<GetBlockBodiesMessage, V62.Messages.GetBlockBodiesMessage, (OwnedBlockBodies, long)>(Send);
-            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, byte[][]>(Send);
+            _nodeDataRequests66 = new MessageDictionary<GetNodeDataMessage, V63.Messages.GetNodeDataMessage, IDisposableReadOnlyList<byte[]>>(Send);
             _receiptsRequests66 = new MessageDictionary<GetReceiptsMessage, V63.Messages.GetReceiptsMessage, (TxReceipt[][], long)>(Send);
             _pooledTxsRequestor = pooledTxsRequestor;
             // Capture Action once rather than per call
@@ -249,7 +249,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
                 token);
         }
 
-        protected override async Task<byte[][]> SendRequest(V63.Messages.GetNodeDataMessage message, CancellationToken token)
+        protected override async Task<IDisposableReadOnlyList<byte[]>> SendRequest(V63.Messages.GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

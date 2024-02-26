@@ -124,9 +124,9 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(Array.Empty<TxReceipt[]?>());
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IDisposableReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
-                return Task.FromResult(Array.Empty<byte[]>());
+                return Task.FromResult<IDisposableReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty());
             }
 
             private int? _headerResponseTime;

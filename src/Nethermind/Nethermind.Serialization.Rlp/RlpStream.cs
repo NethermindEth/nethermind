@@ -12,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -1121,6 +1122,28 @@ namespace Nethermind.Serialization.Rlp
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
             T[] result = new T[count];
             for (int i = 0; i < result.Length; i++)
+            {
+                if (PeekByte() == Rlp.OfEmptySequence[0])
+                {
+                    result[i] = defaultElement;
+                    Position++;
+                }
+                else
+                {
+                    result[i] = decodeItem(this);
+                }
+            }
+
+            return result;
+        }
+
+        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
+            T defaultElement = default)
+        {
+            int positionCheck = ReadSequenceLength() + Position;
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            ArrayPoolList<T> result = new ArrayPoolList<T>(count, count);
+            for (int i = 0; i < result.Count; i++)
             {
                 if (PeekByte() == Rlp.OfEmptySequence[0])
                 {

@@ -219,6 +219,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         }
         set
         {
+            Console.Out.WriteLine($"index {index} {_count}");
             GuardIndex(index);
             _array[index] = value;
         }
@@ -288,6 +289,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
         public readonly void Dispose() { }
     }
 
+    // TODO: On dispose, just return array
     public void Dispose()
     {
         if (!_disposed)

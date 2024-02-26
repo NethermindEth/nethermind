@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -15,10 +16,10 @@ namespace Nethermind.Synchronization.SnapSync
         public SlotsAndProofs? StorageRangeResponse { get; set; }
 
         public ValueHash256[]? CodesRequest { get; set; }
-        public byte[][]? CodesResponse { get; set; }
+        public IDisposableReadOnlyList<byte[]>? CodesResponse { get; set; }
 
         public AccountsToRefreshRequest? AccountsToRefreshRequest { get; set; }
-        public byte[][]? AccountsToRefreshResponse { get; set; }
+        public IDisposableReadOnlyList<byte[]>? AccountsToRefreshResponse { get; set; }
 
         public override string ToString()
         {

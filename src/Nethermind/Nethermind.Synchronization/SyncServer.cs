@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -391,16 +392,17 @@ namespace Nethermind.Synchronization
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IDisposableReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            byte[]?[] values = new byte[keys.Count][];
+            ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
             for (int i = 0; i < keys.Count; i++)
             {
                 if (cancellationToken.IsCancellationRequested)
                 {
-                    values = values[..i];
+                    return values;
                 }
-                values[i] = null;
+
+                values.Add(null);
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
                     values[i] = _stateDb[keys[i].Bytes];

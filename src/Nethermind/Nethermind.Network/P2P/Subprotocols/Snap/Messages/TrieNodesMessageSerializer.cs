@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -19,7 +20,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
             rlpStream.StartSequence(nodesLength);
-            for (int i = 0; i < message.Nodes.Length; i++)
+            for (int i = 0; i < message.Nodes.Count; i++)
             {
                 rlpStream.Encode(message.Nodes[i]);
             }
@@ -32,14 +33,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             long requestId = rlpStream.DecodeLong();
-            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            IDisposableReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
             return new TrieNodesMessage(result) { RequestId = requestId };
         }
 
         public static (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
         {
             int nodesLength = 0;
-            for (int i = 0; i < message.Nodes.Length; i++)
+            for (int i = 0; i < message.Nodes.Count; i++)
             {
                 nodesLength += Rlp.LengthOf(message.Nodes[i]);
             }

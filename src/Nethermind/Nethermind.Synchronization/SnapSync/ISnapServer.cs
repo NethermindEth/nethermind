@@ -17,6 +17,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.State.Snap;
 
@@ -24,8 +25,8 @@ namespace Nethermind.Synchronization.SnapSync;
 
 public interface ISnapServer
 {
-    byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
-    byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
+    IDisposableReadOnlyList<byte[]>? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken);
+    IDisposableReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken);
 
     (PathWithAccount[], byte[][]) GetAccountRanges(
         in ValueHash256 rootHash,
