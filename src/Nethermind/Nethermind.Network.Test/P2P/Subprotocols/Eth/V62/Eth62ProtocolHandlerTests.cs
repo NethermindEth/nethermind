@@ -391,7 +391,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Can_handle_transactions([Values(true, false)] bool canGossipTransactions)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
-            TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+            TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth62MessageCode.Transactions);
@@ -401,7 +401,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Can_handle_transactions_without_filtering()
         {
-            TransactionsMessage msg = new(new List<Transaction>(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3)));
+            TransactionsMessage msg = new(Build.A.Transaction.SignedAndResolved().TestObjectNTimes(3).ToPooledList());
 
             _handler.DisableTxFiltering();
             HandleIncomingStatusMessage();

@@ -5,7 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
@@ -32,7 +34,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        PooledTransactionsMessage message = new(new[] { transaction, transaction });
+        PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>() { transaction, transaction });
         SerializerTester.TestZero(serializer, message,
             "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
@@ -52,7 +54,7 @@ public class PooledTransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        PooledTransactionsMessage message = new(new[] { transaction, transaction });
+        PooledTransactionsMessage message = new(new ArrayPoolList<Transaction>() { transaction, transaction });
         SerializerTester.TestZero(serializer, message,
             "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
@@ -61,7 +63,7 @@ public class PooledTransactionsMessageSerializerTests
     public void Can_handle_empty()
     {
         PooledTransactionsMessageSerializer serializer = new();
-        PooledTransactionsMessage message = new(new Transaction[] { });
+        PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
         SerializerTester.TestZero(serializer, message);
     }
@@ -69,7 +71,7 @@ public class PooledTransactionsMessageSerializerTests
     [Test]
     public void Empty_to_string()
     {
-        PooledTransactionsMessage message = new(new Transaction[] { });
+        PooledTransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
         PooledTransactionsMessage message2 = new(null);
 
         _ = message.ToString();
@@ -104,5 +106,5 @@ public class PooledTransactionsMessageSerializerTests
 
     private static IEnumerable<PooledTransactionsMessage> GetTransactionMessages() =>
         TransactionsMessageSerializerTests.GetTransactions()
-            .Select(txs => new PooledTransactionsMessage(txs.ToList()));
+            .Select(txs => new PooledTransactionsMessage(txs.ToPooledList()));
 }

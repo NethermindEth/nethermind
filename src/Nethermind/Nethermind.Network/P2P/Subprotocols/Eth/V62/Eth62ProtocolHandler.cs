@@ -259,14 +259,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
-            IList<Transaction> iList = msg.Transactions;
+            IDisposableReadOnlyList<Transaction> iList = msg.Transactions;
 
             BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
         }
 
-        private ValueTask HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        private ValueTask HandleSlow((IDisposableReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
-            IList<Transaction> transactions = request.txs;
+            IDisposableReadOnlyList<Transaction> transactions = request.txs;
             int startIdx = request.startIndex;
 
             bool isTrace = Logger.IsTrace;
@@ -282,6 +282,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                 PrepareAndSubmitTransaction(transactions[i], isTrace);
             }
+            transactions.Dispose();
             return ValueTask.CompletedTask;
         }
 

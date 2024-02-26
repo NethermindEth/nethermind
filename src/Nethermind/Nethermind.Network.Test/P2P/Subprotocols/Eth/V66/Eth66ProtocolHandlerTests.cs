@@ -9,6 +9,7 @@ using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -207,7 +208,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Can_handle_pooled_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            var msg65 = new PooledTransactionsMessage(new[] { tx });
+            var msg65 = new PooledTransactionsMessage(new ArrayPoolList<Transaction>() { tx });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();

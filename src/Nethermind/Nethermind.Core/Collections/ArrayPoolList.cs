@@ -259,9 +259,9 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IDisposableReadOnlyList<
 
     private static bool IsCompatibleObject(object? value) => value is T || value is null && default(T) is null;
 
-    public static ArrayPoolList<BlockHeader> Empty()
+    public static ArrayPoolList<T> Empty()
     {
-        return new ArrayPoolList<BlockHeader>(0);
+        return new ArrayPoolList<T>(0);
     }
 
     private struct ArrayPoolListEnumerator : IEnumerator<T>

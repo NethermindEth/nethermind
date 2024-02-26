@@ -175,7 +175,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 if (hashes.Count == NewPooledTransactionHashesMessage.MaxCount)
                 {
                     SendMessage(hashes);
-                    hashes.Clear();
+                    hashes = new(NewPooledTransactionHashesMessage.MaxCount);
                 }
 
                 if (tx.Hash is not null)

@@ -5,7 +5,9 @@ using System.Collections.Generic;
 using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
@@ -32,7 +34,7 @@ public class TransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        TransactionsMessage message = new(new[] { transaction, transaction });
+        TransactionsMessage message = new(new ArrayPoolList<Transaction>() { transaction, transaction });
         SerializerTester.TestZero(serializer, message,
             "e2d08203e8640a80822710830405061b0102d08203e8640a80822710830405061b0102");
     }
@@ -52,7 +54,7 @@ public class TransactionsMessageSerializerTests
         transaction.Hash = transaction.CalculateHash();
         transaction.SenderAddress = null;
 
-        TransactionsMessage message = new(new[] { transaction, transaction });
+        TransactionsMessage message = new(new ArrayPoolList<Transaction>() { transaction, transaction });
         SerializerTester.TestZero(serializer, message,
             "f84ae48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102e48203e8640a94b7705ae4c6f81b66cdb323c65f4e8133690fc099822710830102031b0102");
     }
@@ -61,7 +63,7 @@ public class TransactionsMessageSerializerTests
     public void Can_handle_empty()
     {
         TransactionsMessageSerializer serializer = new();
-        TransactionsMessage message = new(new Transaction[] { });
+        TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
 
         SerializerTester.TestZero(serializer, message);
     }
@@ -69,7 +71,7 @@ public class TransactionsMessageSerializerTests
     [Test]
     public void To_string_empty()
     {
-        TransactionsMessage message = new(new Transaction[] { });
+        TransactionsMessage message = new(ArrayPoolList<Transaction>.Empty());
         TransactionsMessage message2 = new(null);
 
         _ = message.ToString();
@@ -103,7 +105,7 @@ public class TransactionsMessageSerializerTests
     }
 
     private static IEnumerable<TransactionsMessage> GetTransactionMessages() =>
-        GetTransactions().Select(txs => new TransactionsMessage(txs.ToList()));
+        GetTransactions().Select(txs => new TransactionsMessage(txs.ToPooledList()));
 
     public static IEnumerable<IEnumerable<Transaction>> GetTransactions()
     {

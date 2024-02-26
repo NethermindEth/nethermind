@@ -138,7 +138,7 @@ namespace Nethermind.AccountAbstraction.Network
                 if (uopsToSend.Count == maxCapacity)
                 {
                     SendMessage(uopsToSend);
-                    uopsToSend.Clear();
+                    uopsToSend = new(maxCapacity);
                 }
 
                 // TODO: Why this check
