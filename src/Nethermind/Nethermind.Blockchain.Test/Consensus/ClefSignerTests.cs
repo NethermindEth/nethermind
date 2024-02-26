@@ -43,12 +43,12 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
-            Task<string?> postMethod = client.Post<string>("account_signData", "account/x-clique-header", Arg.Any<string>(), Keccak.Zero);
+            Task<string?> postMethod = client.Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
             var returnValue = (new byte[65]).ToHexString();
             postMethod.Returns(returnValue);
             ClefSigner sut = await ClefSigner.Create(client, 0);
 
-            var result = sut.SignCliqueHeader(new byte[1]);
+            var result = sut.SignCliqueHeader(Keccak.Zero.Bytes.ToArray());
 
             Assert.That(new Signature(returnValue).Bytes, Is.EqualTo(result.Bytes));
         }
@@ -60,7 +60,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
-            Task<string?> postMethod = client.Post<string>("account_signData", "account/x-clique-header", Arg.Any<string>(), Keccak.Zero);
+            Task<string?> postMethod = client.Post<string>("account_signData", "application/x-clique-header", Arg.Any<string>(), Arg.Any<string>());
             var returnValue = (new byte[65]);
             returnValue[64] = recId;
             postMethod.Returns(returnValue.ToHexString());
@@ -68,7 +68,7 @@ namespace Nethermind.Blockchain.Test.Consensus
 
             var result = sut.SignCliqueHeader(new byte[1]);
 
-            Assert.That(new Signature(returnValue).V, Is.EqualTo(expected));
+            Assert.That(result.V, Is.EqualTo(expected));
         }
 
         [Test]
@@ -83,14 +83,12 @@ namespace Nethermind.Blockchain.Test.Consensus
         }
 
         [Test]
-        public async Task Create_SignerAddressDoesNotExists_ThrowInvalidOperationException()
+        public void Create_SignerAddressDoesNotExists_ThrowInvalidOperationException()
         {
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString(), TestItem.AddressB!.ToString()]));
 
-            ClefSigner sut = await ClefSigner.Create(client, 0, TestItem.AddressC);
-
-            Assert.That(() => ClefSigner.Create(client, 0, TestItem.AddressC), Throws.InstanceOf<InvalidOperationException>());
+            Assert.That(async () => await ClefSigner.Create(client, 0, TestItem.AddressC), Throws.InstanceOf<InvalidOperationException>());
         }
 
         [Test]
