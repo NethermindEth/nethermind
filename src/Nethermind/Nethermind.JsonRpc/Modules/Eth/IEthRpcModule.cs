@@ -59,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
             ExampleResponse = "0x4a817c800")]
         ResultWrapper<UInt256?> eth_gasPrice();
 
-        [JsonRpcMethod(IsImplemented = false,
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns the base fee per blob gas in wei",
             IsSharable = true,
             ExampleResponse = "0x1")]
