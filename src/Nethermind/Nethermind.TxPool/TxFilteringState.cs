@@ -7,14 +7,13 @@ namespace Nethermind.TxPool;
 
 public class TxFilteringState(Transaction tx, IAccountStateProvider accounts)
 {
-    private static readonly AccountStruct _defaultAccount = default;
-    private AccountStruct _senderAccount = _defaultAccount;
+    private AccountStruct _senderAccount;
 
     public AccountStruct SenderAccount
     {
         get
         {
-            if (_senderAccount == _defaultAccount)
+            if (_senderAccount.IsNull)
             {
                 accounts.TryGetAccount(tx.SenderAddress!, out _senderAccount);
             }
