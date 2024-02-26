@@ -7,6 +7,7 @@ using Nethermind.Consensus;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
@@ -75,21 +76,31 @@ namespace Nethermind.Blockchain.Test.Consensus
         {
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString(), TestItem.AddressB!.ToString()]));
-            
+
             ClefSigner sut = await ClefSigner.Create(client, 0, TestItem.AddressB);
 
             Assert.That(sut.Address, Is.EqualTo(TestItem.AddressB));
         }
 
         [Test]
-        public async Task Create_SignerAddressDoesNotExists_Throw()
+        public async Task Create_SignerAddressDoesNotExists_ThrowInvalidOperationException()
         {
             IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
             client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString(), TestItem.AddressB!.ToString()]));
 
             ClefSigner sut = await ClefSigner.Create(client, 0, TestItem.AddressC);
 
-            Assert.That(()=> ClefSigner.Create(client, 0, TestItem.AddressC), Throws.InstanceOf<InvalidOperationException>());
+            Assert.That(() => ClefSigner.Create(client, 0, TestItem.AddressC), Throws.InstanceOf<InvalidOperationException>());
+        }
+
+        [Test]
+        public async Task SetSigner_TryingToASigner_ThrowInvalidOperationException()
+        {
+            IJsonRpcClient client = Substitute.For<IJsonRpcClient>();
+            client.Post<string[]>("account_list").Returns(Task.FromResult<string[]?>([TestItem.AddressA!.ToString()]));
+            ClefSigner sut = await ClefSigner.Create(client, 0);
+
+            Assert.That(() => sut.SetSigner(Build.A.PrivateKey.TestObject), Throws.InstanceOf<InvalidOperationException>());
         }
     }
 }

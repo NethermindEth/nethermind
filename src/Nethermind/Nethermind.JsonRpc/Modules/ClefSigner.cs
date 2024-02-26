@@ -18,7 +18,7 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc;
-public class ClefSigner : ISigner, ISignerStore 
+public class ClefSigner : ISigner, ISignerStore
 {
     private readonly IJsonRpcClient rpcClient;
     private readonly ulong _chainId;
@@ -32,7 +32,7 @@ public class ClefSigner : ISigner, ISignerStore
 
     public static async Task<ClefSigner> Create(IJsonRpcClient jsonRpcClient, ulong chainId, Address? blockAuthorAccount = null)
     {
-        ClefSigner signer =new (jsonRpcClient, chainId);
+        ClefSigner signer = new(jsonRpcClient, chainId);
         await signer.SetSignerAddress(blockAuthorAccount);
         return signer;
     }
@@ -44,7 +44,7 @@ public class ClefSigner : ISigner, ISignerStore
     public PrivateKey? Key => throw new InvalidOperationException("Cannot get private keys from remote signer.");
 
     /// <summary>
-    /// Clef will not sign data directly, but will evaluate and sign data in the format: 
+    /// Clef will not sign data directly, but will parse and sign data in the format: 
     /// keccak256("\x19Ethereum Signed Message:\n${message length}${message}")
     /// </summary>
     /// <param name="message">Message to be signed.</param>
@@ -82,7 +82,7 @@ public class ClefSigner : ISigner, ISignerStore
         //Clef will set recid to 0/1, but we expect it to be 27/28
         if (bytes.Length == 65 && bytes[64] == 0 || bytes[64] == 1)
             //We expect V to be 27/28
-            bytes[64] += 27; 
+            bytes[64] += 27;
 
         return new Signature(bytes);
     }
@@ -99,7 +99,7 @@ public class ClefSigner : ISigner, ISignerStore
         }
         if (blockAuthorAccount != null)
         {
-            if (accounts.Any(a=>new Address(a).Bytes.SequenceEqual(blockAuthorAccount.Bytes)))
+            if (accounts.Any(a => new Address(a).Bytes.SequenceEqual(blockAuthorAccount.Bytes)))
                 Address = blockAuthorAccount;
             else
                 throw new InvalidOperationException($"Remote signer cannot sign for {blockAuthorAccount}.");
@@ -133,8 +133,8 @@ public class ClefSigner : ISigner, ISignerStore
 
     private class RemoteTxSignResponse
     {
-        public string Raw { get; set;}
-        public TransactionForRpc Tx { get; set;}
+        public string Raw { get; set; }
+        public TransactionForRpc Tx { get; set; }
     }
 }
 

@@ -4,10 +4,8 @@
 using System;
 using System.IO;
 using System.Net.Http;
-using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using Microsoft.AspNetCore.Http;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -22,9 +20,7 @@ using Nethermind.Db.Blooms;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 using Nethermind.Network;
-using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -94,7 +90,7 @@ namespace Nethermind.Init.Steps
                     signer = signerAndStore;
                     signerStore = signerAndStore;
                 }
-            }                               
+            }
 
             _set.EngineSigner = signer;
             _set.EngineSignerStore = signerStore;

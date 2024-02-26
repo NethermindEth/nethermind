@@ -7,11 +7,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
