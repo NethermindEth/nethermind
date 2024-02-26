@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -16,6 +18,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
     {
         public static readonly byte[] Code0 = { 0, 0 };
         public static readonly byte[] Code1 = { 0, 1 };
+
+        [Test]
+        public void Roundtrip_NoAccountsNoProofs_HasCorrectLength()
+        {
+            AccountRangeMessage msg = new()
+            {
+                RequestId = 1,
+                PathsWithAccounts = System.Array.Empty<PathWithAccount>(),
+                Proofs = Array.Empty<byte[]>()
+            };
+
+            AccountRangeMessageSerializer serializer = new();
+            serializer.Serialize(msg).ToHexString().Should().Be("c301c0c0");
+        }
 
         [Test]
         public void Roundtrip_NoAccountsNoProofs()

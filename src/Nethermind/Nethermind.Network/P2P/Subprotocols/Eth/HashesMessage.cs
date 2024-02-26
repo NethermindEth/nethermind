@@ -21,5 +21,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         {
             return $"{GetType().Name}({Hashes.Count})";
         }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            if (Hashes is IDisposable disposable) disposable.Dispose();
+        }
     }
 }

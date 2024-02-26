@@ -124,27 +124,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
-                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString(), size);
-                    ScheduleSyncServe(getBlockBodiesMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockBodiesMessage, Handle);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString(), size);
-                    ScheduleSyncServe(getReceiptsMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString(), size);
-                    ScheduleSyncServe(getContractCodesMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getContractCodesMessage, Handle);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString(), size);
-                    ScheduleSyncServe(getHelperTrieProofsMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getHelperTrieProofsMessage, Handle);
                     break;
             }
         }
