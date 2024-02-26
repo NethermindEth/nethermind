@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Sockets;
+using System.IO;
 
 namespace Nethermind.JsonRpc
 {
@@ -33,7 +34,7 @@ namespace Nethermind.JsonRpc
         private void BuildUrls(bool includeWebSockets)
         {
             bool HasEngineApi = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
-            JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, HasEngineApi, _jsonRpcConfig.EnabledModules, HasEngineApi ? SocketClient.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize);
+            JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, HasEngineApi, _jsonRpcConfig.EnabledModules, HasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize);
             string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
             if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
             {
@@ -87,7 +88,7 @@ namespace Nethermind.JsonRpc
             }
             JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
                 RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray(),
-                SocketClient.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+                SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
             if (ContainsKey(url.Port))
             {

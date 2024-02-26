@@ -311,13 +311,35 @@ public class TransactionProcessorTests
             .TestObject;
         Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
 
-        long blockNumber = _isEip155Enabled
-            ? MainnetSpecProvider.ByzantiumBlockNumber
-            : MainnetSpecProvider.ByzantiumBlockNumber - 1;
-        Block block = Build.A.Block.WithNumber(blockNumber).WithTransactions(tx).TestObject;
-        TransactionResult result = Execute(tx, block);
-        Assert.That(result.Fail, Is.True);
+        EstimateGasTracer tracer = new();
+        BlocksConfig blocksConfig = new();
+        GasEstimator estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
+
+        return estimator.Estimate(tx, block.Header, tracer);
     }
+
+    public static IEnumerable<TestCaseData> EstimateWithHighTxValueTestCases
+    {
+        get
+        {
+            yield return new TestCaseData((UInt256)1)
+            { TestName = "Sanity check", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - 1)
+            { TestName = "Less than account balance", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction)
+            { TestName = "Account balance - tx cost", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance - GasCostOf.Transaction + 1)
+            { TestName = "More than (account balance - tx cost)", ExpectedResult = GasCostOf.Transaction };
+            yield return new TestCaseData(AccountBalance)
+            { TestName = "Exactly account balance", ExpectedResult = GasCostOf.Transaction };
+
+            yield return new TestCaseData(AccountBalance + 1)
+            { TestName = "More than account balance", ExpectedResult = 0L };
+            yield return new TestCaseData(UInt256.MaxValue)
+            { TestName = "Max value possible", ExpectedResult = 0L };
+        }
+    }
+
 
     [TestCase(562949953421312ul)]
     [TestCase(562949953421311ul)]
