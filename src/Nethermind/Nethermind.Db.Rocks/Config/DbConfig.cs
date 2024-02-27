@@ -24,7 +24,7 @@ public class DbConfig : IDbConfig
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? DisableCompression { get; set; } = false;
-    public ulong? CompactionReadAhead { get; set; }
+    public ulong? CompactionReadAhead { get; set; } = (ulong)256.KiB();
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
