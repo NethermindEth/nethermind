@@ -20,10 +20,12 @@ using Nethermind.Verkle.Curve;
 
 namespace Nethermind.Consensus.Processing;
 
-public class StatelessBlockProcessor : BlockProcessor
+public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
 {
     private readonly ILogger _logger;
     private readonly ILogManager _logManager;
+
+    bool IBlockProcessor.CanProcessStatelessBlock => true;
 
     public StatelessBlockProcessor(
         ISpecProvider? specProvider,
@@ -57,7 +59,7 @@ public class StatelessBlockProcessor : BlockProcessor
 
     }
 
-    private (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
+    protected override (IBlockProcessor.IBlockTransactionsExecutor, IWorldState) GetOrCreateExecutorAndState(Block block)
     {
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor;
         IWorldState worldState;
@@ -75,46 +77,5 @@ public class StatelessBlockProcessor : BlockProcessor
         }
 
         return (blockTransactionsExecutor, worldState);
-    }
-
-    protected override TxReceipt[] ProcessBlock(
-        Block block,
-        IBlockTracer blockTracer,
-        ProcessingOptions options)
-    {
-        (IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor, IWorldState worldState) =
-            GetOrCreateExecutorAndState(block);
-
-        IReleaseSpec spec = _specProvider.GetSpec(block.Header);
-
-        ExecutionTracer.SetOtherTracer(blockTracer);
-        ExecutionTracer.StartNewBlockTrace(block);
-        TxReceipt[] receipts = blockTransactionsExecutor.ProcessTransactions(block, options, ExecutionTracer, spec);
-
-        block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
-        ApplyMinerRewards(block, blockTracer, spec);
-        _withdrawalProcessor.ProcessWithdrawals(block, ExecutionTracer, spec);
-        ExecutionTracer.EndBlockTrace();
-
-        // if we are producing blocks - then calculate and add the witness to the block
-        // but we need to remember that the witness needs to be generate for the parent block state (for pre state)
-        // byte[][]? usedKeysCac = _receiptsTracer.WitnessKeys.ToArray();
-        // _logger.Info($"UsedKeys {usedKeysCac.Length}");
-        // foreach (var key in usedKeysCac)
-        // {
-        //     _logger.Info($"{key.ToHexString()}");
-        // }
-        if (options.ContainsFlag(ProcessingOptions.ProducingBlock) && spec.IsVerkleTreeEipEnabled && !block.IsGenesis)
-        {
-            throw new InvalidOperationException($"{nameof(StatelessBlockProcessor)} cannot produce new block.");
-        }
-
-        worldState.Commit(spec);
-        worldState.RecalculateStateRoot();
-
-        block.Header.StateRoot = worldState.StateRoot;
-        block.Header.Hash = block.Header.CalculateHash();
-
-        return receipts;
     }
 }

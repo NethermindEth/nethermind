@@ -201,7 +201,8 @@ namespace Nethermind.Init.Steps
             BlockProcessor processor;
             if (initConfig.StatelessProcessingEnabled)
             {
-                processor = new StatelessBlockProcessor(_api.SpecProvider,
+                processor = new StatelessBlockProcessor(
+                    _api.SpecProvider,
                     _api.BlockValidator,
                     _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
                     new BlockProcessor.BlockStatelessValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState!),
@@ -213,7 +214,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                processor = new(
+                processor = new BlockProcessor(
                     _api.SpecProvider,
                     _api.BlockValidator,
                     _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
@@ -222,18 +223,11 @@ namespace Nethermind.Init.Steps
                     _api.ReceiptStorage,
                     _api.WitnessCollector,
                     _api.BlockTree,
-                    _api.LogManager);
-
-                if (initConfig.StatelessProcessingEnabled)
+                    _api.LogManager)
                 {
-                    processor.StatelessBlockTransactionsExecutor =
-                        new BlockProcessor.BlockStatelessValidationTransactionsExecutor(_api.TransactionProcessor,
-                            _api.WorldState!);
-                    processor.ShouldDoStatelessStuff = true;
-                }
-
-                processor.ShouldGenerateWitness = initConfig.GenerateVerkleProofsForBlock;
-                processor.ShouldVerifyIncomingWitness = initConfig.VerifyProofsInBlock;
+                    ShouldGenerateWitness = initConfig.GenerateVerkleProofsForBlock,
+                    ShouldVerifyIncomingWitness = initConfig.VerifyProofsInBlock
+                };
             }
 
             return processor;

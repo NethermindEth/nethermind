@@ -10,7 +10,7 @@ public class BasicTestVerkleBlockchain : TestVerkleBlockchain
 {
     public static async Task<BasicTestVerkleBlockchain> Create()
     {
-        BasicTestVerkleBlockchain chain = new BasicTestVerkleBlockchain();
+        var chain = new BasicTestVerkleBlockchain();
         await chain.Build();
         return chain;
     }
