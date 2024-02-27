@@ -249,7 +249,9 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         processingOptions = _defaultProcessingOptions;
 
         BlockInfo? parentBlockInfo = _blockTree.GetInfo(parent.Number, parent.GetOrCalculateHash()).Info;
-        bool parentProcessed = parentBlockInfo is { WasProcessed: true };
+
+        // when stateless processing enabled we dont need processed parent
+        bool parentProcessed = parentBlockInfo is { WasProcessed: true } || _processStateless;
 
         // During the transition we can have a case of NP built over a transition block that wasn't processed.
         // We want to force process the whole branch then, but not longer than few blocks.
