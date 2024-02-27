@@ -169,10 +169,9 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta", 50)]
+        [TestCase("^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
         [TestCase("volta", 25)]
-        [TestCase("mainnet", 50)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);
