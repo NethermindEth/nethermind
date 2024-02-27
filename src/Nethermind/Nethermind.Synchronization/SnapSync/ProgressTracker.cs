@@ -334,9 +334,12 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void ReportFullStorageRequestFinished(IEnumerable<PathWithAccount> storages = default)
         {
-            foreach (PathWithAccount pathWithAccount in storages)
+            if (storages is not null)
             {
-                EnqueueAccountStorage(pathWithAccount);
+                foreach (PathWithAccount pathWithAccount in storages)
+                {
+                    EnqueueAccountStorage(pathWithAccount);
+                }
             }
 
             Interlocked.Decrement(ref _activeStorageRequests);
