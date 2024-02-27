@@ -324,13 +324,11 @@ public partial class BlockProcessor : IBlockProcessor
 
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
 
-        if (!block.IsGenesis && block.Transactions.Length != 0)
+        if (!block.IsGenesis && block.Transactions.Length != 0 && ExecutionTracer.IsTracingAccessWitness)
         {
-            VerkleWitness? gasWitness = null;
-            if (blockTracer.IsTracingAccessWitness) gasWitness = new VerkleWitness();
-            gasWitness?.AccessForGasBeneficiary(block.Header.GasBeneficiary);
-            // TODO: possibly rename this function to just ReportWitness - can be used for both withdrawal and gasBeneficiary
-            if (blockTracer.IsTracingAccessWitness) blockTracer.ReportAccessWitness(gasWitness);
+            var gasWitness = new VerkleWitness();
+            gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!);
+            ExecutionTracer.ReportAccessWitness(gasWitness);
         }
 
 
