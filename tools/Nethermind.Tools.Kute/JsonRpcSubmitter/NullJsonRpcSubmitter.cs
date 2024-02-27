@@ -8,5 +8,6 @@ namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
 class NullJsonRpcSubmitter : IJsonRpcSubmitter
 {
 
-    public Task<JsonDocument?> Submit(JsonRpc rpc) => Task.FromResult<JsonDocument?>(null);
+    public Task<HttpResponseMessage> Submit(JsonRpc rpc) => Task.FromResult<HttpResponseMessage>(null);
+
 }

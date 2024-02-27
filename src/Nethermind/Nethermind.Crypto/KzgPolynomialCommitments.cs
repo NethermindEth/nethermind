@@ -29,7 +29,7 @@ public static class KzgPolynomialCommitments
 
     public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
 
-    public static Task InitializeAsync(ILogger? logger = null, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
@@ -37,7 +37,7 @@ public static class KzgPolynomialCommitments
             Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
                          string.Empty, "kzg_trusted_setup.txt");
 
-        if (logger?.IsInfo == true)
+        if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
         _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
 

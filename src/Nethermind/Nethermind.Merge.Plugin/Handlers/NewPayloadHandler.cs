@@ -49,7 +49,6 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     public NewPayloadHandler(
         IBlockValidator blockValidator,
         IBlockTree blockTree,
-        IInitConfig initConfig,
         ISyncConfig syncConfig,
         IPoSSwitcher poSSwitcher,
         IBeaconSyncStrategy beaconSyncStrategy,
@@ -60,6 +59,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         IMergeSyncController mergeSyncController,
         ILogManager logManager,
         TimeSpan? timeout = null,
+        bool storeReceipts = true,
         int cacheSize = 50)
     {
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
@@ -73,7 +73,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _invalidChainTracker = invalidChainTracker;
         _mergeSyncController = mergeSyncController;
         _logger = logManager.GetClassLogger();
-        _defaultProcessingOptions = initConfig.StoreReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
+        _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
@@ -87,7 +87,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
     /// <returns></returns>
     public async Task<ResultWrapper<PayloadStatusV1>> HandleAsync(ExecutionPayload request)
     {
-        string requestStr = $"new block:  {request}";
+        string requestStr = $"New Block:  {request}";
         if (_logger.IsInfo) { _logger.Info($"Received {requestStr}"); }
 
         if (!request.TryGetBlock(out Block? block, _poSSwitcher.FinalTotalDifficulty))
@@ -162,13 +162,13 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
 
             BlockTreeInsertHeaderOptions insertHeaderOptions = BlockTreeInsertHeaderOptions.BeaconBlockInsert;
 
-            if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) != null)
+            if (block.Number <= Math.Max(_blockTree.BestKnownNumber, _blockTree.BestKnownBeaconNumber) && _blockTree.FindBlock(block.GetOrCalculateHash(), BlockTreeLookupOptions.TotalDifficultyNotNeeded) is not null)
             {
                 if (_logger.IsInfo) _logger.Info($"Syncing... Block already known in blockTree {block}.");
                 return NewPayloadV1Result.Syncing;
             }
 
-            if (_beaconPivot.ProcessDestination != null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
+            if (_beaconPivot.ProcessDestination is not null && _beaconPivot.ProcessDestination.Hash == block.ParentHash)
             {
                 insertHeaderOptions |= BlockTreeInsertHeaderOptions.MoveToBeaconMainChain; // we're extending our beacon canonical chain
                 _beaconPivot.ProcessDestination = block.Header;
@@ -421,7 +421,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
             // last block inserted is parent of current block, part of the same chain
             Block? current = block;
             Stack<Block> stack = new();
-            while (current != null)
+            while (current is not null)
             {
                 stack.Push(current);
                 Hash256 currentHash = current.Hash!;

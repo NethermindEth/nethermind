@@ -6,15 +6,8 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public enum DbModeHint
-    {
-        Mem,
-        Persisted
-    }
-
     public interface IDbProvider : IDisposable
     {
-        DbModeHint DbMode { get; }
         public IDb StateDb => GetDb<IDb>(DbNames.State);
         public IDb CodeDb => GetDb<IDb>(DbNames.Code);
         public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
@@ -41,5 +34,6 @@ namespace Nethermind.Db
 
         void RegisterDb<T>(string dbName, T db) where T : class, IDb;
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
+        IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
     }
 }

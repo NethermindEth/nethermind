@@ -81,7 +81,7 @@ namespace Nethermind.Synchronization.LesSync
         private static Hash256 GetRootHash(IKeyValueStore db, long sectionIndex)
         {
             byte[]? hash = db[GetRootHashKey(sectionIndex)];
-            return hash == null ? EmptyTreeHash : new Hash256(hash);
+            return hash is null ? EmptyTreeHash : new Hash256(hash);
         }
 
         private static Hash256 GetMaxRootHash(IKeyValueStore db)
@@ -102,8 +102,8 @@ namespace Nethermind.Synchronization.LesSync
 
         public (Hash256?, UInt256) Get(Span<byte> key)
         {
-            byte[]? val = base.Get(key);
-            if (val == null)
+            ReadOnlySpan<byte> val = base.Get(key);
+            if (val.IsEmpty)
             {
                 throw new InvalidDataException("Missing CHT data");
             }
@@ -136,7 +136,7 @@ namespace Nethermind.Synchronization.LesSync
             (Hash256? Hash, UInt256 Value) item = (header.Hash, header.TotalDifficulty.Value);
             RlpStream stream = new(_decoder.GetLength(item, RlpBehaviors.None));
             _decoder.Encode(stream, item);
-            return new Rlp(stream.Data);
+            return new Rlp(stream.Data.ToArray());
         }
     }
 }

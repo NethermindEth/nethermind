@@ -69,7 +69,7 @@ namespace Nethermind.Consensus.Processing
                 }
 
                 Address sender = transaction?.SenderAddress;
-                if (sender != null)
+                if (sender is not null)
                 {
                     blockTransaction.SenderAddress = sender;
 

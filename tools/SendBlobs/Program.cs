@@ -22,6 +22,7 @@ CommandLineApplication app = new() { Name = "SendBlobs" };
 SetupCli.SetupExecute(app);
 SetupCli.SetupDistributeCommand(app);
 SetupCli.SetupReclaimCommand(app);
+SetupCli.SetupSendFileCommand(app);
 
 try
 {

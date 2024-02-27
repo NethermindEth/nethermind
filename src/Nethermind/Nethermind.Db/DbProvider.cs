@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -14,13 +15,6 @@ namespace Nethermind.Db
             new(StringComparer.InvariantCultureIgnoreCase);
         private readonly ConcurrentDictionary<string, object> _registeredColumnDbs =
             new(StringComparer.InvariantCultureIgnoreCase);
-
-        public DbProvider(DbModeHint dbMode)
-        {
-            DbMode = dbMode;
-        }
-
-        public DbModeHint DbMode { get; }
 
         public IDictionary<string, IDb> RegisteredDbs => _registeredDbs;
         public IDictionary<string, object> RegisteredColumnDbs => _registeredColumnDbs;
@@ -83,6 +77,19 @@ namespace Nethermind.Db
             }
 
             _registeredColumnDbs.TryAdd(dbName, db);
+        }
+
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
+        {
+            foreach (KeyValuePair<string, IDb> kv in _registeredDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, kv.Value);
+            }
+
+            foreach (KeyValuePair<string, object> kv in _registeredColumnDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, (IDbMeta)kv.Value);
+            }
         }
     }
 }

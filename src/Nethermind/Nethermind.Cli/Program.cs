@@ -36,12 +36,12 @@ namespace Nethermind.Cli
             app.OnExecute(() =>
             {
                 ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) != null
+                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) is not null
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 
                 var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
-                ILogManager logManager = new OneLoggerLogManager(new CliLogger(cliConsole));
+                ILogManager logManager = new OneLoggerLogManager(new(new CliLogger(cliConsole)));
                 ICliEngine engine = new CliEngine(cliConsole);
                 INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
                 var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);

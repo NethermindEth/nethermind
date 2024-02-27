@@ -33,7 +33,7 @@ namespace Nethermind.Consensus.AuRa
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _ecdsa = ecdsa ?? throw new ArgumentNullException(nameof(ecdsa));
-            _logger = logManager.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger<AuRaSealValidator>() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public IReportingValidator ReportingValidator { get; set; } = NullReportingValidator.Instance;
@@ -75,9 +75,9 @@ namespace Nethermind.Consensus.AuRa
                 // no worries we do this validation later before processing the block
                 if (parent.Hash == _blockTree.Head?.Hash)
                 {
-                    if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step))
+                    if (!_validSealerStrategy.IsValidSealer(_validatorStore.GetValidators(), header.Beneficiary, step, out Address expectedAddress))
                     {
-                        if (_logger.IsError) _logger.Error($"Block from incorrect proposer at block {header.ToString(BlockHeader.Format.FullHashAndNumber)}, step {step} from author {header.Beneficiary}.");
+                        if (_logger.IsError) _logger.Error($"Proposed block is not valid {header.ToString(BlockHeader.Format.FullHashAndNumber)}. Incorrect proposer at step {step}, expected {expectedAddress}, but found {header.Beneficiary}.");
                         return false;
                     }
                 }

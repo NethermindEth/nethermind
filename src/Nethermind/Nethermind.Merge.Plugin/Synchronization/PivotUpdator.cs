@@ -54,7 +54,7 @@ public class PivotUpdator
         _blockCacheService = blockCacheService ?? throw new ArgumentNullException(nameof(blockCacheService));
         _beaconSyncStrategy = beaconSyncStrategy ?? throw new ArgumentNullException(nameof(beaconSyncStrategy));
         _metadataDb = metadataDb ?? throw new ArgumentNullException(nameof(metadataDb));
-        _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
         _maxAttempts = syncConfig.MaxAttemptsToUpdatePivot;
         _attemptsLeft = syncConfig.MaxAttemptsToUpdatePivot;
@@ -234,7 +234,7 @@ public class PivotUpdator
             RlpStream pivotData = new(38); //1 byte (prefix) + 4 bytes (long) + 1 byte (prefix) + 32 bytes (Keccak)
             pivotData.Encode(finalizedBlockNumber);
             pivotData.Encode(finalizedBlockHash);
-            _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data!);
+            _metadataDb.Set(MetadataDbKeys.UpdatedPivotData, pivotData.Data.ToArray()!);
 
             if (_logger.IsInfo) _logger.Info($"New pivot block has been set based on ForkChoiceUpdate from CL. Pivot block number: {finalizedBlockNumber}, hash: {finalizedBlockHash}");
             return true;

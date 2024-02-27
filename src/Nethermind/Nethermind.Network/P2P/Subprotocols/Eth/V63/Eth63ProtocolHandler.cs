@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
@@ -47,11 +48,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             IMessageSerializationService serializer,
             INodeStatsManager nodeStatsManager,
             ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IGossipPolicy gossipPolicy,
             ILogManager logManager,
             ITxGossipPolicy? transactionsGossipPolicy = null)
-            : base(session, serializer, nodeStatsManager, syncServer, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
+            : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
             _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
             _receiptsRequests = new MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)>(Send);
@@ -71,7 +73,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     ReportIn(getReceiptsMessage, size);
-                    Handle(getReceiptsMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -81,7 +83,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                     ReportIn(getNodeDataMessage, size);
-                    Handle(getNodeDataMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -99,27 +101,29 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
-        private void Handle(GetNodeDataMessage msg)
+        private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(FulfillNodeDataRequest(msg));
+            NodeDataMessage response = await FulfillNodeDataRequest(msg, cancellationToken);
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+
+            return response;
         }
 
-        protected NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg)
+        protected Task<NodeDataMessage> FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             if (msg.Hashes.Count > 4096)
             {
                 throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
 
-            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes);
+            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
 
-            return new NodeDataMessage(nodeData);
+            return Task.FromResult(new NodeDataMessage(nodeData));
         }
 
         protected virtual void Handle(NodeDataMessage msg, int size)

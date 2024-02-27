@@ -10,6 +10,7 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
@@ -67,13 +68,14 @@ public class Eth68ProtocolHandlerTests
         _syncManager.Genesis.Returns(_genesisBlock.Header);
         _timerFactory = Substitute.For<ITimerFactory>();
         _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
-        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(true);
+        _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
         _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
         _handler = new Eth68ProtocolHandler(
             _session,
             _svc,
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
+            RunImmediatelyScheduler.Instance,
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
@@ -107,7 +109,7 @@ public class Eth68ProtocolHandlerTests
     [Test]
     public void Can_handle_NewPooledTransactions_message([Values(0, 1, 2, 100)] int txCount, [Values(true, false)] bool canGossipTransactions)
     {
-        _txGossipPolicy.ShouldListenToGossippedTransactions.Returns(canGossipTransactions);
+        _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
 
         GenerateLists(txCount, out List<byte> types, out List<int> sizes, out List<Hash256> hashes);
 
@@ -203,6 +205,7 @@ public class Eth68ProtocolHandlerTests
             _svc,
             new NodeStatsManager(_timerFactory, LimboLogs.Instance),
             _syncManager,
+            RunImmediatelyScheduler.Instance,
             _transactionPool,
             new PooledTxsRequestor(_transactionPool, new TxPoolConfig()),
             _gossipPolicy,

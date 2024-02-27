@@ -6,7 +6,7 @@
   <ItemGroup>
     <DotNetCliToolReference Include="dotnet-xunit" Version="2.3.1" />
     <PackageReference Include="FluentAssertions" />
-    <PackageReference Include="coverlet.msbuild">
+    <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
@@ -20,19 +20,13 @@
     <PackageReference Include="NUnit3TestAdapter" />
   </ItemGroup>
   <ItemGroup>
-    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj">
-      <Project>{B1C9CF07-F89B-4F92-B8A5-F6949B9D3DA5}</Project>
-      <Name>Nethermind.Blockchain</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Blockchain\Nethermind.Blockchain.csproj" />
+    <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Clique\Nethermind.Consensus.Clique.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.Ethash\Nethermind.Consensus.Ethash.csproj" />
-    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj">
-      <Project>{6BAD851C-B0A2-4DFE-A1F3-1C3A634C522B}</Project>
-      <Name>Nethermind.Core.Test</Name>
-    </ProjectReference>
+    <ProjectReference Include="..\Nethermind.Core.Test\Nethermind.Core.Test.csproj" />
     <ProjectReference Include="..\Nethermind.Db.Rocks\Nethermind.Db.Rocks.csproj" />
     <ProjectReference Include="..\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
-    <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\Nethermind.Specs.Test\Nethermind.Specs.Test.csproj" />
   </ItemGroup>
   <ItemGroup>

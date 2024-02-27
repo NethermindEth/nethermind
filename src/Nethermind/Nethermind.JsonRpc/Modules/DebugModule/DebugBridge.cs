@@ -102,9 +102,8 @@ public class DebugBridge : IDebugBridge
         }
 
         Block block = searchResult.Object;
-        ReceiptTrie receiptTrie = new(_specProvider.GetSpec(block.Header), txReceipts);
-        receiptTrie.UpdateRootHash();
-        if (block.ReceiptsRoot != receiptTrie.RootHash)
+        Hash256 root = ReceiptsRootCalculator.Instance.GetReceiptsRoot(txReceipts, _specProvider.GetSpec(block.Header), block.ReceiptsRoot);
+        if (block.ReceiptsRoot != root)
         {
             throw new InvalidDataException("Receipts root mismatch");
         }

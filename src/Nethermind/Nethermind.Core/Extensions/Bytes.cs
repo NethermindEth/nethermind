@@ -27,6 +27,8 @@ namespace Nethermind.Core.Extensions
         public static readonly IEqualityComparer<byte[]?> NullableEqualityComparer = new NullableBytesEqualityComparer();
         public static readonly ISpanEqualityComparer<byte> SpanEqualityComparer = new SpanBytesEqualityComparer();
         public static readonly BytesComparer Comparer = new();
+        public static readonly ReadOnlyMemory<byte> ZeroByte = new byte[] { 0 };
+        public static readonly ReadOnlyMemory<byte> OneByte = new byte[] { 1 };
 
         private class BytesEqualityComparer : EqualityComparer<byte[]>
         {
@@ -198,26 +200,28 @@ namespace Nethermind.Core.Extensions
             return lastIndex < 0 ? bytes.Length : bytes.Length - lastIndex - 1;
         }
 
-        public static Span<byte> WithoutLeadingZeros(this byte[] bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this byte[] bytes)
         {
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
-        public static Span<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)
         {
-            if (bytes == null || bytes.Length == 0) return Array.Empty<byte>();
+            if (bytes is null || bytes.Length == 0) return Array.Empty<byte>();
             return bytes.AsSpan().WithoutLeadingZeros();
         }
 
-        public static Span<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this Span<byte> bytes) =>
+            ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
+
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this Span<byte> bytes)
         {
-            if (bytes.IsNullOrEmpty()) return Array.Empty<byte>();
-            return bytes.WithoutLeadingZeros();
+            return ((ReadOnlySpan<byte>)bytes).WithoutLeadingZeros();
         }
 
-        public static Span<byte> WithoutLeadingZeros(this Span<byte> bytes)
+        public static ReadOnlySpan<byte> WithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            if (bytes.Length == 0) return new byte[] { 0 };
+            if (bytes.Length == 0) return ZeroByte.Span;
 
             int nonZeroIndex = bytes.IndexOfAnyExcept((byte)0);
             // Keep one or it will be interpreted as null
@@ -235,7 +239,10 @@ namespace Nethermind.Core.Extensions
         public static byte[] PadLeft(this byte[] bytes, int length, byte padding = 0)
             => bytes.Length == length ? bytes : bytes.AsSpan().PadLeft(length, padding);
 
-        public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0)
+        public static byte[] PadLeft(this Span<byte> bytes, int length, byte padding = 0) =>
+            ((ReadOnlySpan<byte>)bytes).PadLeft(length, padding);
+
+        public static byte[] PadLeft(this ReadOnlySpan<byte> bytes, int length, byte padding = 0)
         {
             if (bytes.Length == length)
             {
@@ -672,6 +679,11 @@ namespace Nethermind.Core.Extensions
                     ref char charsRef = ref MemoryMarshal.GetReference(chars);
                     OutputBytesToCharHex(ref input, state.Bytes.Length, ref charsRef, state.WithZeroX, state.LeadingZeros);
                 });
+        }
+
+        public static void OutputBytesToByteHex(this Span<byte> bytes, Span<byte> hex, bool extraNibble)
+        {
+            ((ReadOnlySpan<byte>)bytes).OutputBytesToByteHex(hex, extraNibble);
         }
 
         public static void OutputBytesToByteHex(this ReadOnlySpan<byte> bytes, Span<byte> hex, bool extraNibble)

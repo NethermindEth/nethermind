@@ -24,7 +24,7 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<Address, StorageTree> _storages = new();
+        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
 
         /// <summary>
         /// EIP-1283
@@ -60,7 +60,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override byte[] GetCurrentValue(in StorageCell storageCell) =>
+        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
             TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
 
         /// <summary>
@@ -211,7 +211,7 @@ namespace Nethermind.State
         public void CommitTrees(long blockNumber)
         {
             // _logger.Warn($"Storage block commit {blockNumber}");
-            foreach (KeyValuePair<Address, StorageTree> storage in _storages)
+            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
             }
@@ -234,7 +234,7 @@ namespace Nethermind.State
             return value;
         }
 
-        private byte[] LoadFromTree(in StorageCell storageCell)
+        private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             StorageTree tree = GetOrCreateStorage(storageCell.Address);
 

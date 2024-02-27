@@ -42,7 +42,7 @@ public class LightTxDecoder : TxDecoder<Transaction>
         rlpStream.Encode(tx.PoolIndex);
         rlpStream.Encode(tx.GetLength());
 
-        return rlpStream.Data!;
+        return rlpStream.Data.ToArray()!;
     }
 
     public static LightTransaction Decode(byte[] data)

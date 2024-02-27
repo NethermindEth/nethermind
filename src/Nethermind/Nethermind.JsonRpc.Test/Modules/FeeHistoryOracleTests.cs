@@ -324,7 +324,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new(1);
             FeeHistoryOracle feeHistoryOracle = SetUpFeeHistoryManager(newestBlockParameter);
             double[] rewardPercentiles = { 0 };
-            FeeHistoryResults expected = new(0, new UInt256[] { 2, 3, 3 }, new[] { 0.6, 0.25 }, new[] { new UInt256[] { 1 }, new UInt256[] { 0 } });
+            FeeHistoryResults expected = new(0, new UInt256[] { 2, 3, 3 }, new[] { 0.6, 0.25 }, new UInt256[] { 1, 1, 1 }, new[] { 0.5, 0.3333333333333333 }, new[] { new UInt256[] { 1 }, new UInt256[] { 0 } });
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
 
@@ -335,9 +335,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1 
                 Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
-                Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithGasLimit(5)
+                Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithBlobGasUsed(3 * Eip4844Constants.GasPerBlob).WithExcessBlobGas(0).WithGasLimit(5)
                     .WithTransactions(txFirstBlock).TestObject;
-                Block secondBlock = Build.A.Block.WithNumber(1).WithBaseFeePerGas(3).WithGasUsed(2).WithGasLimit(8)
+                Block secondBlock = Build.A.Block.WithNumber(1).WithBaseFeePerGas(3).WithGasUsed(2).WithBlobGasUsed(2 * Eip4844Constants.GasPerBlob).WithExcessBlobGas(0).WithGasLimit(8)
                     .WithTransactions(txSecondBlock).TestObject;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindBlock(blockParameter).Returns(secondBlock);

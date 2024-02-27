@@ -151,14 +151,14 @@ namespace Nethermind.Trie.Test
             public PruningContext ReadAccount(int accountIndex)
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
-                _stateProvider.GetAccount(Address.FromNumber((UInt256)accountIndex));
+                _stateProvider.TryGetAccount(Address.FromNumber((UInt256)accountIndex), out _);
                 return this;
             }
 
             public PruningContext ReadAccountViaStateReader(int accountIndex)
             {
                 _logger.Info($"READ   ACCOUNT {accountIndex}");
-                _stateReader.GetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex));
+                _stateReader.TryGetAccount(_stateProvider.StateRoot, Address.FromNumber((UInt256)accountIndex), out _);
                 return this;
             }
 
@@ -213,7 +213,7 @@ namespace Nethermind.Trie.Test
 
             public PruningContext VerifyStorageValue(int account, UInt256 index, int value)
             {
-                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index))
+                _stateProvider.Get(new StorageCell(Address.FromNumber((UInt256)account), index)).ToArray()
                     .Should().BeEquivalentTo(((UInt256)value).ToBigEndian());
                 return this;
             }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
 
@@ -35,26 +36,27 @@ public enum ExecutionOptions
     /// </summary>
     CommitAndRestore = Commit | Restore | NoValidation
 }
+
 public interface ITransactionProcessor
 {
     /// <summary>
     /// Execute transaction, commit state
     /// </summary>
-    void Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, rollback state
     /// </summary>
-    void CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Execute transaction, keep the state uncommitted
     /// </summary>
-    void BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult BuildUp(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 
     /// <summary>
     /// Call transaction, no validations, commit state
     /// Will NOT charge gas from sender account, so stateDiff will miss gas fee
     /// </summary>
-    void Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
+    TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer);
 }

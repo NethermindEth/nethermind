@@ -20,7 +20,7 @@ public class TraceStorePlugin : INethermindPlugin
     private IDb? _db;
     private TraceStorePruner? _pruner;
     private ILogManager _logManager = null!;
-    private ILogger _logger = null!;
+    private ILogger _logger;
     private ITraceSerializer<ParityLikeTxTrace>? _traceSerializer;
     public string Name => DbName;
     public string Description => "Allows to serve traces without the block state, by saving historical traces to DB.";
@@ -41,7 +41,7 @@ public class TraceStorePlugin : INethermindPlugin
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
-            _db = _api.RocksDbFactory!.CreateDb(new RocksDbSettings(DbName, DbName.ToLower()));
+            _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
             _api.DbProvider!.RegisterDb(DbName, _db);
 
             //Setup pruning if configured

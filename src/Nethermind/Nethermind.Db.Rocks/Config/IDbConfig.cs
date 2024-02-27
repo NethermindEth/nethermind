@@ -30,6 +30,20 @@ public interface IDbConfig : IConfig
     ulong? MaxBytesForLevelBase { get; set; }
     ulong TargetFileSizeBase { get; set; }
     int TargetFileSizeMultiplier { get; set; }
+    bool UseTwoLevelIndex { get; set; }
+    bool UseHashIndex { get; set; }
+    ulong? PrefixExtractorLength { get; set; }
+    bool AllowMmapReads { get; set; }
+    bool VerifyChecksum { get; set; }
+    double MaxBytesForLevelMultiplier { get; set; }
+    ulong? MaxCompactionBytes { get; set; }
+    int MinWriteBufferNumberToMerge { get; set; }
+    ulong? RowCacheSize { get; set; }
+    bool OptimizeFiltersForHits { get; set; }
+    bool OnlyCompressLastLevel { get; set; }
+    long? MaxWriteBufferSizeToMaintain { get; set; }
+    bool UseHashSkipListMemtable { get; set; }
+    int BlockRestartInterval { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -174,7 +188,20 @@ public interface IDbConfig : IConfig
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
+    bool StateDbUseTwoLevelIndex { get; set; }
+    bool StateDbUseHashIndex { get; set; }
+    ulong? StateDbPrefixExtractorLength { get; set; }
+    bool StateDbAllowMmapReads { get; set; }
+    bool StateDbVerifyChecksum { get; set; }
+    double StateDbMaxBytesForLevelMultiplier { get; set; }
+    ulong? StateDbMaxCompactionBytes { get; set; }
+    int StateDbMinWriteBufferNumberToMerge { get; set; }
     ulong? StateDbRowCacheSize { get; set; }
+    bool StateDbOptimizeFiltersForHits { get; set; }
+    bool StateDbOnlyCompressLastLevel { get; set; }
+    long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
+    bool StateDbUseHashSkipListMemtable { get; set; }
+    int StateDbBlockRestartInterval { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>

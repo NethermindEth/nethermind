@@ -52,7 +52,7 @@ namespace Nethermind.TxPool
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private readonly Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
+        private readonly Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
 
         /// <summary>
         /// Indexes transactions
@@ -160,10 +160,10 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
-        public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -485,7 +485,7 @@ namespace Nethermind.TxPool
         }
 
         private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
-            Address address, Account account, EnhancedSortedSet<Transaction> transactions)
+            Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -553,14 +553,11 @@ namespace Nethermind.TxPool
 
         private void UpdateBuckets()
         {
-            _transactions.VerifyCapacity();
             _transactions.UpdatePool(_accounts, _updateBucket);
-
-            _blobTransactions.VerifyCapacity();
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, Account account, EnhancedSortedSet<Transaction> transactions)
+        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
         {
             if (transactions.Count != 0)
             {
@@ -664,7 +661,7 @@ namespace Nethermind.TxPool
         // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)
         {
-            UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
+            UInt256 maxPendingNonce = _accounts.GetNonce(address);
 
             bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
             if (!hasPendingTxs && !(_blobTransactions.GetBucketCount(address) > 0))
@@ -711,7 +708,7 @@ namespace Nethermind.TxPool
             return maxPendingNonce;
         }
 
-        public bool IsKnown(Hash256? hash) => hash != null ? _hashCache.Get(hash) : false;
+        public bool IsKnown(Hash256? hash) => hash is not null ? _hashCache.Get(hash) : false;
 
         public event EventHandler<TxEventArgs>? NewDiscovered;
         public event EventHandler<TxEventArgs>? NewPending;
@@ -732,7 +729,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
+                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256AsKey, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
         }
 
@@ -743,7 +740,7 @@ namespace Nethermind.TxPool
             _timer!.Enabled = true;
         }
 
-        private static void WriteTxPoolReport(ILogger logger)
+        private static void WriteTxPoolReport(in ILogger logger)
         {
             if (!logger.IsInfo)
             {
