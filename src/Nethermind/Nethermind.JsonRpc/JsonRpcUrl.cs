@@ -13,7 +13,7 @@ namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules)
+        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
         {
             Scheme = scheme;
             Host = host;
@@ -21,6 +21,7 @@ namespace Nethermind.JsonRpc
             RpcEndpoint = rpcEndpoint;
             EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
             IsAuthenticated = isAuthenticated;
+            MaxRequestBodySize = maxRequestBodySize;
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
@@ -75,6 +76,7 @@ namespace Nethermind.JsonRpc
             return result;
         }
 
+        public long? MaxRequestBodySize { get; }
         public bool IsAuthenticated { get; }
         public string Scheme { get; set; }
         public string Host { get; set; }

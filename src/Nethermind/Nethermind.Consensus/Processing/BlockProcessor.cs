@@ -217,7 +217,7 @@ public partial class BlockProcessor : IBlockProcessor
         {
             if (_logger.IsWarn) _logger.Warn($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
-            throw new InvalidBlockException(suggestedBlock);
+            throw new InvalidBlockException(suggestedBlock, "invalid hash after block processing");
         }
     }
 
