@@ -13,7 +13,7 @@ namespace Nethermind.Sockets;
 
 public class WebSocketMessageStream : Stream, IMessageBorderPreservingStream
 {
-    private WebSocket _socket;
+    private readonly WebSocket _socket;
     private readonly ILogger _logger;
 
     public WebSocketMessageStream(WebSocket socket, ILogManager logManager)

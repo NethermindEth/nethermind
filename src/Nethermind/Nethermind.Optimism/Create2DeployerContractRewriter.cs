@@ -11,9 +11,9 @@ namespace Nethermind.Optimism;
 
 public class Create2DeployerContractRewriter
 {
-    private IOPConfigHelper _opConfigHelper;
-    private ISpecProvider _specProvider;
-    private IBlockTree _blockTree;
+    private readonly IOPConfigHelper _opConfigHelper;
+    private readonly ISpecProvider _specProvider;
+    private readonly IBlockTree _blockTree;
 
     public Create2DeployerContractRewriter(IOPConfigHelper opConfigHelper, ISpecProvider specProvider, IBlockTree blockTree)
     {

@@ -9,6 +9,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
@@ -44,7 +45,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             long oldestBlockNumber = block!.Number;
             Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
             baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpecFor1559(block!.Number + 1)));
+            Stack<UInt256> baseFeePerBlobGas = new((int)(blockCount + 1));
+            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out UInt256 blobGas);
+            baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
+
             Stack<double> gasUsedRatio = new((int)blockCount);
+            Stack<double> blobGasUsedRatio = new((int)blockCount);
 
             Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0 ? null : new Stack<UInt256[]>((int)blockCount);
 
@@ -52,7 +58,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             {
                 oldestBlockNumber = block.Number;
                 baseFeePerGas.Push(block.BaseFeePerGas);
+                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out blobGas);
+                baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
                 gasUsedRatio.Push(block.GasUsed / (double)block.GasLimit);
+                blobGasUsedRatio.Push((block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock);
                 if (rewards is not null)
                 {
                     List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
@@ -66,7 +75,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 block = _blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
             }
 
-            FeeHistoryResults feeHistoryResults = new(oldestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), rewards?.ToArray());
+            FeeHistoryResults feeHistoryResults = new(oldestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), baseFeePerBlobGas.ToArray(), blobGasUsedRatio.ToArray(), rewards?.ToArray());
             return ResultWrapper<FeeHistoryResults>.Success(feeHistoryResults);
         }
 
