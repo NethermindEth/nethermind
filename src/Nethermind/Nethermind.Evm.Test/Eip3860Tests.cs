@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test
             Assert.That(tracer.StatusCode, Is.EqualTo(StatusCode.Success));
             Assert.That(tracer.ReportedActionErrors.Count, Is.EqualTo(1));
             Assert.That(tracer.ReportedActionErrors[0], Is.EqualTo(EvmExceptionType.OutOfGas));
-            Assert.That(TestState.GetAccount(TestItem.AddressC).Nonce, Is.EqualTo((UInt256)0));
+            Assert.That(TestState.GetNonce(TestItem.AddressC), Is.EqualTo((UInt256)0));
             Assert.That(tracer.GasSpent, Is.EqualTo(_transactionCallCost + contractCreationGasLimit));
         }
 
