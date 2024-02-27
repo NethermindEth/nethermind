@@ -140,6 +140,19 @@ namespace Nethermind.TxPool.Test.Collections
             }
         }
 
+        private class ShrinkableDistinctPool : WithFinalizerDistinctPool
+        {
+            public ShrinkableDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
+                : base(capacity, comparer, distinctComparer, logManager)
+            {
+            }
+
+            public void Shrink(int capacity)
+            {
+                EnsureCapacity(capacity);
+            }
+        }
+
         private class WithFinalizerDistinctPool : DistinctValueSortedPool<int, WithFinalizer, int>
         {
             public WithFinalizerDistinctPool(int capacity, IComparer<WithFinalizer> comparer, IEqualityComparer<WithFinalizer> distinctComparer, ILogManager logManager)
@@ -190,6 +203,46 @@ namespace Nethermind.TxPool.Test.Collections
             _allCount.Should().Be(expectedAllCount);
             _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
             pool.Count.Should().Be(Capacity);
+        }
+
+        [Test]
+        public void Capacity_can_shrink_to_given_value()
+        {
+            IComparer<WithFinalizer> comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
+            {
+                int t1Oddity = t1.Index % 2;
+                int t2Oddity = t2.Index % 2;
+
+                if (t1Oddity.CompareTo(t2Oddity) != 0)
+                {
+                    return t1Oddity.CompareTo(t2Oddity);
+                }
+
+                return t1.Index.CompareTo(t2.Index);
+            });
+
+            var pool = new ShrinkableDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+
+            int capacityMultiplier = 10;
+            int expectedAllCount = Capacity * capacityMultiplier;
+
+            WithFinalizer newOne;
+            for (int i = 0; i < expectedAllCount; i++)
+            {
+                newOne = new WithFinalizer();
+                pool.TryInsert(newOne.Index, newOne);
+            }
+
+            newOne = null;
+
+            CollectAndFinalize();
+
+            _allCount.Should().Be(expectedAllCount);
+            _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
+            pool.Count.Should().Be(Capacity);
+
+            pool.Shrink(Capacity - 5);
+            pool.Count.Should().Be(Capacity -5);
         }
 
         [Test]

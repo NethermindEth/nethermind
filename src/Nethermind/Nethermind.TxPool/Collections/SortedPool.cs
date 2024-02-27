@@ -458,28 +458,31 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
-        protected void EnsureCapacity()
+        protected void EnsureCapacity(int? expectedCapacity = null)
         {
-            if (Count <= _capacity)
+            expectedCapacity ??= _capacity; // expectedCapacity is added for testing purpose. null should be used in production code
+            if (Count <= expectedCapacity)
                 return;
 
             if (_logger.IsWarn)
-                _logger.Warn($"{ShortPoolName} exceeds the config size {Count}/{_capacity}. Trying to repair the pool");
+                _logger.Warn($"{ShortPoolName} exceeds the config size {Count}/{expectedCapacity}. Trying to repair the pool");
 
-            int maxIterations = 10;
+            // Trying to auto-recover TxPool. If this code is executed, it means that something is wrong with our TxPool logic.
+            // However, auto-recover mitigates bad consequences of such bugs.
+            int maxIterations = 10; // We don't want to add an infinite loop, so we can break after a few iterations.
             int iterations = 0;
-            while (Count > _capacity)
+            while (Count > expectedCapacity)
             {
                 ++iterations;
                 if (RemoveLast(out TValue? removed))
                 {
                     if (_logger.IsInfo)
-                        _logger.Info($"Removed the last item {removed} from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                        _logger.Info($"Removed the last item {removed} from the pool, the current state is {Count}/{expectedCapacity}. {GetInfoAboutWorstValues}");
                 }
                 else
                 {
                     if (_logger.IsWarn)
-                        _logger.Warn($"Failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                        _logger.Warn($"Failed to remove the last item from the pool, the current state is {Count}/{expectedCapacity}. {GetInfoAboutWorstValues}");
                     UpdateWorstValue();
                 }
 
