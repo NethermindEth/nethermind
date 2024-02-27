@@ -55,17 +55,30 @@ public partial class EngineModuleTests
         IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
         new(mergeConfig, mockedPayloadService, logManager);
 
+    protected virtual MergeTestStatelessBlockchain CreateStatelessBaseBlockchain(IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null, ILogManager? logManager = null) =>
+        new(mergeConfig, mockedPayloadService, logManager);
+
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
         IPayloadPreparationService? mockedPayloadService = null)
         => await CreateBaseBlockchain(mergeConfig, mockedPayloadService)
             .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
 
+    protected async Task<MergeTestStatelessBlockchain> CreateStatelessBlockchain(IReleaseSpec? releaseSpec = null, IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadService = null)
+        => await CreateStatelessBaseBlockchain(mergeConfig, mockedPayloadService)
+            .Build(new TestSingleReleaseSpecProvider(releaseSpec ?? London.Instance));
+
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
         => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
 
-    private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
+    protected async Task<MergeTestStatelessBlockchain> CreateStatelessBlockchain(ISpecProvider specProvider,
+        ILogManager? logManager = null)
+        => await CreateStatelessBaseBlockchain(null, null, logManager).Build(specProvider);
+
+    private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50, bool statelessProcessingEnabled = false)
     {
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
@@ -96,7 +109,7 @@ public partial class EngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                new InitConfig(),
+                new InitConfig(){StatelessProcessingEnabled = statelessProcessingEnabled},
                 synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
@@ -132,7 +145,9 @@ public partial class EngineModuleTests
             chain.LogManager);
     }
 
-    public class MergeTestBlockchain : TestBlockchain
+
+
+    public class MergeTestBlockchain : TestVerkleBlockchain
     {
         public IMergeConfig MergeConfig { get; set; }
 
@@ -173,7 +188,7 @@ public partial class EngineModuleTests
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-        public sealed override ILogManager LogManager { get; set; } = LimboLogs.Instance;
+        public sealed override ILogManager LogManager { get; set; } = SimpleConsoleLogManager.Instance;
 
         public IEthSyncingInfo? EthSyncingInfo { get; protected set; }
 
@@ -260,14 +275,49 @@ public partial class EngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
-            TestBlockchain chain = await base.Build(specProvider, initialValues);
+            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues);
             return chain;
         }
 
         public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
             (MergeTestBlockchain)await Build(specProvider, null);
+    }
+
+    public class MergeTestStatelessBlockchain(
+        IMergeConfig? mergeConfig = null,
+        IPayloadPreparationService? mockedPayloadPreparationService = null,
+        ILogManager? logManager = null)
+        : MergeTestBlockchain(mergeConfig, mockedPayloadPreparationService, logManager)
+    {
+        protected override IBlockProcessor CreateBlockProcessor()
+        {
+            BlockValidator = CreateBlockValidator();
+            WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            IBlockProcessor processor = new StatelessBlockProcessor(
+                SpecProvider,
+                BlockValidator,
+                NoBlockRewards.Instance,
+                new BlockProcessor.BlockStatelessValidationTransactionsExecutor(TxProcessor, State),
+                State,
+                ReceiptStorage,
+                NullWitnessCollector.Instance,
+                BlockTree,
+                LogManager,
+                WithdrawalProcessor);
+
+            return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
+        }
+
+        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues);
+            return chain;
+        }
+
+        public new async Task<MergeTestStatelessBlockchain> Build(ISpecProvider? specProvider = null) =>
+            (MergeTestStatelessBlockchain)await Build(specProvider, null);
     }
 }
 
@@ -276,6 +326,8 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
     private readonly IBlockProcessor _blockProcessorImplementation;
     public int DelayMs { get; set; }
     public Exception? ExceptionToThrow { get; set; }
+
+    bool IBlockProcessor.CanProcessStatelessBlock => _blockProcessorImplementation.CanProcessStatelessBlock;
 
     public TestBlockProcessorInterceptor(IBlockProcessor baseBlockProcessor, int delayMs)
     {
