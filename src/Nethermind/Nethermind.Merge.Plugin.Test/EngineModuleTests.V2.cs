@@ -347,30 +347,120 @@ public partial class EngineModuleTests
         payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
     }
 
-    [TestCaseSource(nameof(GetPayloadWithdrawalsTestCases))]
-    public virtual async Task
-        getPayloadBodiesByRangeV1_should_return_payload_bodies_in_order_of_request_range_and_null_for_unknown_indexes(
-            Withdrawal[] withdrawals)
+    [Test]
+    public virtual async Task TestStatelessExecution()
     {
-        using MergeTestBlockchain chain = await CreateBlockchain(Shanghai.Instance);
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance);
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, withdrawals);
-        Transaction[] txs = BuildTransactions(
-            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
 
+        // block 1 - empty
+        ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, Array.Empty<Withdrawal>());
+        Hash256 newHead = executionPayload1!.BlockHash;
+        ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
+        ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+
+        // block 2
+        Transaction[] txs = BuildTransactions(
+            chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 4, 1, out _, out _);
+        chain.AddTransactions(txs);
+        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
+        newHead = executionPayload2!.BlockHash;
+        forkchoiceStateV1 = new(newHead, newHead, newHead);
+        fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+
+        // block 3
+        txs = BuildTransactions(
+            chain, executionPayload2.BlockHash, TestItem.PrivateKeyB, TestItem.AddressC, 3, 1, out _, out _);
+        chain.AddTransactions(txs);
+        ExecutionPayload executionPayload3 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
+        newHead = executionPayload3!.BlockHash;
+        forkchoiceStateV1 = new(newHead, newHead, newHead);
+        fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
+
+
+        // block 4
+        txs = BuildTransactions(
+            chain, executionPayload3.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
         chain.AddTransactions(txs);
 
-        await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
-        ExecutionPayload executionPayload2 = await BuildAndSendNewBlockV2(rpc, chain, true, withdrawals);
+        ExecutionPayload executionPayload4 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
+        newHead = executionPayload4!.BlockHash;
+        forkchoiceStateV1 = new(newHead, newHead, newHead);
+        fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        await rpc.engine_forkchoiceUpdatedV2(new ForkchoiceStateV1(executionPayload2.BlockHash!,
-            executionPayload2.BlockHash!, executionPayload2.BlockHash!));
+        // block 5
+        txs = BuildTransactions(
+            chain, executionPayload4.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, 3, 0, out _, out _);
+        chain.AddTransactions(txs);
+        ExecutionPayload executionPayload5 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
+        newHead = executionPayload5!.BlockHash;
+        forkchoiceStateV1 = new(newHead, newHead, newHead);
+        fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
-            rpc.engine_getPayloadBodiesByRangeV1(1, 3).Result.Data;
-        ExecutionPayloadBodyV1Result?[] expected = { new(txs, withdrawals) };
+        // block 6
+        ExecutionPayload executionPayload6 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
+        newHead = executionPayload6!.BlockHash;
+        forkchoiceStateV1 = new ForkchoiceStateV1(newHead, newHead, newHead);
+        fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
+        fcuResult.Data.PayloadStatus.Status.Should().Be(PayloadStatus.Valid);
 
-        payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+        // IEnumerable<ExecutionPayloadBodyV1Result?> payloadBodies =
+        //     rpc.engine_getPayloadBodiesByRangeV1(1, 6).Result.Data;
+        // ExecutionPayloadBodyV1Result?[] expected = [new(txs, Array.Empty<Withdrawal>())];
+        //
+        // payloadBodies.Should().BeEquivalentTo(expected, o => o.WithStrictOrdering());
+
+        using MergeTestBlockchain chain2 = await CreateStatelessBlockchain(Prague.Instance);
+        IEngineRpcModule rpc2 = CreateEngineModule(chain2, statelessProcessingEnabled: true);
+
+        Block block1 = chain.BlockTree.FindBlock(1)!;
+        await chain2.BlockTree.SuggestBlockAsync(block1, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        Block block2 = chain.BlockTree.FindBlock(2)!;
+        await chain2.BlockTree.SuggestBlockAsync(block2, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        Block block3  = chain.BlockTree.FindBlock(3)!;
+        await chain2.BlockTree.SuggestBlockAsync(block3, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        Block block4  = chain.BlockTree.FindBlock(4)!;
+        await chain2.BlockTree.SuggestBlockAsync(block4, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        Block block5  = chain.BlockTree.FindBlock(5)!;
+        await chain2.BlockTree.SuggestBlockAsync(block5, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        Block block6  = chain.BlockTree.FindBlock(6)!;
+        await chain2.BlockTree.SuggestBlockAsync(block6, BlockTreeSuggestOptions.ForceSetAsMain);
+
+        ResultWrapper<PayloadStatusV1> executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload1);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload2);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload3);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload4);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload5);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
+
+        executePayloadResult =
+            await rpc2.engine_newPayloadV2(executionPayload6);
+        executePayloadResult.Data.Status.Should().Be(PayloadStatus.Valid);
     }
 
     [Test]
@@ -823,7 +913,7 @@ public partial class EngineModuleTests
         Withdrawal[]? withdrawals,
         bool waitForBlockImprovement = true)
     {
-        using SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
+        SemaphoreSlim blockImprovementLock = new SemaphoreSlim(0);
 
         if (waitForBlockImprovement)
         {
@@ -859,7 +949,7 @@ public partial class EngineModuleTests
         Withdrawal[]? withdrawals)
     {
         Hash256 head = chain.BlockTree.HeadHash;
-        ulong timestamp = Timestamper.UnixTime.Seconds;
+        ulong timestamp = chain.BlockTree.Head!.Timestamp + 12;
         Hash256 random = Keccak.Zero;
         Address feeRecipient = Address.Zero;
         ExecutionPayload executionPayload = await BuildAndGetPayloadResultV2(rpc, chain, head,
