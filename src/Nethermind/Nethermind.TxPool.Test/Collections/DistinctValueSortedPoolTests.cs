@@ -168,23 +168,23 @@ namespace Nethermind.TxPool.Test.Collections
             protected override int GetKey(WithFinalizer value) => value.Index;
         }
 
+        IComparer<WithFinalizer> _comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
+        {
+            int t1Oddity = t1.Index % 2;
+            int t2Oddity = t2.Index % 2;
+
+            if (t1Oddity.CompareTo(t2Oddity) != 0)
+            {
+                return t1Oddity.CompareTo(t2Oddity);
+            }
+
+            return t1.Index.CompareTo(t2.Index);
+        });
+
         [Test]
         public void Capacity_is_never_exceeded()
         {
-            IComparer<WithFinalizer> comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
-            {
-                int t1Oddity = t1.Index % 2;
-                int t2Oddity = t2.Index % 2;
-
-                if (t1Oddity.CompareTo(t2Oddity) != 0)
-                {
-                    return t1Oddity.CompareTo(t2Oddity);
-                }
-
-                return t1.Index.CompareTo(t2.Index);
-            });
-
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -205,23 +205,16 @@ namespace Nethermind.TxPool.Test.Collections
             pool.Count.Should().Be(Capacity);
         }
 
-        [Test]
-        public void Capacity_can_shrink_to_given_value()
+        [TestCase(0,16)]
+        [TestCase(1,15)]
+        [TestCase(2,14)]
+        [TestCase(6,10)]
+        [TestCase(10,6)]
+        [TestCase(11,6)]
+        [TestCase(13,6)]
+        public void Capacity_can_shrink_to_given_value(int shrinkValue, int expectedCapacity)
         {
-            IComparer<WithFinalizer> comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
-            {
-                int t1Oddity = t1.Index % 2;
-                int t2Oddity = t2.Index % 2;
-
-                if (t1Oddity.CompareTo(t2Oddity) != 0)
-                {
-                    return t1Oddity.CompareTo(t2Oddity);
-                }
-
-                return t1.Index.CompareTo(t2.Index);
-            });
-
-            var pool = new ShrinkableDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            var pool = new ShrinkableDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
             int expectedAllCount = Capacity * capacityMultiplier;
@@ -237,31 +230,14 @@ namespace Nethermind.TxPool.Test.Collections
 
             CollectAndFinalize();
 
-            _allCount.Should().Be(expectedAllCount);
-            _finalizedCount.Should().BeLessOrEqualTo(expectedAllCount - Capacity);
-            pool.Count.Should().Be(Capacity);
-
-            pool.Shrink(Capacity - 5);
-            pool.Count.Should().Be(Capacity -5);
+            pool.Shrink(Capacity - shrinkValue);
+            pool.Count.Should().Be(expectedCapacity);
         }
 
         [Test]
         public void Capacity_is_never_exceeded_when_there_are_duplicates()
         {
-            Comparer<WithFinalizer> comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
-            {
-                int t1Oddity = t1.Index % 2;
-                int t2Oddity = t2.Index % 2;
-
-                if (t1Oddity.CompareTo(t2Oddity) != 0)
-                {
-                    return t1Oddity.CompareTo(t2Oddity);
-                }
-
-                return t1.Index.CompareTo(t2.Index);
-            });
-
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             int capacityMultiplier = 10;
 
@@ -285,20 +261,7 @@ namespace Nethermind.TxPool.Test.Collections
             _finalizedCount.Should().Be(0);
             _allCount.Should().Be(0);
 
-            IComparer<WithFinalizer> comparer = Comparer<WithFinalizer>.Create((t1, t2) =>
-            {
-                int t1Oddity = t1.Index % 2;
-                int t2Oddity = t2.Index % 2;
-
-                if (t1Oddity.CompareTo(t2Oddity) != 0)
-                {
-                    return t1Oddity.CompareTo(t2Oddity);
-                }
-
-                return t1.Index.CompareTo(t2.Index);
-            });
-
-            var pool = new WithFinalizerDistinctPool(Capacity, comparer, new WithFinalizerComparer(), LimboLogs.Instance);
+            var pool = new WithFinalizerDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
 
             void KeepGoing(int iterations)
             {
