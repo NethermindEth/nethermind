@@ -5,6 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -496,32 +498,38 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
         catch (InvalidBlockException ex)
         {
-            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = ex.InvalidBlock, });
-
             invalidBlockHash = ex.InvalidBlock.Hash;
+            Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
+            if (invalidBlock is not null)
+            {
+                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
+                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
+                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
+                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
 
-            BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger,
-                (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                (_options.DumpOptions & DumpOptions.RlpLog) != 0);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new BlockReceiptsTracer(),
+                    DumpOptions.Receipts);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new BlockReceiptsTracer(),
-                DumpOptions.Receipts);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                    DumpOptions.Parity);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                DumpOptions.Parity);
-
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
-                DumpOptions.Geth);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
+                    DumpOptions.Geth);
+            }
+            else
+            {
+                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
+            }
 
             processedBlocks = null;
         }
