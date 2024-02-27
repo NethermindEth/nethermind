@@ -61,7 +61,7 @@ namespace Nethermind.Merge.Plugin.Test
                     .SignedAndResolved(from).TestObject;
 
             parentHeader = chain.BlockTree.FindHeader(parentHash, BlockTreeLookupOptions.None)!;
-            AccountStruct account = chain.StateReader.GetAccount(parentHeader.StateRoot!, from.Address)!.Value;
+            chain.StateReader.TryGetAccount(parentHeader.StateRoot!, from.Address, out AccountStruct account);
             accountFrom = account;
 
             return Enumerable.Range(0, (int)count).Select(i => BuildTransaction((uint)i, account)).ToArray();

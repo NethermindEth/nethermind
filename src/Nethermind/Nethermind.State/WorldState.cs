@@ -59,9 +59,10 @@ namespace Nethermind.State
             return _stateProvider.GetAccount(address);
         }
 
-        AccountStruct IAccountStateProvider.GetAccount(Address address)
+        bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            return _stateProvider.GetAccount(address).ToStruct();
+            account = _stateProvider.GetAccount(address).ToStruct();
+            return !account.IsTotallyEmpty;
         }
 
         public bool IsContract(Address address)
@@ -154,38 +155,21 @@ namespace Nethermind.State
             _stateProvider.TouchCode(codeHash);
         }
 
-        public UInt256 GetNonce(Address address)
-        {
-            return _stateProvider.GetNonce(address);
-        }
-        public UInt256 GetBalance(Address address)
-        {
-            return _stateProvider.GetBalance(address);
-        }
-        public ValueHash256 GetStorageRoot(Address address)
-        {
-            return _stateProvider.GetStorageRoot(address);
-        }
-        public byte[] GetCode(Address address)
-        {
-            return _stateProvider.GetCode(address);
-        }
-        public byte[] GetCode(Hash256 codeHash)
-        {
-            return _stateProvider.GetCode(codeHash);
-        }
+        public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
-        public byte[] GetCode(ValueHash256 codeHash)
-        {
-            return _stateProvider.GetCode(codeHash);
-        }
+        public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
 
-        public Hash256 GetCodeHash(Address address)
-        {
-            return _stateProvider.GetCodeHash(address);
-        }
+        public ValueHash256 GetStorageRoot(Address address) => _stateProvider.GetStorageRoot(address);
 
-        ValueHash256 IReadOnlyStateProvider.GetCodeHash(Address address)
+        public byte[] GetCode(Address address) => _stateProvider.GetCode(address);
+
+        public byte[] GetCode(Hash256 codeHash) => _stateProvider.GetCode(codeHash);
+
+        public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
+
+        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
+
+        ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
         {
             return _stateProvider.GetCodeHash(address);
         }
