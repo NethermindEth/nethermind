@@ -124,8 +124,9 @@ public partial class VerkleTree
                 }
                 else
                 {
-                    extStatus.Add(ExtPresent.None);
-                    depthsByStem.Add((byte)i);
+                    bool newStem = stemList.Add(parentPath);
+                    if (newStem) extStatus.Add(ExtPresent.None);
+                    if (newStem) depthsByStem.Add((byte)i);
                 }
 
                 // reaching here means end of the path for the leaf

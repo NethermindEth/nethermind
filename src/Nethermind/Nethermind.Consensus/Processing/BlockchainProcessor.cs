@@ -37,8 +37,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     public ITracerBag Tracers => _compositeBlockTracer;
 
     private readonly IBlockProcessor _blockProcessor;
-    private readonly IBlockProcessor? _statelessBlockProcessor;
-    private bool _canProcessStatelessBlocks = false;
     private readonly IBlockPreprocessorStep _recoveryStep;
     private readonly IStateReader _stateReader;
     private readonly Options _options;
@@ -86,41 +84,6 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-        _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
-        _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
-        _options = options;
-
-        _blockTree.NewBestSuggestedBlock += OnNewBestBlock;
-        _blockTree.NewHeadBlock += OnNewHeadBlock;
-
-        _stats = new ProcessingStats(_logger);
-    }
-
-
-    /// <summary>
-    ///
-    /// </summary>
-    /// <param name="blockTree"></param>
-    /// <param name="blockProcessor"></param>
-    /// <param name="statelessBlockProcessor"></param>
-    /// <param name="recoveryStep"></param>
-    /// <param name="stateReader"></param>
-    /// <param name="logManager"></param>
-    /// <param name="options"></param>
-    public BlockchainProcessor(
-        IBlockTree? blockTree,
-        IBlockProcessor? blockProcessor,
-        IBlockProcessor? statelessBlockProcessor,
-        IBlockPreprocessorStep? recoveryStep,
-        IStateReader stateReader,
-        ILogManager? logManager,
-        Options options)
-    {
-        _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-        _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
-        _statelessBlockProcessor = statelessBlockProcessor ?? throw new ArgumentNullException(nameof(statelessBlockProcessor));
-        _canProcessStatelessBlocks = true;
         _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
         _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
         _options = options;
@@ -623,7 +586,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    bool canThisBlockBeProcessedStateless = _canProcessStatelessBlocks &&
+                    bool canThisBlockBeProcessedStateless = _blockProcessor.CanProcessStatelessBlock &&
                                                             (blocksToProcess[0].ExecutionWitness is not null);
                     // here we assume that if a block has execution witness - then all the following block will
                     // also have execution witness

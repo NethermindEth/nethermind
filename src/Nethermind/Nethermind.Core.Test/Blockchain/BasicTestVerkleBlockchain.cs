@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
@@ -6,14 +6,11 @@ using Nethermind.Core.Test.Builders;
 
 namespace Nethermind.Core.Test.Blockchain;
 
-/// <summary>
-/// For when you need blocks with state roots modified.
-/// </summary>
-public class BasicTestBlockchain : TestBlockchain
+public class BasicTestVerkleBlockchain : TestVerkleBlockchain
 {
-    public static async Task<BasicTestBlockchain> Create()
+    public static async Task<BasicTestVerkleBlockchain> Create()
     {
-        BasicTestBlockchain chain = new BasicTestBlockchain();
+        var chain = new BasicTestVerkleBlockchain();
         await chain.Build();
         return chain;
     }
@@ -29,6 +26,3 @@ public class BasicTestBlockchain : TestBlockchain
         }
     }
 }
-
-
-

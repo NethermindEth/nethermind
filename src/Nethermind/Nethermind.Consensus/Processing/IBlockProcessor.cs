@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Configuration;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -28,6 +29,8 @@ namespace Nethermind.Consensus.Processing
             List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
+
+        public bool CanProcessStatelessBlock => false;
 
         /// <summary>
         /// Fired when a branch is being processed.
