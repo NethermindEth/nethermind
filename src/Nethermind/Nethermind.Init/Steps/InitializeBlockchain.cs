@@ -11,6 +11,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Services;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -70,6 +71,7 @@ namespace Nethermind.Init.Steps
 
             IInitConfig initConfig = getApi.Config<IInitConfig>();
             IBlocksConfig blocksConfig = getApi.Config<IBlocksConfig>();
+            IReceiptConfig receiptConfig = getApi.Config<IReceiptConfig>();
 
             IStateReader stateReader = setApi.StateReader!;
             ITxPool txPool = _api.TxPool = CreateTxPool();
@@ -113,7 +115,7 @@ namespace Nethermind.Init.Steps
                 getApi.LogManager,
                 new BlockchainProcessor.Options
                 {
-                    StoreReceiptsByDefault = initConfig.StoreReceipts,
+                    StoreReceiptsByDefault = receiptConfig.StoreReceipts,
                     DumpOptions = initConfig.AutoDump
                 })
             {

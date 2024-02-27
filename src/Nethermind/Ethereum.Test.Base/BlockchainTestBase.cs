@@ -183,15 +183,13 @@ namespace Ethereum.Test.Base
             stopwatch?.Start();
             List<(Block Block, string ExpectedException)> correctRlp = DecodeRlps(test, failOnInvalidRlp);
 
-            if (test.GenesisRlp == null)
-            {
-                test.GenesisRlp = Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
-            }
+            test.GenesisRlp ??= Rlp.Encode(new Block(JsonToEthereumTest.Convert(test.GenesisBlockHeader)));
 
             Block genesisBlock = Rlp.Decode<Block>(test.GenesisRlp.Bytes);
             Assert.That(genesisBlock.Header.Hash, Is.EqualTo(new Hash256(test.GenesisBlockHeader.Hash)));
 
             ManualResetEvent genesisProcessed = new(false);
+
             blockTree.NewHeadBlock += (_, args) =>
             {
                 if (args.Block.Number == 0)
@@ -272,7 +270,6 @@ namespace Ethereum.Test.Base
                     if (testBlockJson.BlockHeader is not null)
                     {
                         Assert.That(suggestedBlock.Header.Hash, Is.EqualTo(new Hash256(testBlockJson.BlockHeader.Hash)));
-
 
                         for (int uncleIndex = 0; uncleIndex < suggestedBlock.Uncles.Length; uncleIndex++)
                         {

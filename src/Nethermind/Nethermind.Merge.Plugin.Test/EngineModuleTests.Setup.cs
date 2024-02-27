@@ -97,7 +97,6 @@ public partial class EngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                new InitConfig(),
                 synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
@@ -108,6 +107,7 @@ public partial class EngineModuleTests
                 chain.BeaconSync,
                 chain.LogManager,
                 newPayloadTimeout,
+                storeReceipts: true,
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
                 chain.BlockTree,
