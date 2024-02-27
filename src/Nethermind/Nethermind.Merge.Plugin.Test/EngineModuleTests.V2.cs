@@ -354,7 +354,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
         // block 1 - empty
-        ExecutionPayload executionPayload1 = await SendNewBlockV2(rpc, chain, Array.Empty<Withdrawal>());
+        ExecutionPayload executionPayload1 = await BuildAndSendNewBlockV2(rpc, chain, true, Array.Empty<Withdrawal>());
         Hash256 newHead = executionPayload1!.BlockHash;
         ForkchoiceStateV1 forkchoiceStateV1 = new(newHead, newHead, newHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> fcuResult = await rpc.engine_forkchoiceUpdatedV2(forkchoiceStateV1);
