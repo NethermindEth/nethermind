@@ -23,5 +23,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         }
 
         public override string ToString() => $"{nameof(ReceiptsMessage)}({TxReceipts?.Count ?? 0})";
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            TxReceipts?.Dispose();
+        }
     }
 }
