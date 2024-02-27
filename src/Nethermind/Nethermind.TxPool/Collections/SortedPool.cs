@@ -316,7 +316,7 @@ namespace Nethermind.TxPool.Collections
                         if (!RemoveLast(out removed) || _cacheMap.Count > _capacity)
                         {
                             if (_cacheMap.Count > _capacity && _logger.IsWarn)
-                                _logger.Warn($"(TryInsert) Failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                                _logger.Warn($"Capacity exceeded or failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
                             UpdateWorstValue();
                             RemoveLast(out removed);
                         }
