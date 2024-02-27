@@ -205,13 +205,13 @@ namespace Nethermind.TxPool.Test.Collections
             pool.Count.Should().Be(Capacity);
         }
 
-        [TestCase(0,16)]
-        [TestCase(1,15)]
-        [TestCase(2,14)]
-        [TestCase(6,10)]
-        [TestCase(10,6)]
-        [TestCase(11,6)]
-        [TestCase(13,6)]
+        [TestCase(0, 16)]
+        [TestCase(1, 15)]
+        [TestCase(2, 14)]
+        [TestCase(6, 10)]
+        [TestCase(10, 6)]
+        [TestCase(11, 6)]
+        [TestCase(13, 6)]
         public void Capacity_can_shrink_to_given_value(int shrinkValue, int expectedCapacity)
         {
             var pool = new ShrinkableDistinctPool(Capacity, _comparer, new WithFinalizerComparer(), LimboLogs.Instance);
