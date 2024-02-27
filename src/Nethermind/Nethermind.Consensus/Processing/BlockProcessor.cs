@@ -249,7 +249,7 @@ public partial class BlockProcessor : IBlockProcessor
         {
             // an extract check - dont think it is needed
             if(header.IsGenesis) break;
-            _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider);
+            _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
             header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {
@@ -310,7 +310,7 @@ public partial class BlockProcessor : IBlockProcessor
             }
             else
             {
-                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, worldState);
+                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, worldState, ExecutionTracer);
             }
         }
         worldState.Commit(spec);
