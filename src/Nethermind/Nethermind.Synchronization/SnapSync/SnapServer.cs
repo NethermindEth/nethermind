@@ -55,7 +55,6 @@ public class SnapServer : ISnapServer
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _stateRootTracker = stateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
@@ -65,6 +64,7 @@ public class SnapServer : ISnapServer
         {
             _optimizedReadFlags = ReadFlags.HintReadAhead;
         }
+        _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
     }
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
