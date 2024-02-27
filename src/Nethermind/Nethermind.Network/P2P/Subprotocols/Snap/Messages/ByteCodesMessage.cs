@@ -6,16 +6,11 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 {
-    public class ByteCodesMessage : SnapMessageBase
+    public class ByteCodesMessage(IOwnedReadOnlyList<byte[]>? data) : SnapMessageBase
     {
-        public ByteCodesMessage(IOwnedReadOnlyList<byte[]>? data)
-        {
-            Codes = data ?? ArrayPoolList<byte[]>.Empty();
-        }
-
         public override int PacketType => SnapMessageCode.ByteCodes;
 
-        public IOwnedReadOnlyList<byte[]> Codes { get; }
+        public IOwnedReadOnlyList<byte[]> Codes { get; } = data ?? ArrayPoolList<byte[]>.Empty();
 
         public override void Dispose()
         {

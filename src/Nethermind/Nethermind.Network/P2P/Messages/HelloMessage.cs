@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
 
@@ -15,7 +16,7 @@ namespace Nethermind.Network.P2P.Messages
         public string ClientId { get; set; }
         public int ListenPort { get; set; }
         public PublicKey NodeId { get; set; }
-        public List<Capability> Capabilities { get; set; }
+        public IOwnedReadOnlyList<Capability> Capabilities { get; set; }
 
         public override string ToString() => $"Hello({ClientId}, {string.Join(", ", Capabilities)})";
     }

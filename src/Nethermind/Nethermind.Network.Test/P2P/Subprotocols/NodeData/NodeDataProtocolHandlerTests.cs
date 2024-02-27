@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
@@ -72,11 +73,11 @@ public class NodeDataProtocolHandlerTests
     }
 
     [Test]
-    public void Can_handle_node_data()
+    public async Task Can_handle_node_data()
     {
-        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        using var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
 
-        ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
+        using IOwnedReadOnlyList<byte[]>? _ = await ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
     }
 

@@ -91,7 +91,7 @@ public class PeerRefresherTests
     private void GivenAllHeaderAvailable()
     {
         _syncPeer.GetBlockHeaders(_headParentBlockHeader.Hash!, 2, 0, Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>() { _headParentBlockHeader, _headBlockHeader }));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(2) { _headParentBlockHeader, _headBlockHeader }));
         GivenFinalizedHeaderAvailable();
     }
 

@@ -18,4 +18,5 @@ namespace Nethermind.Core.Collections;
 /// <typeparam name="T"></typeparam>
 public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
+    ReadOnlySpan<T> AsSpan();
 }

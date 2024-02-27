@@ -16,7 +16,7 @@ public class NewPooledTransactionHashesMessageSerializerTests
 {
     private static void Test(TxType[] types, int[] sizes, Hash256[] hashes, string expected = null)
     {
-        NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToPooledList(), sizes.ToPooledList(), hashes.ToPooledList());
+        using NewPooledTransactionHashesMessage68 message = new(types.Select(t => (byte)t).ToPooledList(types.Length), sizes.ToPooledList(), hashes.ToPooledList());
         NewPooledTransactionHashesMessageSerializer serializer = new();
 
         SerializerTester.TestZero(serializer, message, expected);

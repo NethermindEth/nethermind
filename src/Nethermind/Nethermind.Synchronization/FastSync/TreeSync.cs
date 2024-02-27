@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using NonBlocking;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -21,6 +20,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
             _branchProgress = new BranchProgress(0, _logger);
         }
 
-        public async Task<StateSyncBatch?> PrepareRequest(SyncMode syncMode)
+        public async Task<StateSyncBatch?> PrepareRequest()
         {
             try
             {
@@ -334,6 +334,7 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 finally
                 {
+                    batch.Dispose();
                     _syncStateLock.ExitReadLock();
                 }
             }
@@ -459,10 +460,12 @@ namespace Nethermind.Synchronization.FastSync
                     foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
                     {
                         // re-add the pending request
-                        for (int i = 0; i < pendingRequest.RequestedNodes.Count; i++)
+                        for (int i = 0; i < pendingRequest.RequestedNodes?.Count; i++)
                         {
                             AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
                         }
+
+                        pendingRequest.Dispose();
                     }
                 }
 

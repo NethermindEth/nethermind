@@ -18,7 +18,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
             Hash256[] hashes = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             var ethMessage = new Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage(hashes.ToPooledList());
 
-            GetReceiptsMessage getReceiptsMessage = new(ethMessage, 1);
+            using GetReceiptsMessage getReceiptsMessage = new(ethMessage, 1);
 
             GetReceiptsMessageSerializer serializer = new();
 

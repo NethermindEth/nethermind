@@ -15,7 +15,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     {
         private static void Test(Hash256[] keys)
         {
-            NewPooledTransactionHashesMessage message = new(keys.ToPooledList());
+            using NewPooledTransactionHashesMessage message = new(keys.ToPooledList());
             NewPooledTransactionHashesMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
@@ -24,22 +24,21 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Roundtrip()
         {
-            Hash256[] keys = { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            Hash256[] keys = [TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC];
             Test(keys);
         }
 
         [Test]
         public void Roundtrip_with_nulls()
         {
-            Hash256[] keys = { null, TestItem.KeccakA, null, TestItem.KeccakB, null, null };
+            Hash256[] keys = [null, TestItem.KeccakA, null, TestItem.KeccakB, null, null];
             Test(keys);
         }
 
         [Test]
         public void Empty_to_string()
         {
-            NewPooledTransactionHashesMessage message
-                = new(new ArrayPoolList<Hash256>());
+            using NewPooledTransactionHashesMessage message = new(ArrayPoolList<Hash256>.Empty());
             _ = message.ToString();
         }
     }

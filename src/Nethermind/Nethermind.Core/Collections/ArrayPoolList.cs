@@ -19,7 +19,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     private int _capacity;
     private bool _disposed;
 
-    public ArrayPoolList(int capacity = 0) : this(ArrayPool<T>.Shared, capacity) { }
+    public ArrayPoolList(int capacity) : this(ArrayPool<T>.Shared, capacity) { }
 
     public ArrayPoolList(int capacity, int count) : this(ArrayPool<T>.Shared, capacity, count) { }
 
@@ -44,6 +44,11 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         _capacity = _array.Length;
 
         _count = startingCount;
+    }
+
+    ReadOnlySpan<T> IOwnedReadOnlyList<T>.AsSpan()
+    {
+        return AsSpan();
     }
 
     public IEnumerator<T> GetEnumerator()
@@ -168,7 +173,12 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     {
         GuardDispose();
         int newCount = _count + itemsToAdd;
-        if (newCount > _capacity)
+        if (_capacity == 0)
+        {
+            _array = _arrayPool.Rent(newCount);
+            _capacity = _array.Length;
+        }
+        else if (newCount > _capacity)
         {
             int newCapacity = _capacity * 2;
             if (newCapacity == 0) newCapacity = 1;
@@ -267,10 +277,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     private static bool IsCompatibleObject(object? value) => value is T || value is null && default(T) is null;
 
-    public static ArrayPoolList<T> Empty()
-    {
-        return new ArrayPoolList<T>(0);
-    }
+    public static ArrayPoolList<T> Empty() => new(0);
 
     private struct ArrayPoolListEnumerator : IEnumerator<T>
     {

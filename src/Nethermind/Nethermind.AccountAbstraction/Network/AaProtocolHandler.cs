@@ -97,17 +97,20 @@ namespace Nethermind.AccountAbstraction.Network
             switch (message.PacketType)
             {
                 case AaMessageCode.UserOperations:
-                    Metrics.UserOperationsMessagesReceived++;
-                    UserOperationsMessage uopMsg = Deserialize<UserOperationsMessage>(message.Content);
-                    ReportIn(uopMsg, size);
-                    Handle(uopMsg);
-                    break;
+                    {
+                        Metrics.UserOperationsMessagesReceived++;
+                        using UserOperationsMessage uopMsg = Deserialize<UserOperationsMessage>(message.Content);
+                        ReportIn(uopMsg, size);
+                        Handle(uopMsg);
+
+                        break;
+                    }
             }
         }
 
         private void Handle(UserOperationsMessage uopMsg)
         {
-            using IOwnedReadOnlyList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
+            IOwnedReadOnlyList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
             for (int i = 0; i < userOperations.Count; i++)
             {
                 UserOperationWithEntryPoint uop = userOperations[i];
@@ -125,7 +128,7 @@ namespace Nethermind.AccountAbstraction.Network
 
         public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
-            SendMessage(new ArrayPoolList<UserOperationWithEntryPoint>() { uop });
+            SendMessage(new ArrayPoolList<UserOperationWithEntryPoint>(1) { uop });
         }
 
         public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)

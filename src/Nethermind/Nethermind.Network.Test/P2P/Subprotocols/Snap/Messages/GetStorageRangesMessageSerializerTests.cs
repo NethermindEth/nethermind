@@ -26,7 +26,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
                 StoragetRange = new()
                 {
                     RootHash = TestItem.KeccakA,
-                    Accounts = TestItem.Keccaks.Select(k => new PathWithAccount(k, null)).ToPooledList(),
+                    Accounts = TestItem.Keccaks.Select(k => new PathWithAccount(k, null)).ToPooledList(TestItem.Keccaks.Length),
                     StartingHash = new Hash256("0x15d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"),
                     LimitHash = new Hash256("0x20d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470")
                 },

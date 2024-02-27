@@ -259,9 +259,7 @@ public class SnapServer : ISnapServer
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
         (IDictionary<ValueHash256, byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-        ArrayPoolList<byte[]> proofs = new();
-        if (startingHash != Keccak.Zero || visitor.StoppedEarly) proofs = visitor.GetProofs();
-
+        ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
         return (requiredNodes, responseSize, proofs, visitor.StoppedEarly);
     }
 

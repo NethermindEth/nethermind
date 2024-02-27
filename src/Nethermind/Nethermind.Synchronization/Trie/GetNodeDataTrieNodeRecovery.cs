@@ -31,7 +31,7 @@ public class GetNodeDataTrieNodeRecovery : TrieNodeRecovery<IReadOnlyList<Hash25
             ? nodeDataHandler.GetNodeData(request, cts.Token)
             : peer.GetNodeData(request, cts.Token));
 
-        if (rlp.Count() == 1)
+        if (rlp.Count == 1)
         {
             byte[] recoveredRlp = rlp[0];
             if (ValueKeccak.Compute(recoveredRlp) == rlpHash)

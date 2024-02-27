@@ -115,10 +115,10 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 batch.ResponseSourcePeer = peerInfo;
             }
 
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
-            HeadersSyncBatch batch4 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch3 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch4 = (await feed.PrepareRequest())!;
 
             FulfillBatch(batch1);
             FulfillBatch(batch2);
@@ -173,13 +173,13 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             }
 
             await feed.PrepareRequest();
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
 
             feed.Reset();
 
             await feed.PrepareRequest();
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
             FulfillBatch(batch2);
 
             feed.HandleResponse(batch2);
@@ -221,11 +221,11 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             }
 
             // First batch need to be handled first before handle dependencies can do anything
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
             feed.HandleResponse(batch1);
 
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
             FulfillBatch(batch2);
 
             int maxHeaderBatchToProcess = 4;
@@ -294,7 +294,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                     false)!;
             }
 
-            HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch1 = (await feed.PrepareRequest())!;
             FulfillBatch(batch1);
 
             // Initiate a process batch which should hang in the middle
@@ -310,7 +310,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             await resetTask;
 
             // A new batch is creating, starting at hang block
-            HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch batch2 = (await feed.PrepareRequest())!;
 
             FulfillBatch(batch2);
             feed.HandleResponse(batch2);
@@ -444,7 +444,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             BlockHeader randomBlockHeader = Build.A.BlockHeader.WithNumber(999999).TestObject;
             await foreach (HeadersSyncBatch headersSyncBatch in batchToProcess.Reader.ReadAllAsync())
             {
-                headersSyncBatch.Response = new ArrayPoolList<BlockHeader?>() { randomBlockHeader };
+                headersSyncBatch.Response = new ArrayPoolList<BlockHeader?>(1) { randomBlockHeader };
                 feed.HandleResponse(headersSyncBatch);
             }
 

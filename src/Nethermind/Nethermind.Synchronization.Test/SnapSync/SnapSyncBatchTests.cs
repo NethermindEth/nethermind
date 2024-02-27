@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.State.Snap;
@@ -46,7 +47,7 @@ public class SnapSyncBatchTests
     {
         SnapSyncBatch batch = new()
         {
-            CodesRequest = new ValueHash256[9],
+            CodesRequest = new ArrayPoolList<ValueHash256>(9),
         };
 
         batch.ToString().Should().Be("CodesRequest: (9)");
@@ -60,7 +61,7 @@ public class SnapSyncBatchTests
             AccountsToRefreshRequest = new AccountsToRefreshRequest()
             {
                 RootHash = Keccak.Zero,
-                Paths = new AccountWithStorageStartingHash[9],
+                Paths = new ArrayPoolList<AccountWithStorageStartingHash>(9),
             }
         };
 

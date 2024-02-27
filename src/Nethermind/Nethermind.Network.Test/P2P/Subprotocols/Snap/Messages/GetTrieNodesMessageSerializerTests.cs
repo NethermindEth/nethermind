@@ -37,9 +37,9 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new ArrayPoolList<PathGroup>()
+                Paths = new ArrayPoolList<PathGroup>(1)
                     {
-                        new PathGroup(){Group = new []{TestItem.RandomDataA}}
+                        new(){Group = [TestItem.RandomDataA] }
                     },
                 Bytes = 10
             };
@@ -55,10 +55,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new ArrayPoolList<PathGroup>()
+                Paths = new ArrayPoolList<PathGroup>(2)
                     {
-                        new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB}},
-                        new PathGroup(){Group = new []{TestItem.RandomDataC}}
+                        new(){Group = [TestItem.RandomDataA, TestItem.RandomDataB] },
+                        new(){Group = [TestItem.RandomDataC] }
                     },
                 Bytes = 10
             };
@@ -74,11 +74,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 RootHash = TestItem.KeccakA,
-                Paths = new ArrayPoolList<PathGroup>()
+                Paths = new ArrayPoolList<PathGroup>(3)
                     {
-                        new PathGroup(){Group = new []{TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}},
-                        new PathGroup(){Group = new []{TestItem.RandomDataC}},
-                        new PathGroup(){Group = new []{TestItem.RandomDataC, TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD}}
+                        new(){Group = [TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD] },
+                        new(){Group = [TestItem.RandomDataC] },
+                        new(){Group = [TestItem.RandomDataC, TestItem.RandomDataA, TestItem.RandomDataB, TestItem.RandomDataD] }
                     },
                 Bytes = 10
             };

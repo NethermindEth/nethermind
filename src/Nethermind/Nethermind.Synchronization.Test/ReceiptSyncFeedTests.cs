@@ -71,7 +71,7 @@ public class ReceiptSyncFeedTests
         syncFeed.InitializeFeed();
 
         ReceiptsSyncBatch req = (await syncFeed.PrepareRequest())!;
-        req.Response = req.Infos.Take(8).Select((info) => syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList()!;
+        req.Response = req.Infos.Take(8).Select(info => syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
 
         receiptStorage
             .When((it) => it.Insert(Arg.Any<Block>(), Arg.Any<TxReceipt[]?>(), Arg.Any<bool>()))

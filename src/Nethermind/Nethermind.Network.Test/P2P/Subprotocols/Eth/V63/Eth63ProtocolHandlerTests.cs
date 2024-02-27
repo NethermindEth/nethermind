@@ -40,7 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
                 1000).ToArray(); // TxReceipt[1000][100]
 
-            ReceiptsMessage receiptsMsg = new(receipts.ToPooledList());
+            using ReceiptsMessage receiptsMsg = new(receipts.ToPooledList());
             Packet receiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
@@ -61,11 +61,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TxReceipt[] oneBlockReceipt = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray();
             Packet smallReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
-                    new(Enumerable.Repeat(oneBlockReceipt, 10).ToPooledList())
+                    new(RepeatPooled(oneBlockReceipt, 10))
                 ));
             Packet largeReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
-                    new(Enumerable.Repeat(oneBlockReceipt, 1000).ToPooledList())
+                    new(RepeatPooled(oneBlockReceipt, 1000))
                 ));
 
             GetReceiptsMessage? receiptsMessage = null;
@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .Do((info => receiptsMessage = (GetReceiptsMessage)info[0]));
 
             Task<IOwnedReadOnlyList<TxReceipt[]>> receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToPooledList(),
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -84,7 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
 
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToPooledList(),
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
@@ -94,21 +94,24 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             // Back to 10
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToPooledList(),
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
             await receiptsTask;
 
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
+            receiptsMessage.Dispose();
         }
+
+        private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) => Enumerable.Repeat(txReceipts, count).ToPooledList(count);
 
         [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
             Context ctx = new();
-            GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 513).ToPooledList());
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, 513));
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
@@ -123,8 +126,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
-            GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 512).ToPooledList());
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, 512));
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
