@@ -70,7 +70,7 @@ public class ReceiptSyncFeedTests
         );
         syncFeed.InitializeFeed();
 
-        ReceiptsSyncBatch req = (await syncFeed.PrepareRequest())!;
+        using ReceiptsSyncBatch req = (await syncFeed.PrepareRequest())!;
         req.Response = req.Infos.Take(8).Select(info => syncingFromReceiptStore.Get(info!.BlockHash)).ToPooledList(8)!;
 
         receiptStorage
@@ -83,8 +83,7 @@ public class ReceiptSyncFeedTests
 
         Func<SyncResponseHandlingResult> act = () => syncFeed.HandleResponse(req);
         act.Should().Throw<Exception>();
-        req = (await syncFeed.PrepareRequest())!;
-
-        req.Infos[0]!.BlockNumber.Should().Be(95);
+        using ReceiptsSyncBatch req2 = (await syncFeed.PrepareRequest())!;
+        req2.Infos[0]!.BlockNumber.Should().Be(95);
     }
 }

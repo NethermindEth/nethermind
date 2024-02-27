@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override void Dispose()
         {
             base.Dispose();
-            Transactions.Dispose();
+            Transactions?.Dispose();
         }
     }
 }

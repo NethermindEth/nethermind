@@ -170,7 +170,7 @@ public class BeaconHeadersSyncTests
             await feed.PrepareRequest();
         }
 
-        HeadersSyncBatch? result = await feed.PrepareRequest();
+        using HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
     }
 
@@ -207,7 +207,7 @@ public class BeaconHeadersSyncTests
             await feed.PrepareRequest();
         }
         blockTree.LowestInsertedBeaconHeader.Returns(Build.A.BlockHeader.WithNumber(1001).TestObject);
-        HeadersSyncBatch? result = await feed.PrepareRequest();
+        using HeadersSyncBatch? result = await feed.PrepareRequest();
         result.Should().BeNull();
         feed.CurrentState.Should().Be(SyncFeedState.Dormant);
         measuredProgress.CurrentValue.Should().Be(999);
@@ -273,7 +273,7 @@ public class BeaconHeadersSyncTests
         ctx.BeaconSync.ShouldBeInBeaconHeaders().Should().BeTrue();
         blockTree.BestKnownNumber.Should().Be(6);
         BuildHeadersSyncBatches(ctx, blockTree, syncedBlockTree, pivot, 2);
-        HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
+        using HeadersSyncBatch? result = await ctx.Feed.PrepareRequest();
         result.Should().BeNull();
         blockTree.BestKnownNumber.Should().Be(6);
         ctx.Feed.CurrentState.Should().Be(SyncFeedState.Dormant);
@@ -341,6 +341,7 @@ public class BeaconHeadersSyncTests
         // Ensure pivot happens which reset lowest inserted beacon header further ahead.
         ctx.BeaconPivot.EnsurePivot(ctx.RemoteBlockTree.FindHeader(pivotNumber + 10));
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeFalse();
+        request.Dispose();
 
         // The sync feed must adapt to this
         request = await ctx.Feed.PrepareRequest();
@@ -351,6 +352,7 @@ public class BeaconHeadersSyncTests
             .Select((blockNumber) => ctx.RemoteBlockTree.FindHeader(blockNumber))
             .ToPooledList(request.RequestSize);
         ctx.Feed.HandleResponse(request);
+        request.Dispose();
 
         // It should complete successfully
         ctx.BeaconSync.IsBeaconSyncHeadersFinished().Should().BeTrue();
@@ -396,7 +398,7 @@ public class BeaconHeadersSyncTests
         long lowestHeaderNumber = pivot.PivotNumber;
         while (lowestHeaderNumber > endLowestBeaconHeader)
         {
-            HeadersSyncBatch? batch = await ctx.Feed.PrepareRequest();
+            using HeadersSyncBatch? batch = await ctx.Feed.PrepareRequest();
             batch.Should().NotBeNull();
             BuildHeadersSyncBatchResponse(batch, syncedBlockTree);
             ctx.Feed.HandleResponse(batch);

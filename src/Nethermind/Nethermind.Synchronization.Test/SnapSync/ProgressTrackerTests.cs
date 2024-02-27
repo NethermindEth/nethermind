@@ -64,24 +64,28 @@ public class ProgressTrackerTests
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(0);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(64);
         finished.Should().BeFalse();
+        request.Dispose();
 
         finished = progressTracker.IsFinished(out request);
         request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(64);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(128);
         finished.Should().BeFalse();
+        request.Dispose();
 
         finished = progressTracker.IsFinished(out request);
         request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(128);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(192);
         finished.Should().BeFalse();
+        request.Dispose();
 
         finished = progressTracker.IsFinished(out request);
         request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(192);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(255);
         finished.Should().BeFalse();
+        request.Dispose();
 
         finished = progressTracker.IsFinished(out request);
         request.Should().BeNull();
@@ -110,6 +114,7 @@ public class ProgressTrackerTests
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.CodesRequest.Should().NotBeNull();
         request.StorageRangeRequest.Should().BeNull();
+        request.Dispose();
     }
 
     [Test]
@@ -134,6 +139,7 @@ public class ProgressTrackerTests
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.CodesRequest.Should().BeNull();
         request.StorageRangeRequest.Should().NotBeNull();
+        request.Dispose();
     }
 
     [Test]
@@ -149,6 +155,7 @@ public class ProgressTrackerTests
         request!.AccountRangeRequest.Should().NotBeNull();
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
+        request.Dispose();
         bool finished = progressTracker.IsFinished(out _);
         finished.Should().BeTrue();
 

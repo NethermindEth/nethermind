@@ -247,7 +247,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             feed.HandleResponse(batch2);
 
             // HandleDependantBatch would start from first batch in batches, stopped at second last, not processing the last one
-            HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
+            using HeadersSyncBatch newBatch = (await feed.PrepareRequest())!;
             blockTree.LowestInsertedHeader!.Number.Should().Be(batches[^2].StartNumber);
 
             // New batch would be at end of batch 5 (batch 6).
@@ -342,7 +342,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 await feed.PrepareRequest();
             }
 
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
             result.Should().BeNull();
         }
 
@@ -358,7 +358,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             await feed.PrepareRequest();
             blockTree.LowestInsertedHeader.Returns(Build.A.BlockHeader.WithNumber(1).TestObject);
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
 
             result.Should().BeNull();
             feed.CurrentState.Should().Be(SyncFeedState.Finished);
@@ -380,7 +380,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             HeadersSyncFeed feed = new(blockTree, Substitute.For<ISyncPeerPool>(), new SyncConfig { FastSync = true, FastBlocks = true, PivotNumber = "1000", PivotHash = Keccak.Zero.ToString(), PivotTotalDifficulty = "1000" }, report, LimboLogs.Instance);
             feed.InitializeFeed();
-            HeadersSyncBatch? result = await feed.PrepareRequest();
+            using HeadersSyncBatch? result = await feed.PrepareRequest();
 
             result.Should().NotBeNull();
             result!.EndNumber.Should().Be(499);
@@ -452,7 +452,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
             while (true)
             {
-                HeadersSyncBatch? batch = await feed.PrepareRequest();
+                using HeadersSyncBatch? batch = await feed.PrepareRequest();
                 if (batch is null) break;
                 batches.Add(batch);
             }

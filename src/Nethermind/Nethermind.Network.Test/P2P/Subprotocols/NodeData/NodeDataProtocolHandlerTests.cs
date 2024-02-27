@@ -14,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
@@ -73,11 +74,11 @@ public class NodeDataProtocolHandlerTests
     }
 
     [Test]
-    public async Task Can_handle_node_data()
+    public void Can_handle_node_data()
     {
-        using var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
+        var msg = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
 
-        using IOwnedReadOnlyList<byte[]>? _ = await ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
+        ((INodeDataPeer)_handler).GetNodeData(new List<Hash256>(new[] { Keccak.Zero }), CancellationToken.None);
         HandleZeroMessage(msg, NodeDataMessageCode.NodeData);
     }
 
@@ -90,9 +91,10 @@ public class NodeDataProtocolHandlerTests
         act.Should().Throw<SubprotocolException>();
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         IByteBuffer getPacket = _svc.ZeroSerialize(msg);
+        msg.Dispose();
         getPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getPacket) { PacketType = (byte)messageCode });
     }

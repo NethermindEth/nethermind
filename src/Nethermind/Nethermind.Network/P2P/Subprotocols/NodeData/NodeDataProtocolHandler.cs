@@ -141,6 +141,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         Request<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>? request = new(message);
         _nodeDataRequests.Send(request);
 
-        return await HandleResponse(request, TransferSpeedType.NodeData, static (_) => $"{nameof(GetNodeDataMessage)}", token);
+        return await HandleResponse(request, TransferSpeedType.NodeData, static _ => $"{nameof(GetNodeDataMessage)}", token);
     }
 }
