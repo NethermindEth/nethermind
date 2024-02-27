@@ -147,11 +147,11 @@ public class PaprikaStateFactory : IStateFactory
 
     class State(IWorldState wrapped, PaprikaStateFactory factory) : IState
     {
-        public void Set(Address address, Account? account, bool isNewHint = false)
+        public void Set(Address address, in AccountStruct account, bool isNewHint = false)
         {
             PaprikaKeccak key = Convert(address);
 
-            if (account == null)
+            if (account.IsNull)
             {
                 wrapped.DestroyAccount(key);
             }

@@ -51,14 +51,14 @@ namespace Nethermind.State
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        public Account GetAccount(Address address)
+        public AccountStruct GetAccount(Address address)
         {
             return _stateProvider.GetAccount(address);
         }
 
         bool IAccountStateProvider.TryGetAccount(Address address, out AccountStruct account)
         {
-            account = _stateProvider.GetAccount(address).ToStruct();
+            account = _stateProvider.GetAccount(address);
             return !account.IsTotallyEmpty;
         }
 
@@ -182,7 +182,7 @@ namespace Nethermind.State
 
         public byte[] GetCode(ValueHash256 codeHash) => _stateProvider.GetCode(codeHash);
 
-        public Hash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
+        public ValueHash256 GetCodeHash(Address address) => _stateProvider.GetCodeHash(address);
 
         ValueHash256 IAccountStateProvider.GetCodeHash(Address address)
         {

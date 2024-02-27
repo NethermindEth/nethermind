@@ -10,7 +10,7 @@ namespace Nethermind.State;
 
 public interface IState : IReadOnlyState
 {
-    void Set(Address address, Account? account, bool isNewHint = false);
+    void Set(Address address, in AccountStruct account, bool isNewHint = false);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
