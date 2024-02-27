@@ -23,19 +23,14 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
         _uri = new Uri(hostAddress);
     }
 
-    public async Task<JsonDocument?> Submit(JsonRpc rpc)
+    public async Task<HttpResponseMessage> Submit(JsonRpc rpc)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, _uri)
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", _auth.AuthToken) },
             Content = new StringContent(rpc.ToJsonString(), Encoding.UTF8, MediaTypeNames.Application.Json),
         };
-        var response = await _httpClient.SendAsync(request);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            return null;
-        }
-        var content = await response.Content.ReadAsStreamAsync();
-        return await JsonSerializer.DeserializeAsync<JsonDocument>(content);
+
+        return await _httpClient.SendAsync(request);
     }
 }
