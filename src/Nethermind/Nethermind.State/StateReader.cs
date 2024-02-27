@@ -14,27 +14,24 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader : IStateReader
+#pragma warning disable CS9113 // Parameter is unread.
+    public class StateReader(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
+#pragma warning restore CS9113 // Parameter is unread.
     {
-        private readonly IStateFactory _factory;
-        private readonly IKeyValueStore _codeDb;
-        private readonly ILogger _logger;
+        private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        private readonly IStateFactory _factory = factory ?? throw new ArgumentNullException(nameof(factory));
 
-        public StateReader(IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
-        {
-            _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _factory = factory;
-        }
-
-        public AccountStruct? GetAccount(Hash256 stateRoot, Address address)
-        {
-            // TODO: replace GetAccount callsites with TryGet later on
-            return TryGetState(stateRoot, address, out AccountStruct account) ? account : default(AccountStruct?);
-        }
+        public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
         public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
+            if (!TryGetAccount(stateRoot, address, out AccountStruct account)) return default;
+
+            ValueHash256 storageRoot = account.StorageRoot;
+            if (storageRoot == Keccak.EmptyTreeHash)
+            {
+                return Bytes.ZeroByte.Span;
+            }
             Metrics.StorageTreeReads++;
             using IReadOnlyState state = GetReadOnlyState(stateRoot);
             return state.GetStorageAt(new StorageCell(address, index));
@@ -44,7 +41,8 @@ namespace Nethermind.State
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
         {
-            return TryGetState(stateRoot, address, out AccountStruct account) ? account.Balance : UInt256.Zero;
+            TryGetState(stateRoot, address, out AccountStruct account);
+            return account.Balance;
         }
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
@@ -54,10 +52,7 @@ namespace Nethermind.State
             throw new NotImplementedException($"The type of visitor {treeVisitor.GetType()} is not handled now");
         }
 
-        public bool HasStateForRoot(Hash256 stateRoot)
-        {
-            return _factory.HasRoot(stateRoot);
-        }
+        public bool HasStateForRoot(Hash256 stateRoot) => _factory.HasRoot(stateRoot);
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
@@ -65,7 +60,7 @@ namespace Nethermind.State
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
-                account = default;
+                account = AccountStruct.TotallyEmpty;
                 return false;
             }
 
