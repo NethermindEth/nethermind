@@ -107,7 +107,7 @@ namespace Nethermind.AccountAbstraction.Network
 
         private void Handle(UserOperationsMessage uopMsg)
         {
-            IList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
+            using IOwnedReadOnlyList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
             for (int i = 0; i < userOperations.Count; i++)
             {
                 UserOperationWithEntryPoint uop = userOperations[i];
@@ -125,7 +125,7 @@ namespace Nethermind.AccountAbstraction.Network
 
         public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
-            SendMessage(new[] { uop });
+            SendMessage(new ArrayPoolList<UserOperationWithEntryPoint>() { uop });
         }
 
         public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)
@@ -159,7 +159,7 @@ namespace Nethermind.AccountAbstraction.Network
             }
         }
 
-        private void SendMessage(IList<UserOperationWithEntryPoint> uopsToSend)
+        private void SendMessage(IOwnedReadOnlyList<UserOperationWithEntryPoint> uopsToSend)
         {
             UserOperationsMessage msg = new(uopsToSend);
             Send(msg);

@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.AccountAbstraction.Network
@@ -14,9 +15,9 @@ namespace Nethermind.AccountAbstraction.Network
         public override int PacketType { get; } = AaMessageCode.UserOperations;
         public override string Protocol { get; } = "aa";
 
-        public IList<UserOperationWithEntryPoint> UserOperationsWithEntryPoint { get; }
+        public IOwnedReadOnlyList<UserOperationWithEntryPoint> UserOperationsWithEntryPoint { get; }
 
-        public UserOperationsMessage(IList<UserOperationWithEntryPoint> userOperations)
+        public UserOperationsMessage(IOwnedReadOnlyList<UserOperationWithEntryPoint> userOperations)
         {
             UserOperationsWithEntryPoint = userOperations;
         }
@@ -24,7 +25,7 @@ namespace Nethermind.AccountAbstraction.Network
         public override void Dispose()
         {
             base.Dispose();
-            if (UserOperationsWithEntryPoint is IDisposable disposable) disposable.Dispose();
+            UserOperationsWithEntryPoint.Dispose();
         }
 
         public override string ToString() => $"{nameof(UserOperationsMessage)}({UserOperationsWithEntryPoint?.Count})";
