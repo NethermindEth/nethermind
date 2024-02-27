@@ -229,8 +229,7 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
         _otherTracer.ReportReward(author, rewardType, rewardValue);
 
-    public void ReportAccessWitness(VerkleWitness witness) =>
-        _aggregatedWitnessKeys.AddRange(witness.GetAccessedKeys());
+    public void ReportAccessWitness(VerkleWitness witness) => ReportAccessWitness(witness.GetAccessedKeys());
 
     public void StartNewBlockTrace(Block block)
     {

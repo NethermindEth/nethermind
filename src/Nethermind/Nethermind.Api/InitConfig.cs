@@ -38,7 +38,6 @@ namespace Nethermind.Api
         public int BackgroundTaskConcurrency { get; set; } = 1;
 
         public bool StatelessProcessingEnabled { get; set; } = false;
-        public bool ProofsInBlock { get; set; } = false;
         public bool VerifyProofsInBlock { get; set; } = false;
         public bool GenerateVerkleProofsForBlock { get; set; } = false;
 
