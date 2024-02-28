@@ -5,6 +5,7 @@ using System;
 using System.Buffers;
 using System.Collections;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -314,7 +315,23 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
             _array = null!;
             _disposed = true;
         }
+
+#if DEBUG
+        GC.SuppressFinalize(this);
+#endif
     }
+
+#if DEBUG
+    private readonly StackTrace _creationStackTrace = new();
+
+    ~ArrayPoolList()
+    {
+        if (!_disposed)
+        {
+            throw new InvalidOperationException($"{nameof(ArrayPoolList<T>)} hasn't been disposed. Created at: {_creationStackTrace}");
+        }
+    }
+#endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, _count);
 }
