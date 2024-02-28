@@ -263,7 +263,7 @@ namespace Nethermind.Synchronization.SnapSync
 
             for (int i = 0; i < queueLength && AccountsToRefresh.TryDequeue(out AccountWithStorageStartingHash acc); i++)
             {
-                paths[i] = acc;
+                paths.Add(acc);
             }
 
             return new SnapSyncBatch { AccountsToRefreshRequest = new AccountsToRefreshRequest { RootHash = rootHash, Paths = paths } };
