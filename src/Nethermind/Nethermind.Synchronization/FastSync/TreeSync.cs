@@ -334,8 +334,8 @@ namespace Nethermind.Synchronization.FastSync
                 }
                 finally
                 {
-                    batch.Dispose();
                     _syncStateLock.ExitReadLock();
+                    batch.Dispose();
                 }
             }
             catch (Exception e)
