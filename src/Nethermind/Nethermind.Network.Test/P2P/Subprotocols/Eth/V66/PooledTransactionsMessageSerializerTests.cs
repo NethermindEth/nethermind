@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Hash = new Hash256("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
             };
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(new ArrayPoolList<Transaction>() { tx1, tx2 });
+            var ethMessage = new Network.P2P.Subprotocols.Eth.V65.Messages.PooledTransactionsMessage(new ArrayPoolList<Transaction>(2) { tx1, tx2 });
 
             PooledTransactionsMessage message = new(1111, ethMessage);
 

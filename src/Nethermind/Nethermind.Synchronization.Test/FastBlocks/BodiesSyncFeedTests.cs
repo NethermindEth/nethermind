@@ -98,6 +98,8 @@ public class BodiesSyncFeedTests
                 _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
 
             _feed.HandleResponse(req);
+            req.Dispose();
+
             req = (await _feed.PrepareRequest())!;
         }
 
@@ -112,13 +114,14 @@ public class BodiesSyncFeedTests
 
         await HandleAndPrepareNextRequest();
         _blocksDb.FlushCount.Should().Be(3);
+        req.Dispose();
     }
 
     [Test]
     public async Task ShouldRecoverOnInsertFailure()
     {
         _feed.InitializeFeed();
-        BodiesSyncBatch req = (await _feed.PrepareRequest())!;
+        using BodiesSyncBatch req = (await _feed.PrepareRequest())!;
 
         req.Response = new OwnedBlockBodies(req.Infos.Take(8).Select((info) =>
             _syncingFromBlockTree.FindBlock(info!.BlockNumber, BlockTreeLookupOptions.None)!.Body).ToArray());
@@ -135,9 +138,8 @@ public class BodiesSyncFeedTests
         Func<SyncResponseHandlingResult> act = () => _feed.HandleResponse(req);
         act.Should().Throw<Exception>();
 
-        req = (await _feed.PrepareRequest())!;
-
-        req.Infos[0]!.BlockNumber.Should().Be(95);
+        using BodiesSyncBatch req2 = (await _feed.PrepareRequest())!;
+        req2.Infos[0]!.BlockNumber.Should().Be(95);
     }
 
     [TestCase(1, 99, false, null, false)]

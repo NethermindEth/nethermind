@@ -9,6 +9,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -117,10 +118,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             switch (message.PacketType)
             {
                 case LesMessageCode.Status:
-                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
-                    Handle(statusMessage);
-                    break;
+                    {
+                        using StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
+                        if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
+                        Handle(statusMessage);
+                        break;
+                    }
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
@@ -203,40 +206,45 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(getBlockHeaders.EthMessage, cancellationToken);
+            using var message = getBlockHeaders;
+            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            return new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue);
+            return new BlockHeadersMessage(ethBlockHeadersMessage, message.RequestId, int.MaxValue);
         }
 
         public async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(getBlockBodies.EthMessage, cancellationToken);
+            using var message = getBlockBodies;
+            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            return new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue);
+            return new BlockBodiesMessage(ethBlockBodiesMessage, message.RequestId, int.MaxValue);
         }
 
         public async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceipts, CancellationToken cancellationToken)
         {
-            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = await FulfillReceiptsRequest(getReceipts.EthMessage, cancellationToken);
+            using var message = getReceipts;
+            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            return new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue);
+            return new ReceiptsMessage(ethReceiptsMessage, message.RequestId, int.MaxValue);
         }
 
         public Task<ContractCodesMessage> Handle(GetContractCodesMessage getContractCodes, CancellationToken cancellationToken)
         {
-            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, cancellationToken, NodeDataType.Code);
+            using var message = getContractCodes;
+            var codes = SyncServer.GetNodeData(message.RequestAddresses, cancellationToken, NodeDataType.Code);
             // todo - implement cost tracking
-            return Task.FromResult(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
+            return Task.FromResult(new ContractCodesMessage(codes, message.RequestId, int.MaxValue));
         }
 
         public Task<HelperTrieProofsMessage> Handle(GetHelperTrieProofsMessage getHelperTrieProofs, CancellationToken cancellationToken)
         {
+            using var message = getHelperTrieProofs;
             List<byte[]> proofNodes = new();
             List<byte[]> auxData = new();
 
-            for (int requestNo = 0; requestNo < getHelperTrieProofs.Requests.Length; requestNo++)
+            for (int requestNo = 0; requestNo < message.Requests.Length; requestNo++)
             {
-                var request = getHelperTrieProofs.Requests[requestNo];
+                var request = message.Requests[requestNo];
                 switch (request.SubType)
                 {
                     case HelperTrieType.CHT:
@@ -247,7 +255,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                 }
             }
 
-            return Task.FromResult(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), getHelperTrieProofs.RequestId, int.MaxValue));
+            return Task.FromResult(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), message.RequestId, int.MaxValue));
         }
 
         public void GetCHTData(HelperTrieRequest request, List<byte[]> proofNodes, List<byte[]> auxData)
@@ -262,7 +270,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             else if (request.AuxiliaryData == 2)
             {
                 (Hash256 hash, _) = cht.Get(request.Key);
-                var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
+                using IOwnedReadOnlyList<BlockHeader> headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
                 if (headerResult.Count != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
             }

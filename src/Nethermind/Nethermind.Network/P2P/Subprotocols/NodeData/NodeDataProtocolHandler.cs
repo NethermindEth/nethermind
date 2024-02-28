@@ -75,23 +75,34 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         switch (message.PacketType)
         {
             case NodeDataMessageCode.GetNodeData:
-                GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                Metrics.GetNodeDataReceived++;
-                ReportIn(getNodeDataMessage, size);
-                _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
-                break;
+                {
+                    GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
+                    Metrics.GetNodeDataReceived++;
+                    ReportIn(getNodeDataMessage, size);
+                    _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
+                    break;
+                }
             case NodeDataMessageCode.NodeData:
-                NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                Metrics.NodeDataReceived++;
-                ReportIn(nodeDataMessage, size);
-                Handle(nodeDataMessage, size);
-                break;
+                {
+                    using NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    Metrics.NodeDataReceived++;
+                    ReportIn(nodeDataMessage, size);
+                    Handle(nodeDataMessage, size);
+                    break;
+                }
         }
     }
 
     private Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
     {
-        return Task.FromResult(FulfillNodeDataRequest(getNodeDataMessage, cancellationToken));
+        try
+        {
+            return Task.FromResult(FulfillNodeDataRequest(getNodeDataMessage, cancellationToken));
+        }
+        finally
+        {
+            getNodeDataMessage.Dispose();
+        }
     }
 
     private NodeDataMessage FulfillNodeDataRequest(GetNodeDataMessage msg, CancellationToken cancellationToken)
@@ -130,6 +141,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
         Request<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>? request = new(message);
         _nodeDataRequests.Send(request);
 
-        return await HandleResponse(request, TransferSpeedType.NodeData, static (_) => $"{nameof(GetNodeDataMessage)}", token);
+        return await HandleResponse(request, TransferSpeedType.NodeData, static _ => $"{nameof(GetNodeDataMessage)}", token);
     }
 }

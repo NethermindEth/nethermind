@@ -153,7 +153,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
+            using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
             PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
@@ -177,7 +177,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
             PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
@@ -186,8 +186,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         public void should_handle_NewPooledTransactionHashesMessage([Values(true, false)] bool canGossipTransactions)
         {
             _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
-            NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
-            IMessageSerializationService serializationService = Build.A.SerializationService().WithEth65().TestObject;
+            using NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
 
             HandleIncomingStatusMessage();
             HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);

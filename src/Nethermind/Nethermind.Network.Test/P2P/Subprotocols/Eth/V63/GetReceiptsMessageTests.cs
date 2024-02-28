@@ -18,8 +18,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Sets_values_from_contructor_argument()
         {
-            ArrayPoolList<Hash256> hashes = new() { TestItem.KeccakA, TestItem.KeccakB };
-            GetReceiptsMessage message = new(hashes);
+            ArrayPoolList<Hash256> hashes = new(2) { TestItem.KeccakA, TestItem.KeccakB };
+            using GetReceiptsMessage message = new(hashes);
             Assert.That(message.Hashes, Is.SameAs(hashes));
         }
 
@@ -32,7 +32,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void To_string()
         {
-            GetReceiptsMessage statusMessage = new(new ArrayPoolList<Hash256>());
+            using GetReceiptsMessage statusMessage = new(ArrayPoolList<Hash256>.Empty());
             _ = statusMessage.ToString();
         }
     }

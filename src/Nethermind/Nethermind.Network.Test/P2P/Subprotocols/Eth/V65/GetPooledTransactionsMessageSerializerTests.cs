@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     {
         private static void Test(Hash256[] keys)
         {
-            GetPooledTransactionsMessage message = new(keys.ToPooledList());
+            using GetPooledTransactionsMessage message = new(keys.ToPooledList());
             GetPooledTransactionsMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Empty_to_string()
         {
-            GetPooledTransactionsMessage message = new(new Hash256[] { }.ToPooledList());
+            using GetPooledTransactionsMessage message = new(new Hash256[] { }.ToPooledList());
             _ = message.ToString();
         }
     }

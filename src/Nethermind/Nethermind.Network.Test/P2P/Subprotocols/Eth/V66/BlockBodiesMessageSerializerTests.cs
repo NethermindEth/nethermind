@@ -63,12 +63,12 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 Hash = new Hash256("0xf39c7dac06a9f3abf09faf5e30439a349d3717611b3ed337cd52b0d192bc72da")
             };
 
-            var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage
+            using var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockBodiesMessage
             {
                 Bodies = new(new[] { new BlockBody(new[] { tx1, tx2 }, new[] { header }) })
             };
 
-            BlockBodiesMessage message = new(1111, ethMessage);
+            using BlockBodiesMessage message = new(1111, ethMessage);
 
             BlockBodiesMessageSerializer serializer = new();
 

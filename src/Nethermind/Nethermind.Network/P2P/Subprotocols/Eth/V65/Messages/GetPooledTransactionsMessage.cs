@@ -7,15 +7,10 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages
 {
-    public class GetPooledTransactionsMessage : HashesMessage
+    public class GetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes) : HashesMessage(hashes)
     {
         public override int PacketType { get; } = Eth65MessageCode.GetPooledTransactions;
         public override string Protocol { get; } = "eth";
-
-        public GetPooledTransactionsMessage(IOwnedReadOnlyList<Hash256> hashes)
-            : base(hashes)
-        {
-        }
 
         public override string ToString() => $"{nameof(GetPooledTransactionsMessage)}({Hashes?.Count})";
     }

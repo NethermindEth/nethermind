@@ -59,8 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                 case Eth65MessageCode.PooledTransactions:
                     if (CanReceiveTransactions)
                     {
-                        PooledTransactionsMessage pooledTxMsg
-                            = Deserialize<PooledTransactionsMessage>(message.Content);
+                        PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
                         Metrics.Eth65PooledTransactionsReceived++;
                         ReportIn(pooledTxMsg, size);
                         Handle(pooledTxMsg);
@@ -73,16 +72,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
                     break;
                 case Eth65MessageCode.GetPooledTransactions:
-                    GetPooledTransactionsMessage getPooledTxMsg
-                        = Deserialize<GetPooledTransactionsMessage>(message.Content);
+                    GetPooledTransactionsMessage getPooledTxMsg = Deserialize<GetPooledTransactionsMessage>(message.Content);
                     ReportIn(getPooledTxMsg, size);
                     BackgroundTaskScheduler.ScheduleBackgroundTask(getPooledTxMsg, Handle);
                     break;
                 case Eth65MessageCode.NewPooledTransactionHashes:
                     if (CanReceiveTransactions)
                     {
-                        NewPooledTransactionHashesMessage newPooledTxMsg =
-                            Deserialize<NewPooledTransactionHashesMessage>(message.Content);
+                        NewPooledTransactionHashesMessage newPooledTxMsg = Deserialize<NewPooledTransactionHashesMessage>(message.Content);
                         ReportIn(newPooledTxMsg, size);
                         Handle(newPooledTxMsg);
                     }
@@ -123,10 +120,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
+            using var message = msg;
             Metrics.Eth65GetPooledTransactionsReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            Send(await FulfillPooledTransactionsRequest(msg, cancellationToken));
+            Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             stopwatch.Stop();
             if (Logger.IsTrace)
                 Logger.Trace($"OUT {Counter:D5} {nameof(GetPooledTransactionsMessage)} to {Node:c} " +

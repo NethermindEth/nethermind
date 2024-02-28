@@ -151,8 +151,8 @@ public class Eth68ProtocolHandlerTests
         Transaction tx = Build.A.Transaction.WithType(TxType.EIP1559).WithData(new byte[2 * 1024 * 1024])
             .WithHash(TestItem.KeccakA).TestObject;
 
-        var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>() { (byte)tx.Type },
-            new ArrayPoolList<int>() { tx.GetLength() }, new ArrayPoolList<Hash256>() { tx.Hash });
+        var msg = new NewPooledTransactionHashesMessage68(new ArrayPoolList<byte>(1) { (byte)tx.Type },
+            new ArrayPoolList<int>(1) { tx.GetLength() }, new ArrayPoolList<Hash256>(1) { tx.Hash });
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth68MessageCode.NewPooledTransactionHashes);
@@ -228,7 +228,7 @@ public class Eth68ProtocolHandlerTests
             hashes.Add(new Hash256(i.ToString("X64")));
         }
 
-        NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
+        using NewPooledTransactionHashesMessage68 hashesMsg = new(types, sizes, hashes);
         HandleIncomingStatusMessage();
         HandleZeroMessage(hashesMsg, Eth68MessageCode.NewPooledTransactionHashes);
 
@@ -256,9 +256,9 @@ public class Eth68ProtocolHandlerTests
     private void GenerateLists(int txCount, out ArrayPoolList<byte> types, out ArrayPoolList<int> sizes, out ArrayPoolList<Hash256> hashes)
     {
         TxDecoder txDecoder = new();
-        types = new();
-        sizes = new();
-        hashes = new();
+        types = new(txCount);
+        sizes = new(txCount);
+        hashes = new(txCount);
 
         for (int i = 0; i < txCount; ++i)
         {

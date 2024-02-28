@@ -35,7 +35,7 @@ public class GetNodeDataMessageTests
     [Test]
     public void To_string()
     {
-        GetNodeDataMessage message = new(new ArrayPoolList<Hash256>());
+        GetNodeDataMessage message = new(ArrayPoolList<Hash256>.Empty());
         _ = message.ToString();
     }
 

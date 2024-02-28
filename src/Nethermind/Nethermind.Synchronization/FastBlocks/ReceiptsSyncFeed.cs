@@ -172,6 +172,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }

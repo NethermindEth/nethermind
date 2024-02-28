@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         public void RoundTrip()
         {
             var ethMessage = new Network.P2P.Subprotocols.Eth.V62.Messages.BlockHeadersMessage();
-            ethMessage.BlockHeaders = new ArrayPoolList<BlockHeader>() { Build.A.BlockHeader.TestObject };
-            BlockHeadersMessage message = new(ethMessage, 2, 3000);
+            ethMessage.BlockHeaders = new ArrayPoolList<BlockHeader>(1) { Build.A.BlockHeader.TestObject };
+            using BlockHeadersMessage message = new(ethMessage, 2, 3000);
 
             BlockHeadersMessageSerializer serializer = new();
 

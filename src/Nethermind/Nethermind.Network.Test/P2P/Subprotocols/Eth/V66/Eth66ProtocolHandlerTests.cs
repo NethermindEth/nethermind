@@ -208,7 +208,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Can_handle_pooled_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            var msg65 = new PooledTransactionsMessage(new ArrayPoolList<Transaction>() { tx });
+            var msg65 = new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
@@ -323,7 +323,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 hashes.Add(new Hash256(i.ToString("X64")));
             }
 
-            NewPooledTransactionHashesMessage hashesMsg = new(hashes);
+            using NewPooledTransactionHashesMessage hashesMsg = new(hashes);
             HandleIncomingStatusMessage();
 
             bool callReceived = true;

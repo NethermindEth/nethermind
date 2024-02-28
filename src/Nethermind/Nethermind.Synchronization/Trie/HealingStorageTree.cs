@@ -70,7 +70,7 @@ public class HealingStorageTree : StorageTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = _stateRoot,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>()
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
                     new()
                     {

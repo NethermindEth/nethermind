@@ -41,7 +41,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool CanSync() => _progressTracker.CanSync();
 
-        public (SnapSyncBatch request, bool finished) GetNextRequest() => _progressTracker.GetNextRequest();
+        public bool IsFinished(out SnapSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
 
         public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
@@ -209,7 +209,7 @@ namespace Nethermind.Synchronization.SnapSync
             ITrieStore store = _trieStorePool.Get();
             try
             {
-                for (int reqi = 0; reqi < request.Paths.Length; reqi++)
+                for (int reqi = 0; reqi < request.Paths.Count; reqi++)
                 {
                     var requestedPath = request.Paths[reqi];
 
@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueHash256[] requestedHashes, IOwnedReadOnlyList<byte[]> codes)
+        public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
@@ -309,7 +309,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (batch.CodesRequest is not null)
             {
-                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
+                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest.AsSpan());
             }
             else if (batch.AccountsToRefreshRequest is not null)
             {

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
@@ -13,6 +14,7 @@ using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.NodeData.Messages;
@@ -89,9 +91,10 @@ public class NodeDataProtocolHandlerTests
         act.Should().Throw<SubprotocolException>();
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : P2PMessage
     {
         IByteBuffer getPacket = _svc.ZeroSerialize(msg);
+        msg.Dispose();
         getPacket.ReadByte();
         _handler.HandleMessage(new ZeroPacket(getPacket) { PacketType = (byte)messageCode });
     }
