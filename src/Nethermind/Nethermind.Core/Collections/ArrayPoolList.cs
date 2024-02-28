@@ -311,9 +311,12 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
         if (!_disposed)
         {
-            _arrayPool.Return(_array);
-            _array = null!;
             _disposed = true;
+            if (_array is not null)
+            {
+                _arrayPool.Return(_array);
+                _array = null!;
+            }
         }
 
 #if DEBUG
