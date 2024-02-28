@@ -32,10 +32,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         if (capacity != 0)
         {
             _array = arrayPool.Rent(capacity);
-            for (int i = 0; i < startingCount; i++)
-            {
-                _array[i] = default!;
-            }
+            _array.AsSpan(0, startingCount).Clear();
         }
         else
         {
