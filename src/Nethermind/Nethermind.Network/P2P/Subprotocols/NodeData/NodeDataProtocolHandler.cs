@@ -84,7 +84,7 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
                 }
             case NodeDataMessageCode.NodeData:
                 {
-                    using NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
+                    NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
                     Metrics.NodeDataReceived++;
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
