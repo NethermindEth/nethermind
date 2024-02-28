@@ -117,7 +117,7 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                _progressTracker.ReportStorageRangeRequestFinished(request);
+                _progressTracker.ReportStorageRangeRequestFinished(request.Copy());
 
                 return AddRangeResult.ExpiredRootHash;
             }
@@ -305,7 +305,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (batch.StorageRangeRequest is not null)
             {
-                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
+                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest.Copy());
             }
             else if (batch.CodesRequest is not null)
             {

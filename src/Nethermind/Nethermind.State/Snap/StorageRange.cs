@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.State.Snap
 {
@@ -31,6 +32,18 @@ namespace Nethermind.State.Snap
         /// Account hash after which to stop serving data
         /// </summary>
         public ValueHash256? LimitHash { get; set; }
+
+        public StorageRange Copy()
+        {
+            return new StorageRange()
+            {
+                BlockNumber = BlockNumber,
+                RootHash = RootHash,
+                Accounts = Accounts.ToPooledList(Accounts.Count),
+                StartingHash = StartingHash,
+                LimitHash = LimitHash,
+            };
+        }
 
         public override string ToString()
         {
