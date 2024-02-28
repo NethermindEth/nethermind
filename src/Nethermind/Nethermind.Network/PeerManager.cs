@@ -36,7 +36,7 @@ namespace Nethermind.Network
         private readonly PeerComparer _peerComparer = new();
         private readonly IPeerPool _peerPool;
         private readonly List<PeerStats> _candidates;
-        private readonly RateLimiter _outgoingConnectionRateLimiter;
+        private readonly Core.RateLimiter _outgoingConnectionRateLimiter;
 
         private int _pending;
         private int _tryCount;
@@ -71,7 +71,7 @@ namespace Nethermind.Network
             {
                 _outgoingConnectParallelism = Environment.ProcessorCount;
             }
-            _outgoingConnectionRateLimiter = new RateLimiter(networkConfig.MaxOutgoingConnectPerSec);
+            _outgoingConnectionRateLimiter = new Core.RateLimiter(networkConfig.MaxOutgoingConnectPerSec);
 
             _peerPool = peerPool;
             _candidates = new List<PeerStats>(networkConfig.MaxActivePeers * 2);

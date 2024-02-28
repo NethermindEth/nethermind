@@ -44,15 +44,20 @@ namespace Nethermind.Network.P2P
             int length = buffer.ReadableBytes;
 
             // Running in background
-            _ = SendBuffer(buffer);
+            _ = ThrottleSendBuffer(buffer, message.PacketType);
 
             return length;
         }
 
-        private async Task SendBuffer(IByteBuffer buffer)
+        private async Task ThrottleSendBuffer(IByteBuffer buffer, int packetType)
         {
             try
             {
+                // can be separate limiter for outbound messages
+                if (!await RateLimiter.Instance.ThrottleAsync(packetType, buffer.ReadableBytes, _logger))
+                {
+                    return;
+                }
                 if (_sendLatency != TimeSpan.Zero)
                 {
                     // Tried to implement this as a pipeline handler. Got a lot of peering issue for some reason...
