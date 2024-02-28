@@ -312,7 +312,8 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         if (!_disposed)
         {
             _disposed = true;
-            if (_array is not null)
+            T[]? array = _array;
+            if (array is not null)
             {
                 _arrayPool.Return(_array);
                 _array = null!;
