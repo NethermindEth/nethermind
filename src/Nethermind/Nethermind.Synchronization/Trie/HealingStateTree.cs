@@ -71,7 +71,7 @@ public class HealingStateTree : StateTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new ArrayPoolList<PathGroup>
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
                     new()
                     {

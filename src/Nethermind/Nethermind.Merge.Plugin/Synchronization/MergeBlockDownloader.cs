@@ -336,8 +336,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 if (lastBlockIsPostMerge) // Initial check to prevent creating new array every time
                 {
                     response = response
-                        .TakeWhile((header) => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
-                        .ToPooledList();
+                        .TakeWhile(header => !_poSSwitcher.GetBlockConsensusInfo(header).IsPostMerge)
+                        .ToPooledList(response.Count);
                     if (_logger.IsInfo) _logger.Info($"Last block is post merge. {lastBlockHeader.Hash}. Trimming to {response.Count} sized batch.");
                 }
             }

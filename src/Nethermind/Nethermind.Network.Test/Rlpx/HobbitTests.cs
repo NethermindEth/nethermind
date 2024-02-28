@@ -75,7 +75,7 @@ namespace Nethermind.Network.Test.Rlpx
                 hashes[i] = Keccak.Compute(i.ToString());
             }
 
-            GetBlockBodiesMessage message = new(hashes);
+            using GetBlockBodiesMessage message = new(hashes);
 
             GetBlockBodiesMessageSerializer serializer = new();
             byte[] data = serializer.Serialize(message);
@@ -91,7 +91,7 @@ namespace Nethermind.Network.Test.Rlpx
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -106,7 +106,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] txs = Build.A.Transaction.SignedAndResolved().TestObjectNTimes(10);
             Block block = Build.A.Block.WithTransactions(txs).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -115,7 +115,7 @@ namespace Nethermind.Network.Test.Rlpx
 
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
-            NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
+            using NewBlockMessage decodedMessage = newBlockMessageSerializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.Block.Transactions.Length, Is.EqualTo(newBlockMessage.Block.Transactions.Length));
         }
 
@@ -144,7 +144,7 @@ namespace Nethermind.Network.Test.Rlpx
         [TestCase(StackType.Zero, StackType.Zero, false)]
         public void Status_message(StackType inbound, StackType outbound, bool framingEnabled)
         {
-            StatusMessage message = new();
+            using StatusMessage message = new();
             message.BestHash = Keccak.Zero;
             message.GenesisHash = Keccak.Zero;
             message.ProtocolVersion = 63;
@@ -156,7 +156,7 @@ namespace Nethermind.Network.Test.Rlpx
             Packet packet = new("eth", 7, data);
             Packet decoded = Run(packet, inbound, outbound, framingEnabled);
 
-            StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
+            using StatusMessage decodedMessage = serializer.Deserialize(decoded.Data);
             Assert.That(decodedMessage.TotalDifficulty, Is.EqualTo(message.TotalDifficulty));
         }
 

@@ -105,13 +105,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
+            using var message = msg;
             Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            NodeDataMessage response = await FulfillNodeDataRequest(msg, cancellationToken);
+            NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
             stopwatch.Stop();
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
 
             return response;
         }

@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(IOwnedReadOnlyList<byte[]> data)
         {
-            NodeDataMessage message = new(data);
+            using NodeDataMessage message = new(data);
 
             NodeDataMessageSerializer serializer = new();
             SerializerTester.TestZero(serializer, message);
@@ -23,14 +23,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip()
         {
-            ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
         [Test]
         public void Zero_roundtrip()
         {
-            ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
+            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), TestItem.KeccakB.BytesToArray(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
 
@@ -43,7 +43,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
         [Test]
         public void Roundtrip_with_nulls()
         {
-            ArrayPoolList<byte[]> data = new() { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
+            ArrayPoolList<byte[]> data = new(3) { TestItem.KeccakA.BytesToArray(), Array.Empty<byte>(), TestItem.KeccakC.BytesToArray() };
             Test(data);
         }
     }

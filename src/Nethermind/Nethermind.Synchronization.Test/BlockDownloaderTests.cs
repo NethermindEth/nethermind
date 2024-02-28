@@ -824,7 +824,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToPooledList());
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToPooledList(10));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -853,7 +853,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions)
-                    .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToPooledList());
+                    .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToPooledList(10));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -1098,7 +1098,7 @@ namespace Nethermind.Synchronization.Test
                     headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Body;
                 }
 
-                BlockBodiesMessage message = new(headers);
+                using BlockBodiesMessage message = new(headers);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
@@ -1119,7 +1119,7 @@ namespace Nethermind.Synchronization.Test
                     headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None)!;
                 }
 
-                BlockHeadersMessage message = new(headers.ToPooledList());
+                using BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
@@ -1135,7 +1135,7 @@ namespace Nethermind.Synchronization.Test
                     receipts[i++] = blockReceipts;
                 }
 
-                ReceiptsMessage message = new(receipts.ToPooledList());
+                using ReceiptsMessage message = new(receipts.ToPooledList());
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }
@@ -1240,7 +1240,7 @@ namespace Nethermind.Synchronization.Test
                     _headers[header.Hash!] = header;
                 }
 
-                BlockHeadersMessage message = new(headers.ToPooledList());
+                using BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
@@ -1313,7 +1313,7 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                BlockBodiesMessage message = new(blockBodies);
+                using BlockBodiesMessage message = new(blockBodies);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
@@ -1338,7 +1338,7 @@ namespace Nethermind.Synchronization.Test
                         : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], ReceiptMessageDecoder.Instance);
                 }
 
-                ReceiptsMessage message = new(receipts.ToPooledList());
+                using ReceiptsMessage message = new(receipts.ToPooledList());
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }

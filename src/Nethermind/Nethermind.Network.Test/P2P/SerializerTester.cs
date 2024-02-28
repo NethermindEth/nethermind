@@ -22,7 +22,7 @@ namespace Nethermind.Network.Test.P2P
             try
             {
                 serializer.Serialize(buffer, message);
-                T deserialized = serializer.Deserialize(buffer);
+                using T deserialized = serializer.Deserialize(buffer);
 
                 // RlpLength is calculated explicitly when serializing an object by Calculate method. It's null after deserialization.
                 deserialized.Should().BeEquivalentTo(message, options =>

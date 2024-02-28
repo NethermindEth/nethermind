@@ -432,6 +432,7 @@ namespace Nethermind.Synchronization.FastBlocks
             finally
             {
                 _resetLock.ExitReadLock();
+                batch.Dispose();
             }
         }
 
@@ -457,11 +458,12 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             HeadersSyncBatch dependentBatch = new();
             dependentBatch.StartNumber = batch.StartNumber;
-            dependentBatch.RequestSize = (int)(addedLast - addedEarliest + 1);
+            int count = (int)(addedLast - addedEarliest + 1);
+            dependentBatch.RequestSize = count;
             dependentBatch.MinNumber = batch.MinNumber;
             dependentBatch.Response = batch.Response!
                 .Skip((int)(addedEarliest - batch.StartNumber))
-                .Take((int)(addedLast - addedEarliest + 1)).ToPooledList();
+                .Take(count).ToPooledList(count);
             dependentBatch.ResponseSourcePeer = batch.ResponseSourcePeer;
             return dependentBatch;
         }

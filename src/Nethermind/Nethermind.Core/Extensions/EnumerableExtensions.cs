@@ -10,9 +10,9 @@ namespace Nethermind.Core.Extensions
     public static class EnumerableExtensions
     {
         public static ISet<T> AsSet<T>(this IEnumerable<T> enumerable) =>
-            enumerable is ISet<T> set ? set : enumerable.ToHashSet();
+            enumerable as ISet<T> ?? enumerable.ToHashSet();
 
-        public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable) =>
-            new ArrayPoolList<T>(0, enumerable);
+        public static ArrayPoolList<T> ToPooledList<T>(this IEnumerable<T> enumerable, int count) => new(count, enumerable);
+        public static ArrayPoolList<T> ToPooledList<T>(this IReadOnlyCollection<T> collection) => new(collection.Count, collection);
     }
 }

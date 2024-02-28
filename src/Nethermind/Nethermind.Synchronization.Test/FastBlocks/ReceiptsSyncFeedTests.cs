@@ -169,7 +169,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 LimboLogs.Instance);
             _feed.InitializeFeed();
 
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -212,9 +212,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Returns_same_batch_until_filled()
         {
             LoadScenario(_256BodiesWithOneTxEach);
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             _feed.HandleResponse(request);
-            ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
             request2?.MinNumber.Should().Be(request?.MinNumber);
         }
 
@@ -222,7 +222,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Can_create_a_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().NotBeNull();
             request!.MinNumber.Should().Be(1024);
             request.Prioritized.Should().Be(true);
@@ -234,7 +234,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             LoadScenario(_256BodiesWithOneTxEach);
             _syncConfig.DownloadReceiptsInFastSync = false;
 
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
             _measuredProgress.HasEnded.Should().BeTrue();
@@ -363,7 +363,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
         {
             LoadScenario(_1024BodiesWithOneTxEach);
-            ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
             var response = new ArrayPoolList<TxReceipt[]?>(batch!.Infos.Length, batch!.Infos.Length);
 
             // default receipts that we use when constructing receipt root for tests have stats code 0
@@ -396,7 +396,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Can_sync_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEach);
-            ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
 
             FillBatchResponses(batch!);
             _feed.HandleResponse(batch);

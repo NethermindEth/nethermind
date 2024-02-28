@@ -11,7 +11,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using FastEnumUtility;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.EventArg;
@@ -22,13 +24,20 @@ using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers;
 
-public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocolHandler
+public class P2PProtocolHandler(
+    ISession session,
+    PublicKey localNodeId,
+    INodeStatsManager nodeStatsManager,
+    IMessageSerializationService serializer,
+    Regex? clientIdPattern,
+    ILogManager logManager)
+    : ProtocolHandlerBase(session, nodeStatsManager, serializer, logManager), IPingSender, IP2PProtocolHandler
 {
     private TaskCompletionSource<Packet> _pongCompletionSource;
-    private readonly INodeStatsManager _nodeStatsManager;
+    private readonly INodeStatsManager _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
     private bool _sentHello;
-    private List<Capability> _agreedCapabilities { get; }
-    private List<Capability> _availableCapabilities { get; set; }
+    private readonly List<Capability> _agreedCapabilities = new();
+    private List<Capability> _availableCapabilities = new();
 
     private byte _protocolVersion = 5;
 
@@ -48,44 +57,26 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
     public IReadOnlyList<Capability> AgreedCapabilities { get { return _agreedCapabilities; } }
     public IReadOnlyList<Capability> AvailableCapabilities { get { return _availableCapabilities; } }
-    private readonly List<Capability> SupportedCapabilities = DefaultCapabilities.ToList();
-    private readonly Regex? _clientIdPattern;
+    private readonly List<Capability> _supportedCapabilities = DefaultCapabilities.ToList();
 
-    public int ListenPort { get; }
-    public PublicKey LocalNodeId { get; }
-    public string RemoteClientId { get; private set; }
+    public int ListenPort { get; } = session.LocalPort;
+    public PublicKey LocalNodeId { get; } = localNodeId;
+    private string RemoteClientId { get; set; }
 
-    public override event EventHandler<ProtocolInitializedEventArgs> ProtocolInitialized;
+    public override event EventHandler<ProtocolInitializedEventArgs>? ProtocolInitialized;
 
-    public override event EventHandler<ProtocolEventArgs> SubprotocolRequested;
-
-    public P2PProtocolHandler(
-        ISession session,
-        PublicKey localNodeId,
-        INodeStatsManager nodeStatsManager,
-        IMessageSerializationService serializer,
-        Regex? clientIdPattern,
-        ILogManager logManager) : base(session, nodeStatsManager, serializer, logManager)
-    {
-        _nodeStatsManager = nodeStatsManager ?? throw new ArgumentNullException(nameof(nodeStatsManager));
-        _clientIdPattern = clientIdPattern;
-
-        LocalNodeId = localNodeId;
-        ListenPort = session.LocalPort;
-        _agreedCapabilities = new List<Capability>();
-        _availableCapabilities = new List<Capability>();
-    }
+    public override event EventHandler<ProtocolEventArgs>? SubprotocolRequested;
 
     public bool HasAvailableCapability(Capability capability) => _availableCapabilities.Contains(capability);
     public bool HasAgreedCapability(Capability capability) => _agreedCapabilities.Contains(capability);
     public void AddSupportedCapability(Capability capability)
     {
-        if (SupportedCapabilities.Contains(capability))
+        if (_supportedCapabilities.Contains(capability))
         {
             return;
         }
 
-        SupportedCapabilities.Add(capability);
+        _supportedCapabilities.Add(capability);
     }
 
     public override void Init()
@@ -112,7 +103,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
             case P2PMessageCode.Hello:
                 {
                     Metrics.HellosReceived++;
-                    HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
+                    using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
 
@@ -131,24 +122,19 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 }
             case P2PMessageCode.Disconnect:
                 {
-                    DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
+                    using DisconnectMessage disconnectMessage = Deserialize<DisconnectMessage>(msg.Data);
                     ReportIn(disconnectMessage, size);
 
                     EthDisconnectReason disconnectReason =
                         FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
-                            ? ((EthDisconnectReason)disconnectMessage.Reason)
+                            ? (EthDisconnectReason)disconnectMessage.Reason
                             : EthDisconnectReason.Other;
 
                     if (Logger.IsTrace)
                     {
-                        if (!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason))
-                        {
-                            Logger.Trace($"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}");
-                        }
-                        else
-                        {
-                            Logger.Trace($"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
-                        }
+                        Logger.Trace(!FastEnum.IsDefined<EthDisconnectReason>((byte)disconnectMessage.Reason)
+                            ? $"{Session} unknown disconnect reason ({disconnectMessage.Reason}) on {Session.RemotePort}"
+                            : $"{Session} Received disconnect ({disconnectReason}) on {Session.RemotePort}");
                     }
 
                     Close(disconnectReason);
@@ -170,12 +156,11 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 }
             case P2PMessageCode.AddCapability:
                 {
-                    AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
+                    using AddCapabilityMessage message = Deserialize<AddCapabilityMessage>(msg.Data);
                     Capability capability = message.Capability;
                     _agreedCapabilities.Add(message.Capability);
-                    SupportedCapabilities.Add(message.Capability);
-                    if (Logger.IsTrace)
-                        Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
+                    _supportedCapabilities.Add(message.Capability);
+                    if (Logger.IsTrace) Logger.Trace($"{Session.RemoteNodeId} Starting handler for {capability} on {Session.RemotePort}");
                     SubprotocolRequested?.Invoke(this, new ProtocolEventArgs(capability.ProtocolCode, capability.Version));
                     break;
                 }
@@ -221,11 +206,11 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         _protocolVersion = hello.P2PVersion;
 
-        List<Capability> capabilities = hello.Capabilities;
+        IOwnedReadOnlyList<Capability>? capabilities = hello.Capabilities;
         _availableCapabilities = new List<Capability>(capabilities);
         foreach (Capability theirCapability in capabilities)
         {
-            if (SupportedCapabilities.Contains(theirCapability))
+            if (_supportedCapabilities.Contains(theirCapability))
             {
                 if (Logger.IsTrace)
                     Logger.Trace($"{Session.RemoteNodeId} Agreed on {theirCapability.ProtocolCode} v{theirCapability.Version}");
@@ -247,7 +232,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
                 $"capabilities: {string.Join(", ", capabilities)}");
         }
 
-        if (_clientIdPattern?.IsMatch(hello.ClientId) == false)
+        if (clientIdPattern?.IsMatch(hello.ClientId) == false)
         {
             Session.InitiateDisconnect(
                 DisconnectReason.ClientFiltered,
@@ -260,7 +245,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
         {
             P2PVersion = ProtocolVersion,
             ClientId = RemoteClientId,
-            Capabilities = capabilities,
+            Capabilities = _availableCapabilities,
             ListenPort = hello.ListenPort
         };
 
@@ -331,7 +316,7 @@ public class P2PProtocolHandler : ProtocolHandlerBase, IPingSender, IP2PProtocol
 
         HelloMessage helloMessage = new()
         {
-            Capabilities = SupportedCapabilities,
+            Capabilities = _supportedCapabilities.ToPooledList(),
             ClientId = ProductInfo.ClientId,
             NodeId = LocalNodeId,
             ListenPort = ListenPort,

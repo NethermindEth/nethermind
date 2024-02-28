@@ -53,11 +53,17 @@ namespace Nethermind.JsonRpc.Modules.Eth
         [JsonRpcMethod(IsImplemented = false, Description = "", IsSharable = true)]
         ResultWrapper<UInt256?> eth_maxPriorityFeePerGas();
 
-        [JsonRpcMethod(IsImplemented = false,
+        [JsonRpcMethod(IsImplemented = true,
             Description = "Returns miner's gas price",
             IsSharable = true,
             ExampleResponse = "0x4a817c800")]
         ResultWrapper<UInt256?> eth_gasPrice();
+
+        [JsonRpcMethod(IsImplemented = true,
+            Description = "Returns the base fee per blob gas in wei",
+            IsSharable = true,
+            ExampleResponse = "0x1")]
+        ResultWrapper<UInt256?> eth_blobBaseFee();
 
         [JsonRpcMethod(IsImplemented = false,
             Description = "Returns accounts",

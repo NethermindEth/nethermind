@@ -69,8 +69,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
             switch (message.PacketType)
             {
                 case Eth66MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage
-                        = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     Metrics.Eth66GetBlockHeadersReceived++;
                     ReportIn(getBlockHeadersMessage, size);
                     BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
@@ -148,32 +147,37 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         private async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(getBlockHeaders.EthMessage, cancellationToken);
-            return new BlockHeadersMessage(getBlockHeaders.RequestId, ethBlockHeadersMessage);
+            using var message = getBlockHeaders;
+            V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
+            return new BlockHeadersMessage(message.RequestId, ethBlockHeadersMessage);
         }
 
         private async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(getBlockBodies.EthMessage, cancellationToken);
-            return new BlockBodiesMessage(getBlockBodies.RequestId, ethBlockBodiesMessage);
+            using var message = getBlockBodies;
+            V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message.EthMessage, cancellationToken);
+            return new BlockBodiesMessage(message.RequestId, ethBlockBodiesMessage);
         }
 
         private async Task<PooledTransactionsMessage> Handle(GetPooledTransactionsMessage getPooledTransactions, CancellationToken cancellationToken)
         {
-            return new PooledTransactionsMessage(getPooledTransactions.RequestId,
-                await FulfillPooledTransactionsRequest(getPooledTransactions.EthMessage, cancellationToken));
+            using var message = getPooledTransactions;
+            return new PooledTransactionsMessage(message.RequestId,
+                await FulfillPooledTransactionsRequest(message.EthMessage, cancellationToken));
         }
 
         private async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
         {
-            V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(getReceiptsMessage.EthMessage, cancellationToken);
-            return new ReceiptsMessage(getReceiptsMessage.RequestId, receiptsMessage);
+            using var message = getReceiptsMessage;
+            V63.Messages.ReceiptsMessage receiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
+            return new ReceiptsMessage(message.RequestId, receiptsMessage);
         }
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage getNodeDataMessage, CancellationToken cancellationToken)
         {
-            V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(getNodeDataMessage.EthMessage, cancellationToken);
-            return new NodeDataMessage(getNodeDataMessage.RequestId, nodeDataMessage);
+            using var message = getNodeDataMessage;
+            V63.Messages.NodeDataMessage nodeDataMessage = await FulfillNodeDataRequest(message.EthMessage, cancellationToken);
+            return new NodeDataMessage(message.RequestId, nodeDataMessage);
         }
 
         private void Handle(BlockHeadersMessage message, long size)
@@ -198,11 +202,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66
 
         protected override void Handle(NewPooledTransactionHashesMessage msg)
         {
+            using var message = msg;
             bool isTrace = Logger.IsTrace;
             Stopwatch? stopwatch = isTrace ? Stopwatch.StartNew() : null;
 
-            TxPool.Metrics.PendingTransactionsHashesReceived += msg.Hashes.Count;
-            _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, msg.Hashes);
+            TxPool.Metrics.PendingTransactionsHashesReceived += message.Hashes.Count;
+            _pooledTxsRequestor.RequestTransactionsEth66(_sendAction, message.Hashes);
 
             stopwatch?.Stop();
             if (isTrace)

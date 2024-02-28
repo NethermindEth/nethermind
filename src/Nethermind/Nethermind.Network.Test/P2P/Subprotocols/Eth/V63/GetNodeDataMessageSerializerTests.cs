@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
     {
         private static void Test(Hash256[] keys)
         {
-            GetNodeDataMessage message = new(keys.ToPooledList());
+            using GetNodeDataMessage message = new(keys.ToPooledList());
             GetNodeDataMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);

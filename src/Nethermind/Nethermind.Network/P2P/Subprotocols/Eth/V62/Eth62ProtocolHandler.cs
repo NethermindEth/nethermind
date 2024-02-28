@@ -144,16 +144,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
-                    StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
-                    ReportIn(statusMsg, size);
-                    Handle(statusMsg);
-                    break;
+                    {
+                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                        ReportIn(statusMsg, size);
+                        Handle(statusMsg);
+                        break;
+                    }
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
                     if (CanAcceptBlockGossip())
                     {
-                        NewBlockHashesMessage newBlockHashesMessage =
-                            Deserialize<NewBlockHashesMessage>(message.Content);
+                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
@@ -182,8 +183,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage
-                        = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     ReportIn(getBlockHeadersMessage, size);
                     BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
@@ -206,7 +206,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Metrics.Eth62NewBlockReceived++;
                     if (CanAcceptBlockGossip())
                     {
-                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                        using NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg, size);
                         Handle(newBlockMsg);
                     }
@@ -267,22 +267,32 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
             IOwnedReadOnlyList<Transaction> transactions = request.txs;
-            int startIdx = request.startIndex;
-
-            bool isTrace = Logger.IsTrace;
-            int count = transactions.Count;
-            for (int i = startIdx; i < count; i++)
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                int startIdx = request.startIndex;
+                bool isTrace = Logger.IsTrace;
+                int count = transactions.Count;
+                for (int i = startIdx; i < count; i++)
                 {
-                    // Reschedule and with different start index
-                    BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
-                    return ValueTask.CompletedTask;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        // Reschedule and with different start index
+                        BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
+                        return ValueTask.CompletedTask;
+                    }
+
+                    PrepareAndSubmitTransaction(transactions[i], isTrace);
                 }
 
-                PrepareAndSubmitTransaction(transactions[i], isTrace);
+                transactions.Dispose();
             }
-            transactions.Dispose();
+            catch
+            {
+                transactions.Dispose();
+                throw;
+            }
+
+
             return ValueTask.CompletedTask;
         }
 
