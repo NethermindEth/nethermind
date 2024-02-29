@@ -72,6 +72,7 @@
     <PackageVersion Include="System.IO.Pipelines" Version="8.0.0" />
     <PackageVersion Include="System.Linq.Async" Version="6.0.1" />
     <PackageVersion Include="System.Security.Cryptography.ProtectedData" Version="8.0.0" />
+    <PackageVersion Include="System.Threading.RateLimiting" Version="8.0.0"/>
     <PackageVersion Include="TestableIO.System.IO.Abstractions.TestingHelpers" Version="20.0.4" />
     <PackageVersion Include="TestableIO.System.IO.Abstractions.Wrappers" Version="20.0.4" />
     <PackageVersion Include="Websocket.Client" Version="5.0.0" />

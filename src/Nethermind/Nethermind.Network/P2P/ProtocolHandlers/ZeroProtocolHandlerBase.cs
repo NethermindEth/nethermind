@@ -16,9 +16,20 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
     {
         public override void HandleMessage(Packet message)
         {
+            ThrottleSendMessage(message).Wait();
+        }
+
+        private async Task ThrottleSendMessage(Packet message)
+        {
             ZeroPacket zeroPacket = new(message);
+
             try
             {
+                // can be separate limiter for inbound messages
+                if (!await RateLimiter.Instance.ThrottleAsync(message.PacketType, zeroPacket.Content.ReadableBytes, Logger))
+                {
+                    return;
+                }
                 HandleMessage(zeroPacket);
             }
             finally
