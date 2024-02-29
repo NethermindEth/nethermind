@@ -141,6 +141,12 @@ public struct TreePath
         Length++;
     }
 
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetLast(int nib)
+    {
+        this[Length-1] = nib;
+    }
+
     public readonly int this[int index]
     {
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

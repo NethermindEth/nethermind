@@ -1172,6 +1172,68 @@ namespace Nethermind.Trie
             return childOrRef;
         }
 
+        /// <summary>
+        /// Fast path for trie visitor which visit ranges. Assume node is persisted and has RLP. Does not check for
+        /// data[i] and does not modify it as it assume its not in the cache most of the time.
+        /// </summary>
+        /// <param name="tree"></param>
+        /// <param name="path"></param>
+        /// <param name="output"></param>
+        private void ResolveAllChildBranch(ITrieNodeResolver tree, ref TreePath path, TrieNode?[] output)
+        {
+            RlpFactory rlp = _rlp;
+            if (rlp is null)
+            {
+                AppendChildPathBranch(ref path, 0);
+                for (int i = 0; i < 16; i++)
+                {
+                    path.SetLast(i);
+                    output[i] = GetChildWithChildPath(tree, ref path, i);
+                }
+                path.TruncateOne();
+                return;
+            }
+
+            ValueRlpStream rlpStream = rlp.GetRlpStream();
+            rlpStream.Reset();
+            rlpStream.SkipLength();
+
+            AppendChildPathBranch(ref path, 0);
+            for (int i = 0; i < 16; i++)
+            {
+                // Allows to load children in parallel
+                int prefix = rlpStream.PeekByte();
+
+                switch (prefix)
+                {
+                    case 0:
+                    case 128:
+                    {
+                        rlpStream.Position++;
+                        output[i] = null;
+                        break;
+                    }
+                    case 160:
+                    {
+                        path.SetLast(i);
+                        Hash256 keccak = rlpStream.DecodeKeccak();
+                        TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                        output[i] = child;
+
+                        break;
+                    }
+                    default:
+                    {
+                        Span<byte> fullRlp = rlpStream.PeekNextItem();
+                        TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                        output[i] = child;
+                        break;
+                    }
+                }
+            }
+            path.TruncateOne();
+        }
+
         private void UnresolveChild(int i)
         {
             if (IsPersisted)

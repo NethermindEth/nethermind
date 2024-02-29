@@ -207,6 +207,27 @@ namespace Nethermind.Trie
                             });
                         }
 
+                        static void VisitAllSingleThread(TrieNode currentNode, ref TreePath path, ITreeVisitor<TNodeContext> visitor, TNodeContext nodeContext, ITrieNodeResolver nodeResolver, TrieVisitContext visitContext)
+                        {
+                            TrieNode?[] output = new TrieNode?[16];
+                            currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
+                            currentNode.AppendChildPathBranch(ref path, 0);
+                            for (int i = 0; i < 16; i++)
+                            {
+                                if (output[i] == null) continue;
+                                TrieNode child = output[i];
+                                path.SetLast(i);
+                                child.ResolveKey(nodeResolver, ref path, false);
+                                TNodeContext childContext = nodeContext.Add((byte)i);
+                                if (visitor.ShouldVisit(childContext, child.Keccak!))
+                                {
+                                    visitContext.BranchChildIndex = i;
+                                    child.Accept(visitor, childContext, nodeResolver, ref path, visitContext);
+                                }
+                            }
+                            path.TruncateOne();
+                        }
+
                         visitor.VisitBranch(nodeContext, this, trieVisitContext);
                         trieVisitContext.AddVisited();
                         trieVisitContext.Level++;
@@ -231,7 +252,14 @@ namespace Nethermind.Trie
                         }
                         else
                         {
-                            VisitSingleThread(ref path, visitor, nodeContext, nodeResolver, trieVisitContext);
+                            if (visitor.IsRangeScan)
+                            {
+                                VisitAllSingleThread(this, ref path, visitor, nodeContext, nodeResolver, trieVisitContext);
+                            }
+                            else
+                            {
+                                VisitSingleThread(ref path, visitor, nodeContext, nodeResolver, trieVisitContext);
+                            }
                         }
 
                         trieVisitContext.Level--;
