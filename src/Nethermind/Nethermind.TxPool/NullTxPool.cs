@@ -42,7 +42,7 @@ namespace Nethermind.TxPool
 
         public bool IsKnown(Hash256 hash) => false;
 
-        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction)
         {
             transaction = null;
             return false;

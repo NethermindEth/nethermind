@@ -15,6 +15,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -140,16 +141,16 @@ namespace Nethermind.Synchronization.Test
                 return Task.FromResult(new OwnedBlockBodies(result));
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 if (_causeTimeoutOnHeaders)
                 {
-                    return Task.FromException<BlockHeader[]>(new TimeoutException());
+                    return Task.FromException<IOwnedReadOnlyList<BlockHeader>?>(new TimeoutException());
                 }
 
                 int filled = 0;
                 bool started = false;
-                BlockHeader[] result = new BlockHeader[maxBlocks];
+                ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
                 foreach (Block block in Blocks)
                 {
                     if (block.Number == number)
@@ -168,10 +169,10 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                return Task.FromResult(result);
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -213,12 +214,12 @@ namespace Nethermind.Synchronization.Test
 
             public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

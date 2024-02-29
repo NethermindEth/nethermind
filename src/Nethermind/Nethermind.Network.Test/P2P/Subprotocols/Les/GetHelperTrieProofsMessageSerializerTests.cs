@@ -19,7 +19,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
                 new(HelperTrieType.CHT, 177, TestItem.RandomDataA, 2, 1),
                 new(HelperTrieType.BloomBits, 77, TestItem.RandomDataB, 4, 0),
             };
-            GetHelperTrieProofsMessage message = new();
+            using GetHelperTrieProofsMessage message = new();
             message.RequestId = 100;
             message.Requests = requests;
 

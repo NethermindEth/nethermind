@@ -55,7 +55,7 @@ public class HealingTreeTests
 
     private static bool PathMatch(GetTrieNodesRequest r, byte[] path, int lastPathIndex) =>
         r.RootHash == _key
-        && r.AccountAndStoragePaths.Length == 1
+        && r.AccountAndStoragePaths.Count == 1
         && r.AccountAndStoragePaths[0].Group.Length == lastPathIndex + 1
         && Bytes.AreEqual(r.AccountAndStoragePaths[0].Group[lastPathIndex], Nibbles.EncodePath(path));
 

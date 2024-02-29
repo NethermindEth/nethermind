@@ -32,7 +32,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
 
             stream.Encode(message.RequestId);
 
-            if (message.Slots is null || message.Slots.Length == 0)
+            if (message.Slots is null || message.Slots.Count == 0)
             {
                 stream.EncodeNullObject();
             }
@@ -40,7 +40,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             {
                 stream.StartSequence(allSlotsLength);
 
-                for (int i = 0; i < message.Slots.Length; i++)
+                for (int i = 0; i < message.Slots.Count; i++)
                 {
                     stream.StartSequence(accountSlotsLengths[i]);
 
@@ -60,14 +60,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
                 }
             }
 
-            if (message.Proofs is null || message.Proofs.Length == 0)
+            if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 stream.EncodeNullObject();
             }
             else
             {
                 stream.StartSequence(proofsLength);
-                for (int i = 0; i < message.Proofs.Length; i++)
+                for (int i = 0; i < message.Proofs.Count; i++)
                 {
                     stream.Encode(message.Proofs[i]);
                 }
@@ -82,8 +82,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             stream.ReadSequenceLength();
 
             message.RequestId = stream.DecodeLong();
-            message.Slots = stream.DecodeArray(_decodeSlotArray);
-            message.Proofs = stream.DecodeArray(s => s.DecodeByteArray());
+            message.Slots = stream.DecodeArrayPoolList(_decodeSlotArray);
+            message.Proofs = stream.DecodeArrayPoolList(s => s.DecodeByteArray());
 
             return message;
         }
@@ -104,15 +104,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             int contentLength = Rlp.LengthOf(message.RequestId);
 
             int allSlotsLength = 0;
-            int[] accountSlotsLengths = new int[message.Slots.Length];
+            int[] accountSlotsLengths = new int[message.Slots.Count];
 
-            if (message.Slots is null || message.Slots.Length == 0)
+            if (message.Slots is null || message.Slots.Count == 0)
             {
                 allSlotsLength = 1;
             }
             else
             {
-                for (var i = 0; i < message.Slots.Length; i++)
+                for (var i = 0; i < message.Slots.Count; i++)
                 {
                     int accountSlotsLength = 0;
 
@@ -131,14 +131,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             contentLength += Rlp.LengthOfSequence(allSlotsLength);
 
             int proofsLength = 0;
-            if (message.Proofs is null || message.Proofs.Length == 0)
+            if (message.Proofs is null || message.Proofs.Count == 0)
             {
                 proofsLength = 1;
                 contentLength++;
             }
             else
             {
-                for (int i = 0; i < message.Proofs.Length; i++)
+                for (int i = 0; i < message.Proofs.Count; i++)
                 {
                     proofsLength += Rlp.LengthOf(message.Proofs[i]);
                 }

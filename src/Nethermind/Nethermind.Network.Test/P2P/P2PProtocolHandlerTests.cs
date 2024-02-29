@@ -6,6 +6,7 @@ using System.Linq;
 using System.Text.RegularExpressions;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -98,12 +99,9 @@ namespace Nethermind.Network.Test.P2P
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
             p2PProtocolHandler.AddSupportedCapability(new Capability(Protocol.Wit, 66));
 
-            HelloMessage message = new HelloMessage()
+            using HelloMessage message = new()
             {
-                Capabilities = new List<Capability>()
-                {
-                    new Capability(Protocol.Eth, 63)
-                },
+                Capabilities = new ArrayPoolList<Capability>(1) { new(Protocol.Eth, 63) },
                 NodeId = TestItem.PublicKeyA,
             };
 
@@ -132,12 +130,9 @@ namespace Nethermind.Network.Test.P2P
             _clientIdPattern = new Regex(pattern);
             P2PProtocolHandler p2PProtocolHandler = CreateSession();
 
-            HelloMessage message = new HelloMessage()
+            using HelloMessage message = new()
             {
-                Capabilities = new List<Capability>()
-                {
-                    new Capability(Protocol.Eth, 63)
-                },
+                Capabilities = new ArrayPoolList<Capability>(1) { new Capability(Protocol.Eth, 63) },
                 NodeId = TestItem.PublicKeyA,
                 ClientId = clientId,
             };

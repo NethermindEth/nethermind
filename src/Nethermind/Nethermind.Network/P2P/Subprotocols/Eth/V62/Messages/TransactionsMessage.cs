@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
@@ -16,9 +17,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public override int PacketType { get; } = Eth62MessageCode.Transactions;
         public override string Protocol { get; } = "eth";
-        public IList<Transaction> Transactions { get; }
+        public IOwnedReadOnlyList<Transaction> Transactions { get; }
 
-        public TransactionsMessage(IList<Transaction> transactions)
+        public TransactionsMessage(IOwnedReadOnlyList<Transaction> transactions)
         {
             Transactions = transactions;
         }
@@ -28,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public override void Dispose()
         {
             base.Dispose();
-            if (Transactions is IDisposable disposable) disposable.Dispose();
+            Transactions?.Dispose();
         }
     }
 }
