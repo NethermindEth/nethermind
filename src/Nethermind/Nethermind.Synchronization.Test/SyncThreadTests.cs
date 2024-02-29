@@ -41,6 +41,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Config;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -298,6 +299,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                txProcessor,
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -320,6 +322,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                devTxProcessor,
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,
@@ -351,6 +354,7 @@ namespace Nethermind.Synchronization.Test
                 logManager);
             Synchronizer synchronizer = new(
                 dbProvider,
+                new NodeStorage(dbProvider.StateDb),
                 MainnetSpecProvider.Instance,
                 tree,
                 NullReceiptStorage.Instance,

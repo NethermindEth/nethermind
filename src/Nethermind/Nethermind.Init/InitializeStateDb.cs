@@ -17,8 +17,6 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -76,9 +74,9 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
-
         IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
@@ -92,7 +90,8 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()) // TODO: memory hint should define this
+                .TrackingPastKeys(pruningConfig.TrackedPastKeyCount);
         }
         else
         {
@@ -100,14 +99,16 @@ public class InitializeStateDb : IStep
             persistenceStrategy = Persist.EveryBlock;
         }
 
+        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy);
+
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager)
             : new TrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
@@ -167,7 +168,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore);
 
         return Task.CompletedTask;
     }
@@ -182,7 +183,8 @@ public class InitializeStateDb : IStep
         IInitConfig initConfig,
         INethermindApi api,
         IStateReader stateReader,
-        TrieStore trieStore)
+        INodeStorage mainNodeStorage,
+        IPruningTrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -212,9 +214,19 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                    stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, trieStore, api.LogManager);
+                FullPruner pruner = new(
+                    fullPruningDb,
+                    api.NodeStorageFactory,
+                    mainNodeStorage,
+                    api.PruningTrigger,
+                    pruningConfig,
+                    api.BlockTree!,
+                    stateReader,
+                    api.ProcessExit!,
+                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                    drive,
+                    trieStore,
+                    api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

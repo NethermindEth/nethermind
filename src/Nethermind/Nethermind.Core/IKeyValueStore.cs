@@ -71,8 +71,12 @@ namespace Nethermind.Core
         // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
         HintReadAhead = 2,
 
+        // Shameful hack to use different pool of readahead iterator.
+        HintReadAhead2 = 4,
+        HintReadAhead3 = 8,
+
         // Used for full pruning db to skip duplicate read
-        SkipDuplicateRead = 4,
+        SkipDuplicateRead = 16,
     }
 
     [Flags]

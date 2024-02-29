@@ -8,10 +8,13 @@ namespace Nethermind.Trie.Test.Pruning
     public class TestPruningStrategy : IPruningStrategy
     {
         private readonly bool _pruningEnabled;
-        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false)
+        private readonly int _trackedPastKeyCount;
+
+        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false, int trackedPastKeyCount = 0)
         {
             _pruningEnabled = pruningEnabled;
             ShouldPruneEnabled = shouldPrune;
+            _trackedPastKeyCount = trackedPastKeyCount;
         }
 
         public bool PruningEnabled => _pruningEnabled;
@@ -27,5 +30,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             return false;
         }
+
+        public int TrackedPastKeyCount => _trackedPastKeyCount;
     }
 }

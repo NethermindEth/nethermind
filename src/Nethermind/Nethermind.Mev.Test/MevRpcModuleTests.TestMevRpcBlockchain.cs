@@ -201,6 +201,7 @@ namespace Nethermind.Mev.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    TxProcessor,
                     LogManager);
 
                 _tracerFactory = new TracerFactory(

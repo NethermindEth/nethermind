@@ -22,4 +22,5 @@ public class CompositePersistenceStrategy : IPersistenceStrategy
     }
 
     public bool ShouldPersist(long blockNumber) => _strategies.Any(strategy => strategy.ShouldPersist(blockNumber));
+    public bool IsFullPruning => _strategies.Any(strategy => strategy.IsFullPruning);
 }

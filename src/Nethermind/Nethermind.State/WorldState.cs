@@ -42,14 +42,14 @@ namespace Nethermind.State
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
         internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
         {
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager, stateTree);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
@@ -114,23 +114,21 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
+            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis, isSystemCall);
         }
-
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
         {
-            _stateProvider.AddToBalance(address, balanceChange, spec);
+            _stateProvider.AddToBalance(address, balanceChange, spec, isSystemCall);
         }
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
             _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
         {
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec);
+            _stateProvider.SubtractFromBalance(address, balanceChange, spec, isSystemCall);
         }
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {

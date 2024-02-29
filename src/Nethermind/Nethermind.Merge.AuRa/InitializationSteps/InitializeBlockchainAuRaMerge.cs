@@ -38,6 +38,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                _api.TransactionProcessor!,
                 txFilter,
                 GetGasLimitCalculator(),
                 contractRewriter

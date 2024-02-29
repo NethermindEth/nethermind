@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers.Binary;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
@@ -73,6 +74,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     private readonly List<IDisposable> _metricsUpdaters = new();
 
     private readonly ManagedIterators _readaheadIterators = new();
+    private readonly ManagedIterators _readaheadIterators2 = new();
+    private readonly ManagedIterators _readaheadIterators3 = new();
 
     internal long _allocatedSpan = 0;
     private long _totalReads;
@@ -378,7 +381,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         tableOptions.SetFormatVersion(5);
-        tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        if (dbConfig.BloomFilterBitsPerKey != 0)
+        {
+            // Bloom filter size for the sst files.
+            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey, false));
+        }
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
@@ -413,6 +420,21 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This reduces disk space utilization, but read of non-existent key will have to go through the database
         // instead of checking a bloom filter.
         options.SetOptimizeFiltersForHits(dbConfig.OptimizeFiltersForHits ? 1 : 0);
+        if (dbConfig.RowCacheSize > 0)
+        {
+            _rowCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
+            _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
+        }
+
+        /*
+         * Multi-Threaded Compactions
+         * Compactions are needed to remove multiple copies of the same key that may occur if an application overwrites an existing key. Compactions also process deletions of keys. Compactions may occur in multiple threads if configured appropriately.
+         * The entire database is stored in a set of sstfiles. When a memtable is full, its content is written out to a file in Level-0 (L0). RocksDB removes duplicate and overwritten keys in the memtable when it is flushed to a file in L0. Some files are periodically read in and merged to form larger files - this is called compaction.
+         * The overall write throughput of an LSM database directly depends on the speed at which compactions can occur, especially when the data is stored in fast storage like SSD or RAM. RocksDB may be configured to issue concurrent compaction requests from multiple threads. It is observed that sustained write rates may increase by as much as a factor of 10 with multi-threaded compaction when the database is on SSDs, as compared to single-threaded compactions.
+         * TKS: Observed 500MB/s compared to ~100MB/s between multithreaded and single thread compactions on my machine (processor count is returning 12 for 6 cores with hyperthreading)
+         * TKS: CPU goes to insane 30% usage on idle - compacting only app
+         */
+        options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
         if (dbConfig.DisableCompression == true)
         {
@@ -441,8 +463,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
         // block cache and then finally the LSM/SST files.
         #region WriteBuffer
+
+        // The memtable have a bloom filter whose size depends on the `prefix_bloom_size_ratio`, which is not actually
+        // just for prefix.
         _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
-        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
+        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, dbConfig.MemtablePrefixBloomSizeRatio);
 
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
         ulong writeBufferSize = dbConfig.WriteBufferSize;
@@ -510,7 +535,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
-        options.SetLevelCompactionDynamicLevelBytes(false);
+        // Set to true to enable dynamic level bytes. Its drastically different than standard compaction.
+        options.SetLevelCompactionDynamicLevelBytes(dbConfig.LevelCompactionDynamicLevelBytes);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
@@ -525,6 +551,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
+
+        // How many bytes before the SST files get synced to disk.
+        options.SetBytesPerSync(dbConfig.BytesPerSync);
 
         // For reducing temporarily used disk space but come at the cost of parallel compaction.
         if (dbConfig.MaxCompactionBytes.HasValue)
@@ -558,7 +587,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         options.SetCreateIfMissing();
-        options.SetAdviseRandomOnOpen(true);
+
+        // From looking into the source code, this does not have an effect on Windows.
+        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
+
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
@@ -645,7 +677,17 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        return GetWithColumnFamily(key, null, _readaheadIterators, flags);
+        ManagedIterators iterators = _readaheadIterators;
+        if ((flags & ReadFlags.HintReadAhead2) != 0)
+        {
+            iterators = _readaheadIterators2;
+        }
+        else if ((flags & ReadFlags.HintReadAhead3) != 0)
+        {
+            iterators = _readaheadIterators3;
+        }
+
+        return GetWithColumnFamily(key, null, iterators, flags);
     }
 
     internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
@@ -664,6 +706,12 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
 
                 Iterator iterator = readaheadIterators.Value!;
+
+                if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+                {
+                    return closeRes;
+                }
+
                 iterator.Seek(key);
                 if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
                 {
@@ -678,6 +726,72 @@ public class DbOnTheRocks : IDb, ITunableDb
             CreateMarkerIfCorrupt(e);
             throw;
         }
+    }
+
+    /// <summary>
+    /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
+    /// Here we attempt to do that first. To prevent futile attempt some logic is added to approximately detect
+    /// if the requested key is too far from the current key and skip this entirely.
+    /// </summary>
+    /// <param name="iterator"></param>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    private bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    {
+        // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
+        if (key.Length <= 32)
+        {
+            result = null;
+            return false;
+        }
+
+        iterator.Next();
+        ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
+        int compareResult = currentKey.SequenceCompareTo(key);
+        if (compareResult == 0)
+        {
+            result = iterator.Value();
+            return true; // This happens A LOT.
+        }
+
+        result = null;
+        if (compareResult > 0)
+        {
+            return false;
+        }
+
+        // This happens, 0.5% of the time.
+        // This is only useful for state as storage have way too different different address range between different
+        // contract. That said, there isn't any real good threshold. Threshold is for some reasonably high value
+        // above the average distance.
+        ulong currentKeyInt = BinaryPrimitives.ReadUInt64BigEndian(currentKey);
+        ulong requestedKeyInt = BinaryPrimitives.ReadUInt64BigEndian(key);
+        ulong distance = requestedKeyInt - currentKeyInt;
+        if (distance > 1_000_000_000)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < 5 && compareResult < 0; i++)
+        {
+            iterator.Next();
+            compareResult = iterator.GetKeySpan().SequenceCompareTo(key);
+        }
+
+        if (compareResult == 0)
+        {
+            result = iterator.Value();
+            return true;
+        }
+
+        if (compareResult > 0)
+        {
+            // We've skipped it somehow
+            result = null;
+            return true;
+        }
+
+        return false;
     }
 
     public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
@@ -1217,6 +1331,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         _readaheadIterators.DisposeAll();
+        _readaheadIterators2.DisposeAll();
+        _readaheadIterators3.DisposeAll();
 
         _db.Dispose();
 

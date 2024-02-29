@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -17,8 +18,9 @@ namespace Nethermind.State
     public class StateReader(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
     {
         private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-        private readonly StateTree _state = new(trieStore, logManager);
-        private readonly StorageTree _storage = new(trieStore, Keccak.EmptyTreeHash, logManager);
+        private readonly StateTree _state = new StateTree(trieStore.GetTrieStore(null), logManager);
+        private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
         public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
@@ -34,8 +36,8 @@ namespace Nethermind.State
 
             Metrics.StorageTreeReads++;
 
-            return _storage.Get(index, new Hash256(storageRoot));
-
+            StorageTree storage = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            return storage.Get(index, new Hash256(storageRoot));
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
@@ -46,9 +48,9 @@ namespace Nethermind.State
 
         public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
-            _state.Accept(treeVisitor, rootHash, visitingOptions);
+            _state.Accept(treeVisitor, stateRoot, visitingOptions);
         }
 
         public bool HasStateForRoot(Hash256 stateRoot) => trieStore.HasRoot(stateRoot);

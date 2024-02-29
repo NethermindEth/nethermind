@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Consensus.Processing;
+using Nethermind.Trie;
 
 namespace Nethermind.Api
 {
@@ -34,6 +35,7 @@ namespace Nethermind.Api
         public long? BadBlocksStored { get; set; } = 100;
         public bool DisableGcOnNewPayload { get; set; } = true;
         public bool DisableMallocOpts { get; set; } = false;
+        public INodeStorage.KeyScheme StateDbKeyScheme { get; set; } = INodeStorage.KeyScheme.Current;
         public long? ExitOnBlockNumber { get; set; } = null;
         public int BackgroundTaskConcurrency { get; set; } = 1;
 

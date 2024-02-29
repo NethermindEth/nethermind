@@ -15,7 +15,8 @@ namespace Nethermind.State
         ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index);
         byte[]? GetCode(Hash256 codeHash);
         byte[]? GetCode(in ValueHash256 codeHash);
-        void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null);
+        void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) => RunTreeVisitor(new ContextNotAwareTreeVisitor(treeVisitor), stateRoot, visitingOptions);
+        void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>;
         bool HasStateForRoot(Hash256 stateRoot);
     }
 }
