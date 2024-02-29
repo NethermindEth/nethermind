@@ -169,16 +169,20 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, null, null, cancellationToken);
+        AccountCollector accounts = new AccountCollector();
+        (long _, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+            rootHash,
+            startingHash,
+            limitHash?.ToCommitment() ?? Keccak.MaxValue,
+            byteLimit,
+            null,
+            null,
+            accounts,
+            cancellationToken);
 
-        ArrayPoolList<PathWithAccount> nodes = new ArrayPoolList<PathWithAccount>(requiredNodes.Count);
-        foreach (PathWithAccount? result in requiredNodes.Select(res => new PathWithAccount(res.Key, _decoder.Decode(new RlpStream(res.Value)))))
-        {
-            nodes.Add(result);
-        }
+        ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
 
-        return nodes.Count == 0 ? (nodes, ArrayPoolList<byte[]>.Empty()) : (nodes, proofs.ToPooledList());
+        return nodes.Count == 0 ? (nodes, ArrayPoolList<byte[]>.Empty()) : (nodes, proofs);
     }
 
     public (IOwnedReadOnlyList<PathWithStorageSlot[]>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
@@ -197,6 +201,7 @@ public class SnapServer : ISnapServer
         }
 
         ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Count);
+        PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
         for (int i = 0; i < accounts.Count; i++)
         {
             if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
@@ -217,31 +222,26 @@ public class SnapServer : ISnapServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            (IDictionary<ValueHash256, byte[]>? requiredNodes, long innerResponseSize, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+            (long innerResponseSize, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
                 limitHash1,
                 byteLimit - responseSize,
                 storagePath,
                 accountNeth.StorageRoot,
+                pathWithStorageCollector,
                 cancellationToken);
 
-            if (requiredNodes.Count == 0)
+            if (pathWithStorageCollector.Slots.Count == 0)
             {
                 break;
             }
 
-            PathWithStorageSlot[] nodes = new PathWithStorageSlot[requiredNodes.Count];
-            int index = 0;
-            foreach (PathWithStorageSlot? result in requiredNodes.Select(res => new PathWithStorageSlot(res.Key, res.Value)))
-            {
-                nodes[index] = result.Value;
-                index += 1;
-            }
-            responseNodes.Add(nodes);
+            responseNodes.Add(pathWithStorageCollector.Slots.ToArray());
+            pathWithStorageCollector.Slots.Clear();
             if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
-                return (responseNodes, proofs.ToPooledList());
+                return (responseNodes, proofs);
             }
             responseSize += innerResponseSize;
         }
@@ -249,18 +249,23 @@ public class SnapServer : ISnapServer
         return (responseNodes, ArrayPoolList<byte[]>.Empty());
     }
 
-    private (IDictionary<ValueHash256, byte[]>?, long, IOwnedReadOnlyList<byte[]>, bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
-        long byteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
+    private (long, IOwnedReadOnlyList<byte[]>, bool) GetNodesFromTrieVisitor(
+        in ValueHash256 rootHash,
+        in ValueHash256 startingHash,
+        in ValueHash256 limitHash,
+        long byteLimit,
+        in ValueHash256? storage,
+        in ValueHash256? storageRoot,
+        RangeQueryVisitor.ILeafValueCollector valueCollector,
+        CancellationToken cancellationToken)
     {
-        bool isStorage = storage is not null;
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
-        (IDictionary<ValueHash256, byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
         ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
-        return (requiredNodes, responseSize, proofs, visitor.StoppedEarly);
+        return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
     private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
