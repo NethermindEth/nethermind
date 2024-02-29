@@ -1,0 +1,89 @@
+syntax = "proto3";
+package p2pmsg;
+
+// import "any.proto";
+
+option go_package = "./;p2pmsg";
+option csharp_namespace = "Nethermind.Merge.AuRa.Shutter.Dto";
+
+message DecryptionTrigger {
+    uint64 instanceID = 1;
+    bytes epochID = 2;
+    uint64 blockNumber = 3;
+    bytes transactionsHash = 4;
+    bytes signature = 5;
+}
+
+message KeyShare {
+    bytes epochID = 1;
+    bytes share = 2;
+}
+
+message GnosisDecryptionKeySharesExtra {
+    uint64 slot = 1;
+    uint64 tx_pointer = 2;
+    bytes signature = 3;
+}
+
+message OptimismDecryptionKeySharesExtra {}
+
+message DecryptionKeyShares {
+    uint64 instanceID = 1;
+    uint64 eon = 4;
+    uint64 keyperIndex = 5;
+    repeated KeyShare shares = 9;
+    oneof extra {
+        GnosisDecryptionKeySharesExtra gnosis = 10;
+        OptimismDecryptionKeySharesExtra optimism = 11;
+    }
+}
+
+message Key {
+    bytes identity = 1;
+    bytes key = 2;
+}
+
+message GnosisDecryptionKeysExtra {
+    uint64 slot = 1;
+    uint64 tx_pointer = 2;
+    repeated uint64 signerIndices = 3;
+    repeated bytes signatures = 4;
+}
+
+message OptimismDecryptionKeysExtra {}
+
+message DecryptionKeys {
+    uint64 instanceID = 1;
+    uint64 eon = 2;
+    repeated Key keys = 3;
+    oneof extra {
+        GnosisDecryptionKeysExtra gnosis = 4;
+        OptimismDecryptionKeysExtra optimism = 5;
+    }
+}
+
+// EonPublicKey is sent by the keypers to publish the EonPublicKey for a certain
+// eon.  For those that observe it, e.g. the collator, it's a candidate until
+// the observer has seen at least threshold messages.
+message EonPublicKey {
+    uint64 instanceID = 1;
+    bytes publicKey= 2;
+    uint64 activationBlock = 3;
+    uint64 keyperConfigIndex = 6;
+    uint64 eon = 7;
+    bytes signature = 5;
+}
+
+
+message TraceContext {
+    bytes traceID = 1;
+    bytes spanID = 2;
+    bytes traceFlags = 3;
+    string traceState = 4;
+}
+
+message Envelope {
+    string version = 1 ;
+    google.protobuf.Any message = 2;
+    optional TraceContext trace = 3;
+}

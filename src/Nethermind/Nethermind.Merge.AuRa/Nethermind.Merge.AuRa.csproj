@@ -3,6 +3,7 @@
   <PropertyGroup>
     <RootNamespace>Nethermind.Merge.AuRa</RootNamespace>
     <Nullable>enable</Nullable>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>
@@ -20,10 +21,17 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Nethermind.Libp2p" />
+		<AdditionalFiles Include="Shutter\Dto\gossip.proto" CopyToOutputDirectory="Never" />
+	</ItemGroup>
+
+  <ItemGroup>
+    <!-- <PackageReference Include="Nethermind.Libp2p" /> -->
+    <PackageReference Include="Google.Protobuf" />
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\..\dotnet-libp2p\src\libp2p\Libp2p\Libp2p.csproj" />
+    <ProjectReference Include="..\..\dotnet-libp2p\src\libp2p\Libp2p.Generators.Protobuf\Libp2p.Generators.Protobuf.csproj"  OutputItemType="Analyzer" ReferenceOutputAssembly="false" />
     <ProjectReference Include="..\Nethermind.Consensus\Nethermind.Consensus.csproj" />
     <ProjectReference Include="..\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
     <ProjectReference Include="..\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />

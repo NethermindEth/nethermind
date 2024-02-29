@@ -28,5 +28,18 @@
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [],
+    "name": "getNumKeyperSets",
+    "outputs": [
+      {
+        "name": "",
+        "type": "uint64",
+        "internaltype": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
 ]

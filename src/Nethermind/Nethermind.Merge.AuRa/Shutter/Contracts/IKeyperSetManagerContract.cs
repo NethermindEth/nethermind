@@ -12,4 +12,9 @@ public interface IKeyperSetManagerContract
     /// </summary>
     /// <param name="eon"></param>
     (Address, ulong) GetKeyperSetAddress(BlockHeader blockHeader, in ulong index);
+
+    /// <summary>
+    /// Gets the current eon.
+    /// </summary>
+    ulong GetNumKeyperSets(BlockHeader blockHeader);
 }

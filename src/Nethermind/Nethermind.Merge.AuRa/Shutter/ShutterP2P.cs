@@ -7,61 +7,53 @@ using System;
 using System.Threading.Tasks;
 using System.Threading;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Logging;
-using System.IO;
 using System.Linq;
 using System.Collections.Generic;
-using System.Buffers.Binary;
 using Nethermind.Crypto;
-using Multiaddr = Nethermind.Libp2p.Core.Multiaddr;
+using Multiformats.Address;
 using Nethermind.Core;
 using Nethermind.Api;
+using Google.Protobuf;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
-    public static readonly ulong InstanceId = 0;
-    private readonly Action<DecryptionKeys> _onDecryptionKeysReceived;
+    public static readonly ulong InstanceID = 0;
+    public static readonly int Threshhold = 0;
+    private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly Contracts.IKeyBroadcastContract _keyBroadcastContract;
     private readonly Contracts.IKeyperSetManagerContract _keyperSetManagerContract;
     private readonly INethermindApi _api;
 
-    public ShutterP2P(Action<DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
         _keyBroadcastContract = keyBroadcastContract;
         _keyperSetManagerContract = keyperSetManagerContract;
         _api = api;
 
-        var key = File.ReadAllLines("/src/play/work/keyper-dkg-external/keyper-0.toml").First(l => l.StartsWith("P2PKey = ")).Replace("P2PKey = ", "").Trim('\'');
-
-#pragma warning disable CA2252 // This API requires opting into preview features
         ServiceProvider serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
-            .AddSingleton(new Libp2p.Protocols.Identify.Dto.Identify() // IdentifySettings?
+            .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = "shutter/0.1.0"
+                ProtocolVersion = "/shutter/0.1.0",
+                AgentVersion = "github.com/shutter-network/rolling-shutter/rolling-shutter"
             })
-            .AddLogging(builder =>
-                    builder.SetMinimumLevel(LogLevel.Trace)
-                    .AddSimpleConsole(l =>
-                    {
-                        l.SingleLine = true;
-                        l.TimestampFormat = "[HH:mm:ss.FFF]";
-                    }))
-        .BuildServiceProvider();
-#pragma warning restore CA2252 // This API requires opting into preview features
+            .BuildServiceProvider();
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(Convert.FromBase64String(key)), "/ip4/127.0.0.1/tcp/23102");
+        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/23102");
+        Console.WriteLine(peer.Address);
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
-        ITopic topic = router.Subscribe("decryptionKey");
+        ITopic topic = router.Subscribe("decryptionKeys");
         topic.OnMessage += (byte[] msg) =>
         {
-            DecryptionKeys decryptionKeys = ParseDecrpytionKeys(msg);
-            if (CheckDecryptionKeys(decryptionKeys, 0, 0))
+            ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_api.BlockTree!.Head!.Header);
+            Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+            Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+            if (CheckDecryptionKeys(decryptionKeys, eon, Threshhold))
             {
                 _onDecryptionKeysReceived(decryptionKeys);
             }
@@ -75,71 +67,52 @@ public class ShutterP2P
         MyProto proto = new();
         CancellationTokenSource ts = new();
         _ = router.RunAsync(peer, proto, token: ts.Token);
-    }
 
-    public struct DecryptionKeys
-    {
-        public ulong InstanceId;
-        public ulong Eon;
-        public ulong Slot;
-        public ulong TxPointer;
-        public IEnumerable<(byte[], byte[])> Keys; // (identity, key)
-        public IEnumerable<ulong> SignerIndices;
-        public IEnumerable<byte[]> Signatures;
+        // todo: don't hardcode
+        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23000/p2p/12D3KooWDu1DQcEXyJRwbq6spG5gbi11MbN3iSSqbc2Z85z7a8jB"]);
+        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23001/p2p/12D3KooWFbscPyxc3rxyoEgyLbDYpbfx6s6di5wnr4cFz77q3taH"]);
+        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23002/p2p/12D3KooWLmDDaCkXZgkWUnWZ1RxLzA1FHm4cVHLnNvCuGi4haGLu"]);
+        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23003/p2p/12D3KooW9y8s8gy52jHXvJXNU5D2HuDmXxrs5Kp4VznbiBtRUnU5"]);
+
     }
 
     internal class MyProto : IDiscoveryProtocol
     {
-        Func<Multiaddr[], bool>? IDiscoveryProtocol.OnAddPeer { set => throw new NotImplementedException(); }
-        Func<Multiaddr[], bool>? IDiscoveryProtocol.OnRemovePeer { set => throw new NotImplementedException(); }
+        public Func<Multiaddress[], bool>? OnAddPeer { get; set; }
+        public Func<Multiaddress[], bool>? OnRemovePeer { get; set; }
 
-        public Task DiscoverAsync(Multiaddr localPeerAddr, CancellationToken token = default)
+        public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
         {
-            throw new NotImplementedException();
+            return Task.Delay(int.MaxValue);
         }
     }
 
-    internal DecryptionKeys ParseDecrpytionKeys(ReadOnlySpan<byte> bytes)
-    {
-        // todo: parse properly, SSZ encoding?
-        return new()
-        {
-            InstanceId = BinaryPrimitives.ReadUInt64BigEndian(bytes[..8]),
-            Eon = BinaryPrimitives.ReadUInt64BigEndian(bytes[8..]),
-            Slot = BinaryPrimitives.ReadUInt64BigEndian(bytes[16..]),
-            TxPointer = BinaryPrimitives.ReadUInt64BigEndian(bytes[24..]),
-            Keys = [],
-            SignerIndices = [],
-            Signatures = [],
-        };
-    }
-
-    internal bool CheckDecryptionKeys(DecryptionKeys decryptionKeys, ulong eon, int threshold)
+    internal bool CheckDecryptionKeys(Dto.DecryptionKeys decryptionKeys, ulong eon, int threshold)
     {
         Bls.P2 eonKey = new(_keyBroadcastContract.GetEonKey(_api.BlockTree!.Head!.Header, eon));
         ulong slot = 0;
 
-        if (decryptionKeys.InstanceId != InstanceId || decryptionKeys.Eon != eon)
+        if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
         {
             return false;
         }
 
-        foreach ((byte[] key, byte[] identity) in decryptionKeys.Keys)
+        foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable())
         {
-            if (!ShutterCrypto.CheckDecryptionKey(new(key), eonKey, new(identity)))
+            if (!ShutterCrypto.CheckDecryptionKey(new(key.Key_.ToArray()), eonKey, new(key.Identity.ToArray())))
             {
                 return false;
             }
         }
 
-        int signerIndicesCount = decryptionKeys.SignerIndices.Count();
+        int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count();
 
-        if (decryptionKeys.SignerIndices.Distinct().Count() != signerIndicesCount)
+        if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {
             return false;
         }
 
-        if (decryptionKeys.Signatures.Count() != signerIndicesCount)
+        if (decryptionKeys.Gnosis.Signatures.Count() != signerIndicesCount)
         {
             return false;
         }
@@ -149,11 +122,11 @@ public class ShutterP2P
             return false;
         }
 
-        IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select(((byte[], byte[]) x) => new Bls.P1(x.Item2));
-        foreach ((ulong signerIndex, byte[] signature) in decryptionKeys.SignerIndices.Zip(decryptionKeys.Signatures))
+        IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
+        foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
             Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_api.BlockTree!.Head.Header, signerIndex).Item1;
-            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceId, eon, slot, identities, signature, keyperAddress))
+            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
             {
                 return false;
             }

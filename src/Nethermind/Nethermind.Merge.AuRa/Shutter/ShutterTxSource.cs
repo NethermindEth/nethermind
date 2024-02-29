@@ -24,7 +24,7 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    public ShutterP2P.DecryptionKeys DecryptionKeys = new();
+    public Dto.DecryptionKeys DecryptionKeys = new();
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
     private static readonly UInt256 EncryptedGasLimit = 300;
@@ -50,9 +50,14 @@ public class ShutterTxSource : ITxSource
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
         // todo: cache? check changes in header?
+        if (DecryptionKeys.Gnosis.Slot != (ulong)parent.Number)
+        {
+            // todo: store a dictionary?
+            throw new Exception("Wrong decryption keys stored for block.");
+        }
 
-        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.TxPointer);
-        return sequencedTransactions.Zip(DecryptionKeys.Keys).Select((x) => DecryptSequencedTransaction(x.Item1, x.Item2));
+        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.Gnosis.TxPointer);
+        return sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
     }
 
     internal IEnumerable<TransactionSubmittedEvent> GetEvents()
@@ -61,17 +66,16 @@ public class ShutterTxSource : ITxSource
         return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
     }
 
-    internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, (byte[], byte[]) decryptionKey)
+    internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
-        (byte[] identity, byte[] key) = decryptionKey;
 
-        if (!new G1(identity).is_equal(sequencedTransaction.Identity))
+        if (!new G1(decryptionKey.Identity.ToArray()).is_equal(sequencedTransaction.Identity))
         {
             throw new Exception("Transaction identity did not match decryption key.");
         }
 
-        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, new G1(key));
+        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, new G1(decryptionKey.Key_.ToArray()));
         return Rlp.Decode<Transaction>(new Rlp(transaction), RlpBehaviors.AllowUnsigned);
     }
 

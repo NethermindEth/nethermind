@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Nullable>enable</Nullable>
+    <EnablePreviewFeatures>true</EnablePreviewFeatures>
   </PropertyGroup>
 
   <ItemGroup>

@@ -100,7 +100,7 @@ namespace Nethermind.Merge.AuRa
                 ValidatorContract validatorContract = new(_api.TransactionProcessor!, _api.AbiEncoder, validatorContractAddress, _api.WorldState!, readonlyTxProcessorSource, _api.EngineSigner!);
                 BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
                 Shutter.Contracts.ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!), validatorContract, blockHeader);
-                if (validatorRegistryContract.IsRegistered(blockHeader))
+                if (!validatorRegistryContract.IsRegistered(blockHeader))
                 {
                     // todo: safe to do this in another thread?
                     var _ = validatorRegistryContract.Register(blockHeader);
@@ -109,7 +109,13 @@ namespace Nethermind.Merge.AuRa
                 LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
 
-                Action<ShutterP2P.DecryptionKeys> onDecryptionKeysReceived = (ShutterP2P.DecryptionKeys decryptionKeys) => shutterTxSource.DecryptionKeys = decryptionKeys;
+                Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
+                {
+                    if (decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys.Gnosis.Slot)
+                    {
+                        shutterTxSource.DecryptionKeys = decryptionKeys;
+                    }
+                };
                 Shutter.Contracts.KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
                 Shutter.Contracts.KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
                 ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, _api);

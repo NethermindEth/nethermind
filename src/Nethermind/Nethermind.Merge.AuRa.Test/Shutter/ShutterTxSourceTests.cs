@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
+using Google.Protobuf;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -89,7 +90,11 @@ class ShutterTxSourceTests
         };
 
         G1 key = identity.dup().mult(sk.ToLittleEndian());
-        (byte[], byte[]) decryptionKey = (identity.compress(), key.compress());
+        Shutter.Dto.Key decryptionKey = new()
+        {
+            Key_ = ByteString.CopyFrom(key.compress()),
+            Identity = ByteString.CopyFrom(identity.compress())
+        };
 
         Transaction decryptedTransaction = _shutterTxSource!.DecryptSequencedTransaction(sequencedTransaction, decryptionKey);
         Assert.That(decryptedTransaction.Hash, Is.EqualTo(expected.Hash));

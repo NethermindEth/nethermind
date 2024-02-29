@@ -203,7 +203,7 @@ internal class ShutterCrypto
         return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
     }
 
-    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, byte[] signature, Address keyperAddress)
+    public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, ReadOnlySpan<byte> signature, Address keyperAddress)
     {
         Hash256 h = GenerateHash(instanceId, eon, slot, identities);
         Ecdsa ecdsa = new();
