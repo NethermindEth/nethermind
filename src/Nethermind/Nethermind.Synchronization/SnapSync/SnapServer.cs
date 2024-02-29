@@ -192,15 +192,17 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithStorageSlot[]>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        long responseSize = 0;
-        StateTree tree = new(_storeWithReadFlag, _logManager);
-
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
         ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
         if (limitHash1 == ValueKeccak.Zero)
         {
             limitHash1 = ValueKeccak.MaxValue;
         }
+
+        long responseSize = 0;
+        StateTree tree = startingHash1 == ValueKeccak.Zero
+            ? new StateTree(new CachedTrieStore(_storeWithReadFlag), _logManager)
+            : new StateTree(_storeWithReadFlag, _logManager);
 
         ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Count);
         for (int i = 0; i < accounts.Count; i++)
