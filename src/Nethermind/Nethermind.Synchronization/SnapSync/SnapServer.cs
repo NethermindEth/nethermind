@@ -185,9 +185,9 @@ public class SnapServer : ISnapServer
         return nodes.Count == 0 ? (nodes, ArrayPoolList<byte[]>.Empty()) : (nodes, proofs);
     }
 
-    public (IOwnedReadOnlyList<PathWithStorageSlot[]>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithStorageSlot[]>.Empty(), ArrayPoolList<byte[]>.Empty());
+        if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         long responseSize = 0;
@@ -200,8 +200,7 @@ public class SnapServer : ISnapServer
             limitHash1 = ValueKeccak.MaxValue;
         }
 
-        ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Count);
-        PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
         for (int i = 0; i < accounts.Count; i++)
         {
             if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
@@ -222,6 +221,7 @@ public class SnapServer : ISnapServer
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
+            PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
             (long innerResponseSize, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
@@ -237,8 +237,7 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            responseNodes.Add(pathWithStorageCollector.Slots.ToArray());
-            pathWithStorageCollector.Slots.Clear();
+            responseNodes.Add(pathWithStorageCollector.Slots);
             if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
                 return (responseNodes, proofs);

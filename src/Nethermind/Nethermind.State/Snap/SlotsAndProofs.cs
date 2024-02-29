@@ -8,12 +8,19 @@ namespace Nethermind.State.Snap
 {
     public class SlotsAndProofs : IDisposable
     {
-        public IOwnedReadOnlyList<PathWithStorageSlot[]> PathsAndSlots { get; set; }
+        public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> PathsAndSlots { get; set; }
         public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
 
         public void Dispose()
         {
-            PathsAndSlots?.Dispose();
+            if (PathsAndSlots != null)
+            {
+                foreach (IOwnedReadOnlyList<PathWithStorageSlot> pathWithStorageSlots in PathsAndSlots)
+                {
+                    pathWithStorageSlots?.Dispose();
+                }
+                PathsAndSlots?.Dispose();
+            }
             Proofs?.Dispose();
         }
     }
