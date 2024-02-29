@@ -11,8 +11,12 @@ namespace Nethermind.State.Snap
         public IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> PathsAndSlots { get; set; }
         public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
 
+        private bool _disposed = false;
+
         public void Dispose()
         {
+            if (_disposed) return;
+            _disposed = true;
             if (PathsAndSlots != null)
             {
                 foreach (IOwnedReadOnlyList<PathWithStorageSlot> pathWithStorageSlots in PathsAndSlots)
