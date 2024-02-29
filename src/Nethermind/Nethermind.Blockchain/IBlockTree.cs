@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain
@@ -150,7 +151,7 @@ namespace Nethermind.Blockchain
 
         Hash256 FindHash(long blockNumber);
 
-        BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
 
         BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth);
 

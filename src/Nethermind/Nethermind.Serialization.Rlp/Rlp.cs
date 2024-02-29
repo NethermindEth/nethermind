@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -154,6 +155,30 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
+            if (rlpDecoder is not null)
+            {
+                return DecodeArrayPool(rlpStream, rlpDecoder, rlpBehaviors);
+            }
+
+            throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
+        }
+
+        public static ArrayPoolList<T> DecodeArrayPool<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        {
+            int checkPosition = rlpStream.ReadSequenceLength() + rlpStream.Position;
+            int length = rlpStream.PeekNumberOfItemsRemaining(checkPosition);
+            ArrayPoolList<T> result = new ArrayPoolList<T>(length);
+            for (int i = 0; i < length; i++)
+            {
+                result.Add(rlpDecoder.Decode(rlpStream, rlpBehaviors));
+            }
+
+            return result;
+        }
+
         internal static byte[] ByteSpanToArray(ReadOnlySpan<byte> span)
         {
             if (span.Length == 0)
@@ -172,6 +197,26 @@ namespace Nethermind.Serialization.Rlp
             }
 
             return span.ToArray();
+        }
+
+        internal static ArrayPoolList<byte> ByteSpanToArrayPool(ReadOnlySpan<byte> span)
+        {
+            if (span.Length == 0)
+            {
+                return ArrayPoolList<byte>.Empty();
+            }
+
+            if (span.Length == 1)
+            {
+                int value = span[0];
+                var arrays = RlpStream.SingleByteArrays;
+                if ((uint)value < (uint)arrays.Length)
+                {
+                    return arrays[value].ToPooledList();
+                }
+            }
+
+            return span.ToPooledList();
         }
 
         public static IRlpValueDecoder<T>? GetValueDecoder<T>() => Decoders.TryGetValue(typeof(T), out IRlpDecoder value) ? value as IRlpValueDecoder<T> : null;

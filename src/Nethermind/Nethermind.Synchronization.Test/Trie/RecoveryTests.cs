@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
@@ -42,12 +43,12 @@ public class RecoveryTests
         _syncPeerEth66 = Substitute.For<ISyncPeer>();
         _syncPeerEth66.ProtocolVersion.Returns(EthVersions.Eth66);
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
-            .Returns(_ => Task.FromResult(new[] { _returnedRlp }));
+            .Returns(_ => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]>(1) { _returnedRlp }));
         _peerEth66 = new(_syncPeerEth66);
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c => Task.FromResult(new[] { _returnedRlp }));
+            .Returns(c => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]>(1) { _returnedRlp }));
         _syncPeerEth67 = Substitute.For<ISyncPeer>();
         _syncPeerEth67.ProtocolVersion.Returns(EthVersions.Eth67);
         _syncPeerEth67.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
@@ -58,7 +59,7 @@ public class RecoveryTests
             });
         _peerEth67 = new(_syncPeerEth67);
 
-        _snapRequest = new GetTrieNodesRequest { AccountAndStoragePaths = Array.Empty<PathGroup>() };
+        _snapRequest = new GetTrieNodesRequest { AccountAndStoragePaths = ArrayPoolList<PathGroup>.Empty() };
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _snapRecovery = new SnapTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataRecovery = new GetNodeDataTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
@@ -85,7 +86,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth66_empty_response()
     {
         _syncPeerEth66.GetNodeData(Arg.Is<IReadOnlyList<Hash256>>(l => l.Contains(_key)), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Array.Empty<byte[]>()));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
         byte[]? rlp = await Recover(_nodeDataRecovery, new List<Hash256> { _key }, _peerEth66);
         rlp.Should().BeNull();
     }
@@ -116,7 +117,7 @@ public class RecoveryTests
     public async Task cannot_recover_eth67_empty_response()
     {
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(Array.Empty<byte[]>()));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<byte[]>>(ArrayPoolList<byte[]>.Empty()));
         byte[]? rlp = await Recover(_snapRecovery, _snapRequest, _peerEth67);
         rlp.Should().BeNull();
     }
