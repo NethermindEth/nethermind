@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
-        public bool SnapServingEnabled { get; set; } = false;
+        public bool SnapServingEnabled { get; set; } = true;
         public bool TrieHealing { get; set; } = true;
 
         public override string ToString()

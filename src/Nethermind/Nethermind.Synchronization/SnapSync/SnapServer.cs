@@ -55,11 +55,16 @@ public class SnapServer : ISnapServer
     public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        _storeWithReadFlag = new TrieStoreWithReadFlags(_store, _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _stateRootTracker = stateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
+
+        if (_store.Scheme == INodeStorage.KeyScheme.HalfPath)
+        {
+            _optimizedReadFlags = ReadFlags.HintReadAhead;
+        }
+        _storeWithReadFlag = new TrieStoreWithReadFlags(_store.GetTrieStore(null), _optimizedReadFlags);
     }
 
     private bool IsRootMissing(in ValueHash256 stateRoot)
@@ -99,13 +104,14 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
+                        Hash256 storagePath = new Hash256(requestedPath[0]);
                         Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
                         if (account is not null)
                         {
                             Hash256? storageRoot = account.StorageRoot;
                             if (!storageRoot.Bytes.SequenceEqual(Keccak.EmptyTreeHash.Bytes))
                             {
-                                StorageTree sTree = new(_store, storageRoot, _logManager);
+                                StorageTree sTree = new(_store.GetTrieStore(storagePath), storageRoot, _logManager);
 
                                 for (int reqStorage = 1; reqStorage < requestedPath.Length; reqStorage++)
                                 {
@@ -186,15 +192,17 @@ public class SnapServer : ISnapServer
         if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithStorageSlot[]>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        long responseSize = 0;
-        StateTree tree = new(_storeWithReadFlag, _logManager);
-
         ValueHash256 startingHash1 = startingHash ?? ValueKeccak.Zero;
         ValueHash256 limitHash1 = limitHash ?? ValueKeccak.MaxValue;
         if (limitHash1 == ValueKeccak.Zero)
         {
             limitHash1 = ValueKeccak.MaxValue;
         }
+
+        long responseSize = 0;
+        StateTree tree = startingHash1 == ValueKeccak.Zero
+            ? new StateTree(new CachedTrieStore(_storeWithReadFlag), _logManager)
+            : new StateTree(_storeWithReadFlag, _logManager);
 
         ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Count);
         for (int i = 0; i < accounts.Count; i++)
