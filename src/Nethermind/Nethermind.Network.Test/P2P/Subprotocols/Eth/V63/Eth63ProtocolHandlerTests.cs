@@ -50,7 +50,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             ctx.ProtocolHandler.HandleMessage(receiptsPacket);
 
-            var result = await task;
+            using var result = await task;
             result.Should().HaveCount(1000);
         }
 
