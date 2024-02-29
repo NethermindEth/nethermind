@@ -89,9 +89,9 @@ public class VirtualMachine : IVirtualMachine
     public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec spec)
         => _evm.GetCachedCodeInfo(worldState, codeSource, spec);
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec, bool isSystemEnv)
     {
-        _evm.InsertCode(code, codeOwner, spec);
+        _evm.InsertCode(code, codeOwner, spec, isSystemEnv);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -286,7 +286,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (typeof(TTracingActions) == typeof(IsTracing)) _txTracer.ReportActionError(callResult.ExceptionType);
                         _worldState.Restore(currentState.Snapshot);
 
-                        RevertParityTouchBugAccount(spec);
+                        RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
                         if (currentState.IsTopLevel)
                         {
@@ -386,8 +386,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
                         {
                             ReadOnlyMemory<byte> code = callResult.Output;
-                            InsertCode(code, callCodeOwner, spec);
-
+                            InsertCode(code, callCodeOwner, spec, state.Env.IsSystemEnv);
                             currentState.GasAvailable -= codeDepositGasCost;
 
                             if (typeof(TTracingActions) == typeof(IsTracing))
@@ -464,7 +463,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                 _worldState.Restore(currentState.Snapshot);
 
-                RevertParityTouchBugAccount(spec);
+                RevertParityTouchBugAccount(spec, state.Env.IsSystemEnv);
 
                 if (txTracer.IsTracingInstructions)
                 {
@@ -495,24 +494,24 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
     }
 
-    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
+    public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec, bool IsSystemTxEnv)
     {
         var codeInfo = new CodeInfo(code);
         // Start generating the JumpDestinationBitmap in background.
         ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
-        _state.InsertCode(callCodeOwner, codeHash, code, spec);
+        _state.InsertCode(callCodeOwner, codeHash, code, spec, IsSystemTxEnv);
         CodeCache.Set(codeHash, codeInfo);
     }
 
-    private void RevertParityTouchBugAccount(IReleaseSpec spec)
+    private void RevertParityTouchBugAccount(IReleaseSpec spec, bool isSystemEnv)
     {
         if (_parityTouchBugAccount.ShouldDelete)
         {
             if (_state.AccountExists(_parityTouchBugAccount.Address))
             {
-                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec);
+                _state.AddToBalance(_parityTouchBugAccount.Address, UInt256.Zero, spec, isSystemEnv);
             }
 
             _parityTouchBugAccount.ShouldDelete = false;
@@ -661,7 +660,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else
         {
-            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec);
+            _state.AddToBalance(state.Env.ExecutingAccount, transferValue, spec, state.Env.IsSystemEnv);
         }
 
         // https://github.com/ethereum/EIPs/blob/master/EIPS/eip-161.md
@@ -725,7 +724,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else
             {
-                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec);
+                _state.AddToBalance(env.ExecutingAccount, env.TransferValue, spec, vmState.Env.IsSystemEnv);
             }
 
             if (vmState.ExecutionType.IsAnyCreate() && spec.ClearEmptyAccountWhenTouched)
@@ -2295,7 +2294,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
 
         Snapshot snapshot = _worldState.TakeSnapshot();
-        _state.SubtractFromBalance(caller, transferValue, spec);
+        _state.SubtractFromBalance(caller, transferValue, spec, env.IsSystemEnv);
 
         ExecutionEnvironment callEnv = new
         (
@@ -2307,7 +2306,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec),
+            isSystemExecutionEnv: env.IsSystemEnv
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2407,13 +2407,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            _state.AddToBalance(inheritor, result, spec);
+            _state.AddToBalance(inheritor, result, spec, vmState.Env.IsSystemEnv);
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
             return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        _state.SubtractFromBalance(executingAccount, result, spec, vmState.Env.IsSystemEnv);
         return EvmExceptionType.None;
     }
 
@@ -2524,7 +2524,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _state.ClearStorage(contractAddress);
         }
 
-        _state.SubtractFromBalance(env.ExecutingAccount, value, spec);
+        _state.SubtractFromBalance(env.ExecutingAccount, value, spec, env.IsSystemEnv);
 
         // Do not add the initCode to the cache as it is
         // pointing to data in this tx and will become invalid
@@ -2541,7 +2541,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             codeInfo: codeInfo,
             inputData: default,
             transferValue: value,
-            value: value
+            value: value,
+            isSystemExecutionEnv: env.IsSystemEnv
         );
         EvmState callState = new(
             callGas,
