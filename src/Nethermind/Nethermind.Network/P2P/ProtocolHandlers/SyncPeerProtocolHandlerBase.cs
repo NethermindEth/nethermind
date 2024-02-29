@@ -173,7 +173,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             msg.Reverse = 0;
             msg.Skip = 0;
 
-            IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
+            using IOwnedReadOnlyList<BlockHeader> headers = await SendRequest(msg, token);
             return headers.Count > 0 ? headers[0] : null;
         }
 

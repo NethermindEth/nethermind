@@ -571,7 +571,8 @@ namespace Nethermind.Synchronization.Test
             };
             BlockDownloader downloader = ctx.BlockDownloader;
 
-            IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            using IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? Array.Empty<BlockHeader>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -585,7 +586,7 @@ namespace Nethermind.Synchronization.Test
 
             sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
             sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
-            sealValidator.Received().ValidateSeal(blockHeaders![^1], true);
+            sealValidator.Received().ValidateSeal(blockHeadersCopy![^1], true);
         }
 
         private class ThrowingPeer : ISyncPeer

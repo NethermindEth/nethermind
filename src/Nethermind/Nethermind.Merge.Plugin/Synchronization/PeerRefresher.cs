@@ -102,7 +102,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         try
         {
-            IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
+            using IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
             if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
