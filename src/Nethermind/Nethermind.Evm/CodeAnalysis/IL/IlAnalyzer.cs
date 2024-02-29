@@ -16,14 +16,45 @@ namespace Nethermind.Evm.CodeAnalysis.IL;
 /// </summary>
 internal static class IlAnalyzer
 {
-    public static FrozenDictionary<byte[], InstructionChunk> Patterns = FrozenDictionary<byte[], InstructionChunk>.Empty;
+    public class ByteArrayComparer : IEqualityComparer<byte[]>
+    {
+        public bool Equals(byte[] left, byte[] right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+            return left.SequenceEqual(right);
+        }
+        public int GetHashCode(byte[] key)
+        {
+            if (key == null)
+                throw new ArgumentNullException("key");
+            return key.Sum(b => b);
+        }
+    }
+
+    private static Dictionary<byte[], InstructionChunk> Patterns = new Dictionary<byte[], InstructionChunk>(new ByteArrayComparer());
+    public static Dictionary<byte[], InstructionChunk> AddPattern(byte[] pattern, InstructionChunk chunk)
+    {
+        lock(Patterns)
+        {
+            Patterns[pattern] = chunk;
+        }
+        return Patterns;
+    }
+    public static InstructionChunk GetPatternHandler(byte[] pattern)
+    {
+        return Patterns[pattern];
+    }
+
 
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary>
     /// <param name="machineCode">The code to analyze.</param>
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(byte[] machineCode, CodeInfo codeInfo)
+    public static Task StartAnalysis(ReadOnlyMemory<byte> machineCode, CodeInfo codeInfo)
     {
         return Task.Run(() =>
         {
@@ -35,9 +66,9 @@ internal static class IlAnalyzer
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static IlInfo Analysis(byte[] machineCode)
+    private static IlInfo Analysis(ReadOnlyMemory<byte> machineCode)
     {
-        byte[] StripByteCode(byte[] machineCode)
+        byte[] StripByteCode(ReadOnlySpan<byte> machineCode)
         {
             byte[] opcodes = new byte[machineCode.Length];
             int j = 0;
@@ -54,7 +85,7 @@ internal static class IlAnalyzer
             return opcodes[..j];
         }
 
-        byte[] strippedBytecode = StripByteCode(machineCode);
+        byte[] strippedBytecode = StripByteCode(machineCode.Span);
         Dictionary<ushort, InstructionChunk> patternFound = new Dictionary<ushort, InstructionChunk>();
 
         foreach (var (pattern, mapping) in Patterns)
