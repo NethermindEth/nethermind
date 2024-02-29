@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.LesSync;
@@ -24,8 +25,8 @@ namespace Nethermind.Synchronization
         public Task BuildCHT();
         public CanonicalHashTrie? GetCHT();
         Hash256? FindHash(long number);
-        BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
-        byte[]?[] GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
+        IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse);
+        IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.Code | NodeDataType.State);
         int GetPeerCount();
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }

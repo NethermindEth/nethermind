@@ -10,7 +10,9 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -23,6 +25,7 @@ using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -67,9 +70,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
         }
 
-        protected static StorageTree SetStorage(ITrieStore trieStore, byte i)
+        protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
             remoteStorageTree.Commit(0);
@@ -108,7 +111,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
@@ -163,6 +166,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
                 LocalStateDb = LocalDb;
+                LocalNodeStorage = new NodeStorage(LocalDb);
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
@@ -178,6 +182,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
+            public NodeStorage LocalNodeStorage { get; }
             public StateTree RemoteStateTree { get; }
             public StateTree LocalStateTree { get; }
 
@@ -222,13 +227,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             private readonly IDb _stateDb;
 
             private Hash256[]? _filter;
-            private readonly Func<IReadOnlyList<Hash256>, Task<byte[][]>>? _executorResultFunction;
+            private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Hash256>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
@@ -254,7 +259,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -263,14 +268,29 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
-                byte[][] responses = new byte[hashes.Count][];
+                ArrayPoolList<byte[]> responses = new(hashes.Count, hashes.Count);
 
                 int i = 0;
                 foreach (Hash256 item in hashes)
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes]!;
+                    if (_filter is null || _filter.Contains(item))
+                    {
+                        byte[]? response = _codeDb[item.Bytes] ?? _stateDb[item.Bytes];
+                        if (response == null)
+                        {
+                            // Well, patricia tree can't get the rlp of node yet. So can't really make a correct snap sync implementation.
+                            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _stateDb.GetAll())
+                            {
+                                if (!Bytes.AreEqual(item.Bytes, keyValuePair.Key.AsSpan()[^32..])) continue;
+
+                                response = keyValuePair.Value;
+                                break;
+                            }
+                        }
+                        responses[i] = response!;
+                    }
 
                     i++;
                 }
@@ -304,12 +324,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -329,7 +349,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }

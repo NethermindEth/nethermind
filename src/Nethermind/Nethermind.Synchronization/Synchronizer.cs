@@ -26,7 +26,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization
 {
@@ -90,6 +90,7 @@ namespace Nethermind.Synchronization
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
+        private INodeStorage _nodeStorage;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
@@ -102,6 +103,7 @@ namespace Nethermind.Synchronization
 
         public Synchronizer(
             IDbProvider dbProvider,
+            INodeStorage nodeStorage,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -117,6 +119,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -139,7 +142,7 @@ namespace Nethermind.Synchronization
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider.CodeDb, nodeStorage, logManager);
         }
 
         public virtual void Start()
@@ -273,7 +276,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _nodeStorage, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,

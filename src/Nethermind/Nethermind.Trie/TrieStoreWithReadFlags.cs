@@ -8,53 +8,32 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
-public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, ITrieStore
+public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrieStore
 {
-    private ITrieStore _baseImplementation;
+    private IScopedTrieStore _scopedTrieStoreImplementation;
 
-    public TrieStoreWithReadFlags(ITrieStore baseImplementation, ReadFlags readFlags) : base(baseImplementation, readFlags)
+    public TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags) : base(implementation, flags)
     {
-        _baseImplementation = baseImplementation;
-    }
-
-    public void Dispose()
-    {
-        _baseImplementation.Dispose();
+        _scopedTrieStoreImplementation = implementation;
     }
 
     public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
     {
-        _baseImplementation.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
+        _scopedTrieStoreImplementation.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
     }
 
     public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
-        _baseImplementation.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
+        _scopedTrieStoreImplementation.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
     }
 
-    public bool IsPersisted(in ValueHash256 keccak)
+    public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        return _baseImplementation.IsPersisted(in keccak);
+        return _scopedTrieStoreImplementation.IsPersisted(in path, in keccak);
     }
 
-    public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) =>
-        _baseImplementation.AsReadOnly(keyValueStore);
-
-    public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
+    public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
-        add => _baseImplementation.ReorgBoundaryReached += value;
-        remove => _baseImplementation.ReorgBoundaryReached -= value;
-    }
-
-    public IReadOnlyKeyValueStore TrieNodeRlpStore => _baseImplementation.TrieNodeRlpStore;
-
-    public void Set(in ValueHash256 hash, byte[] rlp)
-    {
-        _baseImplementation.Set(in hash, rlp);
-    }
-
-    public bool HasRoot(Hash256 stateRoot)
-    {
-        return _baseImplementation.HasRoot(stateRoot);
+        _scopedTrieStoreImplementation.Set(in path, in keccak, rlp);
     }
 }

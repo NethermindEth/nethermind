@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
 
@@ -10,12 +11,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessage : P2PMessage
     {
-        protected HashesMessage(IReadOnlyList<Hash256> hashes)
+        protected HashesMessage(IOwnedReadOnlyList<Hash256> hashes)
         {
             Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
         }
 
-        public IReadOnlyList<Hash256> Hashes { get; }
+        public IOwnedReadOnlyList<Hash256> Hashes { get; }
 
         public override string ToString()
         {
@@ -25,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
         public override void Dispose()
         {
             base.Dispose();
-            if (Hashes is IDisposable disposable) disposable.Dispose();
+            Hashes.Dispose();
         }
     }
 }

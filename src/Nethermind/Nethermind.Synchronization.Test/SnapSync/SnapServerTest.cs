@@ -1,16 +1,20 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using FluentAssertions;
 using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -35,19 +39,19 @@ public class SnapServerTest
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        var stateDbClient = new MemDb();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        MemDb clientStateDb = new();
+        ProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
 
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        INodeStorage nodeStorage = new NodeStorage(clientStateDb);
+
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), nodeStorage, LimboLogs.Instance);
 
         return new Context()
         {
             Server = server,
             SnapProvider = snapProvider,
             Tree = tree,
-            ClientStateDb = stateDbClient
+            ClientStateDb = clientStateDb
         };
     }
 
@@ -57,11 +61,11 @@ public class SnapServerTest
         Context context = CreateContext();
         TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
 
-        (PathWithAccount[] accounts, byte[][] proofs) =
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
         AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, Keccak.Zero,
-            accounts, proofs);
+            accounts.ToArray(), proofs.ToArray());
 
         result.Should().Be(AddRangeResult.OK);
         context.ClientStateDb.Keys.Count.Should().Be(10);
@@ -72,16 +76,16 @@ public class SnapServerTest
     {
         Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));
 
-        (PathWithAccount[] accounts, byte[][] _) =
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> _) =
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.Zero, Keccak.MaxValue, 4000, CancellationToken.None);
 
-        accounts.Length.Should().Be(0);
+        accounts.Count.Should().Be(0);
 
-        (PathWithStorageSlot[][] storageSlots, byte[][]? _) =
+        (IOwnedReadOnlyList<PathWithStorageSlot[]> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             context.Server.GetStorageRanges(context.Tree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
                 Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
 
-        storageSlots.Length.Should().Be(0);
+        storageSlots.Count.Should().Be(0);
     }
 
     [Test]
@@ -93,7 +97,7 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (PathWithAccount[] accounts, byte[][] proofs) =
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
                 context.Server.GetAccountRanges(context.Tree.RootHash, startRange, Keccak.MaxValue, 100, CancellationToken.None);
 
             AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
@@ -121,7 +125,7 @@ public class SnapServerTest
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (PathWithAccount[] accounts, byte[][] proofs) =
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
                 context.Server.GetAccountRanges(context.Tree.RootHash, startRange, Keccak.MaxValue, byteLimit, CancellationToken.None);
 
             AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
@@ -149,7 +153,7 @@ public class SnapServerTest
         ValueHash256 limit = new ValueHash256("0x8000000000000000000000000000000000000000000000000000000000000000");
         while (true)
         {
-            (PathWithAccount[] accounts, byte[][] proofs) = context.Server
+            (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) = context.Server
                 .GetAccountRanges(context.Tree.RootHash, startRange, limit, byteLimit, CancellationToken.None);
 
             AddRangeResult result = context.SnapProvider.AddAccountRange(1, context.Tree.RootHash, startRange,
@@ -180,9 +184,9 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
         ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
-        (PathWithStorageSlot[][] storageSlots, byte[][]? proofs) =
+        (IOwnedReadOnlyList<PathWithStorageSlot[]> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
                 Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
 
@@ -208,12 +212,12 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
         ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
         {
-            (PathWithStorageSlot[][] storageSlots, byte[][]? proofs) =
+            (IOwnedReadOnlyList<PathWithStorageSlot[]> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
                 server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
                     startRange, Keccak.MaxValue, 10000, CancellationToken.None);
 
@@ -249,7 +253,7 @@ public class SnapServerTest
         for (int i = 1000; i < 10000; i += 1000)
         {
             Address address = TestItem.GetRandomAddress();
-            StorageTree storageTree = new(store, LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath), LimboLogs.Instance);
             for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());
@@ -263,54 +267,54 @@ public class SnapServerTest
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        PathWithAccount[] accounts;
+        IOwnedReadOnlyList<PathWithAccount> accounts;
         // size of one PathWithAccount ranges from 39 -> 72
         (accounts, _) =
             server.GetAccountRanges(stateTree.RootHash, Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
-        accounts.Length.Should().Be(1);
+        accounts.Count.Should().Be(1);
 
         (accounts, _) =
             server.GetAccountRanges(stateTree.RootHash, Keccak.Zero, Keccak.MaxValue, 100, CancellationToken.None);
-        accounts.Length.Should().BeGreaterThan(2);
+        accounts.Count.Should().BeGreaterThan(2);
 
         (accounts, _) =
             server.GetAccountRanges(stateTree.RootHash, Keccak.Zero, Keccak.MaxValue, 10000, CancellationToken.None);
-        accounts.Length.Should().BeGreaterThan(138);
+        accounts.Count.Should().BeGreaterThan(138);
 
         // TODO: Double check the threshold
         (accounts, _) =
             server.GetAccountRanges(stateTree.RootHash, Keccak.Zero, Keccak.MaxValue, 720000, CancellationToken.None);
-        accounts.Length.Should().Be(10009);
+        accounts.Count.Should().Be(10009);
         (accounts, _) =
             server.GetAccountRanges(stateTree.RootHash, Keccak.Zero, Keccak.MaxValue, 10000000, CancellationToken.None);
-        accounts.Length.Should().Be(10009);
+        accounts.Count.Should().Be(10009);
 
 
         var accountWithStorageArray = accountWithStorage.ToArray();
-        PathWithStorageSlot[][] slots;
-        byte[][]? proofs;
+        IOwnedReadOnlyList<PathWithStorageSlot[]> slots;
+        IOwnedReadOnlyList<byte[]>? proofs;
 
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
-        slots.Length.Should().Be(1);
+        slots.Count.Should().Be(1);
         slots[0].Length.Should().Be(1);
         proofs.Should().NotBeNull();
 
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..1], Keccak.Zero, Keccak.MaxValue, 1000000, CancellationToken.None);
-        slots.Length.Should().Be(1);
+        slots.Count.Should().Be(1);
         slots[0].Length.Should().Be(1000);
         proofs.Should().BeEmpty();
 
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 10, CancellationToken.None);
-        slots.Length.Should().Be(1);
+        slots.Count.Should().Be(1);
         slots[0].Length.Should().Be(1);
         proofs.Should().NotBeNull();
 
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray[..2], Keccak.Zero, Keccak.MaxValue, 100000, CancellationToken.None);
-        slots.Length.Should().Be(2);
+        slots.Count.Should().Be(2);
         slots[0].Length.Should().Be(1000);
         slots[1].Length.Should().Be(539);
         proofs.Should().NotBeNull();
@@ -319,7 +323,7 @@ public class SnapServerTest
         // incomplete tree will be returned as the hard limit is 2000000
         (slots, proofs) =
             server.GetStorageRanges(stateTree.RootHash, accountWithStorageArray, Keccak.Zero, Keccak.MaxValue, 3000000, CancellationToken.None);
-        slots.Length.Should().Be(8);
+        slots.Count.Should().Be(8);
         slots[^1].Length.Should().BeLessThan(8000);
         proofs.Should().NotBeEmpty();
     }

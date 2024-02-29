@@ -172,6 +172,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
@@ -213,7 +214,7 @@ namespace Nethermind.Synchronization.FastBlocks
             for (int i = 0; i < blockInfos.Length; i++)
             {
                 BlockInfo? blockInfo = blockInfos[i];
-                TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
+                TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
 

@@ -144,6 +144,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -200,17 +201,6 @@ public class InitializeNetwork : IStep
                 _logger.Error("Unable to init the peer manager.", initPeerTask.Exception);
             }
         });
-
-        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
-
-        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
-        {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
 
         if (_syncConfig.SnapSync)
         {

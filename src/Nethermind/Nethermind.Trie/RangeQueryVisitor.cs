@@ -21,7 +21,9 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Trie;
@@ -49,6 +51,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
+    public bool IsRangeScan => true;
     private readonly AccountDecoder _standardDecoder = new AccountDecoder();
     private readonly AccountDecoder _slimDecoder = new AccountDecoder(slimFormat: true);
     private readonly CancellationToken _cancellationToken;
@@ -125,9 +128,9 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         return (_collectedNodes, _currentBytesCount);
     }
 
-    public byte[][] GetProofs()
+    public ArrayPoolList<byte[]> GetProofs()
     {
-        if (_leftLeafProof is null) return Array.Empty<byte[]>();
+        if (_leftLeafProof is null) return ArrayPoolList<byte[]>.Empty();
 
         HashSet<byte[]> proofs = new();
         // Note: although nethermind works just fine without left proof if start with zero starting hash,
@@ -161,7 +164,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             }
         }
 
-        return proofs.ToArray();
+        return proofs.ToPooledList();
     }
 
     public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)

@@ -34,10 +34,9 @@ using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
 using Nethermind.Synchronization;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using NSubstitute;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -148,7 +147,7 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
