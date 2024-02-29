@@ -1208,28 +1208,28 @@ namespace Nethermind.Trie
                 {
                     case 0:
                     case 128:
-                    {
-                        rlpStream.Position++;
-                        output[i] = null;
-                        break;
-                    }
+                        {
+                            rlpStream.Position++;
+                            output[i] = null;
+                            break;
+                        }
                     case 160:
-                    {
-                        path.SetLast(i);
-                        Hash256 keccak = rlpStream.DecodeKeccak();
-                        TrieNode child = tree.FindCachedOrUnknown(path, keccak);
-                        output[i] = child;
+                        {
+                            path.SetLast(i);
+                            Hash256 keccak = rlpStream.DecodeKeccak();
+                            TrieNode child = tree.FindCachedOrUnknown(path, keccak);
+                            output[i] = child;
 
-                        break;
-                    }
+                            break;
+                        }
                     default:
-                    {
-                        Span<byte> fullRlp = rlpStream.PeekNextItem();
-                        TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
-                        rlpStream.SkipItem();
-                        output[i] = child;
-                        break;
-                    }
+                        {
+                            Span<byte> fullRlp = rlpStream.PeekNextItem();
+                            TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                            rlpStream.SkipItem();
+                            output[i] = child;
+                            break;
+                        }
                 }
             }
             path.TruncateOne();
