@@ -93,7 +93,7 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void ReportBlockHash(Hash256 blockHash)
         => ThrowInvalidOperationException();
-    public override void ReportByteCode(byte[] byteCode)
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         => ThrowInvalidOperationException();
 
     public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)

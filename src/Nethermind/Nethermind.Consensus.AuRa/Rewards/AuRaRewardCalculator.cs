@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
 
-        private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
+        private static BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {

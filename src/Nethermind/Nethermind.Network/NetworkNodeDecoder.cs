@@ -60,7 +60,7 @@ namespace Nethermind.Network
             stream.Encode(item.Port);
             stream.Encode(string.Empty);
             stream.Encode(item.Reputation);
-            return new Rlp(stream.Data);
+            return new Rlp(stream.Data.ToArray());
         }
 
         public void Encode(MemoryStream stream, NetworkNode item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -73,7 +73,7 @@ namespace Nethermind.Network
             return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
         }
 
-        private int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
+        private static int GetContentLength(NetworkNode item, RlpBehaviors rlpBehaviors)
         {
             return Rlp.LengthOf(item.NodeId.Bytes)
                    + Rlp.LengthOf(item.Host)

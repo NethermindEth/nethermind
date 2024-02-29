@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
@@ -10,7 +11,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -22,14 +22,12 @@ namespace Nethermind.Merge.Plugin.Test
 {
     public class PoSSwitcherTests
     {
-        private static readonly IBlockCacheService _blockCacheService = new BlockCacheService();
-
         [Test]
         public void Initial_TTD_should_be_null()
         {
             UInt256? expectedTtd = null;
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, TestSpecProvider.Instance, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, TestSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
 
             Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
         }
@@ -41,10 +39,10 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             ChainSpecLoader loader = new(new EthereumJsonSerializer());
             string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "Specs/test_spec.json");
-            ChainSpec chainSpec = loader.Load(File.ReadAllText(path));
+            ChainSpec chainSpec = loader.LoadFromFile(path);
 
             ChainSpecBasedSpecProvider specProvider = new(chainSpec);
-            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig(), new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
             Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
             Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(101));
@@ -92,7 +90,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.UpdateMergeTransitionInfo(100, 20);
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000 }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { TerminalTotalDifficulty = "340", TerminalBlockNumber = 2000 }, new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
             Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
             Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(2001));
@@ -105,7 +103,7 @@ namespace Nethermind.Merge.Plugin.Test
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             TestSpecProvider specProvider = new(London.Instance);
             specProvider.UpdateMergeTransitionInfo(2001, expectedTtd);
-            PoSSwitcher poSSwitcher = new(new MergeConfig() { }, new SyncConfig(), new MemDb(), blockTree, specProvider, LimboLogs.Instance);
+            PoSSwitcher poSSwitcher = new(new MergeConfig() { }, new SyncConfig(), new MemDb(), blockTree, specProvider, new ChainSpec(), LimboLogs.Instance);
 
             Assert.That(poSSwitcher.TerminalTotalDifficulty, Is.EqualTo(expectedTtd));
             Assert.That(specProvider.MergeBlockNumber?.BlockNumber, Is.EqualTo(2001));
@@ -222,11 +220,50 @@ namespace Nethermind.Merge.Plugin.Test
             Assert.That(newPoSSwitcher.HasEverReachedTerminalBlock(), Is.EqualTo(true));
         }
 
+        [Test]
+        public void No_final_difficulty_if_conditions_are_not_met()
+        {
+            AssertFinalTotalDifficulty(10005, 10000, 10000, null);
+        }
+
+        [TestCase(0, 1)]
+        [TestCase(0, 0)]
+        [TestCase(5000, 6000)]
+        public void Can_set_final_total_difficulty_for_post_merge_networks(long ttd, long genesisDifficulty)
+        {
+            AssertFinalTotalDifficulty(ttd, genesisDifficulty, null, genesisDifficulty);
+        }
+
+        [TestCase(0, 1)]
+        [TestCase(0, 0)]
+        [TestCase(5000, 6000)]
+        public void Can_set_final_total_difficulty_based_on_sync_pivot(long ttd, long pivotTotalDifficulty)
+        {
+            AssertFinalTotalDifficulty(ttd, 0, pivotTotalDifficulty, pivotTotalDifficulty);
+        }
+
+        private void AssertFinalTotalDifficulty(long ttd, long genesisDifficulty, long? pivotTotalDifficulty, long? expectedFinalTotalDifficulty)
+        {
+            TestSpecProvider specProvider = new(London.Instance);
+            specProvider.TerminalTotalDifficulty = (UInt256)ttd;
+            Block genesisBlock = Build.A.Block.WithNumber(0).WithDifficulty((UInt256)genesisDifficulty).TestObject;
+            BlockTree blockTree = Build.A.BlockTree(genesisBlock, specProvider).OfChainLength(4).TestObject;
+            SyncConfig syncConfig = new();
+            if (pivotTotalDifficulty is not null)
+                syncConfig = new SyncConfig() { PivotTotalDifficulty = $"{(UInt256)pivotTotalDifficulty}" };
+            PoSSwitcher poSSwitcher = new PoSSwitcher(new MergeConfig(), syncConfig, new MemDb(), blockTree, specProvider, new ChainSpec() { Genesis = genesisBlock }, LimboLogs.Instance);
+            if (expectedFinalTotalDifficulty is not null)
+                poSSwitcher.FinalTotalDifficulty.Should().Be((UInt256)expectedFinalTotalDifficulty);
+            else
+                poSSwitcher.FinalTotalDifficulty.Should().BeNull();
+        }
+
+
         private static PoSSwitcher CreatePosSwitcher(IBlockTree blockTree, IDb? db = null, ISpecProvider? specProvider = null)
         {
             db ??= new MemDb();
             MergeConfig? mergeConfig = new() { };
-            return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider ?? MainnetSpecProvider.Instance, LimboLogs.Instance);
+            return new PoSSwitcher(mergeConfig, new SyncConfig(), db, blockTree, specProvider ?? MainnetSpecProvider.Instance, new ChainSpec(), LimboLogs.Instance);
         }
     }
 }

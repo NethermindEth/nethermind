@@ -22,6 +22,8 @@ public interface IDebugBridge
     GethLikeTxTrace? GetTransactionTrace(Transaction transaction, BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(BlockParameter blockParameter, CancellationToken cancellationToken, GethTraceOptions gethTraceOptions = null);
     IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    byte[] GetBlockRlp(BlockParameter param);
+    Block? GetBlock(BlockParameter param);
     byte[] GetBlockRlp(Hash256 blockHash);
     byte[] GetBlockRlp(long number);
     byte[] GetDbValue(string dbName, byte[] key);
@@ -33,4 +35,7 @@ public interface IDebugBridge
     void InsertReceipts(BlockParameter blockParameter, TxReceipt[] receipts);
     SyncReportSymmary GetCurrentSyncStage();
     IEnumerable<string> TraceBlockToFile(Hash256 blockHash, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null);
+    public IEnumerable<Block> GetBadBlocks();
+    TxReceipt[]? GetReceiptsForBlock(BlockParameter param);
+    Transaction? GetTransactionFromHash(Hash256 hash);
 }

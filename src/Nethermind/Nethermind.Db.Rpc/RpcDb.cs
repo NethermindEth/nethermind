@@ -77,6 +77,8 @@ namespace Nethermind.Db.Rpc
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _recordDb.GetAll();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _recordDb.GetAllKeys();
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _recordDb.GetAllValues();
 
         public IWriteBatch StartWriteBatch()
@@ -112,7 +114,7 @@ namespace Nethermind.Db.Rpc
             Set(key, value.ToArray(), writeFlags);
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
     }

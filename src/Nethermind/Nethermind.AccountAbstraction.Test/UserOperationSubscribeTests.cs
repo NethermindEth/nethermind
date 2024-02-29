@@ -62,7 +62,7 @@ namespace Nethermind.AccountAbstraction.Test
             _blockTree = Substitute.For<IBlockTree>();
             _txPool = Substitute.For<ITxPool>();
             _receiptStorage = Substitute.For<IReceiptStorage>();
-            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_blockTree, _receiptStorage, _logManager);
+            _receiptCanonicalityMonitor = new ReceiptCanonicalityMonitor(_receiptStorage, _logManager);
             _specProvider = Substitute.For<ISpecProvider>();
             _userOperationPools[_testPoolAddress] = Substitute.For<IUserOperationPool>();
             _filterStore = new FilterStore();
@@ -75,7 +75,8 @@ namespace Nethermind.AccountAbstraction.Test
                 _txPool,
                 _receiptCanonicalityMonitor,
                 _filterStore,
-                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig, new StaticSelector(SyncMode.All), _logManager),
+                new EthSyncingInfo(_blockTree, _receiptStorage, _syncConfig,
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), _logManager),
                 _specProvider,
                 _jsonSerializer);
 

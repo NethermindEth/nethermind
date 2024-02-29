@@ -38,7 +38,7 @@ namespace Nethermind.Core
             return result;
         }
 
-        void DangerousReleaseMemory(in Span<byte> span) { }
+        void DangerousReleaseMemory(in ReadOnlySpan<byte> span) { }
     }
 
     public interface IWriteOnlyKeyValueStore
@@ -70,6 +70,9 @@ namespace Nethermind.Core
 
         // Hint that the workload is likely to need the next value in the sequence and should prefetch it.
         HintReadAhead = 2,
+
+        // Used for full pruning db to skip duplicate read
+        SkipDuplicateRead = 4,
     }
 
     [Flags]

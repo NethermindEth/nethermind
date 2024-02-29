@@ -20,7 +20,7 @@ To get real JSON-RPC messages, run the Nethermind Client using the `RpcRecorderS
 
 Kute includes a built in help that can be accessed by the options `-h | --help`.
 
-Some typical usages are as follow:
+Some typical usages are as follows:
 
 ### Use all messages in the folder `/rpc-logs`
 
@@ -31,13 +31,31 @@ Some typical usages are as follow:
 ### Use a single messages file and emit results as JSON
 
 ```
--i /rpc-logs -s keystore/jwt-secret -o Json
+-i /rpc.0 -s keystore/jwt-secret -o Json
 ```
 
-### Use a single message file, using only `engine_*` and `eth_*` methods
+### Use a single messages file and record all responses into a new file
 
 ```
--i /rpc.0 -s keystore/jwt-secret -f engine_*, eth_*
+-i /rpc.0 -s keystore/jwt-secret -r rpc.responses.txt
+```
+
+### Use a single message file, using only `engine` and `eth` methods
+
+```
+-i /rpc.0 -s keystore/jwt-secret -f engine, eth
+```
+
+### Use a single message file, using only the first 100 methods
+
+```
+-i /rpc.0 -s keystore/jwt-secret -f .*=100
+```
+
+### Use a single message file, using only the first 50 `engine_newPayloadV2` or `engine_newPayloadV3` methods
+
+```
+-i /rpc.0 -s keystore/jwt-secret -f engine_newPayloadV[23]=50
 ```
 
 ### Connect to a Nethermind Client running in a specific address and TTL
@@ -54,7 +72,7 @@ Some typical usages are as follow:
 
 ### A note on "progress"
 
-Kute supports a `-p|--progress` flag which will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
+Kute supports a `-p|--progress` flag that will show how many messages have been processed so far. This feature comes with a **big performance hit during startup** (it will not interfere with metrics though), so it's suggested to **not use it** unless it's required (ex. do not use it in automated environments like CI pipelines).
 
 ### TODO
 

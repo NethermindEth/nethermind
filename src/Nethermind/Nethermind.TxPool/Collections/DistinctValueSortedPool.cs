@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Collections
             IComparer<TValue> comparer,
             IEqualityComparer<TValue> distinctComparer,
             ILogManager logManager)
-            : base(capacity, comparer)
+            : base(capacity, comparer, logManager)
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));
@@ -49,7 +49,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_distinctDictionary.TryGetValue(value, out KeyValuePair<TKey, TValue> oldKvp))
             {
-                TryRemove(oldKvp.Key);
+                TryRemoveNonLocked(oldKvp.Key, evicted: false, out _, out _);
             }
 
             base.InsertCore(key, value, groupKey);

@@ -20,19 +20,19 @@ jobs:
         include:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: ubuntu-latest
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lighthouse"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: sync-agent-80gb
+            agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ${{ matrix.agent }}
     steps:
@@ -65,7 +65,7 @@ jobs:
       - name: Install Sedge environment
         run: |
           echo "Downloading sedge sources..."
-          git clone https://github.com/NethermindEth/sedge.git sedge --branch develop --single-branch
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
           echo "Sources downloaded."
           cd sedge
           echo "Building sedge..."
@@ -84,35 +84,48 @@ jobs:
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
           --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
           echo 'Running sedge...'
-          docker compose up -d
+          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
 
       - name: Wait for ${{ matrix.network }} to sync
         id: wait
-        timeout-minutes: 90
+        timeout-minutes: 180
         run: |
           set +e
-
+          
           declare -A bad_logs
-          bad_logs["Invalid"]=1
+          bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
-          bad_logs["Corrupted"]=1
 
           declare -A good_logs
-          good_logs["Synced chain Head"]=0
+          good_logs["Synced Chain Head"]=0
           good_logs["Processed"]=0
 
           declare -A required_count
-          required_count["Synced chain Head"]=20
+          required_count["Synced Chain Head"]=20
           required_count["Processed"]=20
+
+          counter=0
+          found_bad_log=false
 
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
 
+            if [[ $found_bad_log == true ]]; then
+              ((counter++))
+              if [ $counter -ge 100 ]; then
+                echo "Exiting after capturing extra logs due to error."
+                exit 1
+              else
+                continue
+              fi
+            fi
+
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
-                exit 1
+                $found_bad_log=true
+                continue 2
               fi
             done
 
@@ -133,8 +146,21 @@ jobs:
 
             if $all_reached_required_count; then
               echo "All required logs found."
-              break
+              exit 0
             fi
           done
+          
+      - name: Get Consensus Logs
+        if: always()
+        run: |
+          docker logs sedge-consensus-client      
 
-          echo "Node is synced."
+      - name: Clean Up
+        if: always()
+        run: |
+          cd sedge
+          docker compose stop
+          cd ..
+          sudo rm -rf sedge
+          sudo rm -rf $GITHUB_WORKSPACE/sedge
+          docker system prune -a -f --volumes

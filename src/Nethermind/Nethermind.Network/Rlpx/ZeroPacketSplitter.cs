@@ -46,7 +46,7 @@ namespace Nethermind.Network.Rlpx
                 int totalPayloadOffset = MaxFrameSize * i;
                 int framePayloadSize = Math.Min(MaxFrameSize, totalPayloadSize - totalPayloadOffset);
                 int paddingSize = i == framesCount - 1 ? Frame.CalculatePadding(totalPayloadSize) : 0;
-                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize, true);
+                output.EnsureWritable(Frame.HeaderSize + framePayloadSize + paddingSize);
 
                 // 000 - 016 | header
                 // 016 - 01x | packet type
@@ -116,7 +116,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private int WritePacketType(int packetType, IByteBuffer output)
+        private static int WritePacketType(int packetType, IByteBuffer output)
         {
             if (packetType == 0)
             {

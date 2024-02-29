@@ -38,7 +38,7 @@ namespace Nethermind.Hive
             IFileSystem fileSystem,
             IBlockValidator blockValidator)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _blockProcessingQueue = blockProcessingQueue ?? throw new ArgumentNullException(nameof(blockProcessingQueue));
             _configurationProvider = configurationProvider ?? throw new ArgumentNullException(nameof(configurationProvider));
@@ -110,11 +110,6 @@ namespace Nethermind.Hive
             {
                 if (_logger.IsInfo) _logger.Info($"{variableName}: {Environment.GetEnvironmentVariable(variableName)}");
             }
-        }
-
-        public async Task StopAsync()
-        {
-            await Task.CompletedTask;
         }
 
         private async Task InitializeBlocks(string blocksDir, CancellationToken cancellationToken)
@@ -191,7 +186,7 @@ namespace Nethermind.Hive
             return Rlp.Decode<Block>(blockRlp);
         }
 
-        private async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
+        private static async Task WaitForBlockProcessing(SemaphoreSlim semaphore)
         {
             if (!await semaphore.WaitAsync(5000))
             {

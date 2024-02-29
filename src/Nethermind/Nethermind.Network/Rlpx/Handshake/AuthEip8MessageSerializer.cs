@@ -22,7 +22,7 @@ namespace Nethermind.Network.Rlpx.Handshake
         {
             int totalLength = GetLength(msg);
             // TODO: Account for the padding
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(totalLength);
             stream.Encode(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId));
@@ -32,7 +32,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             _messagePad?.Pad(byteBuffer);
         }
 
-        public int GetLength(AuthEip8Message msg)
+        public static int GetLength(AuthEip8Message msg)
         {
             int contentLength = Rlp.LengthOf(Bytes.Concat(msg.Signature.Bytes, msg.Signature.RecoveryId))
                                 + Rlp.LengthOf(msg.PublicKey.Bytes)

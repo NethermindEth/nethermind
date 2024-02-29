@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -26,7 +27,7 @@ public class HealingStorageTree : StorageTree
         _recovery = recovery;
     }
 
-    public override byte[]? Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+    public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
     {
         try
         {
@@ -69,11 +70,11 @@ public class HealingStorageTree : StorageTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = _stateRoot,
-                AccountAndStoragePaths = new[]
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
-                    new PathGroup
+                    new()
                     {
-                        Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                        Group = [ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart)]
                     }
                 }
             };
@@ -81,7 +82,7 @@ public class HealingStorageTree : StorageTree
             byte[]? rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                TrieStore.AsKeyValueStore().Set(rlpHash.Bytes, rlp);
+                TrieStore.Set(rlpHash, rlp);
                 return true;
             }
         }

@@ -61,7 +61,7 @@ namespace Nethermind.Network
                     _logger.IsTrace ? $", different genesis hash: {syncPeerArgs.GenesisHash}, our: {_blockTree.Genesis.Hash}" : "");
             }
 
-            if (syncPeerArgs.ForkId == null)
+            if (syncPeerArgs.ForkId is null)
             {
                 return Disconnect(session, DisconnectReason.MissingForkId, CompatibilityValidationType.MissingForkId, "missing fork id");
             }
@@ -83,7 +83,7 @@ namespace Nethermind.Network
             return false;
         }
 
-        private bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
+        private static bool ValidateP2PVersion(byte p2PVersion) => p2PVersion is 4 or 5;
 
         private bool ValidateNetworkId(ulong networkId) => networkId == _blockTree.NetworkId;
     }

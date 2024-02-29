@@ -8,6 +8,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.Peers;
 
@@ -21,7 +22,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
 
-        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, BlockHeader?[] headers,
+        public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, IReadOnlyList<BlockHeader?> headers,
             bool downloadReceipts, IReceiptsRecovery receiptsRecovery)
         {
             _indexMapping = new Dictionary<int, int>();
@@ -30,7 +31,7 @@ namespace Nethermind.Synchronization.Blocks
             _specProvider = specProvider;
             _syncPeer = syncPeer;
 
-            Blocks = new Block[headers.Length - 1];
+            Blocks = new Block[headers.Count - 1];
             NonEmptyBlockHashes = new List<Hash256>();
 
             if (_downloadReceipts)
@@ -39,7 +40,7 @@ namespace Nethermind.Synchronization.Blocks
             }
 
             int currentBodyIndex = 0;
-            for (int i = 1; i < headers.Length; i++)
+            for (int i = 1; i < headers.Count; i++)
             {
                 BlockHeader? header = headers[i];
                 if (header?.Hash is null)
@@ -125,7 +126,7 @@ namespace Nethermind.Synchronization.Blocks
 
         private void ValidateReceipts(Block block, TxReceipt[] blockReceipts)
         {
-            Hash256 receiptsRoot = new ReceiptTrie(_specProvider.GetSpec(block.Header), blockReceipts).RootHash;
+            Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(block.Header), blockReceipts, ReceiptMessageDecoder.Instance);
 
             if (receiptsRoot != block.ReceiptsRoot)
             {

@@ -80,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
             switch (transaction.Type)
             {
                 case TxType.Legacy:
-                    DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
+                    TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, rlpStream);
                     break;
                 case TxType.AccessList:
                     DecodeAccessListPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
@@ -92,7 +92,7 @@ namespace Nethermind.Serialization.Rlp
                     DecodeShardBlobPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
+                    TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, rlpStream, rlpBehaviors);
                     break;
             }
 
@@ -111,26 +111,32 @@ namespace Nethermind.Serialization.Rlp
                 switch (transaction.Type)
                 {
                     case TxType.Blob:
-                        DecodeShardBlobNetworkPayload(transaction, rlpStream, rlpBehaviors);
+                        TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, rlpStream, rlpBehaviors);
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     rlpStream.Check(positionAfterNetworkWrapper);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+                {
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
             }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
             {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                transaction.SetPreHashNoLock(transactionSequence);
-            }
-            else
-            {
-                // Just calculate the Hash as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    transaction.SetPreHashNoLock(transactionSequence);
+                }
+                else
+                {
+                    // Just calculate the Hash as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
+                }
             }
 
             return transaction;
@@ -165,7 +171,7 @@ namespace Nethermind.Serialization.Rlp
             return transactionSequence;
         }
 
-        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, Span<byte> transactionSequence)
+        private static Hash256 CalculateHashForNetworkPayloadForm(TxType type, ReadOnlySpan<byte> transactionSequence)
         {
             KeccakHash hash = KeccakHash.Create();
             Span<byte> txType = stackalloc byte[1];
@@ -175,7 +181,7 @@ namespace Nethermind.Serialization.Rlp
             return new Hash256(hash.Hash);
         }
 
-        private void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
+        private static void DecodeLegacyPayloadWithoutSig(T transaction, RlpStream rlpStream)
         {
             transaction.Nonce = rlpStream.DecodeUInt256();
             transaction.GasPrice = rlpStream.DecodeUInt256();
@@ -225,7 +231,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.BlobVersionedHashes = rlpStream.DecodeByteArrays();
         }
 
-        private void DecodeShardBlobNetworkPayload(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        private static void DecodeShardBlobNetworkPayload(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             byte[][] blobs = rlpStream.DecodeByteArrays();
             byte[][] commitments = rlpStream.DecodeByteArrays();
@@ -233,7 +239,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
 
-        private void DecodeDepositPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        private static void DecodeDepositPayloadWithoutSig(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             transaction.SourceHash = rlpStream.DecodeKeccak();
             transaction.SenderAddress = rlpStream.DecodeAddress();
@@ -245,7 +251,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = rlpStream.DecodeByteArray();
         }
 
-        private void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        private static void DecodeLegacyPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.Nonce = decoderContext.DecodeUInt256();
             transaction.GasPrice = decoderContext.DecodeUInt256();
@@ -295,7 +301,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.BlobVersionedHashes = decoderContext.DecodeByteArrays();
         }
 
-        private void DecodeShardBlobNetworkPayload(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        private static void DecodeShardBlobNetworkPayload(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             byte[][] blobs = decoderContext.DecodeByteArrays();
             byte[][] commitments = decoderContext.DecodeByteArrays();
@@ -303,7 +309,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.NetworkWrapper = new ShardBlobNetworkWrapper(blobs, commitments, proofs);
         }
 
-        private void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
+        private static void DecodeDepositPayloadWithoutSig(T transaction, ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors)
         {
             transaction.SourceHash = decoderContext.DecodeKeccak();
             transaction.SenderAddress = decoderContext.DecodeAddress();
@@ -315,7 +321,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Data = decoderContext.DecodeByteArray();
         }
 
-        private void EncodeLegacyWithoutPayload(T item, RlpStream stream)
+        private static void EncodeLegacyWithoutPayload(T item, RlpStream stream)
         {
             stream.Encode(item.Nonce);
             stream.Encode(item.GasPrice);
@@ -365,7 +371,7 @@ namespace Nethermind.Serialization.Rlp
             stream.Encode(item.BlobVersionedHashes);
         }
 
-        private void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
+        private static void EncodeDepositTxPayloadWithoutPayload(T item, RlpStream stream)
         {
             stream.Encode(item.SourceHash);
             stream.Encode(item.SenderAddress);
@@ -405,7 +411,7 @@ namespace Nethermind.Serialization.Rlp
             transaction.Type = TxType.Legacy;
 
             int txSequenceStart = decoderContext.Position;
-            Span<byte> transactionSequence = decoderContext.PeekNextItem();
+            ReadOnlySpan<byte> transactionSequence = decoderContext.PeekNextItem();
 
             if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
             {
@@ -445,7 +451,7 @@ namespace Nethermind.Serialization.Rlp
             switch (transaction.Type)
             {
                 case TxType.Legacy:
-                    DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    TxDecoder<T>.DecodeLegacyPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.AccessList:
                     DecodeAccessListPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
@@ -457,7 +463,7 @@ namespace Nethermind.Serialization.Rlp
                     DecodeShardBlobPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
+                    TxDecoder<T>.DecodeDepositPayloadWithoutSig(transaction, ref decoderContext, rlpBehaviors);
                     break;
             }
 
@@ -476,37 +482,43 @@ namespace Nethermind.Serialization.Rlp
                 switch (transaction.Type)
                 {
                     case TxType.Blob:
-                        DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
+                        TxDecoder<T>.DecodeShardBlobNetworkPayload(transaction, ref decoderContext, rlpBehaviors);
                         break;
                 }
 
-                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+                if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) == 0)
                 {
                     decoderContext.Check(networkWrapperCheck);
                 }
 
-                transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
-            }
-            else if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
-            {
-                // Delay hash generation, as may be filtered as having too low gas etc
-                if (decoderContext.ShouldSliceMemory)
+                if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
                 {
-                    // Do not copy the memory in this case.
-                    int currentPosition = decoderContext.Position;
-                    decoderContext.Position = txSequenceStart;
-                    transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
-                    decoderContext.Position = currentPosition;
+                    transaction.Hash = CalculateHashForNetworkPayloadForm(transaction.Type, transactionSequence);
+                }
+            }
+            else if ((rlpBehaviors & RlpBehaviors.ExcludeHashes) == 0)
+            {
+                if (transactionSequence.Length <= TxDecoder.MaxDelayedHashTxnSize && _lazyHash)
+                {
+                    // Delay hash generation, as may be filtered as having too low gas etc
+                    if (decoderContext.ShouldSliceMemory)
+                    {
+                        // Do not copy the memory in this case.
+                        int currentPosition = decoderContext.Position;
+                        decoderContext.Position = txSequenceStart;
+                        transaction.SetPreHashMemoryNoLock(decoderContext.ReadMemory(transactionSequence.Length));
+                        decoderContext.Position = currentPosition;
+                    }
+                    else
+                    {
+                        transaction.SetPreHashNoLock(transactionSequence);
+                    }
                 }
                 else
                 {
-                    transaction.SetPreHashNoLock(transactionSequence);
+                    // Just calculate the Hash immediately as txn too large
+                    transaction.Hash = Keccak.Compute(transactionSequence);
                 }
-            }
-            else
-            {
-                // Just calculate the Hash immediately as txn too large
-                transaction.Hash = Keccak.Compute(transactionSequence);
             }
         }
 
@@ -544,12 +556,7 @@ namespace Nethermind.Serialization.Rlp
             bool allowUnsigned = (rlpBehaviors & RlpBehaviors.AllowUnsigned) == RlpBehaviors.AllowUnsigned;
             bool isSignatureOk = true;
             string signatureError = null;
-            if (rBytes == null || sBytes == null)
-            {
-                isSignatureOk = false;
-                signatureError = "VRS null when decoding Transaction";
-            }
-            else if (rBytes.Length == 0 || sBytes.Length == 0)
+            if (rBytes.Length == 0 || sBytes.Length == 0)
             {
                 isSignatureOk = false;
                 signatureError = "VRS is 0 length when decoding Transaction";
@@ -590,7 +597,7 @@ namespace Nethermind.Serialization.Rlp
         {
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -603,7 +610,7 @@ namespace Nethermind.Serialization.Rlp
         {
             RlpStream rlpStream = new(GetTxLength(item, rlpBehaviors, forSigning, isEip155Enabled, chainId));
             EncodeTx(rlpStream, item, rlpBehaviors, forSigning, isEip155Enabled, chainId);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         private void EncodeTx(RlpStream stream, T? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None,
@@ -642,7 +649,7 @@ namespace Nethermind.Serialization.Rlp
             switch (item.Type)
             {
                 case TxType.Legacy:
-                    EncodeLegacyWithoutPayload(item, stream);
+                    TxDecoder<T>.EncodeLegacyWithoutPayload(item, stream);
                     break;
                 case TxType.AccessList:
                     EncodeAccessListPayloadWithoutPayload(item, stream, rlpBehaviors);
@@ -654,7 +661,7 @@ namespace Nethermind.Serialization.Rlp
                     EncodeShardBlobPayloadWithoutPayload(item, stream, rlpBehaviors);
                     break;
                 case TxType.DepositTx:
-                    EncodeDepositTxPayloadWithoutPayload(item, stream);
+                    TxDecoder<T>.EncodeDepositTxPayloadWithoutPayload(item, stream);
                     break;
             }
 
@@ -665,7 +672,7 @@ namespace Nethermind.Serialization.Rlp
                 switch (item.Type)
                 {
                     case TxType.Blob:
-                        EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
+                        TxDecoder<T>.EncodeShardBlobNetworkPayload(item, stream, rlpBehaviors);
                         break;
                 }
             }
@@ -703,7 +710,7 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-        private void EncodeShardBlobNetworkPayload(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+        private static void EncodeShardBlobNetworkPayload(T transaction, RlpStream rlpStream, RlpBehaviors rlpBehaviors)
         {
             ShardBlobNetworkWrapper networkWrapper = transaction.NetworkWrapper as ShardBlobNetworkWrapper;
             rlpStream.Encode(networkWrapper.Blobs);
@@ -711,7 +718,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Encode(networkWrapper.Proofs);
         }
 
-        private int GetLegacyContentLength(T item)
+        private static int GetLegacyContentLength(T item)
         {
             return Rlp.LengthOf(item.Nonce)
                 + Rlp.LengthOf(item.GasPrice)
@@ -761,7 +768,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(item.BlobVersionedHashes);
         }
 
-        private int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
+        private static int GetShardBlobNetworkWrapperContentLength(T item, int txContentLength)
         {
             ShardBlobNetworkWrapper networkWrapper = item.NetworkWrapper as ShardBlobNetworkWrapper;
             return Rlp.LengthOfSequence(txContentLength)
@@ -770,7 +777,7 @@ namespace Nethermind.Serialization.Rlp
                    + Rlp.LengthOf(networkWrapper.Proofs);
         }
 
-        private int GetDepositTxContentLength(T item)
+        private static int GetDepositTxContentLength(T item)
         {
             return Rlp.LengthOf(item.SourceHash)
                    + Rlp.LengthOf(item.SenderAddress)
@@ -790,7 +797,7 @@ namespace Nethermind.Serialization.Rlp
             switch (item.Type)
             {
                 case TxType.Legacy:
-                    contentLength = GetLegacyContentLength(item);
+                    contentLength = TxDecoder<T>.GetLegacyContentLength(item);
                     break;
                 case TxType.AccessList:
                     contentLength = GetAccessListContentLength(item);
@@ -802,7 +809,7 @@ namespace Nethermind.Serialization.Rlp
                     contentLength = GetShardBlobContentLength(item);
                     break;
                 case TxType.DepositTx:
-                    contentLength = GetDepositTxContentLength(item);
+                    contentLength = TxDecoder<T>.GetDepositTxContentLength(item);
                     break;
             }
 
@@ -812,7 +819,7 @@ namespace Nethermind.Serialization.Rlp
             {
                 if (item.Type == TxType.Blob)
                 {
-                    contentLength = GetShardBlobNetworkWrapperContentLength(item, contentLength);
+                    contentLength = TxDecoder<T>.GetShardBlobNetworkWrapperContentLength(item, contentLength);
                 }
             }
             return contentLength;
@@ -836,7 +843,7 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                bool signatureIsNull = item.Signature == null;
+                bool signatureIsNull = item.Signature is null;
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Type == TxType.Legacy ? item.Signature.V : item.Signature.RecoveryId);
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.RAsSpan.WithoutLeadingZeros());
                 contentLength += signatureIsNull ? 1 : Rlp.LengthOf(item.Signature.SAsSpan.WithoutLeadingZeros());

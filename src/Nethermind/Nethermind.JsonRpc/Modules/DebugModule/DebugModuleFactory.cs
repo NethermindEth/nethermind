@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO.Abstractions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -13,14 +14,11 @@ using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Trie.Pruning;
-using System.Text.Json;
-using System.Text.Json.Serialization;
 
 namespace Nethermind.JsonRpc.Modules.DebugModule;
 
@@ -39,6 +37,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
     private readonly IReadOnlyDbProvider _dbProvider;
     private readonly IReadOnlyBlockTree _blockTree;
     private readonly ISyncModeSelector _syncModeSelector;
+    private readonly IBlockStore _badBlockStore;
     private readonly IFileSystem _fileSystem;
     private readonly ILogger _logger;
 
@@ -55,6 +54,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         IConfigProvider configProvider,
         ISpecProvider specProvider,
         ISyncModeSelector syncModeSelector,
+        IBlockStore badBlockStore,
         IFileSystem fileSystem,
         ILogManager logManager)
     {
@@ -71,6 +71,7 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
+        _badBlockStore = badBlockStore;
         _fileSystem = fileSystem ?? throw new ArgumentNullException(nameof(fileSystem));
         _logger = logManager.GetClassLogger();
     }
@@ -112,8 +113,9 @@ public class DebugModuleFactory : ModuleFactoryBase<IDebugRpcModule>
             _receiptStorage,
             _receiptsMigration,
             _specProvider,
-            _syncModeSelector);
+            _syncModeSelector,
+            _badBlockStore);
 
-        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig);
+        return new DebugRpcModule(_logManager, debugBridge, _jsonRpcConfig, _specProvider);
     }
 }

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
@@ -642,32 +642,36 @@ namespace Nethermind.Core.Crypto
 
         private static class Pool
         {
-            private const int MaxPooled = 24;
-            private static readonly ConcurrentQueue<byte[]> s_remainderCache = new();
-            public static byte[] RentRemainder() => s_remainderCache.TryDequeue(out byte[]? remainder) ? remainder : new byte[STATE_SIZE];
+            private const int MaxPooledPerThread = 4;
+            [ThreadStatic]
+            private static Queue<byte[]>? s_remainderCache;
+            public static byte[] RentRemainder() => s_remainderCache?.TryDequeue(out byte[]? remainder) ?? false ? remainder : new byte[STATE_SIZE];
             public static void ReturnRemainder(ref byte[] remainder)
             {
                 if (remainder.Length == 0) return;
 
-                if (s_remainderCache.Count <= MaxPooled)
+                var cache = (s_remainderCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     remainder.AsSpan().Clear();
-                    s_remainderCache.Enqueue(remainder);
+                    cache.Enqueue(remainder);
                 }
 
                 remainder = Array.Empty<byte>();
             }
 
-            private static readonly ConcurrentQueue<ulong[]> s_stateCache = new();
-            public static ulong[] RentState() => s_stateCache.TryDequeue(out ulong[]? state) ? state : new ulong[STATE_SIZE / sizeof(ulong)];
+            [ThreadStatic]
+            private static Queue<ulong[]>? s_stateCache;
+            public static ulong[] RentState() => s_stateCache?.TryDequeue(out ulong[]? state) ?? false ? state : new ulong[STATE_SIZE / sizeof(ulong)];
             public static void ReturnState(ref ulong[] state)
             {
                 if (state.Length == 0) return;
 
-                if (s_stateCache.Count <= MaxPooled)
+                var cache = (s_stateCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     state.AsSpan().Clear();
-                    s_stateCache.Enqueue(state);
+                    cache.Enqueue(state);
                 }
 
                 state = Array.Empty<ulong>();

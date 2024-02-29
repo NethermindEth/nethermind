@@ -7,7 +7,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -35,7 +37,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             IMessageSerializationService serializer,
             INodeStatsManager statsManager,
             ISyncServer syncServer,
-            ILogManager logManager) : base(session, serializer, statsManager, syncServer, logManager)
+            IBackgroundTaskScheduler backgroundTaskScheduler,
+            ILogManager logManager) : base(session, serializer, statsManager, syncServer, backgroundTaskScheduler, logManager)
         {
             _lastSentBlock = SyncServer.Head;
         }
@@ -115,34 +118,36 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             switch (message.PacketType)
             {
                 case LesMessageCode.Status:
-                    StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
-                    if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
-                    Handle(statusMessage);
-                    break;
+                    {
+                        using StatusMessage statusMessage = Deserialize<StatusMessage>(message.Content);
+                        if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, statusMessage.ToString(), size);
+                        Handle(statusMessage);
+                        break;
+                    }
                 case LesMessageCode.GetBlockHeaders:
                     GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockHeadersMessage.ToString(), size);
-                    Handle(getBlockHeadersMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case LesMessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBlockBodiesMessage = Deserialize<GetBlockBodiesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getBlockBodiesMessage.ToString(), size);
-                    Handle(getBlockBodiesMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockBodiesMessage, Handle);
                     break;
                 case LesMessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getReceiptsMessage.ToString(), size);
-                    Handle(getReceiptsMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case LesMessageCode.GetContractCodes:
                     GetContractCodesMessage getContractCodesMessage = Deserialize<GetContractCodesMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getContractCodesMessage.ToString(), size);
-                    Handle(getContractCodesMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getContractCodesMessage, Handle);
                     break;
                 case LesMessageCode.GetHelperTrieProofs:
                     GetHelperTrieProofsMessage getHelperTrieProofsMessage = Deserialize<GetHelperTrieProofsMessage>(message.Content);
                     if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportIncomingMessage(Session.Node.Address, Name, getHelperTrieProofsMessage.ToString(), size);
-                    Handle(getHelperTrieProofsMessage);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getHelperTrieProofsMessage, Handle);
                     break;
             }
         }
@@ -199,42 +204,47 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 
-        public void Handle(GetBlockHeadersMessage getBlockHeaders)
+        public async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeaders, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = FulfillBlockHeadersRequest(getBlockHeaders.EthMessage);
+            using var message = getBlockHeaders;
+            Eth.V62.Messages.BlockHeadersMessage ethBlockHeadersMessage = await FulfillBlockHeadersRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new BlockHeadersMessage(ethBlockHeadersMessage, getBlockHeaders.RequestId, int.MaxValue));
+            return new BlockHeadersMessage(ethBlockHeadersMessage, message.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetBlockBodiesMessage getBlockBodies)
+        public async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage getBlockBodies, CancellationToken cancellationToken)
         {
-            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = FulfillBlockBodiesRequest(getBlockBodies.EthMessage);
+            using var message = getBlockBodies;
+            Eth.V62.Messages.BlockBodiesMessage ethBlockBodiesMessage = await FulfillBlockBodiesRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new BlockBodiesMessage(ethBlockBodiesMessage, getBlockBodies.RequestId, int.MaxValue));
+            return new BlockBodiesMessage(ethBlockBodiesMessage, message.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetReceiptsMessage getReceipts)
+        public async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceipts, CancellationToken cancellationToken)
         {
-            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = FulfillReceiptsRequest(getReceipts.EthMessage);
+            using var message = getReceipts;
+            Eth.V63.Messages.ReceiptsMessage ethReceiptsMessage = await FulfillReceiptsRequest(message.EthMessage, cancellationToken);
             // todo - implement cost tracking
-            Send(new ReceiptsMessage(ethReceiptsMessage, getReceipts.RequestId, int.MaxValue));
+            return new ReceiptsMessage(ethReceiptsMessage, message.RequestId, int.MaxValue);
         }
 
-        public void Handle(GetContractCodesMessage getContractCodes)
+        public Task<ContractCodesMessage> Handle(GetContractCodesMessage getContractCodes, CancellationToken cancellationToken)
         {
-            var codes = SyncServer.GetNodeData(getContractCodes.RequestAddresses, NodeDataType.Code);
+            using var message = getContractCodes;
+            var codes = SyncServer.GetNodeData(message.RequestAddresses, cancellationToken, NodeDataType.Code);
             // todo - implement cost tracking
-            Send(new ContractCodesMessage(codes, getContractCodes.RequestId, int.MaxValue));
+            return Task.FromResult(new ContractCodesMessage(codes, message.RequestId, int.MaxValue));
         }
 
-        public void Handle(GetHelperTrieProofsMessage getHelperTrieProofs)
+        public Task<HelperTrieProofsMessage> Handle(GetHelperTrieProofsMessage getHelperTrieProofs, CancellationToken cancellationToken)
         {
+            using var message = getHelperTrieProofs;
             List<byte[]> proofNodes = new();
             List<byte[]> auxData = new();
 
-            for (int requestNo = 0; requestNo < getHelperTrieProofs.Requests.Length; requestNo++)
+            for (int requestNo = 0; requestNo < message.Requests.Length; requestNo++)
             {
-                var request = getHelperTrieProofs.Requests[requestNo];
+                var request = message.Requests[requestNo];
                 switch (request.SubType)
                 {
                     case HelperTrieType.CHT:
@@ -244,7 +254,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
                         throw new SubprotocolException("bloom bits trie not yet supported");
                 }
             }
-            Send(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), getHelperTrieProofs.RequestId, int.MaxValue));
+
+            return Task.FromResult(new HelperTrieProofsMessage(proofNodes.Distinct().ToArray(), auxData.ToArray(), message.RequestId, int.MaxValue));
         }
 
         public void GetCHTData(HelperTrieRequest request, List<byte[]> proofNodes, List<byte[]> auxData)
@@ -259,11 +270,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             else if (request.AuxiliaryData == 2)
             {
                 (Hash256 hash, _) = cht.Get(request.Key);
-                var headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
-                if (headerResult.Length != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
+                using IOwnedReadOnlyList<BlockHeader> headerResult = SyncServer.FindHeaders(hash, 1, 0, false);
+                if (headerResult.Count != 1) throw new SubprotocolException($"Unable to find header for block {request.Key.WithoutLeadingZeros().ToArray().ToLongFromBigEndianByteArrayWithoutLeadingZeros()} for GetHelperProofs response.");
                 auxData.Add(Rlp.Encode(headerResult[0]).Bytes);
             }
-            proofNodes.AddRange(cht.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
+            proofNodes.AddRange(Synchronization.LesSync.CanonicalHashTrie.BuildProof(request.Key, request.SectionIndex, request.FromLevel));
         }
 
         private BlockHeader _lastSentBlock;

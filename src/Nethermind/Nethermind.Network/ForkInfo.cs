@@ -86,9 +86,9 @@ namespace Nethermind.Network
             // Potentially we can parametrize it based on Spec provider, but not worth it for now
             // We support block forks up to 1,4 bln blocks
             [MethodImpl(MethodImplOptions.AggressiveInlining)]
-            bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
+            static bool IsTimestamp(ulong next) => next >= MainnetSpecProvider.GenesisBlockTimestamp;
 
-            if (head == null) return ValidationResult.Valid;
+            if (head is null) return ValidationResult.Valid;
             if (!DictForks.TryGetValue(peerId.ForkHash, out (ForkActivation Activation, ForkId Id) found))
             {
                 // Remote is on fork that does not exist for local. remote is incompatible or local is stale.

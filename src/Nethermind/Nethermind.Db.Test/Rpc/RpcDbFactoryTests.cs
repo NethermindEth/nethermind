@@ -29,10 +29,10 @@ namespace Nethermind.Db.Test.Rpc
 
             IJsonSerializer jsonSerializer = Substitute.For<IJsonSerializer>();
             IJsonRpcClient jsonRpcClient = Substitute.For<IJsonRpcClient>();
-            IMemDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), null, jsonSerializer, jsonRpcClient, LimboLogs.Instance);
+            IDbFactory rpcDbFactory = new RpcDbFactory(new MemDbFactory(), jsonSerializer, jsonRpcClient, LimboLogs.Instance);
 
-            IDbProvider memDbProvider = new DbProvider(DbModeHint.Mem);
-            StandardDbInitializer standardDbInitializer = new(memDbProvider, null, rpcDbFactory, Substitute.For<IFileSystem>());
+            IDbProvider memDbProvider = new DbProvider();
+            StandardDbInitializer standardDbInitializer = new(memDbProvider, rpcDbFactory, Substitute.For<IFileSystem>());
             standardDbInitializer.InitStandardDbs(true);
 
             ValidateDb<ReadOnlyColumnsDb<ReceiptsColumns>>(

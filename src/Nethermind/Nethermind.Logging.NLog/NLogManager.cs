@@ -27,7 +27,7 @@ namespace Nethermind.Logging.NLog
             LogManager.ConfigurationChanged += _logManagerOnConfigurationChanged;
         }
 
-        private void Setup(string logFileName, string logDirectory = null, string logRules = null)
+        private static void Setup(string logFileName, string logDirectory = null, string logRules = null)
         {
             logDirectory = SetupLogDirectory(logDirectory);
             SetupLogFile(logFileName, logDirectory);
@@ -57,25 +57,26 @@ namespace Nethermind.Logging.NLog
             return logDirectory;
         }
 
-        private readonly ConcurrentDictionary<Type, NLogLogger> _loggers = new();
+        private static readonly ConcurrentDictionary<Type, ILogger> s_loggers = new();
+        private static readonly Func<Type, ILogger> s_loggerBuilder = BuildLogger;
         private readonly EventHandler<LoggingConfigurationChangedEventArgs> _logManagerOnConfigurationChanged;
 
-        private NLogLogger BuildLogger(Type type) => new(type);
+        private static ILogger BuildLogger(Type type) => new(new NLogLogger(type));
 
-        public ILogger GetClassLogger(Type type) => _loggers.GetOrAdd(type, BuildLogger);
+        public ILogger GetClassLogger(Type type) => s_loggers.GetOrAdd(type, s_loggerBuilder);
 
         public ILogger GetClassLogger<T>() => GetClassLogger(typeof(T));
 
-        public ILogger GetClassLogger() => new NLogLogger();
+        public ILogger GetClassLogger() => new(new NLogLogger());
 
-        public ILogger GetLogger(string loggerName) => new NLogLogger(loggerName);
+        public ILogger GetLogger(string loggerName) => new(new NLogLogger(loggerName));
 
         public void SetGlobalVariable(string name, object value)
         {
             GlobalDiagnosticsContext.Set(name, value);
         }
 
-        private void SetupLogRules(string logRules)
+        private static void SetupLogRules(string logRules)
         {
             //Add rules here for e.g. 'JsonRpc.*: Warn; Block.*: Error;',
             if (logRules is not null)
@@ -94,10 +95,10 @@ namespace Nethermind.Logging.NLog
             }
         }
 
-        private Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
+        private static Target[] GetTargets(IList<LoggingRule> configurationLoggingRules) =>
             configurationLoggingRules.SelectMany(r => r.Targets).Distinct().ToArray();
 
-        private void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
+        private static void RemoveOverridenRules(IList<LoggingRule> configurationLoggingRules, LoggingRule loggingRule)
         {
             string reqexPattern = $"^{loggingRule.LoggerNamePattern.Replace(".", "\\.").Replace("*", ".*")}$";
             for (int j = 0; j < configurationLoggingRules.Count;)
@@ -113,7 +114,7 @@ namespace Nethermind.Logging.NLog
             }
         }
 
-        private IEnumerable<LoggingRule> ParseRules(string logRules, Target[] targets)
+        private static IEnumerable<LoggingRule> ParseRules(string logRules, Target[] targets)
         {
             string[] rules = logRules.Split(";", StringSplitOptions.RemoveEmptyEntries);
             foreach (string rule in rules)

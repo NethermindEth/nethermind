@@ -45,7 +45,7 @@ namespace Nethermind.Consensus.Clique
         public Address GetBlockSealer(BlockHeader header)
         {
             if (header.Author is not null) return header.Author;
-            if (header.Number == UInt256.Zero) return Address.Zero;
+            if (header.Number == 0) return Address.Zero;
             if (_signatures.Get(header.Hash) is not null) return _signatures.Get(header.Hash);
 
             int extraSeal = 65;
@@ -368,7 +368,7 @@ namespace Nethermind.Consensus.Clique
             return true;
         }
 
-        private bool Uncast(Snapshot snapshot, Address address, bool authorize)
+        private static bool Uncast(Snapshot snapshot, Address address, bool authorize)
         {
             // If there's no tally, it's a dangling vote, just drop
             if (!snapshot.Tally.TryGetValue(address, out Tally? value)) return true;

@@ -4,12 +4,15 @@
 #nullable disable
 
 using System.Linq;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -23,12 +26,14 @@ namespace Nethermind.Store.Test
         private TrieStore _store;
         private StateTree _inputStateTree;
         private StorageTree _inputStorageTree;
+        private PathWithAccount _pathWithAccount = new PathWithAccount(TestItem.Tree.AccountAddress0.ValueHash256, new Account(UInt256.Zero));
+        private Hash256 _accountAddr;
 
         [OneTimeSetUp]
         public void Setup()
         {
             _store = new TrieStore(new MemDb(), LimboLogs.Instance);
-            (_inputStateTree, _inputStorageTree) = TestItem.Tree.GetTrees(_store);
+            (_inputStateTree, _inputStorageTree, _accountAddr) = TestItem.Tree.GetTrees(_store);
         }
 
         [OneTimeTearDown]
@@ -44,7 +49,7 @@ namespace Nethermind.Store.Test
             var proof = accountProofCollector.BuildResult();
 
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -63,7 +68,7 @@ namespace Nethermind.Store.Test
             var proof = accountProofCollector.BuildResult();
 
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -78,7 +83,7 @@ namespace Nethermind.Store.Test
             Hash256 rootHash = _inputStorageTree!.RootHash;   // "..."
 
             MemDb db = new MemDb();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -94,7 +99,7 @@ namespace Nethermind.Store.Test
 
             // output state
             MemDb db = new MemDb();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
@@ -129,7 +134,7 @@ namespace Nethermind.Store.Test
 
             // output state
             MemDb db = new MemDb();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);

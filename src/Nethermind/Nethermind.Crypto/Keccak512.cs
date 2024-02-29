@@ -32,12 +32,12 @@ namespace Nethermind.Crypto
 
         public byte[]? Bytes { get; }
 
-        public override string ToString()
+        public override readonly string ToString()
         {
             return ToString(true);
         }
 
-        public string ToString(bool withZeroX)
+        public readonly string ToString(bool withZeroX)
         {
             if (Bytes is null)
             {
@@ -107,17 +107,17 @@ namespace Nethermind.Crypto
             return InternalCompute(System.Text.Encoding.UTF8.GetBytes(input));
         }
 
-        public bool Equals(Keccak512 other)
+        public readonly bool Equals(Keccak512 other)
         {
             return Core.Extensions.Bytes.AreEqual(other.Bytes, Bytes);
         }
 
-        public override bool Equals(object obj)
+        public override readonly bool Equals(object obj)
         {
             return obj?.GetType() == typeof(Keccak512) && Equals((Keccak512)obj);
         }
 
-        public override int GetHashCode()
+        public override readonly int GetHashCode()
         {
             return BinaryPrimitives.ReadInt32LittleEndian(Bytes);
         }

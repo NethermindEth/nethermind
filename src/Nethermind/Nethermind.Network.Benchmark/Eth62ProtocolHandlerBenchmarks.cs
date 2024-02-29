@@ -10,6 +10,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -65,7 +66,7 @@ namespace Nethermind.Network.Benchmarks
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
             _handler.DisableTxFiltering();
 
             StatusMessage statusMessage = new StatusMessage();
@@ -81,7 +82,7 @@ namespace Nethermind.Network.Benchmarks
             _handler.HandleMessage(_zeroPacket);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            _txMsg = new TransactionsMessage(new[] { tx });
+            _txMsg = new TransactionsMessage(new[] { tx }.ToPooledList());
         }
 
         [GlobalCleanup]

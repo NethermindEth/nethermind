@@ -4,6 +4,8 @@
 using App.Metrics;
 using App.Metrics.Counter;
 using App.Metrics.Timer;
+using Nethermind.Tools.Kute.Extensions;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Tools.Kute;
 
@@ -23,6 +25,10 @@ public class Metrics
     {
         Name = "Failed", MeasurementUnit = Unit.Items,
     };
+    private readonly CounterOptions _succeeded = new()
+    {
+        Name = "Succeeded", MeasurementUnit = Unit.Items,
+    };
     private readonly CounterOptions _ignoredRequests = new()
     {
         Name = "Ignored Requests", MeasurementUnit = Unit.Items
@@ -35,17 +41,20 @@ public class Metrics
     {
         Name = "Batches", DurationUnit = TimeUnit.Milliseconds
     };
-    private readonly IDictionary<string, TimerOptions> _processedRequests = new Dictionary<string, TimerOptions>();
+    private readonly ConcurrentDictionary<string, TimerOptions> _processedRequests = new ConcurrentDictionary<string, TimerOptions>();
 
     public Metrics()
     {
-        _metrics = new MetricsBuilder().Build();
+        _metrics = new MetricsBuilder()
+            .SampleWith.Reservoir<CompleteReservoir>()
+            .Build();
     }
 
     public MetricsDataValueSource Snapshot => _metrics.Snapshot.Get();
 
     public void TickMessages() => _metrics.Measure.Counter.Increment(_messages);
     public void TickFailed() => _metrics.Measure.Counter.Increment(_failed);
+    public void TickSucceeded() => _metrics.Measure.Counter.Increment(_succeeded);
     public void TickIgnoredRequests() => _metrics.Measure.Counter.Increment(_ignoredRequests);
     public void TickResponses() => _metrics.Measure.Counter.Increment(_responses);
 
@@ -53,13 +62,14 @@ public class Metrics
     public TimerContext TimeBatch() => _metrics.Measure.Timer.Time(_batches);
     public TimerContext TimeMethod(string methodName)
     {
-        if (!_processedRequests.ContainsKey(methodName))
+        var timerOptions = _processedRequests.GetOrAdd(methodName, new TimerOptions
         {
-            _processedRequests[methodName] = new TimerOptions
-            {
-                Name = methodName, MeasurementUnit = Unit.Requests, DurationUnit = TimeUnit.Milliseconds, RateUnit = TimeUnit.Milliseconds
-            };
-        }
-        return _metrics.Measure.Timer.Time(_processedRequests[methodName]);
+            Name = methodName,
+            MeasurementUnit = Unit.Requests,
+            DurationUnit = TimeUnit.Milliseconds,
+            RateUnit = TimeUnit.Milliseconds
+        });
+
+        return _metrics.Measure.Timer.Time(timerOptions);
     }
 }

@@ -4,17 +4,18 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Buffers;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
 /// <summary>
 /// Track every rented CappedArray<byte> and return them all at once
 /// </summary>
-public class TrackingCappedArrayPool : ICappedArrayPool
+public class TrackingCappedArrayPool : ICappedArrayPool, IDisposable
 {
-    private readonly List<CappedArray<byte>> _rentedBuffers;
+    private readonly List<byte[]> _rentedBuffers;
     private readonly ArrayPool<byte> _arrayPool;
 
     public TrackingCappedArrayPool() : this(0)
@@ -23,7 +24,7 @@ public class TrackingCappedArrayPool : ICappedArrayPool
 
     public TrackingCappedArrayPool(int initialCapacity, ArrayPool<byte> arrayPool = null)
     {
-        _rentedBuffers = new List<CappedArray<byte>>(initialCapacity);
+        _rentedBuffers = new List<byte[]>(initialCapacity);
         _arrayPool = arrayPool ?? ArrayPool<byte>.Shared;
     }
 
@@ -31,26 +32,25 @@ public class TrackingCappedArrayPool : ICappedArrayPool
     {
         if (size == 0)
         {
-            return new CappedArray<byte>(Array.Empty<byte>());
+            return CappedArray<byte>.Empty;
         }
 
-        CappedArray<byte> rented = new CappedArray<byte>(_arrayPool.Rent(size), size);
-        rented.AsSpan().Fill(0);
-        _rentedBuffers.Add(rented);
+        byte[] array = _arrayPool.Rent(size);
+        CappedArray<byte> rented = new CappedArray<byte>(array, size);
+        array.AsSpan().Clear();
+        _rentedBuffers.Add(array);
         return rented;
     }
 
-    public void Return(CappedArray<byte> buffer)
+    public void Return(in CappedArray<byte> buffer)
     {
     }
 
-    public void ReturnAll()
+    public void Dispose()
     {
-        foreach (CappedArray<byte> rentedBuffer in _rentedBuffers)
+        foreach (byte[] rentedBuffer in CollectionsMarshal.AsSpan(_rentedBuffers))
         {
-            if (rentedBuffer.IsNotNull && rentedBuffer.Array.Length != 0)
-                _arrayPool.Return(rentedBuffer.Array);
+            _arrayPool.Return(rentedBuffer);
         }
-        _rentedBuffers.Clear();
     }
 }

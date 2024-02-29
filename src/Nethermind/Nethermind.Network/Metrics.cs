@@ -33,7 +33,7 @@ namespace Nethermind.Network
         public static long Handshakes { get; set; }
 
         [CounterMetric]
-        [Description("Number of devp2p handshke timeouts")]
+        [Description("Number of devp2p handshake timeouts")]
         public static long HandshakeTimeouts { get; set; }
 
         [CounterMetric]
@@ -61,107 +61,107 @@ namespace Nethermind.Network
         public static long LesStatusesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to breach of protocol")]
+        [Description("_Deprecated._ Number of received disconnects due to breach of protocol")]
         public static long BreachOfProtocolDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to useless peer")]
+        [Description("_Deprecated._ Number of received disconnects due to useless peer")]
         public static long UselessPeerDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to too many peers")]
+        [Description("_Deprecated._ Number of received disconnects due to too many peers")]
         public static long TooManyPeersDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to already connected")]
+        [Description("_Deprecated._ Number of received disconnects due to already connected")]
         public static long AlreadyConnectedDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to incompatible devp2p version")]
+        [Description("_Deprecated._ Number of received disconnects due to incompatible devp2p version")]
         public static long IncompatibleP2PDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to request timeouts")]
+        [Description("_Deprecated._ Number of received disconnects due to request timeouts")]
         public static long ReceiveMessageTimeoutDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to peer identity information mismatch")]
+        [Description("_Deprecated._ Number of received disconnects due to peer identity information mismatch")]
         public static long UnexpectedIdentityDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to missing peer identity")]
+        [Description("_Deprecated._ Number of received disconnects due to missing peer identity")]
         public static long NullNodeIdentityDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to client quitting")]
+        [Description("_Deprecated._ Number of received disconnects due to client quitting")]
         public static long ClientQuittingDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to other reasons")]
+        [Description("_Deprecated._ Number of received disconnects due to other reasons")]
         public static long OtherDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to disconnect requested")]
+        [Description("_Deprecated._ Number of received disconnects due to disconnect requested")]
         public static long DisconnectRequestedDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of received disconnects due to connecting to self")]
+        [Description("_Deprecated._ Number of received disconnects due to connecting to self")]
         public static long SameAsSelfDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of disconnects due to TCP error")]
+        [Description("_Deprecated._ Number of disconnects due to TCP error")]
         public static long TcpSubsystemErrorDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of sent disconnects due to breach of protocol")]
+        [Description("_Deprecated._ Number of sent disconnects due to breach of protocol")]
         public static long LocalBreachOfProtocolDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of sent disconnects due to useless peer")]
+        [Description("_Deprecated._ Number of sent disconnects due to useless peer")]
         public static long LocalUselessPeerDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to breach of protocol")]
+        [Description("_Deprecated._ Number of initiated disconnects due to breach of protocol")]
         public static long LocalTooManyPeersDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to already connected")]
+        [Description("_Deprecated._ Number of initiated disconnects due to already connected")]
         public static long LocalAlreadyConnectedDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to incompatible devp2p")]
+        [Description("_Deprecated._ Number of initiated disconnects due to incompatible devp2p")]
         public static long LocalIncompatibleP2PDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to request timeout")]
+        [Description("_Deprecated._ Number of initiated disconnects due to request timeout")]
         public static long LocalReceiveMessageTimeoutDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to node identity info mismatch")]
+        [Description("_Deprecated._ Number of initiated disconnects due to node identity info mismatch")]
         public static long LocalUnexpectedIdentityDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to missing node identity")]
+        [Description("_Deprecated._ Number of initiated disconnects due to missing node identity")]
         public static long LocalNullNodeIdentityDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to client quitting")]
+        [Description("_Deprecated._ Number of initiated disconnects due to client quitting")]
         public static long LocalClientQuittingDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to other reason")]
+        [Description("_Deprecated._ Number of initiated disconnects due to other reason")]
         public static long LocalOtherDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to disconnect requested")]
+        [Description("_Deprecated._ Number of initiated disconnects due to disconnect requested")]
         public static long LocalDisconnectRequestedDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to connection to self")]
+        [Description("_Deprecated._ Number of initiated disconnects due to connection to self")]
         public static long LocalSameAsSelfDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of initiated disconnects due to TCP error")]
+        [Description("_Deprecated._ Number of initiated disconnects due to TCP error")]
         public static long LocalTcpSubsystemErrorDisconnects { get; set; }
 
         [CounterMetric]

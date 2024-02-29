@@ -4,13 +4,16 @@
 using System;
 using System.Buffers;
 using System.Diagnostics;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.Json.Serialization;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
+[assembly: InternalsVisibleTo("Nethermind.Consensus")]
 namespace Nethermind.Core
 {
     [DebuggerDisplay("{Hash}, Value: {Value}, To: {To}, Gas: {GasLimit}")]
@@ -53,29 +56,45 @@ namespace Nethermind.Core
         public bool IsMessageCall => To is not null;
 
         private Hash256? _hash;
+
+        [JsonIgnore]
+        internal bool IsHashCalculated => _hash is not null;
+        internal Hash256 CalculateHashInternal()
+        {
+            Hash256? hash = _hash;
+            if (hash is not null) return hash;
+
+            lock (this)
+            {
+                hash = _hash;
+                if (hash is not null) return hash;
+
+                if (_preHash.Length > 0)
+                {
+                    _hash = hash = Keccak.Compute(_preHash.Span);
+                    ClearPreHashInternal();
+                }
+            }
+
+            return hash!;
+        }
+
         public Hash256? Hash
         {
             get
             {
-                if (_hash is not null) return _hash;
+                Hash256? hash = _hash;
+                if (hash is not null) return hash;
 
-                lock (this)
-                {
-                    if (_hash is not null) return _hash;
-
-                    if (_preHash.Length > 0)
-                    {
-                        _hash = Keccak.Compute(_preHash.Span);
-                        ClearPreHashInternal();
-                    }
-                }
-
-                return _hash;
+                return CalculateHashInternal();
             }
             set
             {
-                ClearPreHash();
-                _hash = value;
+                lock (this)
+                {
+                    ClearPreHash();
+                    _hash = value;
+                }
             }
         }
 

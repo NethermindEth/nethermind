@@ -11,6 +11,7 @@ using System.Reflection;
 using System.Runtime.InteropServices;
 using System.Runtime.Loader;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 #if !DEBUG
@@ -49,13 +50,15 @@ public static class Program
     private const string DefaultConfigsDirectory = "configs";
     private const string DefaultConfigFile = "configs/mainnet.cfg";
 
-    private static ILogger _logger = SimpleConsoleLogger.Instance;
+    private static ILogger _logger = new(SimpleConsoleLogger.Instance);
 
     private static readonly ProcessExitSource _processExitSource = new();
     private static readonly ManualResetEventSlim _appClosed = new(true);
 
     public static void Main(string[] args)
     {
+        // Increase regex cache size as more added in log coloring matches
+        Regex.CacheSize = 128;
 #if !DEBUG
         ResourceLeakDetector.Level = ResourceLeakDetector.DetectionLevel.Disabled;
 #endif
@@ -117,6 +120,8 @@ public static class Program
         CommandLineApplication app = new() { Name = "Nethermind.Runner" };
         _ = app.HelpOption("-?|-h|--help");
         _ = app.VersionOption("-v|--version", () => ProductInfo.Version, GetProductInfo);
+
+        ConsoleHelpers.EnableConsoleColorOutput();
 
         CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
         CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);

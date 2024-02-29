@@ -11,6 +11,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
@@ -75,7 +76,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         private IBlockTree _blockTree = null!;
         private IDb _metadataDb = null!;
 
-        private static readonly long _pivotNumber = 1024;
+        private static long _pivotNumber = 1024;
 
         private static readonly Scenario _1024BodiesWithOneTxEach;
         private static readonly Scenario _256BodiesWithOneTxEach;
@@ -168,7 +169,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 LimboLogs.Instance);
             _feed.InitializeFeed();
 
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
         }
@@ -211,9 +212,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Returns_same_batch_until_filled()
         {
             LoadScenario(_256BodiesWithOneTxEach);
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             _feed.HandleResponse(request);
-            ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request2 = await _feed.PrepareRequest();
             request2?.MinNumber.Should().Be(request?.MinNumber);
         }
 
@@ -221,7 +222,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task Can_create_a_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEachFollowedByEmpty);
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().NotBeNull();
             request!.MinNumber.Should().Be(1024);
             request.Prioritized.Should().Be(true);
@@ -233,55 +234,53 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             LoadScenario(_256BodiesWithOneTxEach);
             _syncConfig.DownloadReceiptsInFastSync = false;
 
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? request = await _feed.PrepareRequest();
             request.Should().BeNull();
             _feed.CurrentState.Should().Be(SyncFeedState.Finished);
             _measuredProgress.HasEnded.Should().BeTrue();
             _measuredProgressQueue.HasEnded.Should().BeTrue();
         }
 
-        [TestCase(1024, false, null, false)]
-        [TestCase(11052930, false, null, true)]
-        [TestCase(11052984, false, null, true)]
-        [TestCase(11052985, false, null, false)]
-        [TestCase(1024, false, 11052984, false)]
-        [TestCase(11052930, false, 11052984, true)]
-        [TestCase(11052984, false, 11052984, true)]
-        [TestCase(11052985, false, 11052984, false)]
-        [TestCase(1024, true, null, false)]
-        [TestCase(11052930, true, null, false)]
-        [TestCase(11052984, true, null, false)]
-        [TestCase(11052985, true, null, false)]
-        [TestCase(1024, false, 0, false)]
-        [TestCase(11052930, false, 0, false)]
-        [TestCase(11052984, false, 0, false)]
-        [TestCase(11052985, false, 0, false)]
-        public async Task When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+        [TestCase(1, 1024, false, null, false)]
+        [TestCase(1, 11051474, false, null, true)]
+        [TestCase(1, 11052984, false, null, true)]
+        [TestCase(11051474, 11052984, false, null, false)]
+        [TestCase(11051474, 11051474, false, null, true)]
+        [TestCase(1, 11052985, false, null, false)]
+        [TestCase(1, 1024, false, 11052984, false)]
+        [TestCase(1, 11051474, false, 11052984, true)]
+        [TestCase(1, 11052984, false, 11052984, true)]
+        [TestCase(11051474, 11052984, false, 11052984, false)]
+        [TestCase(11051474, 11051474, false, 11052984, true)]
+        [TestCase(1, 11052985, false, 11052984, false)]
+        [TestCase(1, 1024, true, null, false)]
+        [TestCase(1, 11051474, true, null, false)]
+        [TestCase(1, 11052984, true, null, false)]
+        [TestCase(11051474, 11052984, true, null, false)]
+        [TestCase(11051474, 11051474, true, null, true)]
+        [TestCase(1, 11052985, true, null, false)]
+        [TestCase(1, 1024, false, 0, false)]
+        [TestCase(1, 11051474, false, 0, false)]
+        [TestCase(1, 11052984, false, 0, false)]
+        [TestCase(11051474, 11052984, false, 0, false)]
+        [TestCase(11051474, 11051474, false, 0, true)]
+        [TestCase(1, 11052985, false, 0, false)]
+        public void When_finished_sync_with_old_default_barrier_then_finishes_imedietely(
+            long AncientBarrierInConfig,
             long? lowestInsertedReceiptBlockNumber,
             bool JustStarted,
             long? previousBarrierInDb,
             bool shouldfinish)
         {
-            _syncConfig.AncientReceiptsBarrier = 0;
+            _syncConfig.AncientBodiesBarrier = AncientBarrierInConfig;
+            _syncConfig.AncientReceiptsBarrier = AncientBarrierInConfig;
+            _pivotNumber = AncientBarrierInConfig + 1_000_000;
             _receiptStorage.HasBlock(Arg.Is(_pivotNumber), Arg.Any<Hash256>()).Returns(!JustStarted);
-            if (previousBarrierInDb != null)
+            if (previousBarrierInDb is not null)
                 _metadataDb.Set(MetadataDbKeys.ReceiptsBarrierWhenStarted, previousBarrierInDb.Value.ToBigEndianByteArrayWithoutLeadingZeros());
             LoadScenario(_256BodiesWithOneTxEach);
             _receiptStorage.LowestInsertedReceiptBlockNumber.Returns(lowestInsertedReceiptBlockNumber);
-
-            ReceiptsSyncBatch? request = await _feed.PrepareRequest();
-            if (shouldfinish)
-            {
-                request.Should().BeNull();
-                _feed.CurrentState.Should().Be(SyncFeedState.Finished);
-            }
-            else
-            {
-                request.Should().NotBeNull();
-                _feed.CurrentState.Should().NotBe(SyncFeedState.Finished);
-            }
-            _measuredProgress.HasEnded.Should().Be(shouldfinish);
-            _measuredProgressQueue.HasEnded.Should().Be(shouldfinish);
+            _feed.IsFinished.Should().Be(shouldfinish);
         }
 
         private void LoadScenario(Scenario scenario)
@@ -364,12 +363,14 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         public async Task If_receipts_root_comes_invalid_then_reports_breach_of_protocol()
         {
             LoadScenario(_1024BodiesWithOneTxEach);
-            ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
-            batch!.Response = new TxReceipt[batch.Infos.Length][];
+            using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+            var response = new ArrayPoolList<TxReceipt[]?>(batch!.Infos.Length, batch!.Infos.Length);
 
             // default receipts that we use when constructing receipt root for tests have stats code 0
             // so by using 1 here we create a different tx root
-            batch.Response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+            response[0] = new[] { Build.A.Receipt.WithStatusCode(1).TestObject };
+
+            batch!.Response = response!;
 
             PeerInfo peerInfo = new(Substitute.For<ISyncPeer>());
             batch.ResponseSourcePeer = peerInfo;
@@ -382,18 +383,20 @@ namespace Nethermind.Synchronization.Test.FastBlocks
 
         private static void FillBatchResponses(ReceiptsSyncBatch batch)
         {
-            batch.Response = new TxReceipt[batch.Infos.Length][];
-            for (int i = 0; i < batch.Response.Length; i++)
+            var response = new ArrayPoolList<TxReceipt[]?>(batch.Infos.Length, batch.Infos.Length);
+            for (int i = 0; i < response.Count; i++)
             {
-                batch.Response[i] = new[] { Build.A.Receipt.TestObject };
+                response[i] = new[] { Build.A.Receipt.TestObject };
             }
+
+            batch.Response = response;
         }
 
         [Test]
         public async Task Can_sync_final_batch()
         {
             LoadScenario(_64BodiesWithOneTxEach);
-            ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
+            using ReceiptsSyncBatch? batch = await _feed.PrepareRequest();
 
             FillBatchResponses(batch!);
             _feed.HandleResponse(batch);

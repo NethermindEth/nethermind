@@ -63,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
 
-            protected ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
+            protected static ResultWrapper<TResult> GetInputError(BlockchainBridge.CallOutput result) =>
                 ResultWrapper<TResult>.Fail(result.Error, ErrorCodes.InvalidInput);
         }
 

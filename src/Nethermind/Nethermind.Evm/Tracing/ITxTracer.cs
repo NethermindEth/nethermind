@@ -293,7 +293,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="newValue"></param>
     /// <param name="currentValue"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, byte[] currentValue) { }
+    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
 
     /// <summary>
     ///
@@ -311,7 +311,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="storageIndex"></param>
     /// <param name="value"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
-    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, byte[] value) { }
+    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
 
     /// <summary>
     ///
@@ -349,7 +349,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionRevert(long gasLeft, byte[] output) => ReportActionError(EvmExceptionType.Revert);
+    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
 
     /// <summary>
     ///
@@ -379,7 +379,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <param name="byteCode"></param>
     /// <remarks>Depends on <see cref="IsTracingCode"/></remarks>
-    void ReportByteCode(byte[] byteCode);
+    void ReportByteCode(ReadOnlyMemory<byte> byteCode);
 
     /// <summary>
     /// Special case for VM trace in Parity but we consider removing support for it

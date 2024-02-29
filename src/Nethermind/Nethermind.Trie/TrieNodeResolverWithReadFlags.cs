@@ -9,10 +9,10 @@ namespace Nethermind.Trie;
 
 public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 {
-    private readonly ITrieStore _baseResolver;
+    private readonly ITrieNodeResolver _baseResolver;
     private readonly ReadFlags _defaultFlags;
 
-    public TrieNodeResolverWithReadFlags(ITrieStore baseResolver, ReadFlags defaultFlags)
+    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags)
     {
         _baseResolver = baseResolver;
         _defaultFlags = defaultFlags;
@@ -21,6 +21,16 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
     public TrieNode FindCachedOrUnknown(Hash256 hash)
     {
         return _baseResolver.FindCachedOrUnknown(hash);
+    }
+
+    public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
+    {
+        if (flags != ReadFlags.None)
+        {
+            return _baseResolver.TryLoadRlp(hash, flags | _defaultFlags);
+        }
+
+        return _baseResolver.TryLoadRlp(hash, _defaultFlags);
     }
 
     public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)

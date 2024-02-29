@@ -7,7 +7,10 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
@@ -37,11 +40,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray(),
                 1000).ToArray(); // TxReceipt[1000][100]
 
-            ReceiptsMessage receiptsMsg = new(receipts);
+            using ReceiptsMessage receiptsMsg = new(receipts.ToPooledList());
             Packet receiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(receiptsMsg));
 
-            Task<TxReceipt[][]> task = ctx.ProtocolHandler.GetReceipts(
+            Task<IOwnedReadOnlyList<TxReceipt[]>> task = ctx.ProtocolHandler.GetReceipts(
                 Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
                 CancellationToken.None);
 
@@ -58,11 +61,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             TxReceipt[] oneBlockReceipt = Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 100).ToArray();
             Packet smallReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
-                    new(Enumerable.Repeat(oneBlockReceipt, 10).ToArray())
+                    new(RepeatPooled(oneBlockReceipt, 10))
                 ));
             Packet largeReceiptsPacket =
                 new("eth", Eth63MessageCode.Receipts, ctx._receiptMessageSerializer.Serialize(
-                    new(Enumerable.Repeat(oneBlockReceipt, 1000).ToArray())
+                    new(RepeatPooled(oneBlockReceipt, 1000))
                 ));
 
             GetReceiptsMessage? receiptsMessage = null;
@@ -71,8 +74,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                 .When(session => session.DeliverMessage(Arg.Any<GetReceiptsMessage>()))
                 .Do((info => receiptsMessage = (GetReceiptsMessage)info[0]));
 
-            Task<TxReceipt[][]> receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+            Task<IOwnedReadOnlyList<TxReceipt[]>> receiptsTask = ctx.ProtocolHandler.GetReceipts(
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
@@ -81,7 +84,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
 
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(largeReceiptsPacket);
@@ -91,25 +94,29 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
 
             // Back to 10
             receiptsTask = ctx.ProtocolHandler.GetReceipts(
-                Enumerable.Repeat(Keccak.Zero, 1000).ToArray(),
+                RepeatPooled(Keccak.Zero, 1000),
                 CancellationToken.None);
 
             ctx.ProtocolHandler.HandleMessage(smallReceiptsPacket);
             await receiptsTask;
 
             Assert.That(receiptsMessage?.Hashes?.Count, Is.EqualTo(8));
+            receiptsMessage.Dispose();
         }
+
+        private ArrayPoolList<T> RepeatPooled<T>(T txReceipts, int count) => Enumerable.Repeat(txReceipts, count).ToPooledList(count);
 
         [Test]
         public void Will_not_serve_receipts_requests_above_512()
         {
             Context ctx = new();
-            GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 513).ToArray());
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, 513));
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
-            Assert.Throws<EthSyncException>(() => ctx.ProtocolHandler.HandleMessage(getReceiptsPacket));
+            ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
+            ctx.Session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
         }
 
         [Test]
@@ -119,13 +126,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             ctx.SyncServer.GetReceipts(Arg.Any<Hash256>()).Returns(
                 Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, 512).ToArray());
 
-            GetReceiptsMessage getReceiptsMessage = new(
-                Enumerable.Repeat(Keccak.Zero, 512).ToArray());
+            using GetReceiptsMessage getReceiptsMessage = new(
+                RepeatPooled(Keccak.Zero, 512));
             Packet getReceiptsPacket =
                 new("eth", Eth63MessageCode.GetReceipts, ctx._getReceiptMessageSerializer.Serialize(getReceiptsMessage));
 
             ctx.ProtocolHandler.HandleMessage(getReceiptsPacket);
-            ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Length == 14));
+            ctx.Session.Received().DeliverMessage(Arg.Is<ReceiptsMessage>(r => r.TxReceipts.Count == 14));
         }
 
         private class Context
@@ -145,7 +152,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
             {
                 get
                 {
-                    if (_protocolHandler != null)
+                    if (_protocolHandler is not null)
                     {
                         return _protocolHandler;
                     }
@@ -155,6 +162,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V63
                         _serializationService,
                         Substitute.For<INodeStatsManager>(),
                         SyncServer,
+                        RunImmediatelyScheduler.Instance,
                         Substitute.For<ITxPool>(),
                         Substitute.For<IGossipPolicy>(),
                         LimboLogs.Instance);

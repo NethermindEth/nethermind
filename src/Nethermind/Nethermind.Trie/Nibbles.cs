@@ -7,7 +7,7 @@ namespace Nethermind.Trie
 {
     [DebuggerDisplay("{_nibble}")]
     [DebuggerStepThrough]
-    public struct Nibble
+    public readonly struct Nibble
     {
         // ReSharper disable once FieldCanBeMadeReadOnly.Local
         private readonly byte _nibble;

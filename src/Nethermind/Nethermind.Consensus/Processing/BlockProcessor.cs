@@ -4,6 +4,8 @@
 using System;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Runtime.InteropServices;
+using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
@@ -30,6 +32,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly ISpecProvider _specProvider;
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
+    private readonly IReceiptsRootCalculator _receiptsRootCalculator;
     private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
@@ -43,7 +46,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// We use a single receipt tracer for all blocks. Internally receipt tracer forwards most of the calls
     /// to any block-specific tracers.
     /// </summary>
-    private readonly BlockReceiptsTracer _receiptsTracer;
+    protected BlockReceiptsTracer ReceiptsTracer { get; set; }
 
     public BlockProcessor(
         ISpecProvider? specProvider,
@@ -54,7 +57,8 @@ public partial class BlockProcessor : IBlockProcessor
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
-        IWithdrawalProcessor? withdrawalProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null,
+        IReceiptsRootCalculator? receiptsRootCalculator = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -65,9 +69,10 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
+        _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
 
-        _receiptsTracer = new BlockReceiptsTracer();
+        ReceiptsTracer = new BlockReceiptsTracer();
     }
 
     public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
@@ -83,6 +88,7 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
+        TxHashCalculator.CalculateInBackground(suggestedBlocks);
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -209,9 +215,9 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (!options.ContainsFlag(ProcessingOptions.NoValidation) && !_blockValidator.ValidateProcessedBlock(block, receipts, suggestedBlock))
         {
-            if (_logger.IsError) _logger.Error($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
-            if (_logger.IsError) _logger.Error($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
-            throw new InvalidBlockException(suggestedBlock);
+            if (_logger.IsWarn) _logger.Warn($"Processed block is not valid {suggestedBlock.ToString(Block.Format.FullHashAndNumber)}");
+            if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
+            throw new InvalidBlockException(suggestedBlock, "invalid hash after block processing");
         }
     }
 
@@ -226,23 +232,23 @@ public partial class BlockProcessor : IBlockProcessor
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
-        _receiptsTracer.SetOtherTracer(blockTracer);
-        _receiptsTracer.StartNewBlockTrace(block);
+        ReceiptsTracer.SetOtherTracer(blockTracer);
+        ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
         _stateProvider.Commit(spec);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, _receiptsTracer, spec);
+        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
             block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        block.Header.ReceiptsRoot = receipts.GetReceiptsRoot(spec, block.ReceiptsRoot);
+        block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
-        _receiptsTracer.EndBlockTrace();
+        ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
 
@@ -260,7 +266,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done by ReceiptCanonicalityMonitor on block move to main
+        // Setting canonical is done when the BlockAddedToMain event is firec
         _receiptStorage.Insert(block, txReceipts, false);
     }
 
@@ -365,6 +371,31 @@ public partial class BlockProcessor : IBlockProcessor
                 UInt256 balance = _stateProvider.GetBalance(daoAccount);
                 _stateProvider.AddToBalance(withdrawAccount, balance, Dao.Instance);
                 _stateProvider.SubtractFromBalance(daoAccount, balance, Dao.Instance);
+            }
+        }
+    }
+
+    private class TxHashCalculator(List<Block> suggestedBlocks) : IThreadPoolWorkItem
+    {
+        public static void CalculateInBackground(List<Block> suggestedBlocks)
+        {
+            // Memory has been reserved on the transactions to delay calculate the hashes
+            // We calculate the hashes in the background to release that memory
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+        }
+
+        void IThreadPoolWorkItem.Execute()
+        {
+            // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
+            // Which occurs after the block has been processed; however the block is stored in cache and picked up
+            // from there so we can calculate the hashes now for that later use.
+            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
+            {
+                foreach (Transaction tx in block.Transactions)
+                {
+                    // Calculate the hashes to release the memory from the transactionSequence
+                    tx.CalculateHashInternal();
+                }
             }
         }
     }

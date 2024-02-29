@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -119,7 +119,7 @@ namespace Nethermind.Blockchain.Filters
             return 0;
         }
 
-        private TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
+        private static TopicsFilter GetTopicsFilter(IEnumerable<object?>? topics = null)
         {
             if (topics is null)
             {
@@ -137,7 +137,7 @@ namespace Nethermind.Blockchain.Filters
             return new SequenceTopicsFilter(expressions.ToArray());
         }
 
-        private TopicExpression GetTopicExpression(FilterTopic? filterTopic)
+        private static TopicExpression GetTopicExpression(FilterTopic? filterTopic)
         {
             if (filterTopic is null)
             {
@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Filters
 
             if (address is IEnumerable<string> e)
             {
-                return new AddressFilter(e.Select(a => new Address(a)).ToHashSet());
+                return new AddressFilter(e.Select(a => new AddressAsKey(new Address(a))).ToHashSet());
             }
 
             throw new InvalidDataException("Invalid address filter format");

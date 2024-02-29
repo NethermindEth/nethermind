@@ -2,12 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -39,7 +41,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
         _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
-        TimeSpan timePassed = DateTime.Now - _lastRefresh;
+        TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
             Refresh(headBlockhash, headParentBlockhash, finalizedBlockhash);
@@ -58,7 +60,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
     private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
-        _lastRefresh = DateTime.Now;
+        _lastRefresh = DateTime.UtcNow;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
             _ = StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
@@ -91,7 +93,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         CancellationToken token)
     {
         // headBlockhash is obtained together with headParentBlockhash
-        Task<BlockHeader[]> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
         Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
@@ -100,8 +102,8 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         try
         {
-            BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headBlockHeader, out headParentBlockHeader))
+            IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
+            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
                 _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
                 return;
@@ -167,21 +169,21 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         return true;
     }
 
-    private static bool TryGetHeadAndParent(Hash256 headBlockhash, Hash256 headParentBlockhash, BlockHeader[] headers, out BlockHeader? headBlockHeader, out BlockHeader? headParentBlockHeader)
+    private static bool TryGetHeadAndParent(Hash256 headBlockhash, Hash256 headParentBlockhash, IReadOnlyList<BlockHeader> headers, out BlockHeader? headBlockHeader, out BlockHeader? headParentBlockHeader)
     {
         headBlockHeader = null;
         headParentBlockHeader = null;
 
-        if (headers.Length > 2)
+        if (headers.Count > 2)
         {
             return false;
         }
 
-        if (headers.Length == 1 && headers[0].Hash == headParentBlockhash)
+        if (headers.Count == 1 && headers[0].Hash == headParentBlockhash)
         {
             headParentBlockHeader = headers[0];
         }
-        else if (headers.Length == 2)
+        else if (headers.Count == 2)
         {
             // Maybe the head is not the same as we expected. In that case, leave it as null
             if (headBlockhash == headers[1].Hash)

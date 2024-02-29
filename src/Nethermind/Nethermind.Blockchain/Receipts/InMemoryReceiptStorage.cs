@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -11,13 +11,27 @@ namespace Nethermind.Blockchain.Receipts
     public class InMemoryReceiptStorage : IReceiptStorage
     {
         private readonly bool _allowReceiptIterator;
-        private readonly ConcurrentDictionary<Hash256, TxReceipt[]> _receipts = new();
+        private readonly IBlockTree? _blockTree;
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
-        private readonly ConcurrentDictionary<Hash256, TxReceipt> _transactions = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
-        public InMemoryReceiptStorage(bool allowReceiptIterator = true)
+#pragma warning disable CS0067
+        public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
+#pragma warning restore CS0067
+
+        public InMemoryReceiptStorage(bool allowReceiptIterator = true, IBlockTree? blockTree = null)
         {
             _allowReceiptIterator = allowReceiptIterator;
+            _blockTree = blockTree;
+            if (_blockTree is not null)
+                _blockTree.BlockAddedToMain += BlockTree_BlockAddedToMain;
+        }
+
+        private void BlockTree_BlockAddedToMain(object? sender, BlockReplacementEventArgs e)
+        {
+            EnsureCanonical(e.Block);
+            ReceiptsInserted?.Invoke(this, e);
         }
 
         public Hash256 FindBlockHash(Hash256 txHash)

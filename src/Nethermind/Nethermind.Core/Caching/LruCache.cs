@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
@@ -13,6 +14,7 @@ namespace Nethermind.Core.Caching
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly McsLock _lock = new();
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
@@ -30,16 +32,18 @@ namespace Nethermind.Core.Caching
         {
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public void Clear()
         {
+            using var lockRelease = _lock.Acquire();
+
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public TValue Get(TKey key)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 TValue value = node.Value.Value;
@@ -53,9 +57,10 @@ namespace Nethermind.Core.Caching
 #pragma warning restore 8603
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool TryGet(TKey key, out TValue value)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
@@ -70,12 +75,13 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Set(TKey key, TValue val)
         {
+            using var lockRelease = _lock.Acquire();
+
             if (val is null)
             {
-                return Delete(key);
+                return DeleteNoLock(key);
             }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
@@ -101,8 +107,14 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
         public bool Delete(TKey key)
+        {
+            using var lockRelease = _lock.Acquire();
+
+            return DeleteNoLock(key);
+        }
+
+        private bool DeleteNoLock(TKey key)
         {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -114,17 +126,35 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public bool Contains(TKey key) => _cacheMap.ContainsKey(key);
+        public bool Contains(TKey key)
+        {
+            using var lockRelease = _lock.Acquire();
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
+            return _cacheMap.ContainsKey(key);
+        }
+
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
+            using var lockRelease = _lock.Acquire();
+
             int i = 0;
             KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
+            }
+
+            return array;
+        }
+
+        [MethodImpl(MethodImplOptions.Synchronized)]
+        public TValue[] GetValues()
+        {
+            int i = 0;
+            TValue[] array = new TValue[_cacheMap.Count];
+            foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
+            {
+                array[i++] = kvp.Value.Value.Value;
             }
 
             return array;

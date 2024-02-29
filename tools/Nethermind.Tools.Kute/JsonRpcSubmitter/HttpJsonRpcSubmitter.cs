@@ -5,6 +5,7 @@ using System.Net;
 using System.Net.Http.Headers;
 using System.Net.Mime;
 using System.Text;
+using System.Text.Json;
 using Nethermind.Tools.Kute.Auth;
 
 namespace Nethermind.Tools.Kute.JsonRpcSubmitter;
@@ -22,17 +23,14 @@ class HttpJsonRpcSubmitter : IJsonRpcSubmitter
         _uri = new Uri(hostAddress);
     }
 
-    public async Task Submit(JsonRpc rpc)
+    public async Task<HttpResponseMessage> Submit(JsonRpc rpc)
     {
         var request = new HttpRequestMessage(HttpMethod.Post, _uri)
         {
             Headers = { Authorization = new AuthenticationHeaderValue("Bearer", _auth.AuthToken) },
             Content = new StringContent(rpc.ToJsonString(), Encoding.UTF8, MediaTypeNames.Application.Json),
         };
-        var response = await _httpClient.SendAsync(request);
-        if (response.StatusCode != HttpStatusCode.OK)
-        {
-            throw new HttpRequestException($"Expected {HttpStatusCode.OK}, got {response.StatusCode}");
-        }
+
+        return await _httpClient.SendAsync(request);
     }
 }

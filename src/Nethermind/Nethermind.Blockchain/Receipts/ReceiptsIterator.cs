@@ -89,7 +89,7 @@ namespace Nethermind.Blockchain.Receipts
             if (_recoveryContextConfigured) return;
 
             _recoveryContext = _recoveryContextFactory?.Invoke();
-            if (_recoveryContext != null)
+            if (_recoveryContext is not null)
             {
                 // Need to replay the context.
                 _decoderContext.Position = _startingPosition;
@@ -104,7 +104,7 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContextConfigured = true;
         }
 
-        public void Dispose()
+        public readonly void Dispose()
         {
             if (_receipts is null && !_decoderContext.Data.IsEmpty)
             {
@@ -113,16 +113,16 @@ namespace Nethermind.Blockchain.Receipts
             _recoveryContext?.Dispose();
         }
 
-        public LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
+        public readonly LogEntriesIterator IterateLogs(TxReceiptStructRef receipt)
         {
             return receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp, _receiptRefDecoder) : new LogEntriesIterator(receipt.Logs);
         }
 
-        public Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
+        public readonly Hash256[] DecodeTopics(Rlp.ValueDecoderContext valueDecoderContext)
         {
             return _receiptRefDecoder.DecodeTopics(valueDecoderContext);
         }
 
-        public bool CanDecodeBloom => _receiptRefDecoder == null || _receiptRefDecoder.CanDecodeBloom;
+        public readonly bool CanDecodeBloom => _receiptRefDecoder is null || _receiptRefDecoder.CanDecodeBloom;
     }
 }
