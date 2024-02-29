@@ -1226,6 +1226,7 @@ namespace Nethermind.Trie
                     {
                         Span<byte> fullRlp = rlpStream.PeekNextItem();
                         TrieNode child = new(NodeType.Unknown, fullRlp.ToArray());
+                        rlpStream.SkipItem();
                         output[i] = child;
                         break;
                     }
