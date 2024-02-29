@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
                 new(TestItem.KeccakC, TestItem.KeccakD),
             };
 
-            GetContractCodesMessage message = new(requests, 774);
+            using GetContractCodesMessage message = new(requests, 774);
 
             GetContractCodesMessageSerializer serializer = new();
 

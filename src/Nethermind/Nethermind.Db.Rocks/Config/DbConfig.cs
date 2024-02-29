@@ -24,11 +24,25 @@ public class DbConfig : IDbConfig
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? DisableCompression { get; set; } = false;
-    public ulong? CompactionReadAhead { get; set; }
+    public ulong? CompactionReadAhead { get; set; } = (ulong)256.KiB();
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong TargetFileSizeBase { get; set; } = (ulong)64.MiB();
     public int TargetFileSizeMultiplier { get; set; } = 1;
+    public bool UseTwoLevelIndex { get; set; } = true;
+    public bool UseHashIndex { get; set; } = false;
+    public ulong? PrefixExtractorLength { get; set; } = null;
+    public bool AllowMmapReads { get; set; } = false;
+    public bool VerifyChecksum { get; set; } = true;
+    public double MaxBytesForLevelMultiplier { get; set; } = 10;
+    public ulong? MaxCompactionBytes { get; set; } = null;
+    public int MinWriteBufferNumberToMerge { get; set; } = 1;
+    public ulong? RowCacheSize { get; set; } = null;
+    public bool OptimizeFiltersForHits { get; set; } = true;
+    public bool OnlyCompressLastLevel { get; set; } = false;
+    public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
+    public bool UseHashSkipListMemtable { get; set; } = false;
+    public int BlockRestartInterval { get; set; } = 16;
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)8.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 4;
@@ -174,6 +188,20 @@ public class DbConfig : IDbConfig
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; } = false;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
+    public bool StateDbUseTwoLevelIndex { get; set; } = true;
+    public bool StateDbUseHashIndex { get; set; } = false;
+    public ulong? StateDbPrefixExtractorLength { get; set; } = null;
+    public bool StateDbAllowMmapReads { get; set; } = false;
+    public bool StateDbVerifyChecksum { get; set; } = true;
+    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
+    public ulong? StateDbMaxCompactionBytes { get; set; } = null;
+    public int StateDbMinWriteBufferNumberToMerge { get; set; } = 1;
+    public ulong? StateDbRowCacheSize { get; set; } = null;
+    public bool StateDbOptimizeFiltersForHits { get; set; } = true;
+    public bool StateDbOnlyCompressLastLevel { get; set; } = false;
+    public long? StateDbMaxWriteBufferSizeToMaintain { get; set; } = null;
+    public bool StateDbUseHashSkipListMemtable { get; set; } = false;
+    public int StateDbBlockRestartInterval { get; set; } = 16;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

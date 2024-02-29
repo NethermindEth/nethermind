@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -12,9 +12,9 @@ namespace Nethermind.Blockchain.Receipts
     {
         private readonly bool _allowReceiptIterator;
         private readonly IBlockTree? _blockTree;
-        private readonly ConcurrentDictionary<Hash256, TxReceipt[]> _receipts = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt[]> _receipts = new();
 
-        private readonly ConcurrentDictionary<Hash256, TxReceipt> _transactions = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, TxReceipt> _transactions = new();
 
 #pragma warning disable CS0067
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;

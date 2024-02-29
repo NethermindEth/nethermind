@@ -102,7 +102,7 @@ namespace Nethermind.Merge.Plugin
             }
             else
             {
-                if (_chainSpec?.Genesis == null) return;
+                if (_chainSpec?.Genesis is null) return;
 
                 UInt256 genesisDifficulty = _chainSpec.Genesis.Difficulty;
                 if (genesisDifficulty >= TerminalTotalDifficulty) // networks with the merge in genesis

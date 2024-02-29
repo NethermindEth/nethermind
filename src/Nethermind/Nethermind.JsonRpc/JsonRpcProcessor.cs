@@ -11,6 +11,7 @@ using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
@@ -155,6 +156,12 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                         // Increments failure metric and logs the exception, then stops processing.
                         Metrics.JsonRpcRequestDeserializationFailures++;
                         if (_logger.IsDebug) _logger.Debug($"Couldn't read request.{Environment.NewLine}{e}");
+                        yield break;
+                    }
+                    catch (ConnectionResetException e)
+                    {
+                        // Logs exception, then stop processing.
+                        if (_logger.IsTrace) _logger.Trace($"Connection reset.{Environment.NewLine}{e}");
                         yield break;
                     }
                     catch (Exception ex)
@@ -320,7 +327,10 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         bool isSuccess = localErrorResponse is null;
         if (!isSuccess)
         {
-            if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            if (localErrorResponse?.Error?.SuppressWarning == false)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Error when handling {request} | {JsonSerializer.Serialize(localErrorResponse, EthereumJsonSerializer.JsonOptionsIndented)}");
+            }
             Metrics.JsonRpcErrors++;
         }
         else

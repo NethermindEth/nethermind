@@ -31,7 +31,7 @@ namespace Nethermind.Wallet
             _keyStore = keyStore ?? throw new ArgumentNullException(nameof(keyStore));
             _protectedPrivateKeyFactory = protectedPrivateKeyFactory ?? throw new ArgumentNullException(nameof(protectedPrivateKeyFactory));
             _timestamper = timestamper ?? Timestamper.Default;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             // maxCapacity - 100, is just an estimate here
             _unlockedAccounts = new LruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
         }

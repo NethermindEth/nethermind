@@ -37,6 +37,7 @@ using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Synchronization.Peers;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -95,7 +96,6 @@ public partial class EngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                new InitConfig(),
                 synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,
@@ -106,6 +106,7 @@ public partial class EngineModuleTests
                 chain.BeaconSync,
                 chain.LogManager,
                 newPayloadTimeout,
+                storeReceipts: true,
                 newPayloadCacheSize),
             new ForkchoiceUpdatedHandler(
                 chain.BlockTree,
@@ -119,6 +120,7 @@ public partial class EngineModuleTests
                 chain.BeaconPivot,
                 peerRefresher,
                 chain.SpecProvider,
+                chain.SyncPeerPool,
                 chain.LogManager,
                 new BlocksConfig().SecondsPerSlot),
             new GetPayloadBodiesByHashV1Handler(chain.BlockTree, chain.LogManager),
@@ -146,6 +148,8 @@ public partial class EngineModuleTests
 
         public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
 
+        public ISyncPeerPool SyncPeerPool { get; set; }
+
         protected int _blockProcessingThrottle = 0;
 
         public MergeTestBlockchain ThrottleBlockProcessor(int delayMs)
@@ -163,6 +167,7 @@ public partial class EngineModuleTests
             GenesisBlockBuilder = Core.Test.Builders.Build.A.Block.Genesis.Genesis.WithTimestamp(1UL);
             MergeConfig = mergeConfig ?? new MergeConfig() { TerminalTotalDifficulty = "0" };
             PayloadPreparationService = mockedPayloadPreparationService;
+            SyncPeerPool = Substitute.For<ISyncPeerPool>();
             LogManager = logManager ?? LogManager;
         }
 
@@ -180,7 +185,8 @@ public partial class EngineModuleTests
             BlocksConfig blocksConfig = new() { MinGasPrice = 0 };
             TargetAdjustedGasLimitCalculator targetAdjustedGasLimitCalculator = new(SpecProvider, blocksConfig);
             ISyncConfig syncConfig = new SyncConfig();
-            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, new StaticSelector(SyncMode.All), LogManager);
+            EthSyncingInfo = new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+                new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager);
             PostMergeBlockProducerFactory? blockProducerFactory = new(
                 SpecProvider,
                 SealEngine,

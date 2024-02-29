@@ -4,12 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.ParityStyle;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.JsonRpc.Modules.Trace
 {
@@ -73,7 +76,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             writer.WriteStartObject();
 
             writer.WritePropertyName("action"u8);
-            JsonSerializer.Serialize(writer, value, options);
+            ParityTraceActionConverter.Instance.Write(writer, value, options);
 
             if (value.Error is null)
             {
@@ -116,6 +119,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
             Type typeToConvert,
             JsonSerializerOptions options) => throw new NotImplementedException();
 
+        [SkipLocalsInit]
         public override void Write(
             Utf8JsonWriter writer,
             ParityTxTraceFromReplay value,
@@ -130,9 +134,15 @@ namespace Nethermind.JsonRpc.Modules.Trace
             if (value.StateChanges is not null)
             {
                 writer.WriteStartObject();
+                Span<byte> addressBytes = stackalloc byte[Address.Size * 2 + 2];
+                addressBytes[0] = (byte)'0';
+                addressBytes[1] = (byte)'x';
+                Span<byte> hex = addressBytes.Slice(2);
+
                 foreach ((Address address, ParityAccountStateChange stateChange) in value.StateChanges.OrderBy(sc => sc.Key, AddressComparer.Instance))
                 {
-                    writer.WritePropertyName(address.ToString());
+                    address.Bytes.AsSpan().OutputBytesToByteHex(hex, false);
+                    writer.WritePropertyName(addressBytes);
                     JsonSerializer.Serialize(writer, stateChange, options);
                 }
 

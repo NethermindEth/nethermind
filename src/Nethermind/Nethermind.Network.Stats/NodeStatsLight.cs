@@ -328,7 +328,7 @@ namespace Nethermind.Stats
 
             rlpxReputation += Math.Min(GetStat(NodeStatsEventType.P2PPingIn), 10) * (GetStat(NodeStatsEventType.P2PPingIn) == GetStat(NodeStatsEventType.P2PPingOut) ? 2 : 1);
 
-            if (_lastLocalDisconnect != null)
+            if (_lastLocalDisconnect is not null)
             {
                 if (_statsParameters.LocalDisconnectParams.TryGetValue(_lastLocalDisconnect.Value, out (TimeSpan ReconnectDelay, long ReputationScore) param))
                 {
@@ -340,7 +340,7 @@ namespace Nethermind.Stats
                 }
             }
 
-            if (_lastRemoteDisconnect != null)
+            if (_lastRemoteDisconnect is not null)
             {
                 if (_statsParameters.RemoteDisconnectParams.TryGetValue(_lastRemoteDisconnect.Value, out (TimeSpan ReconnectDelay, long ReputationScore) param))
                 {

@@ -27,7 +27,7 @@ namespace Nethermind.Store.Test
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree(null);
+            _inputTree = TestItem.Tree.GetStateTree();
         }
 
         //[Test]

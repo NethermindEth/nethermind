@@ -27,7 +27,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    byte[] Get(in StorageCell storageCell);
+    ReadOnlySpan<byte> Get(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
@@ -41,7 +41,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    byte[] GetTransientState(in StorageCell storageCell);
+    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
@@ -83,7 +83,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
 
-    void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
 
     void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
@@ -109,5 +109,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// For witness
     /// </summary>
     /// <param name="codeHash"></param>
-    void TouchCode(Hash256 codeHash);
+    void TouchCode(in ValueHash256 codeHash);
 }

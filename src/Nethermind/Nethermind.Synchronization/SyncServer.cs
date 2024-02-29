@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.ComponentModel;
 using System.IO;
+using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
@@ -15,6 +17,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -82,7 +85,7 @@ namespace Nethermind.Synchronization
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _cht = cht;
             _pivotNumber = config.PivotNumberParsed;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
@@ -384,17 +387,22 @@ namespace Nethermind.Synchronization
             return blockHash is not null ? _receiptFinder.Get(blockHash) : Array.Empty<TxReceipt>();
         }
 
-        public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+        public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
         {
             return _blockTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
         }
 
-        public byte[]?[] GetNodeData(IReadOnlyList<Hash256> keys, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
+        public IOwnedReadOnlyList<byte[]?> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken cancellationToken, NodeDataType includedTypes = NodeDataType.State | NodeDataType.Code)
         {
-            byte[]?[] values = new byte[keys.Count][];
+            ArrayPoolList<byte[]?> values = new ArrayPoolList<byte[]>(keys.Count);
             for (int i = 0; i < keys.Count; i++)
             {
-                values[i] = null;
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    return values;
+                }
+
+                values.Add(null);
                 if ((includedTypes & NodeDataType.State) == NodeDataType.State)
                 {
                     values[i] = _stateDb[keys[i].Bytes];
@@ -414,7 +422,7 @@ namespace Nethermind.Synchronization
             return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
         }
 
-        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+        public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
         public Hash256? FindHash(long number)
         {

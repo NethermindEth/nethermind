@@ -92,7 +92,7 @@ internal class TimeUnit : IEquatable<TimeUnit>
 
     public override bool Equals(object? obj)
     {
-        if (obj == null)
+        if (obj is null)
         {
             return false;
         }
@@ -112,7 +112,7 @@ internal class TimeUnit : IEquatable<TimeUnit>
 
     public override int GetHashCode()
     {
-        return (((((Name != null) ? Name.GetHashCode() : 0) * 397) ^ ((Description != null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
+        return (((((Name is not null) ? Name.GetHashCode() : 0) * 397) ^ ((Description is not null) ? Description.GetHashCode() : 0)) * 397) ^ NanosecondAmount.GetHashCode();
     }
 
     public static bool operator ==(TimeUnit left, TimeUnit right)

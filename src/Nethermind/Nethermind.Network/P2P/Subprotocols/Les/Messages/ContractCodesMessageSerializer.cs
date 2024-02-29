@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
         public void Serialize(IByteBuffer byteBuffer, ContractCodesMessage message)
         {
             int innerLength = 0;
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 innerLength += Rlp.LengthOf(message.Codes[i]);
             }
@@ -29,7 +29,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.Encode(message.RequestId);
             rlpStream.Encode(message.BufferValue);
             rlpStream.StartSequence(innerLength);
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 rlpStream.Encode(message.Codes[i]);
             }
@@ -47,7 +47,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             rlpStream.ReadSequenceLength();
             contractCodesMessage.RequestId = rlpStream.DecodeLong();
             contractCodesMessage.BufferValue = rlpStream.DecodeInt();
-            contractCodesMessage.Codes = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            contractCodesMessage.Codes = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
             return contractCodesMessage;
         }
     }

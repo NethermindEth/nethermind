@@ -66,7 +66,7 @@ public class StateSyncDispatcherTests
         peer.TotalDifficulty.Returns(new Int256.UInt256(1_000_000_000));
         _pool.AddPeer(peer);
 
-        StateSyncBatch batch = new(
+        using StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,
             NodeDataType.State,
             new[] { new StateSyncItem(Keccak.EmptyTreeHash, Array.Empty<byte>(), Array.Empty<byte>(), NodeDataType.State) });
@@ -100,7 +100,7 @@ public class StateSyncDispatcherTests
         StateSyncItem item05 = new(Keccak.EmptyTreeHash, new byte[] { 11 }, new byte[] { 1 }, NodeDataType.State);
         StateSyncItem item06 = new(Keccak.EmptyTreeHash, new byte[] { 22 }, new byte[] { 22 }, NodeDataType.State);
 
-        StateSyncBatch batch = new(
+        using StateSyncBatch batch = new(
             Keccak.OfAnEmptyString,
             NodeDataType.State,
             new[] { item01, item02, item03, item04, item05, item06 });
