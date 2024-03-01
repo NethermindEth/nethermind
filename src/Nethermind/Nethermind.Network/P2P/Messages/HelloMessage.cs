@@ -19,5 +19,11 @@ namespace Nethermind.Network.P2P.Messages
         public IOwnedReadOnlyList<Capability> Capabilities { get; set; }
 
         public override string ToString() => $"Hello({ClientId}, {string.Join(", ", Capabilities)})";
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            Capabilities?.Dispose();
+        }
     }
 }

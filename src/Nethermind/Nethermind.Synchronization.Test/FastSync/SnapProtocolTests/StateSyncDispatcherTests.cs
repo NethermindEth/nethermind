@@ -73,7 +73,7 @@ public class StateSyncDispatcherTests
 
         await _dispatcher.ExecuteDispatch(batch, 1);
 
-        await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
+        using var _ = await peer.ReceivedWithAnyArgs(1).GetNodeData(default!, default);
     }
 
     [Test]
