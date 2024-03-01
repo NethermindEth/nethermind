@@ -6,6 +6,7 @@ using System.Threading.Tasks;
 using DotNetty.Buffers;
 using DotNetty.Common.Utilities;
 using DotNetty.Transport.Channels;
+using FluentAssertions;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Messages;
@@ -23,8 +24,11 @@ namespace Nethermind.Network.Test.P2P
         {
             IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
-            serializer.ZeroSerialize(PingMessage.Instance).Returns(serialized);
+
+            using TestMessage testMessage = new();
+            serializer.ZeroSerialize(testMessage).Returns(serialized);
             serialized.SafeRelease();
+
             IChannelHandlerContext context = Substitute.For<IChannelHandlerContext>();
             IChannel channel = Substitute.For<IChannel>();
             channel.IsWritable.Returns(true);
@@ -33,7 +37,8 @@ namespace Nethermind.Network.Test.P2P
 
             PacketSender packetSender = new(serializer, LimboLogs.Instance, TimeSpan.Zero);
             packetSender.HandlerAdded(context);
-            packetSender.Enqueue(PingMessage.Instance);
+            packetSender.Enqueue(testMessage);
+            testMessage.WasDisposed.Should().BeTrue();
 
             context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
         }
@@ -82,6 +87,19 @@ namespace Nethermind.Network.Test.P2P
             await Task.Delay(delay * 3);
 
             await context.Received(1).WriteAndFlushAsync(Arg.Any<IByteBuffer>());
+        }
+
+        private class TestMessage : P2PMessage
+        {
+            public override int PacketType { get; } = 0;
+            public override string Protocol { get; } = "";
+
+            public bool WasDisposed { get; set; }
+            public override void Dispose()
+            {
+                base.Dispose();
+                WasDisposed = true;
+            }
         }
     }
 }

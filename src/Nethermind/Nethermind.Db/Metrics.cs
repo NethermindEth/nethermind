@@ -209,35 +209,39 @@ namespace Nethermind.Db
         [GaugeMetric]
         [Description("Database reads per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbReads { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbReads { get; } = new();
 
         [GaugeMetric]
         [Description("Database writes per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbWrites { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbWrites { get; } = new();
 
         [GaugeMetric]
         [Description("Database size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database memtable per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbMemtableSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbMemtableSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database block cache size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbBlockCacheSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbBlockCacheSize { get; } = new();
 
         [GaugeMetric]
         [Description("Database index and filter size per database")]
         [KeyIsLabel("db")]
-        public static IDictionary<string, long> DbIndexFilterSize { get; set; } = new ConcurrentDictionary<string, long>();
+        public static NonBlocking.ConcurrentDictionary<string, long> DbIndexFilterSize { get; } = new();
 
         [Description("Metrics extracted from RocksDB Compaction Stats and DB Statistics")]
         [KeyIsLabel("db", "metric")]
-        public static IDictionary<(string, string), double> DbStats { get; set; } = new ConcurrentDictionary<(string, string), double>();
+        public static NonBlocking.ConcurrentDictionary<(string, string), double> DbStats { get; } = new();
+
+        [Description("Metrics extracted from RocksDB Compaction Stats")]
+        [KeyIsLabel("db", "level", "metric")]
+        public static NonBlocking.ConcurrentDictionary<(string, int, string), double> DbCompactionStats { get; } = new();
     }
 }

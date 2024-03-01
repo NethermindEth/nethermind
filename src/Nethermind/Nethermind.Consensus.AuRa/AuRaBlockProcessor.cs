@@ -108,8 +108,9 @@ namespace Nethermind.Consensus.AuRa
             BlockHeader parentHeader = GetParentHeader(block);
             if (_gasLimitOverride?.IsGasLimitValid(parentHeader, block.GasLimit, out long? expectedGasLimit) == false)
             {
-                if (_logger.IsWarn) _logger.Warn($"Invalid gas limit for block {block.Number}, hash {block.Hash}, expected value from contract {expectedGasLimit}, but found {block.GasLimit}.");
-                throw new InvalidBlockException(block);
+                string reason = $"Invalid gas limit, expected value from contract {expectedGasLimit}, but found {block.GasLimit}";
+                if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");
+                throw new InvalidBlockException(block, reason);
             }
         }
 
@@ -121,8 +122,9 @@ namespace Nethermind.Consensus.AuRa
                 AddingTxEventArgs args = CheckTxPosdaoRules(new AddingTxEventArgs(i, tx, block, block.Transactions));
                 if (args.Action != TxAction.Add)
                 {
-                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {tx.ToShortString()} doesn't have required permissions. Reason: {args.Reason}.");
-                    throw new InvalidBlockException(block);
+                    string reason = $"{tx.ToShortString()} doesn't have required permissions: {args.Reason}";
+                    if (_logger.IsWarn) _logger.Warn($"Proposed block is not valid {block.ToString(Block.Format.FullHashAndNumber)}. {reason}.");
+                    throw new InvalidBlockException(block, reason);
                 }
             }
         }

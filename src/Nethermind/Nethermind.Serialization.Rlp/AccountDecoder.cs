@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -10,6 +12,8 @@ namespace Nethermind.Serialization.Rlp
     public class AccountDecoder : IRlpObjectDecoder<Account?>, IRlpStreamDecoder<Account?>, IRlpValueDecoder<Account?>
     {
         private readonly bool _slimFormat;
+
+        public static AccountDecoder Instance => new();
 
         public AccountDecoder() { }
 
@@ -30,12 +34,12 @@ namespace Nethermind.Serialization.Rlp
             return (codeHash, storageRoot);
         }
 
-        public Hash256 DecodeStorageRootOnly(RlpStream rlpStream)
+        public Hash256 DecodeStorageRootOnly(ref Rlp.ValueDecoderContext context)
         {
-            rlpStream.SkipLength();
-            rlpStream.SkipItem();
-            rlpStream.SkipItem();
-            Hash256 storageRoot = DecodeStorageRoot(rlpStream);
+            context.SkipLength();
+            context.SkipItem();
+            context.SkipItem();
+            Hash256 storageRoot = DecodeStorageRoot(context);
             return storageRoot;
         }
 
@@ -180,11 +184,28 @@ namespace Nethermind.Serialization.Rlp
             }
             else
             {
-                storageRoot = rlpStream.DecodeKeccak();
+                storageRoot = rlpStream.DecodeKeccak()!;
             }
 
             return storageRoot;
         }
+
+        private Hash256 DecodeStorageRoot(Rlp.ValueDecoderContext context)
+        {
+            Hash256 storageRoot;
+            if (_slimFormat && context.IsNextItemEmptyArray())
+            {
+                context.ReadByte();
+                storageRoot = Keccak.EmptyTreeHash;
+            }
+            else
+            {
+                storageRoot = context.DecodeKeccak()!;
+            }
+
+            return storageRoot;
+        }
+
 
         private Hash256 DecodeCodeHash(RlpStream rlpStream)
         {
@@ -286,19 +307,21 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public AccountStruct? DecodeStruct(ref Rlp.ValueDecoderContext decoderContext)
+        public bool TryDecodeStruct(ref Rlp.ValueDecoderContext decoderContext, out AccountStruct account)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
             {
-                return null;
+                account = AccountStruct.TotallyEmpty;
+                return false;
             }
 
             UInt256 nonce = decoderContext.DecodeUInt256();
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
-            return new AccountStruct(nonce, balance, storageRoot, codeHash);
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            return true;
         }
     }
 }

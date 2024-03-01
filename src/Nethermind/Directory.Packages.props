@@ -53,6 +53,7 @@
     <PackageVersion Include="Nito.Collections.Deque" Version="1.2.1" />
     <PackageVersion Include="NLog" Version="5.2.8" />
     <PackageVersion Include="NLog.Targets.Seq" Version="3.1.0" />
+    <PackageVersion Include="NonBlocking" Version="2.1.2" />
     <PackageVersion Include="NSubstitute" Version="5.1.0" />
     <PackageVersion Include="NUnit" Version="3.14.0" />
     <PackageVersion Include="NUnit.Analyzers" Version="3.9.0" />
@@ -64,7 +65,7 @@
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />
     <PackageVersion Include="RichardSzalay.MockHttp" Version="7.0.0" />
-    <PackageVersion Include="RocksDB" Version="8.3.2.39829" />
+    <PackageVersion Include="RocksDB" Version="8.10.0.45817" />
     <PackageVersion Include="SCrypt" Version="2.0.0.2" />
     <PackageVersion Include="Shouldly" Version="4.2.1" />
     <PackageVersion Include="Snappy.Standard" Version="0.2.0" />

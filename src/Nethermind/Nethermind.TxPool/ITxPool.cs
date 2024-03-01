@@ -20,13 +20,13 @@ namespace Nethermind.TxPool
         /// Non-blob txs grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<Address, Transaction[]> GetPendingTransactionsBySender();
+        IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender();
 
         /// <summary>
         /// Blob txs light equivalences grouped by sender address, sorted by nonce and later tx pool sorting
         /// </summary>
         /// <returns></returns>
-        IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender();
+        IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender();
 
         /// <summary>
         /// from a specific sender, sorted by nonce and later tx pool sorting
@@ -39,7 +39,7 @@ namespace Nethermind.TxPool
         AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions);
         bool RemoveTransaction(Hash256? hash);
         bool IsKnown(Hash256 hash);
-        bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction);
+        bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction);
         bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction);
         UInt256 GetLatestPendingNonce(Address address);
         event EventHandler<TxEventArgs> NewDiscovered;

@@ -17,7 +17,7 @@ namespace Nethermind.JsonRpc.Modules.TxPool
             Queued = info.Queued.ToDictionary(k => k.Key, k => k.Value.ToDictionary(v => v.Key, v => new TransactionForRpc(null, null, null, v.Value)));
         }
 
-        public IDictionary<Address, Dictionary<ulong, TransactionForRpc>> Pending { get; set; }
-        public IDictionary<Address, Dictionary<ulong, TransactionForRpc>> Queued { get; set; }
+        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Pending { get; set; }
+        public Dictionary<AddressAsKey, Dictionary<ulong, TransactionForRpc>> Queued { get; set; }
     }
 }

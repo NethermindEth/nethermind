@@ -9,10 +9,10 @@ namespace Nethermind.Trie;
 
 public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
 {
-    private readonly ITrieStore _baseResolver;
+    private readonly ITrieNodeResolver _baseResolver;
     private readonly ReadFlags _defaultFlags;
 
-    public TrieNodeResolverWithReadFlags(ITrieStore baseResolver, ReadFlags defaultFlags)
+    public TrieNodeResolverWithReadFlags(ITrieNodeResolver baseResolver, ReadFlags defaultFlags)
     {
         _baseResolver = baseResolver;
         _defaultFlags = defaultFlags;

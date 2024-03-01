@@ -8,6 +8,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
@@ -170,10 +171,9 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta", 50)]
+        [TestCase("^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
         [TestCase("volta", 25)]
-        [TestCase("mainnet", 50)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);
@@ -297,7 +297,7 @@ namespace Nethermind.Runner.Test
         [TestCase("validators", false)]
         public void Stores_receipts(string configWildcard, bool storeReceipts)
         {
-            Test<IInitConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
+            Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
         }
 
         [TestCase("clique")]

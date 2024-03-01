@@ -20,9 +20,9 @@ namespace Nethermind.Consensus.AuRa
         {
             while (delay > TimeSpan.Zero)
             {
-                var before = DateTimeOffset.Now;
+                var before = DateTimeOffset.UtcNow;
                 await Task.Delay(delay, token);
-                delay -= (DateTimeOffset.Now - before);
+                delay -= (DateTimeOffset.UtcNow - before);
             }
         }
     }

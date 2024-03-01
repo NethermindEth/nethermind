@@ -12,6 +12,7 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Extensions;
@@ -167,7 +168,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 Stopwatch sw = Stopwatch.StartNew();
-                BlockHeader?[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
                 BlockHeader? startHeader = (startHeaderHash is null)
@@ -189,7 +190,7 @@ namespace Nethermind.Synchronization.Blocks
                 ancestorLookupLevel = 0;
                 AdjustSyncBatchSize(sw.Elapsed);
 
-                for (int i = 1; i < headers.Length; i++)
+                for (int i = 1; i < headers.Count; i++)
                 {
                     if (cancellation.IsCancellationRequested)
                     {
@@ -280,8 +281,8 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                BlockHeader[] headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
-                if (headers.Length < 2)
+                using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                if (headers.Count < 2)
                 {
                     // Peer dont have new header
                     break;
@@ -423,15 +424,15 @@ namespace Nethermind.Synchronization.Blocks
             return default;
         }
 
-        protected virtual async Task<BlockHeader[]> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
+        protected virtual async Task<IOwnedReadOnlyList<BlockHeader>> RequestHeaders(PeerInfo peer, CancellationToken cancellation, long currentNumber, int headersToRequest)
         {
             _sealValidator.HintValidationRange(_sealValidatorUserGuid, currentNumber - 1028, currentNumber + 30000);
-            Task<BlockHeader[]> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
+            Task<IOwnedReadOnlyList<BlockHeader>> headersRequest = peer.SyncPeer.GetBlockHeaders(currentNumber, headersToRequest, 0, cancellation);
             await headersRequest.ContinueWith(t => DownloadFailHandler(t, "headers"), cancellation);
 
             cancellation.ThrowIfCancellationRequested();
 
-            BlockHeader[] headers = headersRequest.Result;
+            IOwnedReadOnlyList<BlockHeader> headers = headersRequest.Result;
             ValidateSeals(headers, cancellation);
             ValidateBatchConsistencyAndSetParents(peer, headers);
             return headers;
@@ -477,12 +478,12 @@ namespace Nethermind.Synchronization.Blocks
             while (offset != context.NonEmptyBlockHashes.Count)
             {
                 IReadOnlyList<Hash256> hashesToRequest = context.GetHashesByOffset(offset, peer.MaxReceiptsPerRequest());
-                Task<TxReceipt[][]> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
+                Task<IOwnedReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
-                TxReceipt[][] result = request.Result;
+                using IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
 
-                for (int i = 0; i < result.Length; i++)
+                for (int i = 0; i < result.Count; i++)
                 {
                     TxReceipt[] txReceipts = result[i];
                     Block block = context.GetBlockByRequestIdx(i + offset);
@@ -497,20 +498,20 @@ namespace Nethermind.Synchronization.Blocks
                     }
                 }
 
-                if (result.Length == 0)
+                if (result.Count == 0)
                 {
                     throw new EthSyncException("Empty receipts response received");
                 }
 
-                offset += result.Length;
+                offset += result.Count;
             }
         }
 
-        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, BlockHeader?[] headers)
+        private void ValidateBatchConsistencyAndSetParents(PeerInfo bestPeer, IReadOnlyList<BlockHeader?> headers)
         {
             // in the past (version 1.11) and possibly now too Parity was sending non canonical blocks in responses
             // so we need to confirm that the blocks form a valid subchain
-            for (int i = 1; i < headers.Length; i++)
+            for (int i = 1; i < headers.Count; i++)
             {
                 if (headers[i] is not null && headers[i]?.ParentHash != headers[i - 1]?.Hash)
                 {
@@ -530,12 +531,12 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        protected void ValidateSeals(BlockHeader?[] headers, CancellationToken cancellation)
+        protected void ValidateSeals(IReadOnlyList<BlockHeader?> headers, CancellationToken cancellation)
         {
             if (_logger.IsTrace) _logger.Trace("Starting seal validation");
             ConcurrentQueue<Exception> exceptions = new();
-            int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Length - 2));
-            Parallel.For(0, headers.Length, (i, state) =>
+            int randomNumberForValidation = _rnd.Next(Math.Max(0, headers.Count - 2));
+            Parallel.For(0, headers.Count, (i, state) =>
             {
                 if (cancellation.IsCancellationRequested)
                 {
@@ -552,11 +553,11 @@ namespace Nethermind.Synchronization.Blocks
 
                 try
                 {
-                    bool lastBlock = i == headers.Length - 1;
+                    bool lastBlock = i == headers.Count - 1;
                     // PoSSwitcher can't determine if a block is a terminal block if TD is missing due to another
                     // problem. In theory, this should not be a problem, but additional seal check does no harm.
                     bool terminalBlock = !lastBlock
-                                         && headers.Length > 1
+                                         && headers.Count > 1
                                          && headers[i + 1].Difficulty == 0
                                          && headers[i].Difficulty != 0;
                     bool forceValidation = lastBlock || i == randomNumberForValidation || terminalBlock;
