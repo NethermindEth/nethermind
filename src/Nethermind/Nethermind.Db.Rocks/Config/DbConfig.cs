@@ -96,7 +96,6 @@ public class DbConfig : IDbConfig
     public int? BlockNumbersDbBlockSize { get; set; } = 4 * 1024;
     public bool BlockNumbersDbUseHashIndex { get; set; } = true;
     public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
-    public ulong? BlockNumbersDbPrefixExtractorLength { get; set; } = 8;
     public bool? BlockNumbersDbUseHashSkipListMemtable { get; set; } = true;
     public bool? BlockNumbersDbUseDirectReads { get; set; }
     public bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
@@ -137,7 +136,6 @@ public class DbConfig : IDbConfig
     public int? CodeDbBlockSize { get; set; } = 4 * 1024;
     public bool CodeDbUseHashIndex { get; set; } = true;
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
-    public ulong? CodeDbPrefixExtractorLength { get; set; } = 8;
     public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
     public bool? CodeUseDirectReads { get; set; } = false;
     public bool? CodeUseDirectIoForFlushAndCompactions { get; set; } = false;

@@ -97,7 +97,6 @@ public interface IDbConfig : IConfig
     int? BlockNumbersDbBlockSize { get; set; }
     bool BlockNumbersDbUseHashIndex { get; set; }
     ulong? BlockNumbersDbRowCacheSize { get; set; }
-    ulong? BlockNumbersDbPrefixExtractorLength { get; set; }
     bool? BlockNumbersDbUseHashSkipListMemtable { get; set; }
     bool? BlockNumbersDbUseDirectReads { get; set; }
     bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
@@ -138,7 +137,6 @@ public interface IDbConfig : IConfig
     int? CodeDbBlockSize { get; set; }
     bool CodeDbUseHashIndex { get; set; }
     ulong? CodeDbRowCacheSize { get; set; }
-    ulong? CodeDbPrefixExtractorLength { get; set; }
     bool? CodeDbUseHashSkipListMemtable { get; set; }
     bool? CodeUseDirectReads { get; set; }
     bool? CodeUseDirectIoForFlushAndCompactions { get; set; }
