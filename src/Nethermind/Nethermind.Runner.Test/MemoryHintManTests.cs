@@ -79,14 +79,12 @@ namespace Nethermind.Runner.Test
             [Values(256 * MB, 512 * MB, 1 * GB, 4 * GB, 6 * GB, 16 * GB, 32 * GB, 64 * GB, 128 * GB)]
             long memoryHint,
             [Values(1u, 2u, 3u, 4u, 8u, 32u)] uint cpuCount,
-            [Values(true, false)] bool fastSync,
-            [Values(true, false)] bool fastBlocks)
+            [Values(true, false)] bool fastSync)
         {
             // OK to throw here
             if (memoryHint == 256.MB())
             {
                 _txPoolConfig.Size = 128;
-                _syncConfig.FastBlocks = false;
                 _initConfig.DiagnosticMode = DiagnosticMode.MemDb;
             }
 
@@ -95,7 +93,6 @@ namespace Nethermind.Runner.Test
 
             SyncConfig syncConfig = new SyncConfig();
             syncConfig.FastSync = fastSync;
-            syncConfig.FastBlocks = fastBlocks;
 
             IDbConfig dbConfig = _dbConfig;
 

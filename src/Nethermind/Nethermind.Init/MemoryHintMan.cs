@@ -144,7 +144,7 @@ namespace Nethermind.Init
 
         private void AssignFastBlocksMemory(ISyncConfig syncConfig)
         {
-            if (syncConfig.FastBlocks)
+            if (syncConfig.FastSync)
             {
                 if (!syncConfig.DownloadBodiesInFastSync && !syncConfig.DownloadReceiptsInFastSync)
                 {

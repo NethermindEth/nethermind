@@ -98,7 +98,9 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private bool IsFastBlocks()
         {
-            bool isFastBlocks = _syncConfig.FastBlocks;
+            // maybe eliminate the entire code refeferencing this function why? fast block depends on fastsync so this code might just be check that is now unnecessay!
+            // name isFastBlocks left in place for correlation with protocol specification.
+            bool isFastBlocks = _syncConfig.FastSync; 
 
             // if pivot number is 0 then it is equivalent to fast blocks disabled
             if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)

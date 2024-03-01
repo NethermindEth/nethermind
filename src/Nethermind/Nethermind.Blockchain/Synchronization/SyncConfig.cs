@@ -1,6 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
+using System;
 using Nethermind.Config;
 using Nethermind.Db;
 
@@ -27,9 +27,13 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
+
+        // maybe log warnign on set? Remove all references within this file.
+        // using a class method marked obsolete in reflections might not be possible.
+        // [ObsoleteAttribute("Fast blocks mode is dependent on and auto enabled in fast sync mode, please use FastSync instead.", false)]
         public bool FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
-        public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
+        public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; } 
         public bool DownloadHeadersInFastSync { get; set; } = true;
         public bool DownloadBodiesInFastSync { get; set; } = true;
         public bool DownloadReceiptsInFastSync { get; set; } = true;

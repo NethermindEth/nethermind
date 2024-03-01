@@ -125,7 +125,7 @@
 //             _syncConfig.PivotNumber = _validTree2048.Head.Number.ToString();
 //             _syncConfig.PivotTotalDifficulty = _validTree2048.Head.TotalDifficulty.ToString();
 //             _syncConfig.UseGethLimitsInFastBlocks = false;
-//             _syncConfig.FastBlocks = true;
+//             _syncConfig.FastSync = true;
 //
 //             SetupLocalTree();
 //             SetupFeed();
@@ -549,7 +549,7 @@
 //         [Test]
 //         public void Throws_when_launched_and_disabled_in_config()
 //         {
-//             _syncConfig.FastBlocks = false;
+//             _syncConfig.FastSync = false;
 //             SetupFeed();
 //
 //             LatencySyncPeerMock syncPeer1 = new LatencySyncPeerMock(_validTree2048);
@@ -568,7 +568,7 @@
 //             _syncConfig.UseGethLimitsInFastBlocks = false;
 //             _syncConfig.DownloadBodiesInFastSync = true;
 //             _syncConfig.DownloadReceiptsInFastSync = true;
-//             _syncConfig.FastBlocks = true;
+//             _syncConfig.FastSync = true;
 //
 //             _feed = new FastBlocksFeed(_specProvider, _localBlockTree, _localReceiptStorage, _syncPeerPool, _syncConfig, NullSyncReport.Instance, LimboLogs.Instance);
 //

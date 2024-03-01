@@ -114,6 +114,7 @@ namespace Nethermind.Synchronization.Test
             Assert.That(syncProgressResolver.FindBestFullState(), Is.EqualTo(head.Number));
         }
 
+        // maybe delete(mark obsolete) this test, since fastblock is always used?
         [Test]
         public void Is_fast_block_finished_returns_true_when_no_fast_block_sync_is_used()
         {
@@ -121,7 +122,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = false,
+                FastSync = false,
                 PivotNumber = "1",
             };
 
@@ -138,7 +139,6 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
@@ -159,7 +159,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
+                FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = false,
                 PivotNumber = "1",

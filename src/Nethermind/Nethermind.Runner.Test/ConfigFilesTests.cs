@@ -41,15 +41,15 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [TestCase("validators", true, true)]
-        [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("spaceneth", false, false)]
-        [TestCase("archive", false, false)]
-        [TestCase("fast", true, true)]
-        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
+        // maybe leave in test since deprecation has not fully happened?
+        [TestCase("validators", true)]
+        [TestCase("poacore_validator.cfg", true)]
+        [TestCase("spaceneth", false)]
+        [TestCase("archive", false)]
+        [TestCase("fast", true)]
+        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
-            Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
         }
 
         [TestCase("archive")]
