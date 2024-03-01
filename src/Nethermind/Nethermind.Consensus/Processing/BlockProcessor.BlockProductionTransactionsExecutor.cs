@@ -109,13 +109,20 @@ namespace Nethermind.Consensus.Processing
                 }
                 else
                 {
-                    _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
+                    TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
 
-                    if (addToBlock)
+                    if (result)
                     {
-                        transactionsInBlock.Add(currentTx);
-                        _transactionProcessed?.Invoke(this,
-                            new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                        if (addToBlock)
+                        {
+                            transactionsInBlock.Add(currentTx);
+                            _transactionProcessed?.Invoke(this,
+                                new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                        }
+                    }
+                    else
+                    {
+                        args.Set(TxAction.Skip, result.Error!);
                     }
                 }
 

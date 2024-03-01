@@ -10,6 +10,7 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -117,7 +118,7 @@ public partial class EngineModuleTests
         ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
         syncPeer
             .GetBlockHeaders(Arg.Any<Hash256>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
-            .Returns(Task.FromResult(new BlockHeader[1] { block.Header }));
+            .Returns(Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(new ArrayPoolList<BlockHeader>(1) { block.Header }));
         SyncPeerAllocation alloc = new SyncPeerAllocation(new PeerInfo(syncPeer), AllocationContexts.All);
         alloc.AllocateBestPeer(new[] { new PeerInfo(syncPeer) }, Substitute.For<INodeStatsManager>(), Substitute.For<IBlockTree>());
         chain.SyncPeerPool
