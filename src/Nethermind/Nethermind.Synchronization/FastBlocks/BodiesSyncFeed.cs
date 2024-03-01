@@ -66,11 +66,9 @@ namespace Nethermind.Synchronization.FastBlocks
             _blocksDb = blocksDb ?? throw new ArgumentNullException(nameof(blocksDb));
             _flushDbInterval = flushDbInterval;
 
-            // maybe remove fastblock(now replaced with fastsync) condition completely?
             if (!_syncConfig.FastSync)
             {
-                throw new InvalidOperationException(
-                    "Entered fast sync with fast blocks mode without fast sync enabled in configuration.");
+                throw new InvalidOperationException("Entered fast bodies mode without fast sync enabled in configuration.");
             }
 
             _pivotNumber = -1; // First reset in `InitializeFeed`.

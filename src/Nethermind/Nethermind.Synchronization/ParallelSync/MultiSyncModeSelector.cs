@@ -57,10 +57,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
-        private bool FastBlocksEnabled => _syncConfig.FastSync; // maybe replace all reference with FastSyycEnabled?
-        private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
-        private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
-        private bool FastBlocksHeadersFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
+        private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
+        private bool FastReceiptsEnabled => FastSyncEnabled && _syncConfig.DownloadReceiptsInFastSync;
+        private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;

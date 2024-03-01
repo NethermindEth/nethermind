@@ -138,9 +138,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                 LimboLogs.Instance);
         }
 
-        // maybe remove test completely(obsolete) (previous throws when fast block not enabled?
         [Test]
-        [Obsolete("Fast Blocks mode is active when fast sync mode is active")]
         public void Should_throw_when_fast_block_not_enabled()
         {
             _syncConfig = new SyncConfig { FastSync = false };
