@@ -107,4 +107,13 @@ public static class BlockErrorMessages
 
     public const string InvalidTimestamp =
         "InvalidTimestamp: Timestamp in header cannot be lower than ancestor.";
+
+    public const string NegativeBlockNumber =
+        "NegativeBlockNumber: Block number cannot be negative.";
+
+    public const string NegativeGasLimit =
+        "NegativeGasLimit: Gas limit cannot be negative.";
+
+    public const string NegativeGasUsed =
+        "NegativeGasUsed: Cannot be negative.";
 }

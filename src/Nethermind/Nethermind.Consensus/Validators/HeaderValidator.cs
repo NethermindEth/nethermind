@@ -180,9 +180,9 @@ namespace Nethermind.Consensus.Validators
 
             error = blockHeader switch
             {
-                { Number: < 0 } => "NegativeBlockNumber: Block number cannot be negative.",
-                { GasLimit: < 0 } => "NegativeBlockNumber: Block number cannot be negative.",
-                { GasUsed: < 0 } => "NegativeGasUsed: Cannot be negative.",
+                { Number: < 0 } => BlockErrorMessages.NegativeBlockNumber,
+                { GasLimit: < 0 } => BlockErrorMessages.NegativeGasLimit,
+                { GasUsed: < 0 } => BlockErrorMessages.NegativeGasUsed,
                 _ => null
             };
 
