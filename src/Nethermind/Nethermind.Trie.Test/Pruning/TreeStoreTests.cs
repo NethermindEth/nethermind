@@ -883,6 +883,8 @@ namespace Nethermind.Trie.Test.Pruning
             }
 
             memDb.Count.Should().Be(61);
+            fullTrieStore.Prune();
+            fullTrieStore.MemoryUsedByDirtyCache.Should().Be(_scheme == INodeStorage.KeyScheme.Hash ? 504 : 660);
         }
 
         [Test]

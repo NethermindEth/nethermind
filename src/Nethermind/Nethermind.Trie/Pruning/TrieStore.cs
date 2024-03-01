@@ -802,6 +802,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
             if (_pastPathHash == null) return;
+            if (_persistenceStrategy.IsFullPruning) return;
 
             TinyTreePath treePath = new TinyTreePath(key.Path);
             // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
@@ -1153,6 +1154,9 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
             }
+
+            _persistedLastSeens.Clear();
+            _pastPathHash?.Clear();
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
         }
 
