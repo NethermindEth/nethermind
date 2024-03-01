@@ -94,6 +94,10 @@ public class DbConfig : IDbConfig
     public int? BlockNumbersDbMaxOpenFiles { get; set; }
     public long? BlockNumbersDbMaxBytesPerSec { get; set; }
     public int? BlockNumbersDbBlockSize { get; set; } = 4 * 1024;
+    public bool BlockNumbersDbUseHashIndex { get; set; } = true;
+    public ulong? BlockNumbersDbRowCacheSize { get; set; } = (ulong)16.MiB();
+    public ulong? BlockNumbersDbPrefixExtractorLength { get; set; } = 8;
+    public bool? BlockNumbersDbUseHashSkipListMemtable { get; set; } = true;
     public bool? BlockNumbersDbUseDirectReads { get; set; }
     public bool? BlockNumbersDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? BlockNumbersDbCompactionReadAhead { get; set; }
@@ -130,7 +134,11 @@ public class DbConfig : IDbConfig
     public bool CodeDbCacheIndexAndFilterBlocks { get; set; } = false;
     public int? CodeDbMaxOpenFiles { get; set; }
     public long? CodeDbMaxBytesPerSec { get; set; }
-    public int? CodeDbBlockSize { get; set; }
+    public int? CodeDbBlockSize { get; set; } = 4 * 1024;
+    public bool CodeDbUseHashIndex { get; set; } = true;
+    public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
+    public ulong? CodeDbPrefixExtractorLength { get; set; } = 8;
+    public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
     public bool? CodeUseDirectReads { get; set; } = false;
     public bool? CodeUseDirectIoForFlushAndCompactions { get; set; } = false;
     public ulong? CodeCompactionReadAhead { get; set; }
@@ -182,7 +190,7 @@ public class DbConfig : IDbConfig
     public IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
 
     public ulong StateDbWriteBufferSize { get; set; } = (ulong)64.MB();
-    public uint StateDbWriteBufferNumber { get; set; } = 2;
+    public uint StateDbWriteBufferNumber { get; set; } = 4;
     public ulong StateDbBlockCacheSize { get; set; }
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
@@ -198,9 +206,10 @@ public class DbConfig : IDbConfig
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool StateDbAllowMmapReads { get; set; } = false;
     public bool StateDbVerifyChecksum { get; set; } = true;
-    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
+    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 30;
+    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)512.MiB();
     public ulong? StateDbMaxCompactionBytes { get; set; } = null;
-    public int StateDbMinWriteBufferNumberToMerge { get; set; } = 1;
+    public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; } = null;
     public bool StateDbOptimizeFiltersForHits { get; set; } = true;
     public bool StateDbOnlyCompressLastLevel { get; set; } = false;
