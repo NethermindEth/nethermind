@@ -32,6 +32,7 @@ using Nethermind.Init.Snapshot;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
+using Nethermind.Monitoring.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.Runner.Logging;
@@ -196,6 +197,17 @@ public static class Program
             INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
             ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
             nethermindApi.ProcessExit = _processExitSource;
+
+            var mc = nethermindApi.Config<IMetricsConfig>();
+
+            if (!mc.EnablePyroscope)
+            {
+                //Environment.SetEnvironmentVariable("PYROSCOPE_PROFILING_ENABLED", "1", EnvironmentVariableTarget.User);
+                //Environment.SetEnvironmentVariable("PYROSCOPE_APPLICATION_NAME", "123", EnvironmentVariableTarget.User);
+                //Environment.SetEnvironmentVariable("PYROSCOPE_SERVER_ADDRESS", "123", EnvironmentVariableTarget.User);
+                //Environment.SetEnvironmentVariable("CORECLR_ENABLE_PROFILING", "1", EnvironmentVariableTarget.User);
+                Pyroscope.Profiler.Instance.SetBasicAuth("usr", "pwd");
+            }
 
             _appClosed.Reset();
             EthereumRunner ethereumRunner = new(nethermindApi);

@@ -31,4 +31,7 @@ public interface IMetricsConfig : IConfig
 
     [ConfigItem(Description = "Whether to publish database size metrics.", DefaultValue = "true")]
     bool EnableDbSizeMetrics { get; }
+
+    [ConfigItem(Description = "Whether to publish database cache metrics.", DefaultValue = "true")]
+    bool EnablePyroscope { get; }
 }
