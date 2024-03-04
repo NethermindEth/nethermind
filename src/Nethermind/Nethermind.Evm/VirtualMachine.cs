@@ -42,7 +42,7 @@ using Int256;
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
-    internal static FrozenDictionary<Address, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
+    internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
     internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
@@ -95,12 +95,12 @@ public class VirtualMachine : IVirtualMachine
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
-        where TTracingActions : struct, IIsTracing
+        where TTracingActions : struct, VirtualMachine.IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
 
-    private static FrozenDictionary<Address, CodeInfo> InitializePrecompiledContracts()
+    private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
     {
-        return new Dictionary<Address, CodeInfo>
+        return new Dictionary<AddressAsKey, CodeInfo>
         {
             [EcRecoverPrecompile.Address] = new(EcRecoverPrecompile.Instance),
             [Sha256Precompile.Address] = new(Sha256Precompile.Instance),
@@ -135,18 +135,10 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
         public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
         public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-        public static CallResult InvalidInstructionException
-        {
-            get
-            {
-                return new(EvmExceptionType.BadInstruction);
-            }
-        }
-
+        public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
         public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult Empty => new(Array.Empty<byte>(), null);
 
@@ -368,7 +360,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         (IReadOnlyCollection<Address>)currentState.DestroyList,
                         (IReadOnlyCollection<LogEntry>)currentState.Logs,
                         callResult.ShouldRevert,
-                        isTracerConnected: isTracing);
+                        isTracerConnected: isTracing,
+                        _logger);
                 }
 
                 Address callCodeOwner = currentState.Env.ExecutingAccount;
@@ -1649,24 +1642,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.SLOAD:
                     {
-                        Metrics.SloadOpcode++;
-                        gasAvailable -= spec.GetSLoadCost();
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        storageCell = new(env.ExecutingAccount, result);
-                        if (!ChargeStorageAccessGas(
-                            ref gasAvailable,
-                            vmState,
-                            in storageCell,
-                            StorageAccessType.SLOAD,
-                            spec)) goto OutOfGas;
-
-                        ReadOnlySpan<byte> value = _state.Get(in storageCell);
-                        stack.PushBytes(value);
-                        if (typeof(TTracingStorage) == typeof(IsTracing))
-                        {
-                            _txTracer.LoadOperationStorage(storageCell.Address, result, value);
-                        }
+                        exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         break;
                     }
@@ -2606,6 +2583,33 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             data.ToArray(),
             topics);
         vmState.Logs.Add(logEntry);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType InstructionSLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
+        where TTracingStorage : struct, IIsTracing
+    {
+        Metrics.SloadOpcode++;
+        gasAvailable -= spec.GetSLoadCost();
+
+        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
+        if (!ChargeStorageAccessGas(
+            ref gasAvailable,
+            vmState,
+            in storageCell,
+            StorageAccessType.SLOAD,
+            spec)) return EvmExceptionType.OutOfGas;
+
+        ReadOnlySpan<byte> value = _state.Get(in storageCell);
+        stack.PushBytes(value);
+        if (typeof(TTracingStorage) == typeof(IsTracing))
+        {
+            _txTracer.LoadOperationStorage(storageCell.Address, result, value);
+        }
 
         return EvmExceptionType.None;
     }

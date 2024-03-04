@@ -79,7 +79,7 @@ namespace Nethermind.Blockchain.FullPruning
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
-            if (DateTime.Now - _lastPruning < _minimumPruningDelay)
+            if (DateTime.UtcNow - _lastPruning < _minimumPruningDelay)
             {
                 e.Status = PruningStatus.Delayed;
             }

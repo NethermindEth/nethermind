@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -200,23 +201,21 @@ public class InitializeNetwork : IStep
             }
         });
 
-        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
-
-        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
-        {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
-
         if (_syncConfig.SnapSync)
         {
-            // TODO: Should we keep snap capability even after finishing sync?
-            SnapCapabilitySwitcher snapCapabilitySwitcher = new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            if (!_syncConfig.SnapServingEnabled)
+            {
+                // TODO: Should we keep snap capability even after finishing sync?
+                SnapCapabilitySwitcher snapCapabilitySwitcher =
+                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
+            }
+            else
+            {
+                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+            }
         }
+
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
 
         if (cancellationToken.IsCancellationRequested)
@@ -510,6 +509,14 @@ public class InitializeNetwork : IStep
 
         ProtocolValidator protocolValidator = new(_api.NodeStatsManager!, _api.BlockTree, forkInfo, _api.LogManager);
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
+
+        ISnapServer? snapServer = null;
+        if (_syncConfig.SnapServingEnabled)
+        {
+            // TODO: Add a proper config for the state persistence depth.
+            snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
+        }
+
         _api.ProtocolsManager = new ProtocolsManager(
             _api.SyncPeerPool!,
             syncServer,
@@ -525,6 +532,7 @@ public class InitializeNetwork : IStep
             forkInfo,
             _api.GossipPolicy,
             _networkConfig,
+            snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
 

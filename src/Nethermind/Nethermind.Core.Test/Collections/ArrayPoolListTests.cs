@@ -17,7 +17,7 @@ public class ArrayPoolListTests
     [Test]
     public void Empty_list()
     {
-        ArrayPoolList<int> list = new(1024);
+        using ArrayPoolList<int> list = new(1024);
         list.Should().BeEquivalentTo(Array.Empty<int>());
         list.Count.Should().Be(0);
         list.Capacity.Should().Be(1024);
@@ -26,7 +26,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_not_hang_when_capacity_is_zero()
     {
-        ArrayPoolList<int> list = new(0);
+        using ArrayPoolList<int> list = new(0);
         list.Should().BeEquivalentTo(Array.Empty<int>());
         list.Add(1);
         list.Count.Should().Be(1);
@@ -39,7 +39,7 @@ public class ArrayPoolListTests
     [Test]
     public void Add_should_work()
     {
-        ArrayPoolList<int> list = new(1024);
+        using ArrayPoolList<int> list = new(1024);
         list.AddRange(Enumerable.Range(0, 4));
         list.Should().BeEquivalentTo(Enumerable.Range(0, 4));
     }
@@ -47,7 +47,7 @@ public class ArrayPoolListTests
     [Test]
     public void Add_should_expand()
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Should().BeEquivalentTo(Enumerable.Range(0, 50));
         list.Count.Should().Be(50);
@@ -57,7 +57,7 @@ public class ArrayPoolListTests
     [Test]
     public void Clear_should_clear()
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         list.Clear();
         list.Should().BeEquivalentTo(Array.Empty<int>());
@@ -71,7 +71,7 @@ public class ArrayPoolListTests
     [TestCase(-1, ExpectedResult = false)]
     public bool Contains_should_check_ok(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         return list.Contains(item);
     }
@@ -81,7 +81,7 @@ public class ArrayPoolListTests
     [TestCase(16, new[] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, -1 })]
     public void Insert_should_expand(int index, int[] expected)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 16));
         list.Insert(index, -1);
         list.Should().BeEquivalentTo(expected);
@@ -91,7 +91,7 @@ public class ArrayPoolListTests
     [TestCase(-1)]
     public void Insert_should_throw(int index)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         Action action = () => list.Insert(index, -1);
         action.Should().Throw<ArgumentOutOfRangeException>();
@@ -103,7 +103,7 @@ public class ArrayPoolListTests
     [TestCase(-1, ExpectedResult = -1)]
     public int IndexOf_should_return_index(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         return list.IndexOf(item);
     }
@@ -115,7 +115,7 @@ public class ArrayPoolListTests
     [TestCase(-1, false, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
     public void Remove_should_remove(int item, bool removed, int[] expected)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         list.Remove(item).Should().Be(removed);
         list.Should().BeEquivalentTo(expected);
@@ -125,7 +125,7 @@ public class ArrayPoolListTests
     [TestCase(7, new[] { 0, 1, 2, 3, 4, 5, 6 })]
     public void RemoveAt_should_remove(int item, int[] expected)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         list.RemoveAt(item);
         list.Should().BeEquivalentTo(expected);
@@ -135,7 +135,7 @@ public class ArrayPoolListTests
     [TestCase(-1, new[] { 0, 1, 2, 3, 4, 5, 6, 7 })]
     public void RemoveAt_should_throw(int item, int[] expected)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         Action action = () => list.RemoveAt(item);
         action.Should().Throw<ArgumentOutOfRangeException>();
@@ -144,7 +144,7 @@ public class ArrayPoolListTests
     [Test]
     public void CopyTo_should_copy()
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 50));
         int[] array = new int[51];
         list.CopyTo(array, 1);
@@ -155,7 +155,7 @@ public class ArrayPoolListTests
     [TestCase(7, ExpectedResult = 7)]
     public int Get_should_return(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         return list[item];
     }
@@ -164,7 +164,7 @@ public class ArrayPoolListTests
     [TestCase(-1)]
     public void Get_should_throw(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         Func<int> action = () => list[item];
         action.Should().Throw<ArgumentOutOfRangeException>();
@@ -174,7 +174,7 @@ public class ArrayPoolListTests
     [TestCase(7, ExpectedResult = -1)]
     public int Set_should_set(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         list[item] = -1;
         return list[item];
@@ -184,7 +184,7 @@ public class ArrayPoolListTests
     [TestCase(-1)]
     public void Set_should_throw(int item)
     {
-        ArrayPoolList<int> list = new(4);
+        using ArrayPoolList<int> list = new(4);
         list.AddRange(Enumerable.Range(0, 8));
         Action action = () => list[item] = 1;
         action.Should().Throw<ArgumentOutOfRangeException>();
@@ -197,7 +197,7 @@ public class ArrayPoolListTests
     [TestCase(100, 128)]
     public void AddRange_should_expand(int items, int expectedCapacity)
     {
-        ArrayPoolList<int> list = new(16) { 0, 1 };
+        using ArrayPoolList<int> list = new(16) { 0, 1 };
         list.AddRange(Enumerable.Range(2, items));
         list.Should().BeEquivalentTo(Enumerable.Range(0, items + 2));
         list.Capacity.Should().Be(expectedCapacity);
@@ -206,7 +206,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_IList_the_same_as_IListT()
     {
-        var listT = new ArrayPoolList<int>(1024);
+        using var listT = new ArrayPoolList<int>(1024);
         var list = (IList)listT;
 
         list.Add(1);
@@ -240,7 +240,8 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_null_insertion_if_null_illegal()
     {
-        var list = (IList)new ArrayPoolList<int>(1024);
+        using var arrayPoolList = new ArrayPoolList<int>(1024);
+        var list = (IList)arrayPoolList;
 
         Action action = () => list.Add(null);
         action.Should().Throw<ArgumentNullException>();
@@ -255,7 +256,8 @@ public class ArrayPoolListTests
     [Test]
     public void Should_throw_on_invalid_type_insertion()
     {
-        var list = (IList)new ArrayPoolList<int>(1024);
+        using var arrayPoolList = new ArrayPoolList<int>(1024);
+        var list = (IList)arrayPoolList;
 
         Action action = () => list.Add(string.Empty);
         action.Should().Throw<InvalidCastException>();
@@ -271,7 +273,8 @@ public class ArrayPoolListTests
     [TestCase(null)]
     public void Should_not_throw_on_invalid_type_lookup(object? value)
     {
-        var list = (IList)new ArrayPoolList<int>(1024);
+        using var arrayPoolList = new ArrayPoolList<int>(1024);
+        var list = (IList)arrayPoolList;
         list.Add(1);
 
         list.Contains(value).Should().BeFalse();
@@ -284,7 +287,7 @@ public class ArrayPoolListTests
     [Test]
     public void Should_implement_basic_properties_as_expected()
     {
-        var list = new ArrayPoolList<int>(1024);
+        using var list = new ArrayPoolList<int>(1024);
 
         ((ICollection<int>)list).IsReadOnly.Should().BeFalse();
         ((IList)list).IsReadOnly.Should().BeFalse();
@@ -292,4 +295,45 @@ public class ArrayPoolListTests
         ((IList)list).IsSynchronized.Should().BeFalse();
         ((IList)list).SyncRoot.Should().Be(list);
     }
+
+    [Test]
+    public void Dispose_ShouldNotHaveAnEffect_OnEmptyPool()
+    {
+        var list = new ArrayPoolList<int>(0);
+        list.Dispose();
+
+        Action act = () => _ = list.Count;
+        act.Should().NotThrow();
+    }
+
+    [Test]
+    public void Can_resize_totally_empty_list()
+    {
+        using ArrayPoolList<int> list = new(0);
+        list.Add(1);
+        list.Count.Should().Be(1);
+    }
+
+#if DEBUG
+    [Test]
+    [Explicit("Crashes the test runner")]
+    public void Finalizer_throws_if_not_disposed()
+    {
+        static void CreateAndDrop()
+        {
+            ArrayPoolList<int> list = new(1);
+        }
+
+        bool exception = false;
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+        {
+            exception = true;
+        };
+        CreateAndDrop();
+
+        GC.Collect();
+        GC.WaitForPendingFinalizers();
+        exception.Should().BeTrue();
+    }
+#endif
 }

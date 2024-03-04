@@ -102,8 +102,7 @@ namespace Nethermind.Synchronization.ParallelSync
                             if (Logger.IsTrace) Logger.Trace($"SyncDispatcher request: {request}, AllocatedPeer {allocation.Current}");
 
                             // Use Task.Run to make sure it queues it instead of running part of it synchronously.
-                            Task task = Task.Run(() => DoDispatch(cancellationToken, allocatedPeer, request,
-                                allocation), cancellationToken);
+                            Task task = Task.Run(() => DoDispatch(cancellationToken, allocatedPeer, request, allocation), cancellationToken);
 
                             if (!Feed.IsMultiFeed)
                             {

@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -70,11 +71,11 @@ public class HealingStateTree : StateTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = rootHash,
-                AccountAndStoragePaths = new[]
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
-                    new PathGroup
+                    new()
                     {
-                        Group = new[] { Nibbles.EncodePath(pathPart) }
+                        Group = [Nibbles.EncodePath(pathPart)]
                     }
                 }
             };

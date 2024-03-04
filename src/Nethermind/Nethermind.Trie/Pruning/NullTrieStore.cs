@@ -19,7 +19,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) => this;
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -43,8 +43,9 @@ namespace Nethermind.Trie.Pruning
         {
         }
 
-        public void PersistCache(CancellationToken cancellationToken)
+        public bool HasRoot(Hash256 stateRoot)
         {
+            return stateRoot == Keccak.EmptyTreeHash;
         }
     }
 }
