@@ -7,9 +7,25 @@ on:
     branches: [master]
 
 jobs:
+  buildlibp2p:
+    name: Build Libp2p
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        config: [release, debug]
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+      - name: Build Libp2p.sln
+        run: dotnet build src/dotnet-libp2p/libp2p/Libp2p.sln -c ${{ matrix.config }}
   build:
     name: Build
     runs-on: ubuntu-latest
+    needs: buildlibp2p
     strategy:
       matrix:
         config: [release, debug]
