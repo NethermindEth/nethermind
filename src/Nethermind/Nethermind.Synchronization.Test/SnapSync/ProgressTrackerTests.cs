@@ -5,6 +5,7 @@ using System;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -26,7 +27,7 @@ public class ProgressTrackerTests
         ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
-            Accounts = Array.Empty<PathWithAccount>(),
+            Accounts = ArrayPoolList<PathWithAccount>.Empty(),
         });
 
         int loopIteration = 100000;
@@ -34,9 +35,9 @@ public class ProgressTrackerTests
         {
             for (int i = 0; i < loopIteration; i++)
             {
-                (SnapSyncBatch snapSyncBatch, bool ok) = progressTracker.GetNextRequest();
-                ok.Should().BeFalse();
-                progressTracker.EnqueueStorageRange(snapSyncBatch.StorageRangeRequest!);
+                bool finished = progressTracker.IsFinished(out SnapSyncBatch? snapSyncBatch);
+                finished.Should().BeFalse();
+                progressTracker.EnqueueStorageRange(snapSyncBatch!.StorageRangeRequest!);
             }
         });
 
@@ -56,33 +57,37 @@ public class ProgressTrackerTests
     public void Will_create_multiple_get_address_range_request()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance, 4);
+        ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
 
-        (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
-        request.AccountRangeRequest.Should().NotBeNull();
+        bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
+        request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(0);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(64);
         finished.Should().BeFalse();
+        request.Dispose();
 
-        (request, finished) = progressTracker.GetNextRequest();
-        request.AccountRangeRequest.Should().NotBeNull();
+        finished = progressTracker.IsFinished(out request);
+        request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(64);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(128);
         finished.Should().BeFalse();
+        request.Dispose();
 
-        (request, finished) = progressTracker.GetNextRequest();
-        request.AccountRangeRequest.Should().NotBeNull();
+        finished = progressTracker.IsFinished(out request);
+        request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(128);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(192);
         finished.Should().BeFalse();
+        request.Dispose();
 
-        (request, finished) = progressTracker.GetNextRequest();
-        request.AccountRangeRequest.Should().NotBeNull();
+        finished = progressTracker.IsFinished(out request);
+        request!.AccountRangeRequest.Should().NotBeNull();
         request.AccountRangeRequest!.StartingHash.Bytes[0].Should().Be(192);
         request.AccountRangeRequest.LimitHash!.Value.Bytes[0].Should().Be(255);
         finished.Should().BeFalse();
+        request.Dispose();
 
-        (request, finished) = progressTracker.GetNextRequest();
+        finished = progressTracker.IsFinished(out request);
         request.Should().BeNull();
         finished.Should().BeFalse();
     }
@@ -106,10 +111,10 @@ public class ProgressTrackerTests
             progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
 
-        (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
-
-        request.CodesRequest.Should().NotBeNull();
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        request!.CodesRequest.Should().NotBeNull();
         request.StorageRangeRequest.Should().BeNull();
+        request.Dispose();
     }
 
     [Test]
@@ -131,10 +136,10 @@ public class ProgressTrackerTests
             progressTracker.EnqueueCodeHashes(new[] { TestItem.ValueKeccaks[0] });
         }
 
-        (SnapSyncBatch request, bool _) = progressTracker.GetNextRequest();
-
-        request.CodesRequest.Should().BeNull();
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        request!.CodesRequest.Should().BeNull();
         request.StorageRangeRequest.Should().NotBeNull();
+        request.Dispose();
     }
 
     [Test]
@@ -143,14 +148,15 @@ public class ProgressTrackerTests
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
-        TestMemDb memDb = new TestMemDb();
-        ProgressTracker progressTracker = new ProgressTracker(blockTree, memDb, LimboLogs.Instance, 1);
+        TestMemDb memDb = new();
+        ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
 
-        (SnapSyncBatch request, bool finished) = progressTracker.GetNextRequest();
-        request.AccountRangeRequest.Should().NotBeNull();
+        progressTracker.IsFinished(out SnapSyncBatch? request);
+        request!.AccountRangeRequest.Should().NotBeNull();
         progressTracker.UpdateAccountRangePartitionProgress(request.AccountRangeRequest!.LimitHash!.Value, Keccak.MaxValue, false);
         progressTracker.ReportAccountRangePartitionFinished(request.AccountRangeRequest!.LimitHash!.Value);
-        (_, finished) = progressTracker.GetNextRequest();
+        request.Dispose();
+        bool finished = progressTracker.IsFinished(out _);
         finished.Should().BeTrue();
 
         memDb.WasFlushed.Should().BeTrue();

@@ -641,17 +641,13 @@ namespace Nethermind.TxPool
             ? _blobTransactions.ContainsKey(hash)
             : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
-        {
-            return _transactions.TryGetValue(hash, out transaction)
-                    || _blobTransactions.TryGetValue(hash, out transaction)
-                    || _broadcaster.TryGetPersistentTx(hash, out transaction);
-        }
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+            _transactions.TryGetValue(hash, out transaction)
+            || _blobTransactions.TryGetValue(hash, out transaction)
+            || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
-        {
-            return _blobTransactions.TryGetValue(hash, out blobTransaction);
-        }
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
+            _blobTransactions.TryGetValue(hash, out blobTransaction);
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)

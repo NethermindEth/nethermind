@@ -25,7 +25,7 @@ namespace Nethermind.Network.Test.P2P
             IByteBuffer serialized = UnpooledByteBufferAllocator.Default.Buffer(2);
             var serializer = Substitute.For<IMessageSerializationService>();
 
-            TestMessage testMessage = new TestMessage();
+            using TestMessage testMessage = new();
             serializer.ZeroSerialize(testMessage).Returns(serialized);
             serialized.SafeRelease();
 
