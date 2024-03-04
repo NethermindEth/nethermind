@@ -20,5 +20,7 @@ namespace Nethermind.Consensus.AuRa.Config
         public string ShutterSequencerContractAddress { get; set; }
         public string ShutterKeyBroadcastContractAddress { get; set; }
         public string ShutterKeyperSetManagerContractAddress { get; set; }
+        public string[] ShutterKeyperP2PAddresses { get; set; }
+        public int ShutterP2PPort { get; set; }
     }
 }

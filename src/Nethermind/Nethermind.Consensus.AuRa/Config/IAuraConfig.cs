@@ -43,4 +43,12 @@ public interface IAuraConfig : IConfig
     [ConfigItem(Description = "The address of the Shutter keyper set manager contract.",
         DefaultValue = "null")]
     string ShutterKeyperSetManagerContractAddress { get; set; }
+
+    [ConfigItem(Description = "The p2p addresses of the Shutter keypers.",
+        DefaultValue = "[]")]
+    string[] ShutterKeyperP2PAddresses { get; set; }
+
+    [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
+        DefaultValue = "23001")]
+    int ShutterP2PPort { get; set; }
 }

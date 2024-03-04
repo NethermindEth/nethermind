@@ -26,7 +26,7 @@ public class ShutterP2P
     private readonly Contracts.IKeyperSetManagerContract _keyperSetManagerContract;
     private readonly INethermindApi _api;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api, string[] keyperAddresses, string port)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
         _keyBroadcastContract = keyBroadcastContract;
@@ -43,7 +43,7 @@ public class ShutterP2P
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/23102");
+        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + port);
         Console.WriteLine(peer.Address);
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
@@ -59,8 +59,7 @@ public class ShutterP2P
             }
             else
             {
-                // todo: don't do this in production!
-                throw new Exception("Invalid decryption keys received on P2P network.");
+                _api.LogManager.GetClassLogger().Warn("Invalid decryption keys received on P2P network.");
             }
         };
 
@@ -68,12 +67,10 @@ public class ShutterP2P
         CancellationTokenSource ts = new();
         _ = router.RunAsync(peer, proto, token: ts.Token);
 
-        // todo: don't hardcode
-        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23000/p2p/12D3KooWDu1DQcEXyJRwbq6spG5gbi11MbN3iSSqbc2Z85z7a8jB"]);
-        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23001/p2p/12D3KooWFbscPyxc3rxyoEgyLbDYpbfx6s6di5wnr4cFz77q3taH"]);
-        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23002/p2p/12D3KooWLmDDaCkXZgkWUnWZ1RxLzA1FHm4cVHLnNvCuGi4haGLu"]);
-        proto.OnAddPeer?.Invoke(["/ip4/64.226.117.95/tcp/23003/p2p/12D3KooW9y8s8gy52jHXvJXNU5D2HuDmXxrs5Kp4VznbiBtRUnU5"]);
-
+        foreach (string addr in keyperAddresses)
+        {
+            proto.OnAddPeer?.Invoke([addr]);
+        }
     }
 
     internal class MyProto : IDiscoveryProtocol
