@@ -13,9 +13,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -28,15 +28,15 @@ public class NonceManagerTests
     private IBlockTree _blockTree;
     private ChainHeadInfoProvider _headInfo;
     private INonceManager _nonceManager;
+    private PaprikaStateFactory _stateDb = new();
 
     [SetUp]
     public void Setup()
     {
         ILogManager logManager = LimboLogs.Instance;
         _specProvider = MainnetSpecProvider.Instance;
-        var trieStore = new TrieStore(new MemDb(), logManager);
         var codeDb = new MemDb();
-        _stateProvider = new WorldState(trieStore, codeDb, logManager);
+        _stateProvider = new WorldState(_stateDb, codeDb, logManager);
         _blockTree = Substitute.For<IBlockTree>();
         Block block = Build.A.Block.WithNumber(0).TestObject;
         _blockTree.Head.Returns(block);
@@ -45,6 +45,9 @@ public class NonceManagerTests
         _headInfo = new ChainHeadInfoProvider(_specProvider, _blockTree, _stateProvider);
         _nonceManager = new NonceManager(_headInfo.AccountStateProvider);
     }
+
+    [TearDown]
+    public ValueTask TearDown() => _stateDb.DisposeAsync();
 
     [Test]
     public void should_increment_own_transaction_nonces_locally_when_requesting_reservations()

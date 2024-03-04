@@ -3,7 +3,6 @@
 
 using System.Threading.Tasks;
 using FluentAssertions;
-using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -15,9 +14,9 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Paprika;
 
 namespace Nethermind.Store.Test
 {
@@ -28,13 +27,18 @@ namespace Nethermind.Store.Test
         private readonly Address _address1 = new(Hash1);
         private static readonly ILogManager Logger = LimboLogs.Instance;
 
+        private PaprikaStateFactory _stateDb = new();
+
+        [TearDown]
+        public virtual ValueTask TearDown() => _stateDb.DisposeAsync();
+
         [Test]
         public async Task Can_ask_about_balance_in_parallel()
         {
             IReleaseSpec spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.ConstantinopleFixBlockNumber);
             MemDb stateDb = new();
             WorldState provider =
-                new(new TrieStore(stateDb, Logger), Substitute.For<IDb>(), Logger);
+                new(_stateDb, Substitute.For<IDb>(), Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, spec);
             provider.Commit(spec);
@@ -59,7 +63,7 @@ namespace Nethermind.Store.Test
             provider.CommitTree(0);
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(_stateDb, Substitute.For<IDb>(), Logger);
 
             Task a = StartTask(reader, stateRoot0, 1);
             Task b = StartTask(reader, stateRoot1, 2);
@@ -74,13 +78,11 @@ namespace Nethermind.Store.Test
         {
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
-            MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
+            WorldState provider = new(_stateDb, new MemDb(), Logger);
 
             void UpdateStorageValue(byte[] newValue)
             {
-                provider.Set(storageCell, newValue);
+                provider.Set(storageCell, newValue.ToEvmWord());
             }
 
             void AddOneToBalance()
@@ -118,7 +120,7 @@ namespace Nethermind.Store.Test
             Hash256 stateRoot3 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(_stateDb, Substitute.For<IDb>(), Logger);
 
             Task a = StartStorageTask(reader, stateRoot0, storageCell, new byte[] { 1 });
             Task b = StartStorageTask(reader, stateRoot1, storageCell, new byte[] { 2 });
@@ -134,9 +136,7 @@ namespace Nethermind.Store.Test
             StorageCell storageCell = new(_address1, UInt256.One);
             IReleaseSpec spec = MuirGlacier.Instance;
 
-            MemDb stateDb = new();
-            TrieStore trieStore = new(stateDb, Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
+            WorldState provider = new(_stateDb, new MemDb(), Logger);
 
             void CommitEverything()
             {
@@ -145,12 +145,12 @@ namespace Nethermind.Store.Test
             }
 
             provider.CreateAccount(_address1, 1);
-            provider.Set(storageCell, new byte[] { 1 });
+            provider.Set(storageCell, new byte[] { 1 }.ToEvmWord());
             CommitEverything();
             Hash256 stateRoot0 = provider.StateRoot;
 
             StateReader reader =
-                new(new TrieStore(stateDb, LimboLogs.Instance), Substitute.For<IDb>(), Logger);
+                new(_stateDb, Substitute.For<IDb>(), Logger);
             reader.GetStorage(stateRoot0, _address1, storageCell.Index + 1).ToArray().Should().BeEquivalentTo(new byte[] { 0 });
         }
 
@@ -188,8 +188,7 @@ namespace Nethermind.Store.Test
             /* all testing will be touching just a single storage cell */
             StorageCell storageCell = new(_address1, UInt256.One);
 
-            TrieStore trieStore = new(dbProvider.StateDb, Logger);
-            WorldState state = new(trieStore, dbProvider.CodeDb, Logger);
+            WorldState state = new(_stateDb, dbProvider.CodeDb, Logger);
 
             /* to start with we need to create an account that we will be setting storage at */
             state.CreateAccount(storageCell.Address, UInt256.One);
@@ -199,12 +198,11 @@ namespace Nethermind.Store.Test
             /* at this stage we have an account with empty storage at the address that we want to test */
 
             byte[] initialValue = new byte[] { 1, 2, 3 };
-            state.Set(storageCell, initialValue);
+            state.Set(storageCell, initialValue.ToEvmWord());
             state.Commit(MuirGlacier.Instance);
             state.CommitTree(2);
 
-            StateReader reader = new(
-                new TrieStore(dbProvider.StateDb, LimboLogs.Instance), dbProvider.CodeDb, Logger);
+            StateReader reader = new(_stateDb, dbProvider.CodeDb, Logger);
 
             var retrieved = reader.GetStorage(state.StateRoot, _address1, storageCell.Index).ToArray();
             retrieved.Should().BeEquivalentTo(initialValue);
@@ -218,10 +216,10 @@ namespace Nethermind.Store.Test
             byte[] newValue = new byte[] { 1, 2, 3, 4, 5 };
 
             WorldState processorStateProvider =
-                new(trieStore, new MemDb(), LimboLogs.Instance);
+                new(_stateDb, new MemDb(), LimboLogs.Instance);
             processorStateProvider.StateRoot = state.StateRoot;
 
-            processorStateProvider.Set(storageCell, newValue);
+            processorStateProvider.Set(storageCell, newValue.ToEvmWord());
             processorStateProvider.Commit(MuirGlacier.Instance);
             processorStateProvider.CommitTree(3);
 
@@ -238,13 +236,12 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats()
         {
-            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState provider = new(trieStore, new MemDb(), Logger);
+            WorldState provider = new(_stateDb, new MemDb(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
 
-            StateReader stateReader = new StateReader(trieStore.AsReadOnly(), new MemDb(), Logger);
+            StateReader stateReader = new StateReader(_stateDb, new MemDb(), Logger);
             var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
             stats.AccountCount.Should().Be(1);
         }

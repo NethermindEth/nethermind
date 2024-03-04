@@ -35,6 +35,7 @@ using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
 using System;
+using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
@@ -50,6 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 #pragma warning restore NUnit1032
         private IBlockTree _blockTree = null!;
         private IReceiptStorage _receiptStorage = null!;
+        private PaprikaStateFactory _stateDb = new();
 
         [SetUp]
         public void Initialize()
@@ -66,7 +68,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             peerManager.ConnectedPeers.Returns(new List<Peer> { peerA, peerB, peerA, peerC, peerB });
             peerManager.MaxActivePeers.Returns(15);
 
-            WorldState stateProvider = new(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            WorldState stateProvider = new(_stateDb, new MemDb(), LimboLogs.Instance);
 
             _blockTree = Build.A.BlockTree()
                 .WithoutSettingHead
@@ -180,7 +182,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [TearDown]
-        public void TearDown() => (_txPool as IDisposable)?.Dispose();
+        public void TearDown()
+        {
+            _stateDb.DisposeAsync().GetAwaiter().GetResult();
+            (_txPool as IDisposable)?.Dispose();
+        }
 
         private static Peer SetUpPeerA()
         {

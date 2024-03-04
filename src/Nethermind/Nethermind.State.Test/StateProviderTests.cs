@@ -18,6 +18,8 @@ using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Paprika;
+using System.Threading.Tasks;
 
 namespace Nethermind.Store.Test
 {
@@ -40,15 +42,15 @@ namespace Nethermind.Store.Test
         public void TearDown() => _codeDb?.Dispose();
 
         [Test]
-        public void Eip_158_zero_value_transfer_deletes()
+        public async Task Eip_158_zero_value_transfer_deletes()
         {
-            var trieStore = new TrieStore(new MemDb(), Logger);
-            WorldState frontierProvider = new(trieStore, _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState frontierProvider = new(stateDb, _codeDb, Logger);
             frontierProvider.CreateAccount(_address1, 0);
             frontierProvider.Commit(Frontier.Instance);
             frontierProvider.CommitTree(0);
 
-            WorldState provider = new(trieStore, _codeDb, Logger);
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.StateRoot = frontierProvider.StateRoot;
 
             provider.AddToBalance(_address1, 0, SpuriousDragon.Instance);
@@ -59,10 +61,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Eip_158_touch_zero_value_system_account_is_not_deleted()
+        public async Task Eip_158_touch_zero_value_system_account_is_not_deleted()
         {
-            TrieStore trieStore = new(new MemDb(), Logger);
-            WorldState provider = new(trieStore, _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             var systemUser = Address.SystemUser;
 
             provider.CreateAccount(systemUser, 0);
@@ -76,9 +78,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Can_dump_state()
+        public async Task Can_dump_state()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -88,9 +91,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Can_accepts_visitors()
+        public async Task Can_accepts_visitors()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), Substitute.For<IDb>(), Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, Substitute.For<IDb>(), Logger);
             provider.CreateAccount(TestItem.AddressA, 1.Ether());
             provider.Commit(MuirGlacier.Instance);
             provider.CommitTree(0);
@@ -100,41 +104,46 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Empty_commit_restore()
+        public async Task Empty_commit_restore()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.Commit(Frontier.Instance);
             provider.Restore(Snapshot.Empty);
         }
 
         [Test]
-        public void Update_balance_on_non_existing_account_throws()
+        public async Task Update_balance_on_non_existing_account_throws()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             Assert.Throws<InvalidOperationException>(() => provider.AddToBalance(TestItem.AddressA, 1.Ether(), Olympic.Instance));
         }
 
         [Test]
-        public void Is_empty_account()
+        public async Task Is_empty_account()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             Assert.True(provider.IsEmptyAccount(_address1));
         }
 
         [Test]
-        public void Returns_empty_byte_code_for_non_existing_accounts()
+        public async Task Returns_empty_byte_code_for_non_existing_accounts()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             byte[] code = provider.GetCode(TestItem.AddressA);
             code.Should().BeEmpty();
         }
 
         [Test]
-        public void Restore_update_restore()
+        public async Task Restore_update_restore()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
@@ -158,9 +167,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Keep_in_cache()
+        public async Task Keep_in_cache()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
             provider.Commit(Frontier.Instance);
             provider.GetBalance(_address1);
@@ -174,11 +184,12 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Restore_in_the_middle()
+        public async Task Restore_in_the_middle()
         {
+            await using PaprikaStateFactory stateDb = new();
             byte[] code = new byte[] { 1 };
 
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(_address1, 1);
             provider.AddToBalance(_address1, 1, Frontier.Instance);
             provider.IncrementNonce(_address1);
@@ -213,13 +224,14 @@ namespace Nethermind.Store.Test
         }
 
         [Test(Description = "It was failing before as touch was marking the accounts as committed but not adding to trace list")]
-        public void Touch_empty_trace_does_not_throw()
+        public async Task Touch_empty_trace_does_not_throw()
         {
+            await using PaprikaStateFactory stateDb = new();
             ParityLikeTxTracer tracer = new(Build.A.Block.TestObject, null, ParityTraceTypes.StateDiff);
 
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(_address1, 0);
-            Account account = provider.GetAccount(_address1);
+            AccountStruct account = provider.GetAccount(_address1);
             Assert.True(account.IsEmpty);
             provider.Commit(Frontier.Instance); // commit empty account (before the empty account fix in Spurious Dragon)
             Assert.True(provider.AccountExists(_address1));
@@ -232,9 +244,10 @@ namespace Nethermind.Store.Test
         }
 
         [Test]
-        public void Does_not_require_recalculation_after_reset()
+        public async Task Does_not_require_recalculation_after_reset()
         {
-            WorldState provider = new(new TrieStore(new MemDb(), Logger), _codeDb, Logger);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState provider = new(stateDb, _codeDb, Logger);
             provider.CreateAccount(TestItem.AddressA, 5);
 
             Action action = () => { _ = provider.StateRoot; };

@@ -5,6 +5,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks;
+
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -13,6 +15,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
@@ -988,7 +991,7 @@ namespace Nethermind.Trie.Test
         [TestCase(128, 256, 128, null)]
         [TestCase(4, 16, 4, 1242692908)]
         [TestCase(8, 32, 8, 1543322391)]
-        public void Fuzz_accounts_with_storage(
+        public async Task Fuzz_accounts_with_storage(
             int accountsCount,
             int blocksCount,
             int lookupLimit,
@@ -1010,10 +1013,10 @@ namespace Nethermind.Trie.Test
 
             Queue<Hash256> rootQueue = new();
 
-            MemDb memDb = new();
+            MemDb codeDb = new();
 
-            using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.IfBlockOlderThan(lookupLimit), _logManager);
-            WorldState stateProvider = new(trieStore, new MemDb(), _logManager);
+            await using PaprikaStateFactory stateDb = new();
+            WorldState stateProvider = new(stateDb, codeDb, _logManager);
 
             Account[] accounts = new Account[accountsCount];
             Address[] addresses = new Address[accountsCount];
@@ -1048,7 +1051,7 @@ namespace Nethermind.Trie.Test
 
                         if (stateProvider.AccountExists(address))
                         {
-                            Account existing = stateProvider.GetAccount(address);
+                            AccountStruct existing = stateProvider.GetAccount(address);
                             if (existing.Balance != account.Balance)
                             {
                                 if (account.Balance > existing.Balance)
@@ -1067,7 +1070,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), storage.ToEvmWord());
                         }
                         else if (!account.IsTotallyEmpty)
                         {
@@ -1075,7 +1078,7 @@ namespace Nethermind.Trie.Test
 
                             byte[] storage = new byte[1];
                             _random.NextBytes(storage);
-                            stateProvider.Set(new StorageCell(address, 1), storage);
+                            stateProvider.Set(new StorageCell(address, 1), storage.ToEvmWord());
                         }
                     }
                 }
@@ -1092,8 +1095,8 @@ namespace Nethermind.Trie.Test
             streamWriter.Flush();
             fileStream.Seek(0, SeekOrigin.Begin);
 
-            streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
-            _logger.Info($"DB size: {memDb.Keys.Count}");
+            //streamWriter.WriteLine($"DB size: {memDb.Keys.Count}");
+            //_logger.Info($"DB size: {memDb.Keys.Count}");
 
             int verifiedBlocks = 0;
 
