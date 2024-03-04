@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Threading.Tasks;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -16,11 +17,11 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Ethereum.Test.Base
@@ -44,15 +45,15 @@ namespace Ethereum.Test.Base
 
         protected EthereumTestResult RunTest(GeneralStateTest test)
         {
-            return RunTest(test, NullTxTracer.Instance);
+            return RunTest(test, NullTxTracer.Instance).Result;
         }
 
-        protected EthereumTestResult RunTest(GeneralStateTest test, ITxTracer txTracer)
+        protected async Task<EthereumTestResult> RunTest(GeneralStateTest test, ITxTracer txTracer)
         {
             TestContext.Write($"Running {test.Name} at {DateTime.UtcNow:HH:mm:ss.ffffff}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            IDb stateDb = new MemDb();
+            await using PaprikaStateFactory stateDb = new();
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider = new CustomSpecProvider(
@@ -64,8 +65,7 @@ namespace Ethereum.Test.Base
                 Assert.Fail("Expected genesis spec to be Frontier for blockchain tests");
             }
 
-            TrieStore trieStore = new(stateDb, _logManager);
-            WorldState stateProvider = new(trieStore, codeDb, _logManager);
+            WorldState stateProvider = new(stateDb, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
@@ -136,7 +136,8 @@ namespace Ethereum.Test.Base
             }
             stateProvider.Commit(specProvider.GetSpec((ForkActivation)1));
 
-            stateProvider.RecalculateStateRoot();
+            // TODO
+            // stateProvider.RecalculateStateRoot();
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
@@ -154,7 +155,7 @@ namespace Ethereum.Test.Base
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
                     stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                        storageItem.Value.ToEvmWord());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);

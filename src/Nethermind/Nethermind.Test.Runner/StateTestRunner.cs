@@ -78,7 +78,7 @@ namespace Nethermind.Test.Runner
                     // Give time to Jit optimized version
                     Thread.Sleep(20);
                     GC.Collect(GC.MaxGeneration);
-                    result = RunTest(test, NullTxTracer.Instance);
+                    result = RunTest(test, NullTxTracer.Instance).Result;
                 }
 
                 if (_whenTrace != WhenTrace.Never && !(result?.Pass ?? false))
@@ -86,7 +86,7 @@ namespace Nethermind.Test.Runner
                     StateTestTxTracer txTracer = new();
                     txTracer.IsTracingDetailedMemory = _traceMemory;
                     txTracer.IsTracingStack = _traceStack;
-                    result = RunTest(test, txTracer);
+                    result = RunTest(test, txTracer).Result;
 
                     var txTrace = txTracer.BuildResult();
                     txTrace.Result.Time = result.TimeInMs;
