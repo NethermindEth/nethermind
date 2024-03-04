@@ -31,11 +31,11 @@ jobs:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
-      - name: Check out repository
-        uses: actions/checkout@v4
-        with:
-          submodules: recursive
-      - name: Set up .NET
-        uses: actions/setup-dotnet@v4
+      # - name: Check out repository
+      #   uses: actions/checkout@v4
+      #   with:
+      #     submodules: recursive
+      # - name: Set up .NET
+      #   uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.solution }}.sln
         run: dotnet build src/Nethermind/${{ matrix.solution }}.sln -c ${{ matrix.config }}
