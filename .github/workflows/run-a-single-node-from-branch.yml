@@ -207,9 +207,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
-        MAX_WAIT_MINUTES: '5'
+        MAX_WAIT_MINUTES: '20'
         INTERVAL: '5'
-        TIMEOUT: '10'
+        TIMEOUT: '40'
         ORG_NAME: ${{ env.ORG_NAME }}
         REPO_NAME: ${{ env.REPO_NAME }}
         REF: ${{ github.ref }}
