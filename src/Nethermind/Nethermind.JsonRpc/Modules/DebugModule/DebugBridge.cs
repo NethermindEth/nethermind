@@ -128,6 +128,8 @@ public class DebugBridge : IDebugBridge
     public Transaction? GetTransactionFromHash(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null)
+            return null;
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
