@@ -21,7 +21,7 @@ jobs:
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Libp2p.sln
-        run: dotnet build src/dotnet-libp2p/libp2p/Libp2p.sln -c ${{ matrix.config }}
+        run: dotnet build src/dotnet-libp2p/src/libp2p/Libp2p.sln -c ${{ matrix.config }}
   build:
     name: Build
     runs-on: ubuntu-latest
