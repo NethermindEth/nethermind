@@ -24,15 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public override void Dispose()
         {
             base.Dispose();
-            if (Slots != null)
-            {
-                foreach (IOwnedReadOnlyList<PathWithStorageSlot> pathWithStorageSlots in Slots)
-                {
-                    pathWithStorageSlots?.Dispose();
-                }
-
-                Slots.Dispose();
-            }
+            Slots?.DisposeRecursive();
             Proofs?.Dispose();
         }
     }

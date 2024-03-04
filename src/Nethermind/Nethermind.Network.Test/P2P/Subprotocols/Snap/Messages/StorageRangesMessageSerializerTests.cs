@@ -20,7 +20,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneProof()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
@@ -44,7 +44,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             StorageRangesMessageSerializer serializer = new();
 
             var serialized = serializer.Serialize(msg);
-            var deserialized = serializer.Deserialize(serialized);
+            using var deserialized = serializer.Deserialize(serialized);
 
             SerializerTester.TestZero(serializer, msg);
         }
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneSlot()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
                 Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {

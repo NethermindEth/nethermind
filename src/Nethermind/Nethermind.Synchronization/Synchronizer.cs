@@ -19,14 +19,14 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.FastBlocks
+    ;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization
 {
@@ -90,6 +90,7 @@ namespace Nethermind.Synchronization
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
+        private readonly ProgressTracker _progressTracker;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
@@ -134,12 +135,12 @@ namespace Nethermind.Synchronization
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
-            ProgressTracker progressTracker = new(
+            _progressTracker = new(
                 blockTree,
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(_progressTracker, dbProvider, logManager);
         }
 
         public virtual void Start()
@@ -460,6 +461,7 @@ namespace Nethermind.Synchronization
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();
             ReceiptsSyncFeed?.Dispose();
+            _progressTracker.Dispose();
         }
     }
 }

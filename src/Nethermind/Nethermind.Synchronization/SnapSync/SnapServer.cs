@@ -170,7 +170,7 @@ public class SnapServer : ISnapServer
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         AccountCollector accounts = new AccountCollector();
-        (long _, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+        (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
             rootHash,
             startingHash,
             limitHash?.ToCommitment() ?? Keccak.MaxValue,
@@ -181,11 +181,10 @@ public class SnapServer : ISnapServer
             cancellationToken);
 
         ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
-
-        return nodes.Count == 0 ? (nodes, ArrayPoolList<byte[]>.Empty()) : (nodes, proofs);
+        return (nodes, proofs);
     }
 
-    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
         if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
         byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
@@ -222,7 +221,7 @@ public class SnapServer : ISnapServer
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
             PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
-            (long innerResponseSize, IOwnedReadOnlyList<byte[]>? proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+            (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
                 limitHash1,
@@ -242,6 +241,8 @@ public class SnapServer : ISnapServer
             {
                 return (responseNodes, proofs);
             }
+
+            proofs.Dispose();
             responseSize += innerResponseSize;
         }
 
