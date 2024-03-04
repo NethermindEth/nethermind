@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -23,9 +25,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 {
     public class Eth63ProtocolHandler : Eth62ProtocolHandler
     {
-        private readonly MessageQueue<GetNodeDataMessage, byte[][]> _nodeDataRequests;
+        private readonly MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>> _nodeDataRequests;
 
-        private readonly MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)> _receiptsRequests;
+        private readonly MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)> _receiptsRequests;
 
         private readonly LatencyAndMessageSizeBasedRequestSizer _receiptsRequestSizer = new(
             minRequestLimit: 1,
@@ -55,8 +57,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             ITxGossipPolicy? transactionsGossipPolicy = null)
             : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, gossipPolicy, logManager, transactionsGossipPolicy)
         {
-            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, byte[][]>(Send);
-            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (TxReceipt[][], long)>(Send);
+            _nodeDataRequests = new MessageQueue<GetNodeDataMessage, IOwnedReadOnlyList<byte[]>>(Send);
+            _receiptsRequests = new MessageQueue<GetReceiptsMessage, (IOwnedReadOnlyList<TxReceipt[]>, long)>(Send);
         }
 
         public override byte ProtocolVersion => EthVersions.Eth63;
@@ -73,7 +75,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetReceipts:
                     GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                     ReportIn(getReceiptsMessage, size);
-                    ScheduleSyncServe(getReceiptsMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                     break;
                 case Eth63MessageCode.Receipts:
                     ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
@@ -83,7 +85,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 case Eth63MessageCode.GetNodeData:
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
                     ReportIn(getNodeDataMessage, size);
-                    ScheduleSyncServe(getNodeDataMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
                 case Eth63MessageCode.NodeData:
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
@@ -103,13 +105,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
+            using var message = msg;
             Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            NodeDataMessage response = await FulfillNodeDataRequest(msg, cancellationToken);
+            NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
             stopwatch.Stop();
-            if (Logger.IsTrace)
-                Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
+            if (Logger.IsTrace) Logger.Trace($"OUT {Counter:D5} NodeData to {Node:c} in {stopwatch.Elapsed.TotalMilliseconds}ms");
 
             return response;
         }
@@ -121,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 throw new EthSyncException("Incoming node data request for more than 4096 nodes");
             }
 
-            byte[][] nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
+            IOwnedReadOnlyList<byte[]> nodeData = SyncServer.GetNodeData(msg.Hashes, cancellationToken);
 
             return Task.FromResult(new NodeDataMessage(nodeData));
         }
@@ -132,34 +134,34 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
             _nodeDataRequests.Handle(msg.Data, size);
         }
 
-        public override async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
+        public override async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> keys, CancellationToken token)
         {
             if (keys.Count == 0)
             {
-                return Array.Empty<byte[]>();
+                return ArrayPoolList<byte[]>.Empty();
             }
 
-            GetNodeDataMessage msg = new(keys);
+            GetNodeDataMessage msg = new(keys.ToPooledList());
 
             // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
             // on a sample 3M blocks Goerli fast sync
-            byte[][] nodeData = await SendRequest(msg, token);
+            IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
             return nodeData;
         }
-        public override async Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
+        public override async Task<IOwnedReadOnlyList<TxReceipt[]>> GetReceipts(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             if (blockHashes.Count == 0)
             {
-                return Array.Empty<TxReceipt[]>();
+                return ArrayPoolList<TxReceipt[]>.Empty();
             }
 
-            TxReceipt[][] txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
-                await SendRequest(new GetReceiptsMessage(clampedBlockHashes), token));
+            IOwnedReadOnlyList<TxReceipt[]> txReceipts = await _receiptsRequestSizer.Run(blockHashes, async clampedBlockHashes =>
+                await SendRequest(new GetReceiptsMessage(clampedBlockHashes.ToPooledList()), token));
 
             return txReceipts;
         }
 
-        protected virtual async Task<byte[][]> SendRequest(GetNodeDataMessage message, CancellationToken token)
+        protected virtual async Task<IOwnedReadOnlyList<byte[]>> SendRequest(GetNodeDataMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {
@@ -175,7 +177,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
                 token);
         }
 
-        protected virtual async Task<(TxReceipt[][], long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
+        protected virtual async Task<(IOwnedReadOnlyList<TxReceipt[]>, long)> SendRequest(GetReceiptsMessage message, CancellationToken token)
         {
             if (Logger.IsTrace)
             {

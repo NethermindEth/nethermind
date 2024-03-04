@@ -3,9 +3,12 @@
 
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Int256;
@@ -229,6 +232,21 @@ namespace Nethermind.Store.Test
             retrieved.Should().BeEquivalentTo(newValue);
 
             /* If it failed then it means that the blockchain bridge cached the previous call value */
+        }
+
+
+        [Test]
+        public void Can_collect_stats()
+        {
+            TrieStore trieStore = new TrieStore(new MemDb(), Logger);
+            WorldState provider = new(trieStore, new MemDb(), Logger);
+            provider.CreateAccount(TestItem.AddressA, 1.Ether());
+            provider.Commit(MuirGlacier.Instance);
+            provider.CommitTree(0);
+
+            StateReader stateReader = new StateReader(trieStore.AsReadOnly(), new MemDb(), Logger);
+            var stats = stateReader.CollectStats(provider.StateRoot, new MemDb(), Logger);
+            stats.AccountCount.Should().Be(1);
         }
     }
 }

@@ -88,6 +88,24 @@ public class Config
     )]
     public string? ResponsesTraceFile { get; }
 
+    [Option(
+        shortName: 'e',
+        longName: "rps",
+        Required = false,
+        Default = 0,
+        HelpText = "If set to higher than 0, then requests will be send in selected RPS (Requests per seconds) rate. If 0 (or lower) then requests will be sent sequentionally."
+    )]
+    public int RequestsPerSecond { get; }
+
+    [Option(
+        shortName: 'u',
+        longName: "unwrapBatch",
+        Required = false,
+        Default = false,
+        HelpText = "If true then each batched request will be unwraped to single requests."
+    )]
+    public bool UnwrapBatch { get; }
+
     public Config(
         string messagesFilePath,
         string hostAddress,
@@ -97,7 +115,9 @@ public class Config
         bool showProgress,
         MetricsOutputFormatter metricsOutputFormatter,
         IEnumerable<string> methodFilters,
-        string? responsesTraceFile
+        string? responsesTraceFile,
+        int requestsPerSecond,
+        bool unwrapBatch
     )
     {
         MessagesFilePath = messagesFilePath;
@@ -109,5 +129,7 @@ public class Config
         MetricsOutputFormatter = metricsOutputFormatter;
         MethodFilters = methodFilters;
         ResponsesTraceFile = responsesTraceFile;
+        RequestsPerSecond = requestsPerSecond;
+        UnwrapBatch = unwrapBatch;
     }
 }
