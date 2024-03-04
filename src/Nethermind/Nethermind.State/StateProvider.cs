@@ -634,21 +634,21 @@ namespace Nethermind.State
 
                     if (!((beforeCode?.Length ?? 0) == 0 && (afterCode?.Length ?? 0) == 0))
                     {
-                        stateTracer.ReportCodeChange(address, beforeCode, afterCode);
+                        stateTracer.ReportCodeChange(address, before.IsNull ? null : beforeCode, afterCode);
                     }
 
                     someChangeReported = true;
                 }
 
-                if (afterBalance != beforeBalance)
+                if (afterBalance != beforeBalance || (before.IsNull && !after.IsNull))
                 {
-                    stateTracer.ReportBalanceChange(address, beforeBalance, afterBalance);
+                    stateTracer.ReportBalanceChange(address, before.IsNull ? null : beforeBalance, afterBalance);
                     someChangeReported = true;
                 }
 
-                if (afterNonce != beforeNonce)
+                if (afterNonce != beforeNonce || (before.IsNull && !after.IsNull))
                 {
-                    stateTracer.ReportNonceChange(address, beforeNonce, afterNonce);
+                    stateTracer.ReportNonceChange(address, before.IsNull ? null : beforeNonce, afterNonce);
                     someChangeReported = true;
                 }
 
