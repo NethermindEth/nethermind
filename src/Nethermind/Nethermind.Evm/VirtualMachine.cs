@@ -19,11 +19,11 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -95,7 +95,7 @@ public class VirtualMachine : IVirtualMachine
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
-        where TTracingActions : struct, VirtualMachine.IIsTracing
+        where TTracingActions : struct, IIsTracing
         => _evm.Run<TTracingActions>(state, worldState, txTracer);
 
     private static FrozenDictionary<AddressAsKey, CodeInfo> InitializePrecompiledContracts()
@@ -823,7 +823,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
-            Span<byte> bytes;
+            EvmWord bytes;
             switch (instruction)
             {
                 case Instruction.STOP:
@@ -979,7 +979,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Metrics.ModExpOpcode++;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopEvmWord();
 
                         int leadingZeros = bytes.LeadingZerosCount();
                         if (leadingZeros != 32)
@@ -1003,7 +1003,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         else
                         {
-                            UInt256.Exp(a, new UInt256(bytes, true), out result);
+                            UInt256.Exp(a, new UInt256(bytes.AsSpan(), isBigEndian: true), out result);
                             stack.PushUInt256(in result);
                         }
 
@@ -1022,16 +1022,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         int position = 31 - (int)a;
 
-                        bytes = stack.PeekWord256();
-                        sbyte sign = (sbyte)bytes[position];
+                        var top = stack.PeekWord256();
+                        sbyte sign = (sbyte)top[position];
 
                         if (sign >= 0)
                         {
-                            BytesZero32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesZero32.AsSpan(0, position).CopyTo(top[..position]);
                         }
                         else
                         {
-                            BytesMax32.AsSpan(0, position).CopyTo(bytes[..position]);
+                            BytesMax32.AsSpan(0, position).CopyTo(top[..position]);
                         }
 
                         // Didn't remove from stack so don't need to push back
@@ -1145,11 +1145,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         ref byte bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseAnd(aVec, bVec));
                         break;
@@ -1160,11 +1160,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         ref byte bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.BitwiseOr(aVec, bVec));
                         break;
@@ -1175,11 +1175,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         ref byte bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> aVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord aVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
-                        Vector256<byte> bVec = ReadUnaligned<Vector256<byte>>(ref bytesRef);
+                        EvmWord bVec = ReadUnaligned<EvmWord>(ref bytesRef);
 
                         WriteUnaligned(ref stack.PushBytesRef(), Vector256.Xor(aVec, bVec));
                         break;
@@ -1191,7 +1191,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ref byte bytesRef = ref stack.PopBytesByRef();
                         if (IsNullRef(ref bytesRef)) goto StackUnderflow;
 
-                        Vector256<byte> negVec = Vector256.OnesComplement(ReadUnaligned<Vector256<byte>>(ref bytesRef));
+                        EvmWord negVec = Vector256.OnesComplement(ReadUnaligned<EvmWord>(ref bytesRef));
 
                         WriteUnaligned(ref stack.PushBytesRef(), negVec);
                         break;
@@ -1201,7 +1201,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.VeryLow;
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopEvmWord();
 
                         if (a >= BigInt32)
                         {
@@ -1209,15 +1209,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             break;
                         }
 
-                        int adjustedPosition = bytes.Length - 32 + (int)a;
-                        if (adjustedPosition < 0)
-                        {
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            stack.PushByte(bytes[adjustedPosition]);
-                        }
+                        stack.PushByte(bytes[(int)a]);
 
                         break;
                     }
@@ -1229,8 +1221,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
-                        bytes = vmState.Memory.LoadSpan(in a, b);
-                        stack.PushBytes(ValueKeccak.Compute(bytes).BytesAsSpan);
+                        var span = vmState.Memory.LoadSpan(in a, b);
+                        stack.PushBytes(ValueKeccak.Compute(span).BytesAsSpan);
                         break;
                     }
                 case Instruction.ADDRESS:
@@ -1609,10 +1601,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-                        bytes = vmState.Memory.LoadSpan(in result);
+                        bytes = vmState.Memory.LoadWord(in result);
                         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
 
-                        stack.PushBytes(bytes);
+                        stack.PushWord(bytes);
                         break;
                     }
                 case Instruction.MSTORE:
@@ -1621,7 +1613,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
 
-                        bytes = stack.PopWord256();
+                        bytes = stack.PopEvmWord();
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
                         vmState.Memory.SaveWord(in result, bytes);
                         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
@@ -1667,8 +1659,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.High;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
-                        if (!bytes.SequenceEqual(BytesZero32))
+                        bytes = stack.PopEvmWord();
+                        if (!bytes.IsZero())
                         {
                             if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
                         }
@@ -1995,8 +1987,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
 
-                            ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
-                            stack.PushBytes(value);
+                            EvmWord value = _state.GetTransientState(in storageCell);
+                            stack.PushWord(value);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
@@ -2029,14 +2021,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if (!stack.PopUInt256(out result)) goto StackUnderflow;
                             storageCell = new(env.ExecutingAccount, result);
-                            bytes = stack.PopWord256();
+                            bytes = stack.PopEvmWord();
 
-                            _state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
+                            _state.SetTransientState(in storageCell, bytes);
 
                             if (typeof(TTracingStorage) == typeof(IsTracing))
                             {
                                 if (gasAvailable < 0) goto OutOfGas;
-                                ReadOnlySpan<byte> currentValue = _state.GetTransientState(in storageCell);
+                                EvmWord currentValue = _state.GetTransientState(in storageCell);
                                 _txTracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
                             }
 
@@ -2070,11 +2062,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c);
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) goto OutOfGas;
 
-                            bytes = vmState.Memory.LoadSpan(in b, c);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(b, bytes);
+                            ReadOnlySpan<byte> range = vmState.Memory.LoadSpan(in b, c);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(b, range);
 
-                            vmState.Memory.Save(in a, bytes);
-                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, bytes);
+                            vmState.Memory.Save(in a, range);
+                            if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, range);
 
                             break;
                         }
@@ -2604,8 +2596,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             StorageAccessType.SLOAD,
             spec)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> value = _state.Get(in storageCell);
-        stack.PushBytes(value);
+        EvmWord value = _state.Get(in storageCell);
+        stack.PushWord(value);
         if (typeof(TTracingStorage) == typeof(IsTracing))
         {
             _txTracer.LoadOperationStorage(storageCell.Address, result, value);
@@ -2634,9 +2626,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        ReadOnlySpan<byte> bytes = stack.PopWord256();
+        EvmWord bytes = stack.PopEvmWord();
         bool newIsZero = bytes.IsZero();
-        bytes = !newIsZero ? bytes.WithoutLeadingZeros() : BytesZero;
 
         StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
 
@@ -2647,11 +2638,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StorageAccessType.SSTORE,
                 spec)) return EvmExceptionType.OutOfGas;
 
-        ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
+        EvmWord currentValue = _state.Get(in storageCell);
         // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
-        bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);
+        bool newSameAsCurrent = (newIsZero && currentIsZero) || currentValue == bytes;
         long sClearRefunds = RefundOf.SClear(spec.IsEip3529Enabled);
 
         if (!spec.UseNetGasMetering) // note that for this case we already deducted 5000
@@ -2677,10 +2668,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
             else // net metered, C != N
             {
-                Span<byte> originalValue = _state.GetOriginal(in storageCell);
+                EvmWord originalValue = _state.GetOriginal(in storageCell);
                 bool originalIsZero = originalValue.IsZero();
 
-                bool currentSameAsOriginal = Bytes.AreEqual(originalValue, currentValue);
+                bool currentSameAsOriginal = originalValue == currentValue;
                 if (currentSameAsOriginal)
                 {
                     if (currentIsZero)
@@ -2718,7 +2709,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                     }
 
-                    bool newSameAsOriginal = Bytes.AreEqual(originalValue, bytes);
+                    bool newSameAsOriginal = originalValue == bytes;
                     if (newSameAsOriginal)
                     {
                         long refundFromReversal;
@@ -2740,15 +2731,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!newSameAsCurrent)
         {
-            _state.Set(in storageCell, newIsZero ? BytesZero : bytes.ToArray());
+            _state.Set(in storageCell, bytes);
         }
 
         if (typeof(TTracingInstructions) == typeof(IsTracing))
         {
-            ReadOnlySpan<byte> valueToStore = newIsZero ? BytesZero.AsSpan() : bytes;
             byte[] storageBytes = new byte[32]; // do not stackalloc here
             storageCell.Index.ToBigEndian(storageBytes);
-            _txTracer.ReportStorageChange(storageBytes, valueToStore);
+            _txTracer.ReportStorageChange(storageBytes, bytes);
         }
 
         if (typeof(TTracingStorage) == typeof(IsTracing))

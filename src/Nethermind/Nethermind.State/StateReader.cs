@@ -4,13 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State
 {
@@ -23,14 +21,14 @@ namespace Nethermind.State
 
         public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
-        public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
+        public EvmWord GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
             if (!TryGetAccount(stateRoot, address, out AccountStruct account)) return default;
 
             ValueHash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return Bytes.ZeroByte.Span;
+                return default;
             }
             Metrics.StorageTreeReads++;
             using IReadOnlyState state = GetReadOnlyState(stateRoot);

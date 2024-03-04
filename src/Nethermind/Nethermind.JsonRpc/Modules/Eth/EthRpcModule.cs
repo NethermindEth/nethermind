@@ -35,6 +35,7 @@ using Block = Nethermind.Core.Block;
 using BlockHeader = Nethermind.Core.BlockHeader;
 using Signature = Nethermind.Core.Crypto.Signature;
 using Transaction = Nethermind.Core.Transaction;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -189,8 +190,8 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader? header = searchResult.Object;
-        ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Array.Empty<byte>() : storage!.PadLeft(32));
+        EvmWord storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
+        return ResultWrapper<byte[]>.Success(storage.IsZero() ? Array.Empty<byte>() : storage.ToArray(includeLeadingZeroes: true));
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)

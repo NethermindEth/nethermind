@@ -1,3 +1,8 @@
+// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -10,7 +15,7 @@ using Paprika.Store;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
-using System.Runtime.CompilerServices;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Paprika;
 
@@ -28,12 +33,21 @@ public class PaprikaStateFactory : IStateFactory
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized = 0;
 
+    public PaprikaStateFactory()
+    {
+        _db = PagedDb.NativeMemoryDb(32 * 1024, 2);
+        var merkle = new ComputeMerkleBehavior(2, 2);
+        _blockchain = new Blockchain(_db, merkle);
+        _blockchain.Flushed += (_, flushed) =>
+            ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+    }
+
     public PaprikaStateFactory(string directory, IPaprikaConfig config)
     {
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, true);
+        _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
         ComputeMerkleBehavior merkle = new(1, 1, Memoization.None);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
@@ -64,7 +78,7 @@ public class PaprikaStateFactory : IStateFactory
     private const int CacheSize = 1024;
     private static readonly byte[][] _cache = new byte[CacheSize][];
 
-    private static void GetKey(in UInt256 index, in Span<byte> key)
+    private static void GetKey(in UInt256 index, Span<byte> key)
     {
         if (index < CacheSize)
         {
@@ -122,22 +136,20 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         [SkipLocalsInit]
-        public byte[] GetStorageAt(in StorageCell cell)
+        public EvmWord GetStorageAt(in StorageCell cell)
         {
-            // bytes are used for two purposes, first for the key encoding and second, for the result handling
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
-
-            Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return value.IsEmpty ? ZeroByte : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
         [SkipLocalsInit]
-        public byte[] GetStorageAt(Address address, in ValueHash256 hash)
+        public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
-            Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return value.IsEmpty ? ZeroByte : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
         public Hash256 StateRoot => Convert(wrapped.Hash);
@@ -188,31 +200,30 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         [SkipLocalsInit]
-        public byte[] GetStorageAt(in StorageCell cell)
+        public EvmWord GetStorageAt(in StorageCell cell)
         {
-            // bytes are used for two purposes, first for the key encoding and second, for the result handling
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
 
-            Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return value.IsEmpty ? ZeroByte : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
         [SkipLocalsInit]
-        public byte[] GetStorageAt(Address address, in ValueHash256 hash)
+        public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
-            Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return value.IsEmpty ? ZeroByte : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
-        public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
+        [SkipLocalsInit]
+        public void SetStorage(in StorageCell cell, EvmWord value)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
-            wrapped.SetStorage(converted, new PaprikaKeccak(key),
-                value.IsZero() ? default : value);
+            wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
         }
 
         public void Commit(long blockNumber)

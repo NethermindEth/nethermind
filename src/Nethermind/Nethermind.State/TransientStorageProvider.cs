@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Logging;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State
 {
@@ -21,7 +22,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
+        protected override EvmWord GetCurrentValue(in StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out EvmWord bytes) ? bytes : default;
     }
 }

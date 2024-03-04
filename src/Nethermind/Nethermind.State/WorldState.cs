@@ -10,7 +10,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
 using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 [assembly: InternalsVisibleTo("Ethereum.Test.Base")]
 [assembly: InternalsVisibleTo("Ethereum.Blockchain.Test")]
@@ -28,15 +28,15 @@ namespace Nethermind.State
         private readonly StateProvider _stateProvider;
         private readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
-        private IState? _state;
+        private IState _state;
 
         public Hash256 StateRoot
         {
-            get => _state!.StateRoot;
+            get => _state.StateRoot;
             set
             {
                 // clean previous and get new
-                _state?.Dispose();
+                _state.Dispose();
                 _state = _factory.Get(value);
             }
         }
@@ -47,6 +47,7 @@ namespace Nethermind.State
         {
             _factory = factory;
             _stateProvider = new StateProvider(this, factory, codeDb, logManager);
+            _state = _factory.Get(Keccak.EmptyTreeHash);
             _persistentStorageProvider = new PersistentStorageProvider(this, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
@@ -67,23 +68,23 @@ namespace Nethermind.State
             return _stateProvider.IsContract(address);
         }
 
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public EvmWord GetOriginal(in StorageCell storageCell)
         {
             return _persistentStorageProvider.GetOriginal(storageCell);
         }
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public EvmWord Get(in StorageCell storageCell)
         {
             return _persistentStorageProvider.Get(storageCell);
         }
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, EvmWord newValue)
         {
             _persistentStorageProvider.Set(storageCell, newValue);
         }
-        public ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell)
+        public EvmWord GetTransientState(in StorageCell storageCell)
         {
             return _transientStorageProvider.Get(storageCell);
         }
-        public void SetTransientState(in StorageCell storageCell, byte[] newValue)
+        public void SetTransientState(in StorageCell storageCell, EvmWord newValue)
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
@@ -103,7 +104,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
-            _state?.Dispose();
+            _state.Dispose();
             _state = _factory.Get(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();

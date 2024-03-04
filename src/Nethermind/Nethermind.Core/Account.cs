@@ -185,9 +185,9 @@ namespace Nethermind.Core
             => new(_nonce, _balance, storageRoot, _codeHash);
 
         public AccountStruct WithChangedNonce(in UInt256 nonce)
-            => new (nonce, _balance, _storageRoot, _codeHash);
+            => new(nonce, _balance, _storageRoot, _codeHash);
 
         public AccountStruct WithChangedBalance(in UInt256 balance)
-            => new (_nonce, balance, _storageRoot, _codeHash);
+            => new(_nonce, balance, _storageRoot, _codeHash);
     }
 }

@@ -5,8 +5,10 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.State.Tracing;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -245,6 +247,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="offset"></param>
     /// <param name="data"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    void ReportMemoryChange(long offset, EvmWord data)
+        => ReportMemoryChange(offset, data.AsSpan());
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="offset"></param>
+    /// <param name="data"></param>
+    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportMemoryChange(UInt256 offset, in ReadOnlySpan<byte> data)
     {
         if (offset is { u1: <= 0, u2: <= 0, u3: <= 0, u0: <= long.MaxValue })
@@ -252,6 +263,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
             ReportMemoryChange((long)offset, data);
         }
     }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="offset"></param>
+    /// <param name="data"></param>
+    /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
+    void ReportMemoryChange(UInt256 offset, EvmWord data)
+        => ReportMemoryChange(offset, data.AsSpan());
 
     /// <summary>
     ///
@@ -288,12 +308,34 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
+    /// <param name="address"></param>
+    /// <param name="storageIndex"></param>
+    /// <param name="newValue"></param>
+    /// <param name="currentValue"></param>
+    /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
+    void SetOperationStorage(Address address, UInt256 storageIndex, EvmWord newValue, EvmWord currentValue)
+        => SetOperationStorage(address, storageIndex, newValue.AsSpan(), currentValue.AsSpan());
+
+    /// <summary>
+    ///
+    /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
     /// <param name="newValue"></param>
     /// <param name="currentValue"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) { }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="storageCellAddress"></param>
+    /// <param name="storageIndex"></param>
+    /// <param name="newValue"></param>
+    /// <param name="currentValue"></param>
+    /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
+    void SetOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, EvmWord newValue, EvmWord currentValue)
+        => SetOperationTransientStorage(storageCellAddress, storageIndex, newValue.AsSpan(), currentValue.AsSpan());
 
     /// <summary>
     ///
@@ -307,11 +349,31 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
+    /// <param name="address"></param>
+    /// <param name="storageIndex"></param>
+    /// <param name="value"></param>
+    /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
+    void LoadOperationStorage(Address address, UInt256 storageIndex, EvmWord value)
+        => LoadOperationStorage(address, storageIndex, value.AsSpan());
+
+    /// <summary>
+    ///
+    /// </summary>
     /// <param name="storageCellAddress"></param>
     /// <param name="storageIndex"></param>
     /// <param name="value"></param>
     /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
     void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, ReadOnlySpan<byte> value) { }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="storageCellAddress"></param>
+    /// <param name="storageIndex"></param>
+    /// <param name="value"></param>
+    /// <remarks>Depends on <see cref="IsTracingOpLevelStorage"/></remarks>
+    void LoadOperationTransientStorage(Address storageCellAddress, UInt256 storageIndex, EvmWord value)
+        => LoadOperationTransientStorage(storageCellAddress, storageIndex, value.AsSpan());
 
     /// <summary>
     ///

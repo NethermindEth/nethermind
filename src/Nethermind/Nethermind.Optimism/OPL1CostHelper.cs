@@ -4,6 +4,7 @@
 using System;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Serialization.Rlp;
@@ -37,9 +38,9 @@ public class OPL1CostHelper : IL1CostHelper
         if (dataGas == 0)
             return UInt256.Zero;
 
-        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
-        UInt256 overhead = new(worldState.Get(_overheadSlot), true);
-        UInt256 scalar = new(worldState.Get(_scalarSlot), true);
+        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot).AsReadOnlySpan(), isBigEndian: true);
+        UInt256 overhead = new(worldState.Get(_overheadSlot).AsReadOnlySpan(), isBigEndian: true);
+        UInt256 scalar = new(worldState.Get(_scalarSlot).AsReadOnlySpan(), isBigEndian: true);
 
         return ((UInt256)dataGas + overhead) * l1BaseFee * scalar / 1_000_000;
     }

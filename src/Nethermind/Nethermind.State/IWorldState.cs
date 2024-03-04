@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Tracing;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State;
 /// <summary>
@@ -20,35 +21,35 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// </summary>
     /// <param name="storageCell"></param>
     /// <returns></returns>
-    byte[] GetOriginal(in StorageCell storageCell);
+    EvmWord GetOriginal(in StorageCell storageCell);
 
     /// <summary>
     /// Get the persistent storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> Get(in StorageCell storageCell);
+    EvmWord Get(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to persistent storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void Set(in StorageCell storageCell, byte[] newValue);
+    void Set(in StorageCell storageCell, EvmWord newValue);
 
     /// <summary>
     /// Get the transient storage value at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <returns>Value at cell</returns>
-    ReadOnlySpan<byte> GetTransientState(in StorageCell storageCell);
+    EvmWord GetTransientState(in StorageCell storageCell);
 
     /// <summary>
     /// Set the provided value to transient storage at the specified storage cell
     /// </summary>
     /// <param name="storageCell">Storage location</param>
     /// <param name="newValue">Value to store</param>
-    void SetTransientState(in StorageCell storageCell, byte[] newValue);
+    void SetTransientState(in StorageCell storageCell, EvmWord newValue);
 
     /// <summary>
     /// Resets the world state to the given state root.

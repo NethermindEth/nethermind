@@ -6,6 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 
 using Nethermind.Core.Crypto;
 
@@ -13,6 +14,24 @@ namespace Nethermind.Core.Extensions
 {
     public static class SpanExtensions
     {
+        public static byte[] ToArray(this Vector256<byte> word, bool includeLeadingZeroes = false)
+            => word.AsReadOnlySpan(includeLeadingZeroes).ToArray();
+
+        public static Span<byte> AsSpan(this ref Vector256<byte> word)
+        {
+            Span<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1));
+            return span[word.LeadingZerosCount()..];
+        }
+
+        public static ReadOnlySpan<byte> AsReadOnlySpan(this in Vector256<byte> word, bool includeLeadingZeroes = false)
+        {
+            ReadOnlySpan<byte> span = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in word, 1));
+            return includeLeadingZeroes ? span : span[word.LeadingZerosCount()..];
+        }
+
+        public static string ToHexString(this in Vector256<byte> word, bool withZeroX)
+            => ToHexString(word.AsReadOnlySpan(), withZeroX, false, false);
+
         public static string ToHexString(this in ReadOnlySpan<byte> span, bool withZeroX)
         {
             return ToHexString(span, withZeroX, false, false);

@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State
 {
@@ -29,7 +30,7 @@ namespace Nethermind.State
         // this is needed for OriginalValues for new transactions
         protected readonly Stack<int> _transactionChangesSnapshots = new();
 
-        protected static readonly byte[] _zeroValue = { 0 };
+        protected static readonly EvmWord _zeroValue = default;
 
         protected PartialStorageProviderBase(ILogManager? logManager)
         {
@@ -41,7 +42,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at cell</returns>
-        public ReadOnlySpan<byte> Get(in StorageCell storageCell)
+        public EvmWord Get(in StorageCell storageCell)
         {
             return GetCurrentValue(in storageCell);
         }
@@ -51,7 +52,7 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <param name="newValue">Value to store</param>
-        public void Set(in StorageCell storageCell, byte[] newValue)
+        public void Set(in StorageCell storageCell, EvmWord newValue)
         {
             PushUpdate(in storageCell, newValue);
         }
@@ -152,20 +153,20 @@ namespace Nethermind.State
 
         protected readonly struct ChangeTrace
         {
-            public ChangeTrace(byte[]? before, byte[]? after)
+            public ChangeTrace(EvmWord before, EvmWord after)
             {
-                After = after ?? _zeroValue;
-                Before = before ?? _zeroValue;
+                After = after;
+                Before = before;
             }
 
-            public ChangeTrace(byte[]? after)
+            public ChangeTrace(EvmWord after)
             {
-                After = after ?? _zeroValue;
-                Before = _zeroValue;
+                After = after;
+                Before = default;
             }
 
-            public byte[] Before { get; }
-            public byte[] After { get; }
+            public readonly EvmWord Before;
+            public readonly EvmWord After;
         }
 
         /// <summary>
@@ -215,7 +216,7 @@ namespace Nethermind.State
         /// <param name="storageCell">Storage location</param>
         /// <param name="bytes">Resulting value</param>
         /// <returns>True if value has been set</returns>
-        protected bool TryGetCachedValue(in StorageCell storageCell, out byte[]? bytes)
+        protected bool TryGetCachedValue(in StorageCell storageCell, out EvmWord bytes)
         {
             if (_intraBlockCache.TryGetValue(storageCell, out StackList<int> stack))
             {
@@ -226,7 +227,7 @@ namespace Nethermind.State
                 }
             }
 
-            bytes = null;
+            bytes = default;
             return false;
         }
 
@@ -235,14 +236,14 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected abstract ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell);
+        protected abstract EvmWord GetCurrentValue(in StorageCell storageCell);
 
         /// <summary>
         /// Update the storage cell with provided value
         /// </summary>
         /// <param name="cell">Storage location</param>
         /// <param name="value">Value to set</param>
-        private void PushUpdate(in StorageCell cell, byte[] value)
+        private void PushUpdate(in StorageCell cell, EvmWord value)
         {
             StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
@@ -301,7 +302,7 @@ namespace Nethermind.State
         /// </summary>
         protected class Change
         {
-            public Change(ChangeType changeType, StorageCell storageCell, byte[] value)
+            public Change(ChangeType changeType, StorageCell storageCell, EvmWord value)
             {
                 StorageCell = storageCell;
                 Value = value;
@@ -309,8 +310,8 @@ namespace Nethermind.State
             }
 
             public ChangeType ChangeType { get; }
-            public StorageCell StorageCell { get; }
-            public byte[] Value { get; }
+            public readonly StorageCell StorageCell;
+            public readonly EvmWord Value;
         }
 
         /// <summary>

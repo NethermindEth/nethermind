@@ -188,10 +188,26 @@ namespace Nethermind.Core.Extensions
             return bytes.IndexOfAnyExcept((byte)0) < 0;
         }
 
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static bool IsZero(this Vector256<byte> bytes)
+            => bytes == default;
+
         public static int LeadingZerosCount(this Span<byte> bytes, int startIndex = 0)
         {
             int nonZeroIndex = bytes[startIndex..].IndexOfAnyExcept((byte)0);
             return nonZeroIndex < 0 ? bytes.Length - startIndex : nonZeroIndex;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static int LeadingZerosCount(this Vector256<byte> bytes)
+        {
+            if (Avx2.IsSupported)
+            {
+                int mask = ~Avx2.MoveMask(Avx2.CompareEqual(bytes, default));
+                return BitOperations.TrailingZeroCount((uint)mask);
+            }
+
+            return LeadingZerosCount(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref bytes, 1)));
         }
 
         public static int TrailingZerosCount(this byte[] bytes)
@@ -203,6 +219,17 @@ namespace Nethermind.Core.Extensions
         public static ReadOnlySpan<byte> WithoutLeadingZeros(this byte[] bytes)
         {
             return bytes.AsSpan().WithoutLeadingZeros();
+        }
+
+        public static Vector256<byte> ToEvmWord(this byte[] bytes)
+            => bytes.AsSpan().ToEvmWord();
+
+        public static Vector256<byte> ToEvmWord(this Span<byte> bytes)
+        {
+            Vector256<byte> word = default;
+            bytes = bytes.Slice(bytes.LeadingZerosCount());
+            bytes.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1)).Slice(32 - bytes.Length));
+            return word;
         }
 
         public static ReadOnlySpan<byte> WithoutLeadingZerosOrEmpty(this byte[] bytes)

@@ -17,7 +17,7 @@ using Nethermind.Core.Extensions;
 namespace Nethermind.Evm;
 
 using static VirtualMachine;
-using Word = Vector256<byte>;
+using EvmWord = Vector256<byte>;
 
 public ref struct EvmStack<TTracing>
     where TTracing : struct, IIsTracing
@@ -39,6 +39,18 @@ public ref struct EvmStack<TTracing>
 
     private readonly ITxTracer _tracer;
 
+    public void PushWord(EvmWord value)
+    {
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
+
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), value);
+
+        if (++Head >= MaxStackSize)
+        {
+            EvmStack.ThrowEvmStackOverflowException();
+        }
+    }
+
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
@@ -50,7 +62,7 @@ public ref struct EvmStack<TTracing>
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(value)));
         }
 
         if (++Head >= MaxStackSize)
@@ -72,7 +84,7 @@ public ref struct EvmStack<TTracing>
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(valueSpan)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(valueSpan)));
         }
 
         if (++Head >= MaxStackSize)
@@ -168,13 +180,13 @@ public ref struct EvmStack<TTracing>
         {
             Vector256<ulong> permute = Unsafe.As<UInt256, Vector256<ulong>>(ref Unsafe.AsRef(in value));
             Vector256<ulong> convert = Avx2.Permute4x64(permute, 0b_01_00_11_10);
-            Word shuffle = Vector256.Create(
+            EvmWord shuffle = Vector256.Create(
                 (byte)
                 31, 30, 29, 28, 27, 26, 25, 24,
                 23, 22, 21, 20, 19, 18, 17, 16,
                 15, 14, 13, 12, 11, 10, 9, 8,
                 7, 6, 5, 4, 3, 2, 1, 0);
-            Unsafe.WriteUnaligned(ref bytes, Avx2.Shuffle(Unsafe.As<Vector256<ulong>, Word>(ref convert), shuffle));
+            Unsafe.WriteUnaligned(ref bytes, Avx2.Shuffle(Unsafe.As<Vector256<ulong>, EvmWord>(ref convert), shuffle));
         }
         else
         {
@@ -235,15 +247,15 @@ public ref struct EvmStack<TTracing>
 
         if (Avx2.IsSupported)
         {
-            Word data = Unsafe.ReadUnaligned<Word>(ref bytes);
-            Word shuffle = Vector256.Create(
+            EvmWord data = Unsafe.ReadUnaligned<EvmWord>(ref bytes);
+            EvmWord shuffle = Vector256.Create(
                 (byte)
                 31, 30, 29, 28, 27, 26, 25, 24,
                 23, 22, 21, 20, 19, 18, 17, 16,
                 15, 14, 13, 12, 11, 10, 9, 8,
                 7, 6, 5, 4, 3, 2, 1, 0);
-            Word convert = Avx2.Shuffle(data, shuffle);
-            Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<Word, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
+            EvmWord convert = Avx2.Shuffle(data, shuffle);
+            Vector256<ulong> permute = Avx2.Permute4x64(Unsafe.As<EvmWord, Vector256<ulong>>(ref convert), 0b_01_00_11_10);
             result = Unsafe.As<Vector256<ulong>, UInt256>(ref permute);
         }
         else
@@ -324,6 +336,16 @@ public ref struct EvmStack<TTracing>
         return _bytes.Slice(Head * WordSize, WordSize);
     }
 
+    public EvmWord PopEvmWord()
+    {
+        if (Head-- == 0)
+        {
+            EvmStack.ThrowEvmStackUnderflowException();
+        }
+
+        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize));
+    }
+
     public byte PopByte()
     {
         if (Head-- == 0)
@@ -345,7 +367,7 @@ public ref struct EvmStack<TTracing>
         }
         else
         {
-            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, Word>(ref MemoryMarshal.GetReference(value)));
+            Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(value)));
         }
 
         if (++Head >= MaxStackSize)
@@ -363,7 +385,7 @@ public ref struct EvmStack<TTracing>
         ref byte from = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte to = ref Unsafe.Add(ref bytes, Head * WordSize);
 
-        Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<Word>(ref from));
+        Unsafe.WriteUnaligned(ref to, Unsafe.ReadUnaligned<EvmWord>(ref from));
 
         if (typeof(TTracing) == typeof(IsTracing))
         {
@@ -397,8 +419,8 @@ public ref struct EvmStack<TTracing>
         ref byte bottom = ref Unsafe.Add(ref bytes, (Head - depth) * WordSize);
         ref byte top = ref Unsafe.Add(ref bytes, (Head - 1) * WordSize);
 
-        Word buffer = Unsafe.ReadUnaligned<Word>(ref bottom);
-        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<Word>(ref top));
+        EvmWord buffer = Unsafe.ReadUnaligned<EvmWord>(ref bottom);
+        Unsafe.WriteUnaligned(ref bottom, Unsafe.ReadUnaligned<EvmWord>(ref top));
         Unsafe.WriteUnaligned(ref top, buffer);
 
         if (typeof(TTracing) == typeof(IsTracing))
@@ -420,7 +442,7 @@ public ref struct EvmStack<TTracing>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private readonly void ClearWordAtHead()
     {
-        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), Word.Zero);
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), EvmWord.Zero);
     }
 }
 

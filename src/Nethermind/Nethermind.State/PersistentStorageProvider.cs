@@ -5,12 +5,11 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
-using Nethermind.Trie.Pruning;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State
 {
@@ -26,7 +25,7 @@ namespace Nethermind.State
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+        private readonly ResettableDictionary<StorageCell, EvmWord> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
@@ -52,15 +51,15 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        protected override EvmWord GetCurrentValue(in StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out EvmWord bytes) ? bytes : LoadFromTree(storageCell);
 
         /// <summary>
         /// Return the original persistent storage value from the storage cell
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public EvmWord GetOriginal(in StorageCell storageCell)
         {
             if (!_originalValues.TryGetValue(storageCell, out var value))
             {
@@ -186,13 +185,13 @@ namespace Nethermind.State
         }
 
 
-        private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
+        private EvmWord LoadFromTree(in StorageCell storageCell)
         {
             Db.Metrics.StorageTreeReads++;
 
             if (!storageCell.IsHash)
             {
-                byte[] value = _owner.State.GetStorageAt(storageCell);
+                EvmWord value = _owner.State.GetStorageAt(storageCell);
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
@@ -200,7 +199,7 @@ namespace Nethermind.State
             return _owner.State.GetStorageAt(storageCell.Address, storageCell.Hash);
         }
 
-        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+        private void PushToRegistryOnly(in StorageCell cell, EvmWord value)
         {
             StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
@@ -213,12 +212,9 @@ namespace Nethermind.State
         {
             foreach ((StorageCell address, ChangeTrace change) in trace)
             {
-                byte[] before = change.Before;
-                byte[] after = change.After;
-
-                if (!Bytes.AreEqual(before, after))
+                if (change.Before != change.After)
                 {
-                    tracer.ReportStorageChange(address, before, after);
+                    tracer.ReportStorageChange(address, change.Before.AsReadOnlySpan(), change.After.AsReadOnlySpan());
                 }
             }
         }

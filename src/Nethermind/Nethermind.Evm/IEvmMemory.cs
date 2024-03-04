@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 
@@ -13,7 +12,7 @@ public interface IEvmMemory : IDisposable
     ulong Size { get; }
     void SaveWord(in UInt256 location, Span<byte> word);
     void SaveByte(in UInt256 location, byte value);
-    void Save(in UInt256 location, Span<byte> value);
+    void Save(in UInt256 location, ReadOnlySpan<byte> value);
     void Save(in UInt256 location, byte[] value);
     Span<byte> LoadSpan(in UInt256 location);
     Span<byte> LoadSpan(in UInt256 location, in UInt256 length);
