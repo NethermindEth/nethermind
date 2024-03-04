@@ -137,8 +137,8 @@ public class DbConfig : IDbConfig
     public bool CodeDbUseHashIndex { get; set; } = true;
     public ulong? CodeDbRowCacheSize { get; set; } = (ulong)16.MiB();
     public bool? CodeDbUseHashSkipListMemtable { get; set; } = true;
-    public bool? CodeUseDirectReads { get; set; } = false;
-    public bool? CodeUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? CodeUseDirectReads { get; set; }
+    public bool? CodeUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? CodeCompactionReadAhead { get; set; }
     public IDictionary<string, string>? CodeDbAdditionalRocksDbOptions { get; set; }
 
@@ -157,8 +157,8 @@ public class DbConfig : IDbConfig
     public int? WitnessDbMaxOpenFiles { get; set; }
     public long? WitnessDbMaxBytesPerSec { get; set; }
     public int? WitnessDbBlockSize { get; set; }
-    public bool? WitnessUseDirectReads { get; set; } = false;
-    public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? WitnessUseDirectReads { get; set; }
+    public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? WitnessCompactionReadAhead { get; set; }
     public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
 
@@ -170,8 +170,8 @@ public class DbConfig : IDbConfig
     public int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
     public long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
     public int? CanonicalHashTrieDbBlockSize { get; set; }
-    public bool? CanonicalHashTrieUseDirectReads { get; set; } = false;
-    public bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? CanonicalHashTrieUseDirectReads { get; set; }
+    public bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
     public IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
 
@@ -182,8 +182,8 @@ public class DbConfig : IDbConfig
     public int? MetadataDbMaxOpenFiles { get; set; }
     public long? MetadataDbMaxBytesPerSec { get; set; }
     public int? MetadataDbBlockSize { get; set; }
-    public bool? MetadataUseDirectReads { get; set; } = false;
-    public bool? MetadataUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? MetadataUseDirectReads { get; set; }
+    public bool? MetadataUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? MetadataCompactionReadAhead { get; set; }
     public IDictionary<string, string>? MetadataDbAdditionalRocksDbOptions { get; set; }
 
@@ -194,29 +194,29 @@ public class DbConfig : IDbConfig
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
     public int? StateDbBlockSize { get; set; } = 4 * 1024;
-    public bool? StateDbUseDirectReads { get; set; } = false;
-    public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; } = false;
+    public bool? StateDbUseDirectReads { get; set; }
+    public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? StateDbCompactionReadAhead { get; set; }
-    public bool? StateDbDisableCompression { get; set; } = false;
+    public bool? StateDbDisableCompression { get; set; }
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public bool StateDbUseTwoLevelIndex { get; set; } = true;
     public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
-    public bool StateDbAllowMmapReads { get; set; } = false;
-    public bool StateDbVerifyChecksum { get; set; } = true;
+    public bool StateDbAllowMmapReads { get; set; }
+    public bool StateDbVerifyChecksum { get; set; }
     public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
     public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
-    public ulong? StateDbMaxCompactionBytes { get; set; } = null;
+    public ulong? StateDbMaxCompactionBytes { get; set; }
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
-    public ulong? StateDbRowCacheSize { get; set; } = null;
+    public ulong? StateDbRowCacheSize { get; set; }
     public bool StateDbOptimizeFiltersForHits { get; set; } = true;
     public bool StateDbOnlyCompressLastLevel { get; set; } = false;
-    public long? StateDbMaxWriteBufferSizeToMaintain { get; set; } = null;
+    public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
-    public int StateDbBlockRestartInterval { get; set; } = 16;
+    public int StateDbBlockRestartInterval { get; set; }
     public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
-    public bool StateDbAdviseRandomOnOpen { get; set; } = true;
-    public int StateDbBloomFilterBitsPerKey { get; set; } = 10;
+    public bool StateDbAdviseRandomOnOpen { get; set; }
+    public int StateDbBloomFilterBitsPerKey { get; set; }
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;
