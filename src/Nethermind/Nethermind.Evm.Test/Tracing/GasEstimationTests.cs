@@ -2,9 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
+using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -13,9 +14,10 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing
@@ -33,9 +35,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Does_not_take_into_account_precompiles()
+        public async Task Does_not_take_into_account_precompiles()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -66,9 +68,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_top_level()
+        public async Task Handles_well_top_level()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -80,9 +82,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_serial_calls()
+        public async Task Handles_well_serial_calls()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -108,9 +110,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_errors()
+        public async Task Handles_well_errors()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -138,9 +140,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_revert()
+        public async Task Handles_well_revert()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             long gasLimit = 100_000_000;
             Transaction tx = Build.A.Transaction.WithGasLimit(gasLimit).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).WithGasLimit(gasLimit).TestObject;
@@ -162,9 +164,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Easy_one_level_case()
+        public async Task Easy_one_level_case()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -180,9 +182,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_precompile_out_of_gas()
+        public async Task Handles_well_precompile_out_of_gas()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(128).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -199,9 +201,9 @@ namespace Nethermind.Evm.Test.Tracing
 
 
         [Test]
-        public void Handles_well_nested_calls_where_most_nested_defines_excess()
+        public async Task Handles_well_nested_calls_where_most_nested_defines_excess()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -229,9 +231,9 @@ namespace Nethermind.Evm.Test.Tracing
         }
 
         [Test]
-        public void Handles_well_nested_calls_where_least_nested_defines_excess()
+        public async Task Handles_well_nested_calls_where_least_nested_defines_excess()
         {
-            TestEnvironment testEnvironment = new();
+            await using TestEnvironment testEnvironment = new();
             Transaction tx = Build.A.Transaction.WithGasLimit(1000).TestObject;
             Block block = Build.A.Block.WithNumber(1).WithTransactions(tx).TestObject;
 
@@ -258,7 +260,7 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(17);
         }
 
-        private class TestEnvironment
+        private class TestEnvironment : IAsyncDisposable
         {
             public ISpecProvider _specProvider;
             public IEthereumEcdsa _ethereumEcdsa;
@@ -266,13 +268,14 @@ namespace Nethermind.Evm.Test.Tracing
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
+            private PaprikaStateFactory _stateDb;
 
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
-                MemDb stateDb = new();
-                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+                _stateDb = new PaprikaStateFactory();
+                _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
+                _stateProvider.StateRoot = Keccak.EmptyTreeHash;
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
@@ -286,6 +289,8 @@ namespace Nethermind.Evm.Test.Tracing
                 BlocksConfig blocksConfig = new();
                 estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
             }
+
+            public ValueTask DisposeAsync() => _stateDb.DisposeAsync();
         }
     }
 }

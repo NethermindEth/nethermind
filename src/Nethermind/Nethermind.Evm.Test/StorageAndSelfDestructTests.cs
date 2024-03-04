@@ -358,7 +358,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(deploymentAddress, UInt256.One);
             TestState.InsertCode(deploymentAddress, contractCode, MuirGlacier.Instance);
 
-            TestState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 });
+            TestState.Set(new StorageCell(deploymentAddress, 7), new byte[] { 7 }.ToEvmWord());
             TestState.Commit(MuirGlacier.Instance);
             TestState.CommitTree(0);
 

@@ -28,6 +28,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
@@ -73,7 +74,7 @@ public class TestBlockchain : IDisposable
     public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
-    public TrieStore TrieStore { get; set; } = null!;
+    public IStateFactory StateFactory { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
     public ISpecProvider SpecProvider { get; set; } = null!;
@@ -107,8 +108,6 @@ public class TestBlockchain : IDisposable
     public IBlockValidator BlockValidator { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
 
-    public IReadOnlyTrieStore ReadOnlyTrieStore { get; private set; } = null!;
-
     public ManualTimestamper Timestamper { get; protected set; } = null!;
 
     public ProducedBlockSuggester Suggester { get; protected set; } = null!;
@@ -122,8 +121,8 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = new TrieStore(StateDb, LogManager);
-        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
+        StateFactory = new PaprikaStateFactory();
+        State = new WorldState(StateFactory, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account
         if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
@@ -141,13 +140,12 @@ public class TestBlockchain : IDisposable
         Hash256 codeHash = Keccak.Compute(code);
         State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef").ToEvmWord());
 
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
-        StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
+        StateReader = new StateReader(StateFactory, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()
             .WithSpecProvider(SpecProvider)
@@ -163,7 +161,7 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(StateFactory, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
@@ -255,7 +253,8 @@ public class TestBlockchain : IDisposable
         BlocksConfig blocksConfig = new();
 
         BlockProducerEnvFactory blockProducerEnvFactory = new(
-            WorldStateManager,
+            null!, // TODO: _apiDbProvider,
+            StateFactory,
             BlockTree,
             SpecProvider,
             BlockValidator,
@@ -416,6 +415,7 @@ public class TestBlockchain : IDisposable
 
         _trieStoreWatcher?.Dispose();
         DbProvider?.Dispose();
+        StateFactory?.DisposeAsync();
     }
 
     /// <summary>

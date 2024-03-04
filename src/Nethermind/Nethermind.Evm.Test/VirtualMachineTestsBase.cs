@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,8 +16,8 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -32,10 +31,10 @@ public class VirtualMachineTestsBase
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
-    private IDb _stateDb;
+    private PaprikaStateFactory _stateDb;
 
     protected VirtualMachine Machine { get; private set; }
-    protected IWorldState TestState { get; private set; }
+    protected Nethermind.State.IWorldState TestState { get; private set; }
     protected static Address Contract { get; } = new("0xd75a3a95360e44a3874e691fb48d77855f127069");
     protected static Address Sender { get; } = TestItem.AddressA;
     protected static Address Recipient { get; } = TestItem.AddressB;
@@ -62,9 +61,8 @@ public class VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         IDb codeDb = new MemDb();
-        _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-        TestState = new WorldState(trieStore, codeDb, logManager);
+        _stateDb = new PaprikaStateFactory();
+        TestState = new WorldState(_stateDb, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
         IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
@@ -72,7 +70,7 @@ public class VirtualMachineTestsBase
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.Dispose();
+    public virtual void TearDown() => _stateDb?.DisposeAsync();
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {
@@ -323,31 +321,31 @@ public class VirtualMachineTestsBase
 
     protected void AssertStorage(UInt256 address, Address value)
     {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.Bytes.PadLeft(32)), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, address)), Is.EqualTo(value.Bytes.ToEvmWord()), "storage");
     }
 
     protected void AssertStorage(UInt256 address, Hash256 value)
     {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(value.BytesToArray()), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, address)), Is.EqualTo(value.BytesToArray().ToEvmWord()), "storage");
     }
 
     protected void AssertStorage(UInt256 address, ReadOnlySpan<byte> value)
     {
-        Assert.That(TestState.Get(new StorageCell(Recipient, address)).PadLeft(32), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray()), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, address)), Is.EqualTo(new ZeroPaddedSpan(value, 32 - value.Length, PadDirection.Left).ToArray().ToEvmWord()), "storage");
     }
 
     protected void AssertStorage(UInt256 address, BigInteger expectedValue)
     {
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
-        byte[] expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32) : expectedValue.ToBigEndianByteArray();
+        var actualValue = TestState.Get(new StorageCell(Recipient, address));
+        var expected = expectedValue < 0 ? expectedValue.ToBigEndianByteArray(32).ToEvmWord() : expectedValue.ToBigEndianByteArray().ToEvmWord();
         Assert.That(actualValue, Is.EqualTo(expected), "storage");
     }
 
     protected void AssertStorage(UInt256 address, UInt256 expectedValue)
     {
-        byte[] bytes = ((BigInteger)expectedValue).ToBigEndianByteArray();
+        var bytes = ((BigInteger)expectedValue).ToBigEndianByteArray().ToEvmWord();
 
-        byte[] actualValue = TestState.Get(new StorageCell(Recipient, address)).ToArray();
+        var actualValue = TestState.Get(new StorageCell(Recipient, address));
         Assert.That(actualValue, Is.EqualTo(bytes), "storage");
     }
 
@@ -358,12 +356,12 @@ public class VirtualMachineTestsBase
         _callIndex++;
         if (!TestState.AccountExists(storageCell.Address))
         {
-            Assert.That(new byte[] { 0 }, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
+            Assert.That(new byte[] { 0 }.ToEvmWord(), Is.EqualTo(expectedValue.ToBigEndian().ToEvmWord()), $"storage {storageCell}, call {_callIndex}");
         }
         else
         {
-            byte[] actualValue = TestState.Get(storageCell).ToArray();
-            Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().WithoutLeadingZeros().ToArray()), $"storage {storageCell}, call {_callIndex}");
+            var actualValue = TestState.Get(storageCell);
+            Assert.That(actualValue, Is.EqualTo(expectedValue.ToBigEndian().ToEvmWord()), $"storage {storageCell}, call {_callIndex}");
         }
     }
 

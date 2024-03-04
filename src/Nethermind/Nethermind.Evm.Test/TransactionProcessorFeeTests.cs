@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -12,11 +11,12 @@ using Nethermind.Db;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using FluentAssertions;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -29,15 +29,16 @@ public class TransactionProcessorFeeTests
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 
+    private PaprikaStateFactory _stateDb;
+
     [SetUp]
     public void Setup()
     {
         _spec = new(London.Instance);
         _specProvider = new TestSpecProvider(_spec);
 
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _stateDb = new PaprikaStateFactory();
+        _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -46,6 +47,9 @@ public class TransactionProcessorFeeTests
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
+
+    [TearDown]
+    public virtual void TearDown() => _stateDb?.DisposeAsync();
 
     [TestCase(true, true)]
     [TestCase(false, true)]

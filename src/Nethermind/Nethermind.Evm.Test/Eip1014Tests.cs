@@ -106,7 +106,7 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
-            TestState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
+            TestState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 }.ToEvmWord());
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
