@@ -225,6 +225,7 @@ jobs:
       uses: actions/checkout@v4
       with:
         ref: ${{ inputs.nethermind_repo_ref }}
+        submodules: recursive
 
     - name: Prepare docker tag
       id: prepare_ref
