@@ -53,7 +53,7 @@ namespace Nethermind.Trie.Test
                 _dbProvider = TestMemDbProvider.Init();
                 _persistenceStrategy = persistenceStrategy;
                 _pruningStrategy = pruningStrategy;
-                _stateDb = new ();
+                _stateDb = new();
                 _stateProvider = new WorldState(_stateDb, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_stateDb, _dbProvider.CodeDb, _logManager);
             }
@@ -190,7 +190,7 @@ namespace Nethermind.Trie.Test
             public PruningContext DisposeAndRecreate()
             {
                 _stateDb.DisposeAsync().GetAwaiter().GetResult();
-                _stateDb = new ();
+                _stateDb = new();
                 _stateProvider = new WorldState(_stateDb, _dbProvider.CodeDb, _logManager);
                 _stateReader = new StateReader(_stateDb, _dbProvider.CodeDb, _logManager);
                 return this;
