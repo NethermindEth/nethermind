@@ -3,7 +3,7 @@ name: Publish Docker image
 on:
   push:
     branches: [master, release/*]
-    paths: [src/Nethermind/**]
+    paths: [src/**]
 
   workflow_dispatch:
     inputs:
