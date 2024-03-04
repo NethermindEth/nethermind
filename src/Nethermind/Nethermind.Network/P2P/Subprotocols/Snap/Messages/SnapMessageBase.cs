@@ -13,7 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// Request ID to match up responses with
         /// </summary>
-        public long RequestId { get; set; }
+        public long RequestId { get; set; } = MessageConstants.Random.NextLong();
 
         protected SnapMessageBase(bool generateRandomRequestId = true)
         {
