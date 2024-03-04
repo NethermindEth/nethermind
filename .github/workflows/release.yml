@@ -29,6 +29,8 @@ jobs:
     steps:
       - name: Check out repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build Nethermind.Runner
@@ -116,6 +118,8 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -139,6 +143,8 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Download artifacts
         uses: actions/download-artifact@v4
         with:
@@ -165,6 +171,8 @@ jobs:
     steps:
       - name: Check out Nethermind repository
         uses: actions/checkout@v4
+        with:
+          submodules: true
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
       - name: Set up Docker Buildx
