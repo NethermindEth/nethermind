@@ -17,14 +17,7 @@ namespace Nethermind.State.Snap
         {
             if (_disposed) return;
             _disposed = true;
-            if (PathsAndSlots != null)
-            {
-                foreach (IOwnedReadOnlyList<PathWithStorageSlot> pathWithStorageSlots in PathsAndSlots)
-                {
-                    pathWithStorageSlots?.Dispose();
-                }
-                PathsAndSlots?.Dispose();
-            }
+            PathsAndSlots?.DisposeRecursive();
             Proofs?.Dispose();
         }
     }

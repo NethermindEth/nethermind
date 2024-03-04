@@ -249,7 +249,7 @@ public class SnapServer : ISnapServer
         return (responseNodes, ArrayPoolList<byte[]>.Empty());
     }
 
-    private (long, IOwnedReadOnlyList<byte[]>, bool) GetNodesFromTrieVisitor(
+    private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
         in ValueHash256 rootHash,
         in ValueHash256 startingHash,
         in ValueHash256 limitHash,
