@@ -7,23 +7,23 @@ using Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Network.P2P
 {
-    public class MessageQueue<TMsg, TData> where TMsg : MessageBase
+    public class MessageQueue<TMsg, TData>(Action<TMsg> send)
+        where TMsg : MessageBase
     {
         private bool _isClosed;
-        private readonly Action<TMsg> _send;
         private Request<TMsg, TData>? _currentRequest;
 
         private readonly Queue<Request<TMsg, TData>> _requestQueue = new();
-
-        public MessageQueue(Action<TMsg> send)
-        {
-            _send = send;
-        }
 
         public void Send(Request<TMsg, TData> request)
         {
             if (_isClosed)
             {
+                if (request.Message is IDisposable d)
+                {
+                    d.Dispose();
+                }
+
                 return;
             }
 
@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P
                 {
                     _currentRequest = request;
                     _currentRequest.StartMeasuringTime();
-                    _send(_currentRequest.Message);
+                    send(_currentRequest.Message);
                 }
                 else
                 {
@@ -48,6 +48,11 @@ namespace Nethermind.Network.P2P
             {
                 if (_currentRequest is null)
                 {
+                    if (data is IDisposable d)
+                    {
+                        d.Dispose();
+                    }
+
                     throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
                 }
 
@@ -56,7 +61,7 @@ namespace Nethermind.Network.P2P
                 if (_requestQueue.TryDequeue(out _currentRequest))
                 {
                     _currentRequest!.StartMeasuringTime();
-                    _send(_currentRequest.Message);
+                    send(_currentRequest.Message);
                 }
             }
         }

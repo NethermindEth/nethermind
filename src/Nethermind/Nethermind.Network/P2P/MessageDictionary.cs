@@ -12,10 +12,10 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<TMsg> where TMsg : P2PMessage
+public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null)
+    where T66Msg : Eth66Message<TMsg>
+    where TMsg : P2PMessage
 {
-    private readonly Action<T66Msg> _send;
-
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
     // InvalidOperationException.
@@ -28,17 +28,11 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
     // we don't want to do too much as that decrease number of peer.
     private static readonly TimeSpan DefaultOldRequestThreshold = TimeSpan.FromSeconds(30);
 
-    private readonly TimeSpan _oldRequestThreshold;
+    private readonly TimeSpan _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
 
     private readonly ConcurrentDictionary<long, Request<T66Msg, TData>> _requests = new();
     private Task _cleanOldRequestTask = Task.CompletedTask;
     private int _requestCount = 0;
-
-    public MessageDictionary(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null)
-    {
-        _send = send;
-        _oldRequestThreshold = oldRequestThreshold ?? DefaultOldRequestThreshold;
-    }
 
     public void Send(Request<T66Msg, TData> request)
     {
@@ -51,12 +45,16 @@ public class MessageDictionary<T66Msg, TMsg, TData> where T66Msg : Eth66Message<
         {
             _requestCount++;
             request.StartMeasuringTime();
-            _send(request.Message);
+            send(request.Message);
 
             if (_cleanOldRequestTask.IsCompleted)
             {
                 _cleanOldRequestTask = CleanOldRequests();
             }
+        }
+        else if (request.Message is IDisposable d)
+        {
+            d.Dispose();
         }
     }
 
