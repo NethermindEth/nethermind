@@ -38,8 +38,10 @@ public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpa
     {
         if (_requestCount >= MaxConcurrentRequest)
         {
+            request.Message.Dispose();
             throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(TMsg)}");
         }
+
 
         if (_requests.TryAdd(request.Message.RequestId, request))
         {
@@ -52,9 +54,9 @@ public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpa
                 _cleanOldRequestTask = CleanOldRequests();
             }
         }
-        else if (request.Message is IDisposable d)
+        else
         {
-            d.Dispose();
+            request.Message.Dispose();
         }
     }
 
