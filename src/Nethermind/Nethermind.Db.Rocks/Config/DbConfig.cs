@@ -204,8 +204,8 @@ public class DbConfig : IDbConfig
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool StateDbAllowMmapReads { get; set; } = false;
     public bool StateDbVerifyChecksum { get; set; } = true;
-    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 30;
-    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)512.MiB();
+    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
+    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong? StateDbMaxCompactionBytes { get; set; } = null;
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; } = null;
