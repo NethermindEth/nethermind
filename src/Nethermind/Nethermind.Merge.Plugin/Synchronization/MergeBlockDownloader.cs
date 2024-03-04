@@ -197,7 +197,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
-                long bestSuggestedBlock = 0;
+                long bestProcessedBlock = 0;
 
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
@@ -229,8 +229,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
                         // So we'are detecting it and chaing from processing to receipts downloading
                         bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedIsNotBlockOne = currentBlock.Number > (bestSuggestedBlock + 1);
-                        bool isFastSyncTransition = headIsGenesis && toBeProcessedIsNotBlockOne;
+                        bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
+                        bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
                         if (isFastSyncTransition)
                         {
                             long bestFullState = _fullStateFinder.FindBestFullState();
@@ -239,7 +239,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                             {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
                                 downloadReceipts = true;
-                                context.ForceDownloadReceipts();
+                                context.SetDownloadReceipts();
                                 await RequestReceipts(bestPeer, cancellation, context);
                                 receipts = context.ReceiptsForBlocks;
                             }
@@ -280,7 +280,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         }
                         else
                         {
-                            bestSuggestedBlock = currentBlock.Number;
+                            bestProcessedBlock = currentBlock.Number;
                         }
 
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);

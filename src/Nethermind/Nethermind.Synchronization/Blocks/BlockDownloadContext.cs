@@ -134,7 +134,7 @@ namespace Nethermind.Synchronization.Blocks
             }
         }
 
-        public void ForceDownloadReceipts()
+        public void SetDownloadReceipts()
         {
             if (!_downloadReceipts)
             {
