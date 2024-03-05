@@ -180,9 +180,11 @@ public class T8N
             )
             {
                 BlobGasUsed = envJson.ParentBlobGasUsed,
-                ExcessBlobGas = envJson.ParentExcessBlobGas
+                ExcessBlobGas = envJson.ParentExcessBlobGas,
+                BaseFeePerGas = envJson.ParentBaseFee
             };
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
         }
 
         List<Transaction> successfulTxs = new List<Transaction>();
