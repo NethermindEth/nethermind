@@ -49,7 +49,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
         )
-            where TRequest : MessageBase
         {
             Task<TResponse> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
