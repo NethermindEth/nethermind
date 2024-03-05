@@ -40,7 +40,4 @@ COPY --from=build /tmp/jetbrains.dotmemory.console.*/**/tools /opt/diag-tools/do
 
 ENV PATH="$PATH:/opt/diag-tools:/opt/diag-tools/dotmemory"
 
-RUN apt-get update && apt-get -y install libsnappy-dev && \
-  rm -rf /var/lib/apt/lists/*
-
 ENTRYPOINT ["./nethermind"]
