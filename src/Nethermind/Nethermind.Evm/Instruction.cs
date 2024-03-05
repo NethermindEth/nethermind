@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
@@ -176,8 +177,24 @@ namespace Nethermind.Evm
         SELFDESTRUCT = 0xff,
     }
 
+    public struct OpcodeInfo(Instruction instruction, ReadOnlyMemory<byte>? arguments)
+    {
+        public Instruction Instruction { get; set; } = instruction;
+        public ReadOnlyMemory<byte>? Arguments { get; set; } = arguments;
+    }
+
     public static class InstructionExtensions
     {
+        public static bool IsStateful(this Instruction instruction) => instruction switch
+        {
+            Instruction.CREATE or Instruction.CREATE2 => true,
+            Instruction.CALL or Instruction.CALLCODE or Instruction.DELEGATECALL or Instruction.STATICCALL => true,
+            Instruction.SLOAD or Instruction.SSTORE => true,
+            Instruction.TLOAD or Instruction.TSTORE => true,
+            Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH => true,
+            _ =>  false,
+        };
+
         public static string? GetName(this Instruction instruction, bool isPostMerge = false, IReleaseSpec? spec = null) =>
             instruction switch
             {

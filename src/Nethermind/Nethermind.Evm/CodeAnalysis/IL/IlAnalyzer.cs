@@ -67,24 +67,52 @@ internal static class IlAnalyzer
     /// </summary>
     private static IlInfo Analysis(ReadOnlyMemory<byte> machineCode)
     {
-        byte[] StripByteCode(ReadOnlySpan<byte> machineCode)
+        OpcodeInfo[] StripByteCode(ReadOnlySpan<byte> machineCode)
         {
-            byte[] opcodes = new byte[machineCode.Length];
+            OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
             int j = 0;
             for (int i = 0; i < machineCode.Length; i++, j++)
             {
                 Instruction opcode = (Instruction)machineCode[i];
-                opcodes[j] = (byte)opcode;
+                byte[] args = null;
                 if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
                 {
                     int immediatesCount = opcode - Instruction.PUSH0;
+                    args = machineCode.Slice(i+1, immediatesCount).ToArray();
                     i += immediatesCount;
                 }
+                opcodes[j] = new OpcodeInfo(opcode, args.AsMemory());
             }
             return opcodes[..j];
         }
 
-        byte[] strippedBytecode = StripByteCode(machineCode.Span);
+        OpcodeInfo[][] SegmentCode(OpcodeInfo[] codeData)
+        {
+            List<OpcodeInfo[]> opcodeInfos = [];
+            List<OpcodeInfo> segment = [];
+            foreach (var opcode in codeData)
+            {
+                if(opcode.Instruction.IsStateful())
+                {
+                    if(segment.Count > 0)
+                    {
+                        opcodeInfos.Add([.. segment]);
+                        segment.Clear();
+                    }
+                } else
+                {
+                    segment.Add(opcode);
+                }   
+            }
+            if(segment.Count > 0)
+            {
+                opcodeInfos.Add([.. segment]);
+            }
+            return [.. opcodeInfos];
+        }
+
+
+        OpcodeInfo[] strippedBytecode = StripByteCode(machineCode.Span);
         Dictionary<ushort, InstructionChunk> patternFound = new Dictionary<ushort, InstructionChunk>();
 
         foreach (var (pattern, mapping) in Patterns)
@@ -94,7 +122,7 @@ internal static class IlAnalyzer
                 bool found = true;
                 for (int j = 0; j < pattern.Length && found; j++)
                 {
-                    found = strippedBytecode[i + j] == pattern[j];
+                    found = ((byte)strippedBytecode[i + j].Instruction == pattern[j]);
                 }
 
                 if (found)
@@ -106,7 +134,7 @@ internal static class IlAnalyzer
         }
 
         // TODO: implement actual analysis.
-        return new IlInfo(patternFound.ToFrozenDictionary());
+        return new IlInfo(patternFound.ToFrozenDictionary(), SegmentCode(strippedBytecode));
     }
 
     /// <summary>

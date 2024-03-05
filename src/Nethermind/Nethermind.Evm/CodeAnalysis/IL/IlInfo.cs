@@ -24,13 +24,15 @@ internal class IlInfo
         Chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
     }
 
-    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes)
+    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, OpcodeInfo[][] segments)
     {
         Chunks = mappedOpcodes;
+        Segments = segments;
     }
 
     // assumes small number of ILed
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; init; }
+    public OpcodeInfo[][] Segments { get; init; }
 
     public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
