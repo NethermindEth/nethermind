@@ -113,7 +113,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
@@ -154,7 +154,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
@@ -172,7 +172,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
@@ -222,7 +222,7 @@ namespace Nethermind.Store.Test
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             AccountProofCollector accountProofCollector = new(Keccak.Zero.Bytes);
