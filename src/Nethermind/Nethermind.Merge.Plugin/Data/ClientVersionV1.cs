@@ -13,19 +13,15 @@ public readonly struct ClientVersionV1
 {
     public ClientVersionV1()
     {
-        this.code = ProductInfo.ClientCode;
-        this.name = ProductInfo.Name;
-        this.version = ProductInfo.Version;
-        this.commit = ProductInfo.Commit;
+        Code = ProductInfo.ClientCode;
+        Name = ProductInfo.Name;
+        Version = ProductInfo.Version;
+        Commit = ProductInfo.Commit;
     }
 
-    public string code { get; }
-    public string name { get; }
-    public string version { get; }
-    public string commit { get; }
-
-    public override string ToString() => $"{name}/v{version}/{code}";
-
-    public string ToJson() => $"{{\"code\":\"{code}\",\"name\":\"{name}\",\"version\":\"{version}\",\"commit\":\"{commit}\"}}";
+    public string Code { get; }
+    public string Name { get; }
+    public string Version { get; }
+    public string Commit { get; }
 }
 

@@ -30,7 +30,7 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1)] = (true, true);
             _capabilities[nameof(IEngineRpcModule.engine_getPayloadV1)] = (true, true);
             _capabilities[nameof(IEngineRpcModule.engine_newPayloadV1)] = (true, true);
-            _capabilities[nameof(IEngineRpcModule.engine_getClientVersionV1)] = (true, true);
+            _capabilities[nameof(IEngineRpcModule.engine_getClientVersionV1)] = (true, false);
             #endregion
 
             #region Shanghai
