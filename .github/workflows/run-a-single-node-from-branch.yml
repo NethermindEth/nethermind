@@ -130,20 +130,6 @@ jobs:
     outputs:
       base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
-    - name: Free Disk Space (Ubuntu)
-      uses: jlumbroso/free-disk-space@main
-      with:
-        # this might remove tools that are actually needed,
-        # if set to "true" but frees about 6 GB
-        tool-cache: false
-        # all of these default to true, but feel free to set to
-        # "false" if necessary for your workflow
-        android: true
-        dotnet: false
-        haskell: true
-        large-packages: true
-        docker-images: true
-        swap-storage: true
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
@@ -221,9 +207,9 @@ jobs:
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
-        MAX_WAIT_MINUTES: '20'
+        MAX_WAIT_MINUTES: '15'
         INTERVAL: '5'
-        TIMEOUT: '40'
+        TIMEOUT: '30'
         ORG_NAME: ${{ env.ORG_NAME }}
         REPO_NAME: ${{ env.REPO_NAME }}
         REF: ${{ github.ref }}
