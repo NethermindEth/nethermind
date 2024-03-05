@@ -33,7 +33,9 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         if (!stateProvider.AccountExists(eip2935Account)) stateProvider.CreateAccount(eip2935Account, 0);
+        // if (blockHeader.Number == 1) stateProvider.CreateAccount(eip2935Account, 0);
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
+
 
         var blockHashWitness = new VerkleWitness();
         blockHashWitness.AccessCompleteAccount(eip2935Account);
