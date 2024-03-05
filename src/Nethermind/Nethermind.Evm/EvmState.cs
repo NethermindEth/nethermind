@@ -38,7 +38,7 @@ namespace Nethermind.Evm
             }
 
             private readonly Stack<byte[]> _dataStackPool = new(32);
-            private readonly Stack<int[]> _returnStackPool = new(32);
+            private readonly Stack<ReturnState[]> _returnStackPool = new(32);
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;

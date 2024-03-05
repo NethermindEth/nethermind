@@ -131,6 +131,8 @@ public class TransactionForRpc
 
     public TxType Type { get; set; }
 
+    public byte[][] Initcodes { get; set;}
+
     public IEnumerable<AccessListItemForRpc>? AccessList { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
@@ -165,7 +167,7 @@ public class TransactionForRpc
             AccessList = TryGetAccessList(),
             ChainId = chainId,
             DecodedMaxFeePerGas = MaxFeePerGas ?? 0,
-            Hash = Hash
+            Hash = Hash,
         };
 
         if (tx.Supports1559)
@@ -177,6 +179,11 @@ public class TransactionForRpc
         {
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
+
+        if(tx.SupportsEofInitcode)
+        {
+            tx.Initcodes = Initcodes;
         }
 
         return tx;
@@ -217,6 +224,11 @@ public class TransactionForRpc
         {
             tx.MaxFeePerBlobGas = MaxFeePerBlobGas;
             tx.BlobVersionedHashes = BlobVersionedHashes;
+        }
+
+        if (tx.SupportsEofInitcode)
+        {
+            tx.Initcodes = Initcodes;
         }
 
         return tx;

@@ -133,9 +133,9 @@ namespace Nethermind.Evm.Test
                     Instruction.SWAPN,
                     Instruction.DUPN,
                     Instruction.EXCHANGE,
-                    Instruction.CALL2,
-                    Instruction.DELEGATECALL2,
-                    Instruction.STATICCALL2,
+                    Instruction.EXTCALL,
+                    Instruction.EXTDELEGATECALL,
+                    Instruction.EXTSTATICCALL,
                 }
             ).ToArray();
 

@@ -1545,7 +1545,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             if(spec.IsEofEnabled && EvmObjectFormat.IsEof(externalCode.Span, out _ ))
                             {
-                                slice = ZeroPaddedSpan.Empty;
+                                slice = EOF.EvmObjectFormat.MAGIC.SliceWithZeroPadding(0, 2);
                             } else
                             {
                                 slice = externalCode.SliceWithZeroPadding(b, (int)result);
@@ -3245,6 +3245,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         ReadOnlyMemory<byte> initCode = vmState.Memory.Load(in memoryPositionOfInitCode, initCodeLength);
+
+        if(initCode.Span.StartsWith(EvmObjectFormat.MAGIC))
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return (EvmExceptionType.None, null);
+        }
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
