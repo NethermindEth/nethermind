@@ -1523,10 +1523,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(new ClientVersionV1());
-        result.Data[0].Code.Should().Be(ProductInfo.ClientCode);
-        result.Data[0].Version.Should().Be(ProductInfo.Version);
-        result.Data[0].Name.Should().Be(ProductInfo.Name);
-        result.Data[0].Commit.Should().Be(ProductInfo.Commit);
+        result.Data.Should().BeEquivalentTo([new ClientVersionV1()]);
     }
 
     [Test]
