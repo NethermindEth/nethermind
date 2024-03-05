@@ -1,12 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Diagnostics.CodeAnalysis;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.EOF;
 using Nethermind.Specs.Forks;
+using System;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Evm
 {
@@ -184,8 +184,8 @@ namespace Nethermind.Evm
         CALLF = 0xe3,
         RETF = 0xe4,
         JUMPF = 0xe5,
-        CREATE3 = 0xec,
-        CREATE4 = 0xed,
+        EOFCREATE = 0xec,
+        TXCREATE = 0xed,
         RETURNCONTRACT = 0xee,
         DATALOAD = 0xd0,
         DATALOADN = 0xd1,
@@ -198,9 +198,9 @@ namespace Nethermind.Evm
         RETURNDATALOAD = 0xf7,
 
         // opcode value not spec-ed 
-        CALL2 = 0xf8,
-        DELEGATECALL2 = 0xf9, // DelegateCallEnabled
-        STATICCALL2 = 0xfb, // StaticCallEnabled
+        EXTCALL = 0xf8,
+        EXTDELEGATECALL = 0xf9, // DelegateCallEnabled
+        EXTSTATICCALL = 0xfb, // StaticCallEnabled
 
     }
     public static class InstructionExtensions
@@ -234,9 +234,9 @@ namespace Nethermind.Evm
                 Instruction.CALLF or Instruction.RETF or Instruction.JUMPF => IsEofContext,
                 Instruction.DUPN or Instruction.SWAPN or Instruction.EXCHANGE => IsEofContext,
                 Instruction.RJUMP or Instruction.RJUMPI or Instruction.RJUMPV => IsEofContext,
-                Instruction.RETURNCONTRACT or Instruction.CREATE4 or Instruction.CREATE3 => IsEofContext,
+                Instruction.RETURNCONTRACT or Instruction.TXCREATE or Instruction.EOFCREATE => IsEofContext,
                 Instruction.DATACOPY or Instruction.DATASIZE or Instruction.DATALOAD or Instruction.DATALOADN => IsEofContext,
-                Instruction.STATICCALL2 or Instruction.DELEGATECALL2 or Instruction.CALL2 => IsEofContext,
+                Instruction.EXTSTATICCALL or Instruction.EXTDELEGATECALL or Instruction.EXTCALL => IsEofContext,
                 Instruction.RETURNDATALOAD => IsEofContext,
                 Instruction.CALL => !IsEofContext,
                 Instruction.CALLCODE => !IsEofContext,
@@ -344,8 +344,8 @@ namespace Nethermind.Evm
             Instruction.REVERT => (2, 0, 0),
             Instruction.INVALID => (0, 0, 0),
 
-            Instruction.CREATE3 => (4, 1, 1),
-            Instruction.CREATE4 => (5, 1, 0),
+            Instruction.EOFCREATE => (4, 1, 1),
+            Instruction.TXCREATE => (5, 1, 0),
             Instruction.RETURNCONTRACT => (2, 2, 1),
             Instruction.DATALOAD => (1, 1, 0),
             Instruction.DATALOADN => (0, 1, 2),
@@ -357,9 +357,9 @@ namespace Nethermind.Evm
             Instruction.DUPN => (null, null, 1),
             Instruction.EXCHANGE => (null, null, 1),
 
-            Instruction.CALL2 => (3, 1, 0),
-            Instruction.STATICCALL2 => (3, 1, 0),
-            Instruction.DELEGATECALL2 => (3, 1, 0),
+            Instruction.EXTCALL => (3, 1, 0),
+            Instruction.EXTSTATICCALL => (3, 1, 0),
+            Instruction.EXTDELEGATECALL => (3, 1, 0),
             _ => throw new NotImplementedException($"opcode {instruction} not implemented yet"),
         };
 
@@ -368,9 +368,9 @@ namespace Nethermind.Evm
             spec ??= Frontier.Instance;
             return instruction switch
             {
-                Instruction.CALL2 => "CALL" ,
-                Instruction.STATICCALL2 => "STATICCALL", // StaticCallEnabled
-                Instruction.DELEGATECALL2 => "DELEGATECALL",
+                Instruction.EXTCALL => "EXTCALL" ,
+                Instruction.EXTSTATICCALL => "EXTSTATICCALL", // StaticCallEnabled
+                Instruction.EXTDELEGATECALL => "EXTDELEGATECALL",
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
                 Instruction.RJUMP => spec.IsEofEnabled ? "RJUMP" : "BEGINSUB",
                 Instruction.RJUMPI => spec.IsEofEnabled ? "RJUMPI" : "RETURNSUB",

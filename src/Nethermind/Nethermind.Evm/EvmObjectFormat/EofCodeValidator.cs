@@ -631,7 +631,7 @@ internal static class EvmObjectFormat
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
                     }
 
-                    if (opcode is Instruction.CREATE3)
+                    if (opcode is Instruction.EOFCREATE)
                     {
                         if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
                         {
