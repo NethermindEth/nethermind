@@ -259,10 +259,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             if (SyncServer is null) return new StorageRangeMessage()
             {
                 Proofs = ArrayPoolList<byte[]>.Empty(),
-                Slots = ArrayPoolList<PathWithStorageSlot[]>.Empty(),
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
             };
             StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
-            (IOwnedReadOnlyList<PathWithStorageSlot[]>? ranges, IOwnedReadOnlyList<byte[]>? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IOwnedReadOnlyList<byte[]> proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
