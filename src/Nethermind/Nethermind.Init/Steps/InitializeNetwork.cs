@@ -201,19 +201,11 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
+        if (_syncConfig.SnapSync && !_syncConfig.SnapServingEnabled)
         {
-            if (!_syncConfig.SnapServingEnabled)
-            {
-                // TODO: Should we keep snap capability even after finishing sync?
-                SnapCapabilitySwitcher snapCapabilitySwitcher =
-                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
-            else
-            {
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            }
+            SnapCapabilitySwitcher snapCapabilitySwitcher =
+                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -535,6 +527,11 @@ public class InitializeNetwork : IStep
             snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
+
+        if (_syncConfig.SnapServingEnabled)
+        {
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
 
         if (_syncConfig.WitnessProtocolEnabled)
         {

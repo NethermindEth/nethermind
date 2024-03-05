@@ -6,16 +6,15 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Core.Exceptions;
-using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P;
 
-public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null)
-    where T66Msg : Eth66Message<TMsg>
-    where TMsg : P2PMessage
+public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpan? oldRequestThreshold = null) where T66Msg : IEth66Message
 {
+    private readonly Action<T66Msg> _send;
+
     // The limit is largely to prevent unexpected OOM.
     // But the side effect is that if the peer did not respond with the message, eventually it will throw
     // InvalidOperationException.
@@ -39,7 +38,7 @@ public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpa
         if (_requestCount >= MaxConcurrentRequest)
         {
             request.Message.Dispose();
-            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(TMsg)}");
+            throw new ConcurrencyLimitReachedException($"Concurrent request limit reached. Message type: {typeof(T66Msg)}");
         }
 
 
@@ -93,7 +92,7 @@ public class MessageDictionary<T66Msg, TMsg, TData>(Action<T66Msg> send, TimeSpa
         }
         else
         {
-            throw new SubprotocolException($"Received a response to {nameof(TMsg)} that has not been requested");
+            throw new SubprotocolException($"Received a response to {nameof(T66Msg)} that has not been requested");
         }
     }
 }

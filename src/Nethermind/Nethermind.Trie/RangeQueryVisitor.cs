@@ -17,7 +17,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -34,11 +33,10 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private TreePath _startHash;
     private readonly ValueHash256 _limitHash;
 
-    private readonly bool _isAccountVisitor;
-
     private long _currentBytesCount;
+    private long _currentLeafCount;
     private bool _lastNodeFound = false;
-    private readonly Dictionary<ValueHash256, byte[]> _collectedNodes = new();
+    private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
@@ -51,8 +49,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public bool StoppedEarly { get; set; } = false;
     public bool IsFullDbScan => false;
-    private readonly AccountDecoder _standardDecoder = new AccountDecoder();
-    private readonly AccountDecoder _slimDecoder = new AccountDecoder(slimFormat: true);
     private readonly CancellationToken _cancellationToken;
 
     public ReadFlags ExtraReadFlag { get; }
@@ -60,7 +56,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public RangeQueryVisitor(
         in ValueHash256 startHash,
         in ValueHash256 limitHash,
-        bool isAccountVisitor,
+        ILeafValueCollector valueCollector,
         long byteLimit = 200000,
         int nodeLimit = 10000,
         ReadFlags readFlags = ReadFlags.None,
@@ -73,7 +69,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             _startHash = new TreePath(startHash, 64);
 
         _cancellationToken = cancellationToken;
-        _isAccountVisitor = isAccountVisitor;
+        _valueCollector = valueCollector;
         _nodeLimit = nodeLimit;
         _byteLimit = byteLimit;
         ExtraReadFlag = readFlags;
@@ -93,7 +89,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             return false;
         }
 
-        if (_collectedNodes.Count >= _nodeLimit)
+        if (_currentLeafCount >= _nodeLimit)
         {
             StoppedEarly = true;
             return false;
@@ -122,9 +118,9 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     }
 
 
-    public (Dictionary<ValueHash256, byte[]>, long) GetNodesAndSize()
+    public long GetBytesSize()
     {
-        return (_collectedNodes, _currentBytesCount);
+        return _currentBytesCount;
     }
 
     public ArrayPoolList<byte[]> GetProofs()
@@ -216,21 +212,21 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
     }
 
-    private byte[]? ConvertFullToSlimAccount(CappedArray<byte> accountRlp)
-    {
-        return accountRlp.IsNull ? null : _slimDecoder.Encode(_standardDecoder.Decode(new RlpStream(accountRlp))).Bytes;
-    }
-
-    private void CollectNode(TreePath path, CappedArray<byte> value)
+    private void CollectNode(in TreePath path, CappedArray<byte> value)
     {
         _rightmostLeafPath = path;
 
-        byte[]? nodeValue = _isAccountVisitor ? ConvertFullToSlimAccount(value) : value.ToArray();
-        _collectedNodes[path.Path] = nodeValue;
-        _currentBytesCount += 32 + nodeValue!.Length;
+        int encodedSize = _valueCollector.Collect(path.Path, value);
+        _currentBytesCount += encodedSize;
+        _currentLeafCount++;
     }
 
     public void Dispose()
     {
+    }
+
+    public interface ILeafValueCollector
+    {
+        int Collect(in ValueHash256 path, CappedArray<byte> value);
     }
 }
