@@ -16,7 +16,7 @@ using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
     {
         private readonly List<Transaction> _transactionsToRemove = new();
         protected int _poolCapacity;
@@ -34,10 +34,10 @@ namespace Nethermind.TxPool.Collections
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
-        protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
+        protected override AddressAsKey MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
         protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
-        protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<Transaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -75,12 +75,12 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            VerifyCapacity();
-            foreach ((Address address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            EnsureCapacity();
+            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
-                AccountStruct account = accounts.GetAccount(address);
+                accounts.TryGetAccount(address, out AccountStruct account);
                 UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }
@@ -133,10 +133,6 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public virtual void VerifyCapacity()
-        {
-            if (_logger.IsWarn && Count > _poolCapacity)
-                _logger.Warn($"TxPool exceeds the config size {Count}/{_poolCapacity}");
-        }
+        protected override string ShortPoolName => "TxPool";
     }
 }

@@ -137,11 +137,11 @@ namespace Nethermind.Evm.Test
             run(input);
         }
 
-        private static PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
-        private static Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
+        private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
+        private static readonly Address sender = new Address("0x59ede65f910076f60e07b2aeb189c72348525e72");
 
-        private static Address to = new Address("0x000000000000000000000000636f6e7472616374");
-        private static Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
+        private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
+        private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
         private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
         private static string run(byte[] input)
         {

@@ -3,6 +3,7 @@
 
 using DotNetty.Buffers;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core.Collections;
 using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 
@@ -28,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Network
         public UserOperationsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            UserOperationWithEntryPoint[] uOps = DeserializeUOps(rlpStream);
+            ArrayPoolList<UserOperationWithEntryPoint> uOps = DeserializeUOps(rlpStream);
             return new UserOperationsMessage(uOps);
         }
 
@@ -43,9 +44,9 @@ namespace Nethermind.AccountAbstraction.Network
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private static UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
+        private static ArrayPoolList<UserOperationWithEntryPoint> DeserializeUOps(NettyRlpStream rlpStream)
         {
-            return Rlp.DecodeArray<UserOperationWithEntryPoint>(rlpStream);
+            return Rlp.DecodeArrayPool<UserOperationWithEntryPoint>(rlpStream);
         }
     }
 }

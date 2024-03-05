@@ -21,10 +21,11 @@ public class MainnetSpecProvider : ISpecProvider
     public const long LondonBlockNumber = 12_965_000;
     public const long ArrowGlacierBlockNumber = 13_773_000;
     public const long GrayGlacierBlockNumber = 15_050_000;
+    public const long ParisBlockNumber = 15_537_393;
     public const ulong GenesisBlockTimestamp = 0x55ba4215;
     public const ulong BeaconChainGenesisTimestamp = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
-    public const ulong CancunBlockTimestamp = ulong.MaxValue - 3;
+    public const ulong CancunBlockTimestamp = 0x65F1B057;
     public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
@@ -43,7 +44,8 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < LondonBlockNumber } => Berlin.Instance,
             { BlockNumber: < ArrowGlacierBlockNumber } => London.Instance,
             { BlockNumber: < GrayGlacierBlockNumber } => ArrowGlacier.Instance,
-            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => GrayGlacier.Instance,
+            { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
+            { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
             { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
             _ => Prague.Instance
@@ -65,10 +67,10 @@ public class MainnetSpecProvider : ISpecProvider
     public ulong TimestampFork { get; } = ShanghaiBlockTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("58750000000000000000000");
     public IReleaseSpec GenesisSpec => Frontier.Instance;
-    public static ForkActivation ShanghaiActivation { get; } = (15_050_001, ShanghaiBlockTimestamp);
-    public static ForkActivation CancunActivation { get; } = (15_050_002, CancunBlockTimestamp);
-    public static ForkActivation PragueActivation { get; } = (15_050_003, PragueBlockTimestamp);
-    public static ForkActivation OsakaActivation { get; } = (15_050_004, OsakaBlockTimestamp);
+    public static ForkActivation ShanghaiActivation { get; } = (ParisBlockNumber + 1, ShanghaiBlockTimestamp);
+    public static ForkActivation CancunActivation { get; } = (ParisBlockNumber + 2, CancunBlockTimestamp);
+    public static ForkActivation PragueActivation { get; } = (ParisBlockNumber + 3, PragueBlockTimestamp);
+    public static ForkActivation OsakaActivation { get; } = (ParisBlockNumber + 4, OsakaBlockTimestamp);
     public ForkActivation[] TransitionActivations { get; } =
     {
         (ForkActivation)HomesteadBlockNumber,

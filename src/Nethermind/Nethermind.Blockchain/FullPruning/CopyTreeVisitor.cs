@@ -2,11 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Utils;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Trie;
@@ -21,7 +24,6 @@ namespace Nethermind.Blockchain.FullPruning
     /// </remarks>
     public class CopyTreeVisitor : ITreeVisitor, IDisposable
     {
-        private readonly IPruningContext _pruningContext;
         private readonly ILogger _logger;
         private readonly Stopwatch _stopwatch;
         private long _persistedNodes = 0;
@@ -29,17 +31,19 @@ namespace Nethermind.Blockchain.FullPruning
         private readonly WriteFlags _writeFlags;
         private readonly CancellationToken _cancellationToken;
         private const int Million = 1_000_000;
+        private readonly ConcurrentWriteBatcher _concurrentWriteBatcher;
 
         public CopyTreeVisitor(
             IPruningContext pruningContext,
             WriteFlags writeFlags,
-            ILogManager logManager)
+            ILogManager logManager,
+            CancellationToken cancellationToken)
         {
-            _pruningContext = pruningContext;
-            _cancellationToken = pruningContext.CancellationTokenSource.Token;
+            _cancellationToken = cancellationToken;
             _writeFlags = writeFlags;
             _logger = logManager.GetClassLogger();
             _stopwatch = new Stopwatch();
+            _concurrentWriteBatcher = new ConcurrentWriteBatcher(pruningContext);
         }
 
         public bool IsFullDbScan => true;
@@ -54,6 +58,8 @@ namespace Nethermind.Blockchain.FullPruning
             if (_logger.IsWarn) _logger.Warn($"Full Pruning Started on root hash {rootHash}: do not close the node until finished or progress will be lost.");
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
         public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             if (_logger.IsWarn)
@@ -62,7 +68,7 @@ namespace Nethermind.Blockchain.FullPruning
             }
 
             // if nodes are missing then state trie is not valid and we need to stop copying it
-            _pruningContext.CancellationTokenSource.Cancel();
+            throw new TrieException($"Trie {nodeHash} missing");
         }
 
         public void VisitBranch(TrieNode node, TrieVisitContext trieVisitContext) => PersistNode(node);
@@ -78,7 +84,7 @@ namespace Nethermind.Blockchain.FullPruning
             if (node.Keccak is not null)
             {
                 // simple copy of nodes RLP
-                _pruningContext.PutSpan(node.Keccak.Bytes, node.FullRlp.AsSpan(), _writeFlags);
+                _concurrentWriteBatcher.PutSpan(node.Keccak.Bytes, node.FullRlp.AsSpan(), _writeFlags);
                 Interlocked.Increment(ref _persistedNodes);
 
                 // log message every 1 mln nodes
@@ -107,6 +113,7 @@ namespace Nethermind.Blockchain.FullPruning
         {
             _finished = true;
             LogProgress("Finished");
+            _concurrentWriteBatcher.Dispose();
         }
     }
 }

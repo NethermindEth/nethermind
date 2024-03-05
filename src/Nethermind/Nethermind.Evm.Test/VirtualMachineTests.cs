@@ -423,7 +423,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TLOAD)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 1 + GasCostOf.TLoad), "gas");
     }
 
@@ -542,7 +542,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             .Op(Instruction.TSTORE)
             .Done;
 
-        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
+        TestAllTracerWithOutput receipt = Execute((MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp), 100000, code);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.TStore), "gas");
     }
 
@@ -554,7 +554,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
         byte[] code = Bytes.FromHexString("0x6c726576657274656420646174616000557f726576657274206d657373616765000000000000000000000000000000000000600052600e6000fd");
         TestAllTracerWithOutput receipt = Execute(blockNumber: MainnetSpecProvider.ByzantiumBlockNumber, 100_000, code);
 
-        Assert.That(receipt.Error, Is.EqualTo("Reverted 0x726576657274206d657373616765"));
+        Assert.That(receipt.Error, Is.EqualTo("Reverted revert message"));
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 20024));
     }
 }

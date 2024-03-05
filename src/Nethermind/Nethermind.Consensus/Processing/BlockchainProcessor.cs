@@ -5,6 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -24,7 +26,7 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
@@ -496,32 +498,38 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         }
         catch (InvalidBlockException ex)
         {
-            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = ex.InvalidBlock, });
-
             invalidBlockHash = ex.InvalidBlock.Hash;
+            Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
+            if (invalidBlock is not null)
+            {
+                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
+                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
+                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
+                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
 
-            BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger,
-                (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                (_options.DumpOptions & DumpOptions.RlpLog) != 0);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new BlockReceiptsTracer(),
+                    DumpOptions.Receipts);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new BlockReceiptsTracer(),
-                DumpOptions.Receipts);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                    DumpOptions.Parity);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                DumpOptions.Parity);
-
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
-                DumpOptions.Geth);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
+                    DumpOptions.Geth);
+            }
+            else
+            {
+                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
+            }
 
             processedBlocks = null;
         }
@@ -572,7 +580,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
                 }
             }
         }
@@ -749,8 +757,6 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         _recoveryQueue.Dispose();
         _blockQueue.Dispose();
         _loopCancellationSource?.Dispose();
-        _recoveryTask?.Dispose();
-        _processorTask?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
     }

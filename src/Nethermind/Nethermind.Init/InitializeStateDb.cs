@@ -76,12 +76,10 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        CachingStore cachedStateDb = getApi.DbProvider.StateDb
-            .Cached(Trie.MemoryAllowance.TrieNodeCacheCount);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
 
-        IKeyValueStoreWithBatching stateWitnessedBy = cachedStateDb.WitnessedBy(witnessCollector);
+        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -127,16 +125,6 @@ public class InitializeStateDb : IStep
                 codeDb,
                 getApi.LogManager);
 
-        if (pruningConfig.Mode.IsFull())
-        {
-            IFullPruningDb fullPruningDb = (IFullPruningDb)getApi.DbProvider!.StateDb;
-            fullPruningDb.PruningStarted += (_, args) =>
-            {
-                cachedStateDb.PersistCache(args.Context);
-                trieStore.PersistCache(args.Context, args.Context.CancellationTokenSource.Token);
-            };
-        }
-
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
             worldState,
@@ -162,9 +150,8 @@ public class InitializeStateDb : IStep
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    IWorldState diagStateProvider = stateManager.GlobalWorldState;
-                    diagStateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                    Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
                 catch (Exception ex)
@@ -180,7 +167,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, trieStore);
 
         return Task.CompletedTask;
     }
@@ -194,7 +181,8 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig,
         IInitConfig initConfig,
         INethermindApi api,
-        IStateReader stateReader)
+        IStateReader stateReader,
+        TrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -226,7 +214,7 @@ public class InitializeStateDb : IStep
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
                 FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
                     stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, api.LogManager);
+                    drive, trieStore, api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

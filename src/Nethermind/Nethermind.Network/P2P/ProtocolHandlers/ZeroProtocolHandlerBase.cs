@@ -11,13 +11,9 @@ using Nethermind.Stats;
 
 namespace Nethermind.Network.P2P.ProtocolHandlers
 {
-    public abstract class ZeroProtocolHandlerBase : ProtocolHandlerBase, IZeroProtocolHandler
+    public abstract class ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
+        : ProtocolHandlerBase(session, nodeStats, serializer, logManager), IZeroProtocolHandler
     {
-        protected ZeroProtocolHandlerBase(ISession session, INodeStatsManager nodeStats, IMessageSerializationService serializer, ILogManager logManager)
-            : base(session, nodeStats, serializer, logManager)
-        {
-        }
-
         public override void HandleMessage(Packet message)
         {
             ZeroPacket zeroPacket = new(message);
@@ -53,7 +49,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             Func<TRequest, string> describeRequestFunc,
             CancellationToken token
         )
-            where TRequest : MessageBase
         {
             Task<TResponse> task = request.CompletionSource.Task;
             using CancellationTokenSource delayCancellation = new();
