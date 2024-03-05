@@ -126,11 +126,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         if (!_taskQueue.Writer.TryWrite(activity))
         {
-            if (request is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
-
+            request.TryDispose();
             // This should never happen unless something goes very wrong.
             throw new InvalidOperationException("Unable to write to background task queue.");
         }

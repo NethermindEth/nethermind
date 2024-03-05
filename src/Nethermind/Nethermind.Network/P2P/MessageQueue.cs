@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Extensions;
 using Nethermind.Network.P2P.Subprotocols;
 
 namespace Nethermind.Network.P2P
@@ -19,11 +20,7 @@ namespace Nethermind.Network.P2P
         {
             if (_isClosed)
             {
-                if (request.Message is IDisposable d)
-                {
-                    d.Dispose();
-                }
-
+                request.Message.TryDispose();
                 return;
             }
 

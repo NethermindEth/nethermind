@@ -5,6 +5,7 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -80,9 +81,9 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             task.ContinueWith(static t =>
             {
-                if (t.IsCompletedSuccessfully && t.Result is IDisposable d)
+                if (t.IsCompletedSuccessfully)
                 {
-                    d.Dispose();
+                    t.Result.TryDispose();
                 }
             });
         }

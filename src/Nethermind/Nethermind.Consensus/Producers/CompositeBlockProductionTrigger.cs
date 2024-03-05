@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Producers
 {
@@ -40,10 +41,7 @@ namespace Nethermind.Consensus.Producers
             {
                 var trigger = _triggers[index];
                 trigger.TriggerBlockProduction -= OnInnerTriggerBlockProduction;
-                if (trigger is IDisposable disposable)
-                {
-                    disposable.Dispose();
-                }
+                trigger.TryDispose();
             }
         }
     }
