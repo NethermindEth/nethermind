@@ -6,6 +6,7 @@ using FluentAssertions;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Network.Test.P2P;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
@@ -42,7 +43,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
                 Signature = new byte[] { 1, 2, 3 }
             });
 
-            UserOperationsMessage message = new(new[] { new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")) });
+            using UserOperationsMessage message = new(new ArrayPoolList<UserOperationWithEntryPoint>(1) { new(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")) });
             TestZero(serializer, message, "f856f8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6b");
 
             // Meaning of RLP above:
@@ -70,8 +71,8 @@ namespace Nethermind.AccountAbstraction.Test.Network
             // 83 = 131 = 128 + 3 (length of Signature)
             // 010203 (Signature)
 
-            message = new(new[] { new UserOperationWithEntryPoint(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")), new UserOperationWithEntryPoint(userOperation, new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f")) });
-            TestZero(serializer, message, "f8acf8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6bf8549400000000000000000000000000000000000000018203e882030482010205060708019400000000000000000000000000000000000000028205068301020394db8b5f6080a8e466b64a8d7458326cb650b3353f");
+            using UserOperationsMessage message2 = new(new ArrayPoolList<UserOperationWithEntryPoint>(2) { new(userOperation, new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b")), new(userOperation, new Address("0xdb8b5f6080a8e466b64a8d7458326cb650b3353f")) });
+            TestZero(serializer, message2, "f8acf8549400000000000000000000000000000000000000018203e88203048201020506070801940000000000000000000000000000000000000002820506830102039490f3e1105e63c877bf9587de5388c23cdb702c6bf8549400000000000000000000000000000000000000018203e882030482010205060708019400000000000000000000000000000000000000028205068301020394db8b5f6080a8e466b64a8d7458326cb650b3353f");
 
             // Meaning of RLP above:
             // f8
@@ -88,7 +89,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         public void Can_handle_empty()
         {
             UserOperationsMessageSerializer serializer = new();
-            UserOperationsMessage message = new(new UserOperationWithEntryPoint[] { });
+            using UserOperationsMessage message = new(ArrayPoolList<UserOperationWithEntryPoint>.Empty());
 
             SerializerTester.TestZero(serializer, message);
         }
@@ -96,7 +97,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         [Test]
         public void To_string_empty()
         {
-            UserOperationsMessage message = new(new UserOperationWithEntryPoint[] { });
+            using UserOperationsMessage message = new(ArrayPoolList<UserOperationWithEntryPoint>.Empty());
             _ = message.ToString();
         }
 
@@ -107,7 +108,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             try
             {
                 serializer.Serialize(buffer, message);
-                UserOperationsMessage deserialized = serializer.Deserialize(buffer);
+                using UserOperationsMessage deserialized = serializer.Deserialize(buffer);
                 // Abi is similar in deserialized and message, but for assertion there is some difference and an error. Line below excludes Abi from assertion
                 deserialized.Should().BeEquivalentTo(message, options => options.Excluding(o => o.Path.EndsWith("Abi")));
 

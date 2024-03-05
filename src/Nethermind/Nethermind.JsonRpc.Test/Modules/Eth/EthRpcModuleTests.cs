@@ -41,6 +41,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 [Parallelizable(ParallelScope.All)]
 [TestFixture]
+[Culture("en-US")]
 public partial class EthRpcModuleTests
 {
     [TestCase("earliest", "0x3635c9adc5dea00000")]
@@ -695,7 +696,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         string serialized = await ctx.Test.TestEthRpc("eth_protocolVersion");
-        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x42\",\"id\":67}"));
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x44\",\"id\":67}"));
     }
 
     [Test]

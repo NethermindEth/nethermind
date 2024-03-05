@@ -94,12 +94,4 @@ public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
         _blobTxStorage.Delete(hash, tx.Timestamp);
         return base.Remove(hash, tx);
     }
-
-    public override void VerifyCapacity()
-    {
-        base.VerifyCapacity();
-
-        if (_logger.IsDebug && Count == _poolCapacity)
-            _logger.Debug($"Blob persistent storage has reached max size of {_poolCapacity}, blob txs can be evicted now");
-    }
 }

@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Roundtrip()
         {
-            NewBlockMessage message = new();
+            using NewBlockMessage message = new();
             message.TotalDifficulty = 131200;
             message.Block = Build.A.Block.Genesis.TestObject;
             NewBlockMessageSerializer serializer = new();
@@ -37,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 transaction.SenderAddress = null;
             }
 
-            NewBlockMessage message = new();
+            using NewBlockMessage message = new();
             message.Block = block;
 
             NewBlockMessageSerializer serializer = new();
@@ -47,7 +47,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             _ = newBlockMessage.ToString();
         }
     }

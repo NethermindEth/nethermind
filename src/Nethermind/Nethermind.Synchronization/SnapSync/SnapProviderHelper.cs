@@ -25,8 +25,8 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
             in ValueHash256 limitHash,
-            PathWithAccount[] accounts,
-            byte[][] proofs = null
+            IReadOnlyList<PathWithAccount> accounts,
+            IReadOnlyList<byte[]> proofs = null
         )
         {
             // TODO: Check the accounts boundaries and sorting
@@ -44,7 +44,7 @@ namespace Nethermind.Synchronization.SnapSync
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
 
-            for (var index = 0; index < accounts.Length; index++)
+            for (var index = 0; index < accounts.Count; index++)
             {
                 PathWithAccount account = accounts[index];
                 if (account.Account.HasStorage)
@@ -82,9 +82,9 @@ namespace Nethermind.Synchronization.SnapSync
             StorageTree tree,
             long blockNumber,
             in ValueHash256? startingHash,
-            PathWithStorageSlot[] slots,
+            IReadOnlyList<PathWithStorageSlot> slots,
             in ValueHash256 expectedRootHash,
-            byte[][]? proofs = null
+            IReadOnlyList<byte[]>? proofs = null
         )
         {
             // TODO: Check the slots boundaries and sorting
@@ -99,7 +99,7 @@ namespace Nethermind.Synchronization.SnapSync
                 return (result, true);
             }
 
-            for (var index = 0; index < slots.Length; index++)
+            for (var index = 0; index < slots.Count; index++)
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
@@ -127,10 +127,10 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256 endHash,
             in ValueHash256 limitHash,
             in ValueHash256 expectedRootHash,
-            byte[][]? proofs = null
+            IReadOnlyList<byte[]>? proofs = null
         )
         {
-            if (proofs is null || proofs.Length == 0)
+            if (proofs is null || proofs.Count == 0)
             {
                 return (AddRangeResult.OK, null, false);
             }
@@ -250,11 +250,11 @@ namespace Nethermind.Synchronization.SnapSync
             return (AddRangeResult.OK, sortedBoundaryList, moreChildrenToRight);
         }
 
-        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(byte[][] proofs, ITrieStore store)
+        private static Dictionary<ValueHash256, TrieNode> CreateProofDict(IReadOnlyList<byte[]> proofs, ITrieStore store)
         {
             Dictionary<ValueHash256, TrieNode> dict = new();
 
-            for (int i = 0; i < proofs.Length; i++)
+            for (int i = 0; i < proofs.Count; i++)
             {
                 byte[] proof = proofs[i];
                 TrieNode node = new(NodeType.Unknown, proof, isDirty: true);

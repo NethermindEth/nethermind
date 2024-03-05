@@ -2,17 +2,19 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class ReceiptsSyncBatch : FastBlocksBatch
+    public class ReceiptsSyncBatch(BlockInfo?[] infos) : FastBlocksBatch
     {
-        public BlockInfo?[] Infos { get; }
-        public TxReceipt[]?[]? Response { get; set; }
+        public BlockInfo?[] Infos { get; } = infos;
+        public IOwnedReadOnlyList<TxReceipt[]?>? Response { get; set; }
 
-        public ReceiptsSyncBatch(BlockInfo?[] infos)
+        public override void Dispose()
         {
-            Infos = infos;
+            base.Dispose();
+            Response?.Dispose();
         }
     }
 }

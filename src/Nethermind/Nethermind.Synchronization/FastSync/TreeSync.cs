@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using NonBlocking;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -21,6 +20,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
+using NonBlocking;
 
 namespace Nethermind.Synchronization.FastSync
 {
@@ -90,7 +90,7 @@ namespace Nethermind.Synchronization.FastSync
             _branchProgress = new BranchProgress(0, _logger);
         }
 
-        public async Task<StateSyncBatch?> PrepareRequest(SyncMode syncMode)
+        public async Task<StateSyncBatch?> PrepareRequest()
         {
             try
             {
@@ -151,7 +151,7 @@ namespace Nethermind.Synchronization.FastSync
                     }
 
                     int requestLength = batch.RequestedNodes?.Count ?? 0;
-                    int responseLength = batch.Responses?.Length ?? 0;
+                    int responseLength = batch.Responses?.Count ?? 0;
 
                     void AddAgainAllItems()
                     {
@@ -207,7 +207,7 @@ namespace Nethermind.Synchronization.FastSync
 
                         /* if the peer has limit on number of requests in a batch then the response will possibly be
                            shorter than the request */
-                        if (batch.Responses.Length < i + 1)
+                        if (batch.Responses.Count < i + 1)
                         {
                             AddNodeToPending(currentStateSyncItem, null, "missing", true);
                             continue;
@@ -335,6 +335,7 @@ namespace Nethermind.Synchronization.FastSync
                 finally
                 {
                     _syncStateLock.ExitReadLock();
+                    batch.Dispose();
                 }
             }
             catch (Exception e)
@@ -459,10 +460,12 @@ namespace Nethermind.Synchronization.FastSync
                     foreach ((StateSyncBatch pendingRequest, _) in _pendingRequests)
                     {
                         // re-add the pending request
-                        for (int i = 0; i < pendingRequest.RequestedNodes.Count; i++)
+                        for (int i = 0; i < pendingRequest.RequestedNodes?.Count; i++)
                         {
                             AddNodeToPending(pendingRequest.RequestedNodes[i], null, "pending request", true);
                         }
+
+                        pendingRequest.Dispose();
                     }
                 }
 
