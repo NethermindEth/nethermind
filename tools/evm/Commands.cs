@@ -6,7 +6,8 @@ using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Tools.t8n;
-
+using System.Text.Json;
+using System.Text.Json.Serialization;
 using Ethereum.Test.Base;
 using Newtonsoft.Json;
 using Nethermind.Db;
@@ -48,7 +49,8 @@ public class T8nOutput
 
 public class T8N
 {
-    private static readonly TxDecoder txDecoder = new();
+    private TxDecoder _txDecoder = new();
+    private EthereumJsonSerializer _ethereumJsonSerializer = new();
 
     public static async Task<int> HandleAsync(
         string inputAlloc,
@@ -102,10 +104,8 @@ public class T8N
         bool traceNoStack,
         bool traceReturnData)
     {
-        Dictionary<Address, JsonTypes.AccountState> allocJson = JsonConvert.DeserializeObject<Dictionary<Address, JsonTypes.AccountState>>(File.ReadAllText(inputAlloc));
-        JsonTypes.Env envJson = new EthereumJsonSerializer().Deserialize<JsonTypes.Env>(File.ReadAllText(inputEnv));
-
-
+        Dictionary<Address, JsonTypes.AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, JsonTypes.AccountState>>(File.ReadAllText(inputAlloc));
+        Env envJson = _ethereumJsonSerializer.Deserialize<Env>(File.ReadAllText(inputEnv));
 
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
@@ -143,7 +143,7 @@ public class T8N
         } else {
             String rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
-            transactions = txDecoder.DecodeArray(rlp).ToList();
+            transactions = _txDecoder.DecodeArray(rlp).ToList();
         }
 
         IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
@@ -206,6 +206,9 @@ public class T8N
                 if (tracer.LastReceipt.StatusCode == 1)
                 {
                     successfulTxs.Add(tx);
+                    tracer.LastReceipt.PostTransactionState = null;
+                    tracer.LastReceipt.BlockHash = null;
+                    tracer.LastReceipt.BlockNumber = 0;
                     successfulTxReceipts.Add(tracer.LastReceipt);
                 } else if (tracer.LastReceipt.StatusCode == 0)
                 {
@@ -235,7 +238,7 @@ public class T8N
         executionResult.Difficulty = header.Difficulty;
         executionResult.GasUsed = new UInt256(gasUsed);
 
-        string json = new EthereumJsonSerializer().Serialize(executionResult, true);
+        string json = _ethereumJsonSerializer.Serialize(executionResult, true);
         Console.WriteLine(json);
 
         Dictionary<Address, Account> accounts = new Dictionary<Address, Account>();
