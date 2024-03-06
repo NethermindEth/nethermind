@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -28,7 +26,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public CodeInfo(ReadOnlyMemory<byte> code)
         {
-            MachineCode = code.ToArray();
+            MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
 

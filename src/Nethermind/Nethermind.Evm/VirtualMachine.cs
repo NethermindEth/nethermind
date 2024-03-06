@@ -1512,7 +1512,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ReadOnlySpan<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span;
+                            ReadOnlyMemory<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
                             int codeSizeToUse = (int)result;
                             slice = externalCode.SliceWithZeroPadding(b, codeSizeToUse);
                             vmState.Memory.Save(in a, in slice);
