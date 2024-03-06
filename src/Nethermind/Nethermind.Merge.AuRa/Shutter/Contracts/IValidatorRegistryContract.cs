@@ -14,13 +14,13 @@ public interface IValidatorRegistryContract
     /// Removes a validator from the validator registry.
     /// </summary>
     /// <param name="blockHeader"></param>
-    ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader);
+    ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader, ulong validatorIndex);
 
     /// <summary>
     /// Adds a validator to the validator registry.
     /// </summary>
     /// <param name="blockHeader"></param>
-    ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader);
+    ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader, ulong validatorIndex);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.
