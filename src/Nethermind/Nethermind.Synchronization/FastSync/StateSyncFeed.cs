@@ -76,8 +76,11 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if ((current & SyncMode.StateNodes) == SyncMode.StateNodes)
                 {
-                    _treeSync.ResetStateRootToBestSuggested(CurrentState);
-                    Activate();
+                    Task.Run(() =>
+                    {
+                        _treeSync.ResetStateRootToBestSuggested(CurrentState);
+                        Activate();
+                    });
                 }
             }
 

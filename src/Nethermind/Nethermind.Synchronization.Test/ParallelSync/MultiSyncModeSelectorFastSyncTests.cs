@@ -5,12 +5,18 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using FluentAssertions;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -669,8 +675,12 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncPeerPool.InitializedPeers.Returns(peerInfos);
             syncPeerPool.AllPeers.Returns(peerInfos);
 
-            ISyncConfig syncConfig = new SyncConfig() { FastSyncCatchUpHeightDelta = 2 };
-            syncConfig.FastSync = true;
+            ISyncConfig syncConfig = new SyncConfig
+            {
+                FastSyncCatchUpHeightDelta = 2,
+                FastSync = true,
+                FastBlocks = true
+            };
 
             TotalDifficultyBetterPeerStrategy bestPeerStrategy = new(LimboLogs.Instance);
             MultiSyncModeSelector selector = new(syncProgressResolver, syncPeerPool, syncConfig, No.BeaconSync, bestPeerStrategy, LimboLogs.Instance);
@@ -679,9 +689,20 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             selector.Update();
             selector.Current.Should().Be(SyncMode.Full);
 
-            CancellationTokenSource waitTokenSource = new CancellationTokenSource();
-            selector.Changed += BlockingMethod;
-            selector.Changed += TestMethod;
+            CancellationTokenSource waitTokenSource = new();
+            ReceiptsSyncFeed receiptsSyncFeed = Substitute.ForPartsOf<ReceiptsSyncFeed>(MainnetSpecProvider.Instance, Substitute.For<IBlockTree>(), Substitute.For<IReceiptStorage>(), syncPeerPool, syncConfig, Substitute.For<ISyncReport>(), Substitute.For<IDb>(), LimboLogs.Instance);
+            receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).DoNotCallBase();
+            receiptsSyncFeed.When(rsf => rsf.InitializeFeed()).Do(e =>
+            {
+                waitTokenSource.Token.WaitHandle.WaitOne(1000);
+                if (!waitTokenSource.IsCancellationRequested)
+                    Assert.Fail();
+            });
+            selector.Changed += (sender, args) =>
+            {
+                receiptsSyncFeed?.SyncModeSelectorOnChanged(SyncMode.FastReceipts);
+            };
+            selector.Changed += SecondDelegate;
 
             for (uint i = 0; i < syncConfig.FastSyncCatchUpHeightDelta + 1; i++)
             {
@@ -692,14 +713,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 syncProgressResolver.FindBestFullBlock().Returns(number);
                 selector.Update();
             }
-
-            void BlockingMethod(object? sender, SyncModeChangedEventArgs e)
-            {
-                waitTokenSource.Token.WaitHandle.WaitOne(1000);
-                if (!waitTokenSource.IsCancellationRequested)
-                    Assert.Fail();
-            }
-            void TestMethod(object? sender, SyncModeChangedEventArgs e)
+            void SecondDelegate(object? sender, SyncModeChangedEventArgs e)
             {
                 waitTokenSource.Cancel();
             }

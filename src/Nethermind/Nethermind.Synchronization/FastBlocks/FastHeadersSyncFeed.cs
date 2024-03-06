@@ -202,6 +202,8 @@ namespace Nethermind.Synchronization.FastBlocks
             }
 
             base.InitializeFeed();
+            HeadersSyncProgressReport.Reset(0);
+            HeadersSyncQueueReport.Reset(0);
         }
 
         protected virtual void ResetPivot()

@@ -8,12 +8,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State.Proofs;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -86,6 +83,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 InitializeMetadataDb();
             }
             base.InitializeFeed();
+            _syncReport.FastBlocksBodies.Reset(0);
+            _syncReport.BodiesInQueue.Reset(0);
         }
 
         private void ResetSyncStatusList()
@@ -275,7 +274,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void UpdateSyncReport()
         {
-            _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.FastBlocksBodies.Update(_barrier - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
         }
 

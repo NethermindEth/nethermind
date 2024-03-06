@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
-using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -97,6 +96,9 @@ namespace Nethermind.Synchronization.Test
             }
 
             SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            syncReport.FastBlocksHeaders.Reset(0);
+            syncReport.FastBlocksBodies.Reset(0);
+            syncReport.FastBlocksReceipts.Reset(0);
             syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
             timer.Elapsed += Raise.Event();
 
@@ -111,6 +113,58 @@ namespace Nethermind.Synchronization.Test
                 iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
                 iLogger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
                 iLogger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+            }
+        }
+
+        [TestCase(false)]
+        [TestCase(true)]
+        public void Ancient_bodies_and_receipts_are_not_reported_until_feed_finishes_Initialization(bool setBarriers)
+        {
+            CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
+            ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
+            pool.InitializedPeersCount.Returns(1);
+            ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            ITimer timer = Substitute.For<ITimer>();
+            timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
+            ILogManager logManager = Substitute.For<ILogManager>();
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsError.Returns(true);
+            ILogger logger = new(iLogger);
+            logManager.GetClassLogger().Returns(logger);
+
+            Queue<SyncMode> syncModes = new();
+            syncModes.Enqueue(SyncMode.FastHeaders);
+            syncModes.Enqueue(SyncMode.FastBodies);
+            syncModes.Enqueue(SyncMode.FastReceipts);
+
+            SyncConfig syncConfig = new()
+            {
+                FastBlocks = true,
+                FastSync = true,
+                PivotNumber = "100",
+            };
+            if (setBarriers)
+            {
+                syncConfig.AncientBodiesBarrier = 30;
+                syncConfig.AncientReceiptsBarrier = 35;
+            }
+
+            SyncReport syncReport = new(pool, Substitute.For<INodeStatsManager>(), syncConfig, Substitute.For<IPivot>(), logManager, timerFactory);
+            syncReport.SyncModeSelectorOnChanged(null, new SyncModeChangedEventArgs(SyncMode.None, SyncMode.FastHeaders | SyncMode.FastBodies | SyncMode.FastReceipts));
+            timer.Elapsed += Raise.Event();
+
+            if (setBarriers)
+            {
+                iLogger.DidNotReceive().Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.DidNotReceive().Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.DidNotReceive().Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+            }
+            else
+            {
+                iLogger.DidNotReceive().Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.DidNotReceive().Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.DidNotReceive().Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
         }
     }
