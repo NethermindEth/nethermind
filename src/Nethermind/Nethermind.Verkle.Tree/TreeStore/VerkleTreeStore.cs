@@ -40,13 +40,12 @@ public partial class VerkleTreeStore<TPersistence> : IVerkleTreeStore
     }
 
     public VerkleTreeStore(
-        IDb leafDb,
-        IDb internalDb,
+        IColumnsDb<VerkleDbColumns> verkleColumnDb,
         IDb stateRootToBlocks,
         ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger<VerkleTreeStore<TPersistence>>() ?? throw new ArgumentNullException(nameof(logManager));
-        Storage = new VerkleKeyValueDb(internalDb, leafDb);
+        Storage = new VerkleKeyValueDb(verkleColumnDb);
         _stateRootToBlocks = new StateRootToBlockMap(stateRootToBlocks);
         if (TPersistence.IsUsingCache)
         {

@@ -24,6 +24,7 @@ using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeStore;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree.Test;
 
@@ -205,7 +206,7 @@ public class TestSyncRangesInAHugeVerkleTree
         Stem endStem = range[^1].Path;
 
         VerkleProof proof = tree.CreateVerkleRangeProof(startStem, endStem, out Banderwagon root, stateRootToUse);
-        var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemDb(), new MemDb(), new MemDb(), LimboLogs.Instance);
+        var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
         var tempTree = new VerkleTree(stateStore, LimboLogs.Instance);
         bool isTrue = tempTree.CreateStatelessTreeFromRange(proof, root, startStem, endStem, range);
         Assert.IsTrue(isTrue);
@@ -426,7 +427,7 @@ public class TestSyncRangesInAHugeVerkleTree
         VerkleProof newProof = TestProofSerialization(proof);
         SubTreeRangeMessage? newMessage = TestSubTreeRangeSerializer(message);
         var newStore =
-            new VerkleTreeStore<PersistEveryBlock>(new MemDb(), new MemDb(), new MemDb(), LimboLogs.Instance);
+            new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
 
         var localTree = new VerkleTree(newStore, LimboLogs.Instance);
         bool isTrue = localTree.CreateStatelessTreeFromRange(newProof, root, startingStem, endStem, newMessage.PathsWithSubTrees);

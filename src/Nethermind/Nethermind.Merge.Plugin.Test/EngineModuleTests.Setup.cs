@@ -109,7 +109,7 @@ public partial class EngineModuleTests
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
-                new InitConfig(){StatelessProcessingEnabled = statelessProcessingEnabled},
+                new InitConfig() { StatelessProcessingEnabled = statelessProcessingEnabled },
                 synchronizationConfig,
                 chain.PoSSwitcher,
                 chain.BeaconSync,

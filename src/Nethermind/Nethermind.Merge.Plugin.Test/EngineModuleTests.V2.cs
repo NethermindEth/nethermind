@@ -426,16 +426,16 @@ public partial class EngineModuleTests
         Block block2 = chain.BlockTree.FindBlock(2)!;
         await chain2.BlockTree.SuggestBlockAsync(block2, BlockTreeSuggestOptions.ForceSetAsMain);
 
-        Block block3  = chain.BlockTree.FindBlock(3)!;
+        Block block3 = chain.BlockTree.FindBlock(3)!;
         await chain2.BlockTree.SuggestBlockAsync(block3, BlockTreeSuggestOptions.ForceSetAsMain);
 
-        Block block4  = chain.BlockTree.FindBlock(4)!;
+        Block block4 = chain.BlockTree.FindBlock(4)!;
         await chain2.BlockTree.SuggestBlockAsync(block4, BlockTreeSuggestOptions.ForceSetAsMain);
 
-        Block block5  = chain.BlockTree.FindBlock(5)!;
+        Block block5 = chain.BlockTree.FindBlock(5)!;
         await chain2.BlockTree.SuggestBlockAsync(block5, BlockTreeSuggestOptions.ForceSetAsMain);
 
-        Block block6  = chain.BlockTree.FindBlock(6)!;
+        Block block6 = chain.BlockTree.FindBlock(6)!;
         await chain2.BlockTree.SuggestBlockAsync(block6, BlockTreeSuggestOptions.ForceSetAsMain);
 
         ResultWrapper<PayloadStatusV1> executePayloadResult =

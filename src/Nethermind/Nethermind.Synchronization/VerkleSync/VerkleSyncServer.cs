@@ -12,6 +12,7 @@ using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeStore;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
@@ -47,7 +48,7 @@ public class VerkleSyncServer
 
     private void TestIsGeneratedProofValid(VerkleProof vProof, Banderwagon rootPoint, Stem startingStem, PathWithSubTree[] nodes)
     {
-        VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemDb(), new MemDb(), new MemDb(), LimboLogs.Instance);
+        VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), LimboLogs.Instance);
         VerkleTree localTree = new VerkleTree(stateStore, LimboLogs.Instance);
         var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint, startingStem, nodes[^1].Path, nodes);
         _logger.Info(!isCorrect

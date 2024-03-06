@@ -30,7 +30,7 @@ public class GenesisTestBench
     [TestCase(DbMode.PersistantDb)]
     public void TestInsertKey0Value0(DbMode dbMode)
     {
-        using var reader = new StreamReader("/home/eurus/nethermind/src/Nethermind/Nethermind.Verkle.Tree.Test/genesis.csv");
+        using var reader = new StreamReader(typeof(GenesisTestBench).Assembly.GetManifestResourceStream("Nethermind.Verkle.Tree.Test.genesis.csv"));
         var listA = new List<Hash256>();
         var listB = new List<byte[]>();
         while (!reader.EndOfStream)

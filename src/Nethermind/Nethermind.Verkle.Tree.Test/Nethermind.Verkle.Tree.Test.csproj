@@ -22,4 +22,9 @@
     <ProjectReference Include="..\Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Remove="genesis.csv" />
+    <EmbeddedResource Include="genesis.csv" />
+  </ItemGroup>
+
 </Project>

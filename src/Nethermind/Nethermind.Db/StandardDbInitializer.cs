@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.FullPruning;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Db
 {
@@ -67,8 +68,7 @@ namespace Nethermind.Db
             {
                 RegisterColumnsDb<BlobTxsColumns>(BuildDbSettings(DbNames.BlobTransactions));
             }
-            RegisterDb(BuildDbSettings(DbNames.Leaf));
-            RegisterDb(BuildDbSettings(DbNames.InternalNodes));
+            RegisterColumnsDb<VerkleDbColumns>(BuildDbSettings(DbNames.VerkleState));
 
             RegisterDb(BuildDbSettings(DbNames.ForwardDiff));
             RegisterDb(BuildDbSettings(DbNames.ReverseDiff));
