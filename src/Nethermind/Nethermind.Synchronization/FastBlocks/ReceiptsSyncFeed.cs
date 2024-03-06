@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.FastBlocks
             AdjustRequestSize(batch, validResponsesCount);
             LogPostProcessingBatchInfo(batch, validResponsesCount);
 
-            _syncReport.FastBlocksReceipts.Update(_barrier - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.FastBlocksReceipts.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.ReceiptsInQueue.Update(_syncStatusList.QueueSize);
             return validResponsesCount;
         }

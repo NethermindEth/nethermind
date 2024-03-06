@@ -274,7 +274,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         private void UpdateSyncReport()
         {
-            _syncReport.FastBlocksBodies.Update(_barrier - _syncStatusList.LowestInsertWithoutGaps);
+            _syncReport.FastBlocksBodies.Update(_pivotNumber - _syncStatusList.LowestInsertWithoutGaps);
             _syncReport.BodiesInQueue.Update(_syncStatusList.QueueSize);
         }
 
