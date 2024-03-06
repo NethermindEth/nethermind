@@ -6,16 +6,20 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using FluentAssertions;
+using Nethermind.Blockchain.BlockHashInState;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
+using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
+using Nethermind.State;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.TreeStore;
@@ -270,6 +274,29 @@ public class VerkleProofTest
         ser.Encode(stream, proof);
         VerkleProof data = ser.Decode(new RlpStream(stream.Data!));
         data.ToString().Should().BeEquivalentTo(proof.ToString());
+    }
+
+    [Test]
+    public void TestBlock257()
+    {
+        string payload = "{\"parentHash\":\"0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213\",\"feeRecipient\":\"0xf97e180c050e5ab072211ad2c213eb5aee4df134\",\"stateRoot\":\"0x5bf12e46f1ce048f74229eb6fb4bbdb715eb615e0b79abf32a53712a9f643de7\",\"receiptsRoot\":\"0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421\",\"logsBloom\":\"0x00000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000\",\"prevRandao\":\"0xb5f43407166c107f53f501a3409e3b74cca112cc60c2bdc169d4d1476461721d\",\"blockNumber\":\"0x101\",\"gasLimit\":\"0x1c9c380\",\"gasUsed\":\"0x0\",\"timestamp\":\"0x65c21634\",\"extraData\":\"0xd983010c01846765746889676f312e32302e3133856c696e7578\",\"baseFeePerGas\":\"0x7\",\"blockHash\":\"0xbedc42451ae09174af2a141ca36bee23337f3cdf6036ca68358a3decc1454057\",\"transactions\":[],\"withdrawals\":[],\"executionWitness\":{\"stateDiff\":[{\"stem\":\"0x117b67dd491b9e11d9cde84ef3c02f11ddee9e18284969dc7d496d43c300e5\",\"suffixDiffs\":[{\"suffix\":0,\"currentValue\":null,\"newValue\":\"0x4ff50e1454f9a9f56871911ad5b785b7f9966cce3cb12eb0e989332ae2279213\"}]}],\"verkleProof\":{\"otherStems\":[\"0x1123356d04d4bd662ba38c44cbd79d4108521284d80327fa533e0baab1af9f\"],\"depthExtensionPresent\":\"0x09\",\"commitmentsByPath\":[\"0x3514e85936b1e484f84fc93b58e38b9ed9b0d870002653085f9dd758b1b8c3f5\"],\"d\":\"0x59a7b2bd71eff71d6d43abd61c1533246dce01a1b973c9287e2c9b6dea76c21a\",\"ipaProof\":{\"cl\":[\"0x07c7bc1903217d5eb06e067cd535376c7fa737e717a06cd62686e9dcebbef0a2\",\"0x11ca24317a6772c962252e1d1963450027c5024152aef68b148fb833e30c0a99\",\"0x0c330e01ce8c356e2ad9ba15f3ac4d730e5f986bf0f227b28c55ccdbfb373674\",\"0x380b8e7d511dcd37d9596c084d156eaff21eec9368745c1222b4bfc2ce231db8\",\"0x27c74c37d499e3475f4ad8968417e72b068ba923ffde27e21d323c29fe30ce78\",\"0x5d2ebbdb282ccc9aa7f878a8875b01072e7444a02ee7f37daefe7745dc95ad32\",\"0x494d512c207264ec018ca26d137bb46d6e9c68c934ae40d8c3d55024877a68f2\",\"0x1b73f07a94186b7c3221d46e2082049e79c3b90999c9fc61970d9f2fbd5fbf96\"],\"cr\":[\"0x6bbdeac4b34f9c03ea3d7d194702f7da05b3067609a0b4f163280f39a20ae781\",\"0x596e6fdf00232028cdc19ad3830920b4fb685993031288355b4858280f14071b\",\"0x2b8a39633e7a69c80c436f1250175476ba5a5dff2432e246f5478d5ba68b0903\",\"0x2b5a3ad002ddff1d649ef4f03ea053baac62f4cd038fd391aff527f73bdd568a\",\"0x409f15bc99f774b2a0f5b2ea4a06c1d7779d24776d013bc93f99d264f558b35f\",\"0x49903ee86b289a82033d7887aeecdefd60ed390fb470252ca0101619377ec1eb\",\"0x254ad6cf40e599e207698c6fe438d51b221336f0a6ee3297b7a2113fc09b37b4\",\"0x3bad9aabbf4dc90e786d1b69c9c87e63974a376067029ed5e3d7fa04b701fd96\"],\"finalEvaluation\":\"0x1349fd2896502fe7778d871bf10c4b7820744255178b429c08512c64c6e96d2c\"}}}}";
+        IJsonSerializer serializer = new EthereumJsonSerializer();
+        ExecutionPayload? result = serializer.Deserialize<ExecutionPayload>(payload);
+        Console.WriteLine(result);
+
+        VerkleWorldState state = new VerkleWorldState(result.ExecutionWitness,
+            Banderwagon.FromBytes(
+                Bytes.FromHexString("0x3d339c16f3b906126a2f00f7130ff3bca99a176f1c97185ddf1e783417986510")).Value,
+            SimpleConsoleLogManager.Instance);
+
+        BlockHashInStateHandler handler = new BlockHashInStateHandler();
+        result.TryGetBlock(out var block);
+        handler.AddParentBlockHashToState(block.Header, Prague.Instance, state, NullBlockTracer.Instance);
+        state.Commit(Prague.Instance);
+        state.CommitTree(257);
+        var stateRoot = state.StateRoot;
+        stateRoot.ToString().Should()
+            .BeEquivalentTo("0x5bf12e46f1ce048f74229eb6fb4bbdb715eb615e0b79abf32a53712a9f643de7");
     }
 
 
