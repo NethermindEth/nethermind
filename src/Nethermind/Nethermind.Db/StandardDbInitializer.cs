@@ -6,7 +6,6 @@ using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Db.FullPruning;
-using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Db
 {
