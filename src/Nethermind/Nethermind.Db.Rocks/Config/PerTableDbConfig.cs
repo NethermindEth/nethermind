@@ -69,6 +69,7 @@ public class PerTableDbConfig
     public bool AdviseRandomOnOpen => ReadConfig<bool>(nameof(AdviseRandomOnOpen));
     public bool LevelCompactionDynamicLevelBytes => ReadConfig<bool>(nameof(LevelCompactionDynamicLevelBytes));
     public int BloomFilterBitsPerKey => ReadConfig<int>(nameof(BloomFilterBitsPerKey));
+    public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
 
     private T? ReadConfig<T>(string propertyName)

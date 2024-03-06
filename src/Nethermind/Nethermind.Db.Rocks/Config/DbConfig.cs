@@ -47,6 +47,7 @@ public class DbConfig : IDbConfig
     public bool AdviseRandomOnOpen { get; set; } = true;
     public bool LevelCompactionDynamicLevelBytes { get; set; } = false;
     public int BloomFilterBitsPerKey { get; set; } = 10;
+    public int? UseRibbonFilterStartingFromLevel { get; set; }
     public ulong BytesPerSync { get; set; } = 0;
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
@@ -217,6 +218,7 @@ public class DbConfig : IDbConfig
     public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool StateDbAdviseRandomOnOpen { get; set; }
     public int StateDbBloomFilterBitsPerKey { get; set; }
+    public int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

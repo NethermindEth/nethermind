@@ -48,6 +48,7 @@ public interface IDbConfig : IConfig
     bool AdviseRandomOnOpen { get; set; }
     bool LevelCompactionDynamicLevelBytes { get; set; }
     int BloomFilterBitsPerKey { get; set; }
+    int? UseRibbonFilterStartingFromLevel { get; set; }
     ulong BytesPerSync { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
@@ -217,6 +218,7 @@ public interface IDbConfig : IConfig
     double StateDbMemtablePrefixBloomSizeRatio { get; set; }
     bool StateDbAdviseRandomOnOpen { get; set; }
     int StateDbBloomFilterBitsPerKey { get; set; }
+    int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
