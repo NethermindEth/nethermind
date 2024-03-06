@@ -226,6 +226,11 @@ public class PaprikaStateFactory : IStateFactory
             wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
         }
 
+        public void StorageMightBeSet(in StorageCell cell)
+        {
+            // TODO: notify world state about prefetching
+        }
+
         public void Commit(long blockNumber)
         {
             wrapped.Commit((uint)blockNumber);

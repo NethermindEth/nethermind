@@ -16,6 +16,12 @@ public interface IState : IReadOnlyState
     void SetStorage(in StorageCell cell, EvmWord value);
 
     /// <summary>
+    /// Informs the state about the potential of this sell being set.
+    /// Might be used for prefetching purposes of the commitment.
+    /// </summary>
+    void StorageMightBeSet(in StorageCell cell);
+
+    /// <summary>
     /// Commits the changes.
     /// </summary>
     void Commit(long blockNumber);

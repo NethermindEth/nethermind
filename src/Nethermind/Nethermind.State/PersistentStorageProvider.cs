@@ -82,7 +82,7 @@ namespace Nethermind.State
 
         protected override void OnCellUpdatePushed(in StorageCell cell)
         {
-            // TODO: implement prefetch
+            _owner.State.StorageMightBeSet(cell);
         }
 
         /// <summary>
