@@ -370,6 +370,14 @@ public class VerkleWorldState : IWorldState
         return chunk;
     }
 
+    public virtual byte[] GetCodeChunkOrEmpty(Address codeOwner, UInt256 codeChunk)
+    {
+        // This is for the case of stateless execution using only a few chunks of the code
+        Hash256? treeKey = AccountHeader.GetTreeKeyForCodeChunk(codeOwner.Bytes, codeChunk);
+        byte[]? chunk = _tree.Get(treeKey);
+        return chunk ?? new byte[32];
+    }
+
     public byte[] GetCode(Address address)
     {
         Account? account = GetThroughCache(address);

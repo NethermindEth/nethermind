@@ -266,8 +266,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode.ToBytes() : currentState.Env.InputData, currentState.ExecutionType);
-                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode.ToBytes());
+                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To, currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData, currentState.ExecutionType);
+                        if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                     }
 
                     if (!_txTracer.IsTracingInstructions)
@@ -859,7 +859,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
         ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
         ref readonly BlockExecutionContext blkCtx = ref txCtx.BlockExecutionContext;
-        ICode code = env.CodeInfo.MachineCode;
+        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1512,7 +1512,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, result)) goto OutOfGas;
 
-                            ICode externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode;
+                            ReadOnlySpan<byte> externalCode = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span;
                             int codeSizeToUse = (int)result;
                             slice = externalCode.SliceWithZeroPadding(b, codeSizeToUse);
                             vmState.Memory.Save(in a, in slice);
