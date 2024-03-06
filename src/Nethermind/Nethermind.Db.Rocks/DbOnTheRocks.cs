@@ -843,39 +843,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
     }
 
-    private IEnumerable<KeyValuePair<byte[], byte[]?>> GetAllCoreBounded(Iterator iterator)
-    {
-        if (_isDisposing)
-        {
-            throw new ObjectDisposedException($"Attempted to read form a disposed database {Name}");
-        }
-
-        while (iterator.Valid())
-        {
-            yield return new KeyValuePair<byte[], byte[]?>(iterator.Key(), iterator.Value());
-
-            try
-            {
-                iterator.Next();
-            }
-            catch (RocksDbSharpException e)
-            {
-                CreateMarkerIfCorrupt(e);
-                throw;
-            }
-        }
-
-        try
-        {
-            iterator.Dispose();
-        }
-        catch (RocksDbSharpException e)
-        {
-            CreateMarkerIfCorrupt(e);
-            throw;
-        }
-    }
-
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator()
     {
         Iterator iterator = CreateIterator(null, true, null);
