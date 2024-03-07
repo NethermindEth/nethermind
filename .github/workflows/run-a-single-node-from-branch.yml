@@ -66,7 +66,7 @@ on:
         default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
       additional_optimism_options:
         description: "Extra options to configure optimism node"
-        default: '{"l1_nethermind_image":"", "op-node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
   workflow_call:
     inputs:
       smoke_tests_ref:
@@ -126,7 +126,7 @@ on:
       additional_optimism_options:
         type: string
         description: "Extra options to configure optimism node"
-        default: '{"l1_nethermind_image":"", "op-node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
     outputs:
       base_tag:
@@ -261,7 +261,7 @@ jobs:
         echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
         echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
         echo "l1_nethermind_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
-        echo "op-node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op-node_image)" >> $GITHUB_OUTPUT
+        echo "op_node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_node_image)" >> $GITHUB_OUTPUT
         echo "op_el_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_el_extra_flags)" >> $GITHUB_OUTPUT
         echo "op_cl_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_cl_extra_flags)" >> $GITHUB_OUTPUT
         echo "layer1_el_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
@@ -289,7 +289,7 @@ jobs:
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
                      "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}",
-                     "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op-node_image\":\"${{ steps.extract_variables.outputs.op-node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
+                     "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
                    }'
 
     - name: Wait for creation of node
