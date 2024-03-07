@@ -381,21 +381,21 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         tableOptions.SetFormatVersion(5);
-        if (dbConfig.BloomFilterBitsPerKey != 0)
+        if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
         {
             if (dbConfig.UseRibbonFilterStartingFromLevel != null)
             {
                 // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
                 // false positive rate. This config allow the use of ribbon filter only for lower levels.
                 IntPtr filter = _rocksDbNative.rocksdb_filterpolicy_create_ribbon_hybrid(
-                    dbConfig.BloomFilterBitsPerKey,
+                    dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(),
                     dbConfig.UseRibbonFilterStartingFromLevel.Value);
                 tableOptions.SetFilterPolicy(filter);
             }
             else
             {
                 // Bloom filter size for the sst files.
-                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey, false));
+                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(), false));
             }
         }
 
@@ -405,7 +405,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval);
+        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
 
         // This adds a hashtable-like index per block (the 16kb block)
         // In theory, this should reduce CPU, but I don't see any different.
@@ -652,10 +652,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
         _defaultReadOptions = new ReadOptions();
-        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
 
         _hintCacheMissOptions = new ReadOptions();
-        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
         _hintCacheMissOptions.SetFillCache(false);
 
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
@@ -666,7 +666,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
