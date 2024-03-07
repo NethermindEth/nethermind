@@ -1582,14 +1582,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         Metrics.BlockhashOpcode++;
 
-                        Hash256 GetBlockHashFromState(ulong blockNumber)
+                        Hash256? GetBlockHashFromState(ulong blockNumber)
                         {
                             StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockNumber);
                             // TODO: find a better way to access without charging
                             long fakeGas = 1000000;
-                            vmState.Env.Witness.AccessAndChargeForStorage(storageCell.Address, storageCell.Index,
+                            vmState.Env.Witness.AccessAndChargeForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
                                 false, ref fakeGas);
-                            return new Hash256(_worldState.Get(blockHashStoreCell));
+                            ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
+                            if (data.Length < 32) return null;
+                            return new Hash256(data);
                         }
 
                         gasAvailable -= GasCostOf.BlockHash;
