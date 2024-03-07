@@ -33,7 +33,7 @@ public class DbConfig : IDbConfig
     public bool UseHashIndex { get; set; } = false;
     public ulong? PrefixExtractorLength { get; set; } = null;
     public bool AllowMmapReads { get; set; } = false;
-    public bool VerifyChecksum { get; set; } = true;
+    public bool? VerifyChecksum { get; set; } = true;
     public double MaxBytesForLevelMultiplier { get; set; } = 10;
     public ulong? MaxCompactionBytes { get; set; } = null;
     public int MinWriteBufferNumberToMerge { get; set; } = 1;
@@ -42,11 +42,11 @@ public class DbConfig : IDbConfig
     public bool OnlyCompressLastLevel { get; set; } = false;
     public long? MaxWriteBufferSizeToMaintain { get; set; } = null;
     public bool UseHashSkipListMemtable { get; set; } = false;
-    public int BlockRestartInterval { get; set; } = 16;
+    public int? BlockRestartInterval { get; set; } = 16;
     public double MemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool AdviseRandomOnOpen { get; set; } = true;
     public bool LevelCompactionDynamicLevelBytes { get; set; } = false;
-    public int BloomFilterBitsPerKey { get; set; } = 10;
+    public int? BloomFilterBitsPerKey { get; set; } = 10;
     public int? UseRibbonFilterStartingFromLevel { get; set; }
     public ulong BytesPerSync { get; set; } = 0;
 
@@ -204,7 +204,7 @@ public class DbConfig : IDbConfig
     public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool StateDbAllowMmapReads { get; set; }
-    public bool StateDbVerifyChecksum { get; set; }
+    public bool? StateDbVerifyChecksum { get; set; }
     public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
     public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
     public ulong? StateDbMaxCompactionBytes { get; set; }
@@ -214,10 +214,10 @@ public class DbConfig : IDbConfig
     public bool StateDbOnlyCompressLastLevel { get; set; } = false;
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
-    public int StateDbBlockRestartInterval { get; set; }
+    public int? StateDbBlockRestartInterval { get; set; }
     public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool StateDbAdviseRandomOnOpen { get; set; }
-    public int StateDbBloomFilterBitsPerKey { get; set; }
+    public int? StateDbBloomFilterBitsPerKey { get; set; }
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
