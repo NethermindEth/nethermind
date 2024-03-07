@@ -143,9 +143,8 @@ public class InitializeStateDb : IStep
         {
             if (initConfig.StatelessProcessingEnabled)
             {
-                VerkleTreeStore<PersistEveryBlock> verkleTreeStore;
-                setApi.VerkleTreeStore = verkleTreeStore = new VerkleTreeStore<PersistEveryBlock>(getApi.DbProvider, getApi.LogManager);
-                // setApi.VerkleArchiveStore = new(verkleTreeStore, getApi.DbProvider, getApi.LogManager);
+                IVerkleTreeStore verkleTreeStore;
+                setApi.VerkleTreeStore = verkleTreeStore = new EmptyVerkleTreeStore();
                 worldState = setApi.WorldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
                 stateManager = setApi.WorldStateManager = new VerkleWorldStateManager(
                     worldState,
