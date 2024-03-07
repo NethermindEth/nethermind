@@ -390,6 +390,33 @@ public class VerkleWorldState : IWorldState
         return chunk ?? new byte[32];
     }
 
+    public ReadOnlyMemory<byte> GetCodeFromCodeChunksForStatelessProcessing(Address owner)
+    {
+        int length = (int)GetAccount(owner).CodeSize;
+        if (0 >= length)
+            return Array.Empty<byte>();
+
+        int endIndex = length - 1;
+
+        int endChunkId = endIndex / 31;
+        int endChunkLoc = (endIndex % 31) + 1;
+
+        byte[] codeSlice = new byte[endIndex  + 1];
+        Span<byte> codeSliceSpan = codeSlice;
+
+        for (int i = 0; i < endChunkId; i++)
+        {
+            Hash256? treeKey = AccountHeader.GetTreeKeyForCodeChunk(owner.Bytes, (UInt256)i);
+            byte[]? chunk = _tree.Get(treeKey);
+            chunk?[1..].CopyTo(codeSliceSpan);
+            codeSliceSpan = codeSliceSpan[31..];
+        }
+        Hash256? treeKeyEndChunk = AccountHeader.GetTreeKeyForCodeChunk(owner.Bytes, (UInt256)endChunkId);
+        byte[]? endChunk = _tree.Get(treeKeyEndChunk);
+        endChunk?[1..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
+        return codeSlice;
+    }
+
     public byte[] GetCode(Address address)
     {
         Account? account = GetThroughCache(address);

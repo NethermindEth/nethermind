@@ -33,7 +33,7 @@ namespace Nethermind.Evm.CodeAnalysis
         public CodeInfo(IWorldState worldState, Address codeOwner)
         {
             var verkleWorldState = worldState as VerkleWorldState;
-            MachineCode = RebuildCodeFromChunks(verkleWorldState!, codeOwner);
+            MachineCode = verkleWorldState!.GetCodeFromCodeChunksForStatelessProcessing(codeOwner);
             _analyzer = MachineCode.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(MachineCode);
         }
 
@@ -55,38 +55,6 @@ namespace Nethermind.Evm.CodeAnalysis
         void IThreadPoolWorkItem.Execute()
         {
             _analyzer.Execute();
-        }
-
-        private static byte[] RebuildCodeFromChunks(VerkleWorldState worldState, Address owner)
-        {
-            int length = (int)worldState.GetAccount(owner).CodeSize;
-
-            if (0 >= length)
-                return Array.Empty<byte>();
-
-            int endIndex = length - 1;
-
-            int endChunkId = endIndex / 31;
-            int endChunkLoc = (endIndex % 31) + 1;
-
-            byte[] codeSlice = new byte[endIndex  + 1];
-            Span<byte> codeSliceSpan = codeSlice;
-            if (0 == endChunkId)
-            {
-                worldState.GetCodeChunkOrEmpty(owner, (UInt256)0)[1..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
-            }
-            else
-            {
-                worldState.GetCodeChunkOrEmpty(owner, (UInt256)0)[1..].CopyTo(codeSliceSpan);
-                codeSliceSpan = codeSliceSpan[31..];
-                for (int i = 1; i < endChunkId; i++)
-                {
-                    worldState.GetCodeChunkOrEmpty(owner, (UInt256)i)[1..].CopyTo(codeSliceSpan);
-                    codeSliceSpan = codeSliceSpan[31..];
-                }
-                worldState.GetCodeChunkOrEmpty(owner, (UInt256)endChunkId)[1..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
-            }
-            return codeSlice;
         }
     }
 }
