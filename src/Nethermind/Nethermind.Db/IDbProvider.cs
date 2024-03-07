@@ -36,9 +36,6 @@ namespace Nethermind.Db
         void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
         IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
 
-        public IDb LeafDb => GetDb<IDb>(DbNames.Leaf);
-        public IDb InternalNodesDb => GetDb<IDb>(DbNames.InternalNodes);
-
         public IDb ForwardDiff => GetDb<IDb>(DbNames.ForwardDiff);
         public IDb ReverseDiff => GetDb<IDb>(DbNames.ReverseDiff);
         public IDb StateRootToBlocks => GetDb<IDb>(DbNames.StateRootToBlock);

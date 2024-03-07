@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Verkle.Tree.Serializers;
@@ -10,18 +9,21 @@ using Nethermind.Verkle.Tree.TreeNodes;
 
 namespace Nethermind.Verkle.Tree.VerkleDb;
 
-public class VerkleKeyValueBatch(IWriteBatch leafNodeBatch, IWriteBatch internalNodeBatch) : IVerkleWriteOnlyDb, IDisposable
+public class VerkleKeyValueBatch(IColumnsWriteBatch<VerkleDbColumns> columnsWriteBatch) : IVerkleWriteOnlyDb, IDisposable
 {
+    private readonly IWriteBatch _leafNodeBatch = columnsWriteBatch.GetColumnBatch(VerkleDbColumns.Leaf);
+    private readonly IWriteBatch _internalNodeBatch = columnsWriteBatch.GetColumnBatch(VerkleDbColumns.InternalNodes);
+
     private bool _isDisposed;
 
     public void SetLeaf(ReadOnlySpan<byte> leafKey, byte[] leafValue)
     {
-        leafNodeBatch[leafKey] = leafValue;
+        _leafNodeBatch[leafKey] = leafValue;
     }
 
     public void SetInternalNode(ReadOnlySpan<byte> internalNodeKey, InternalNode internalNodeValue)
     {
-        SetInternalNode(internalNodeKey, internalNodeValue, internalNodeBatch);
+        SetInternalNode(internalNodeKey, internalNodeValue, _internalNodeBatch);
     }
 
     private static void SetInternalNode(ReadOnlySpan<byte> internalNodeKey, InternalNode? internalNodeValue,
@@ -33,26 +35,25 @@ public class VerkleKeyValueBatch(IWriteBatch leafNodeBatch, IWriteBatch internal
 
     public void RemoveLeaf(ReadOnlySpan<byte> leafKey)
     {
-        leafNodeBatch.Remove(leafKey);
+        _leafNodeBatch.Remove(leafKey);
     }
 
     public void RemoveInternalNode(ReadOnlySpan<byte> internalNodeKey)
     {
-        internalNodeBatch.Remove(internalNodeKey);
+        _internalNodeBatch.Remove(internalNodeKey);
     }
 
     public void Dispose()
     {
         if (_isDisposed) return;
         _isDisposed = true;
-        leafNodeBatch.Dispose();
-        internalNodeBatch.Dispose();
+        columnsWriteBatch.Dispose();
     }
 }
 
-public class VerkleKeyValueDb(IDb internalNodeDb, IDb leafDb) : IVerkleDb, IVerkleKeyValueDb
+public class VerkleKeyValueDb(IColumnsDb<VerkleDbColumns> columns) : IVerkleDb, IVerkleKeyValueDb
 {
-    public VerkleKeyValueDb(IDbProvider dbProvider) : this(dbProvider.InternalNodesDb, dbProvider.LeafDb)
+    public VerkleKeyValueDb(IDbProvider dbProvider) : this(dbProvider.GetColumnDb<VerkleDbColumns>(DbNames.VerkleState))
     {
     }
 
@@ -90,11 +91,11 @@ public class VerkleKeyValueDb(IDb internalNodeDb, IDb leafDb) : IVerkleDb, IVerk
 
     public VerkleKeyValueBatch StartWriteBatch()
     {
-        return new VerkleKeyValueBatch(LeafDb.StartWriteBatch(), InternalNodeDb.StartWriteBatch());
+        return new VerkleKeyValueBatch(columns.StartWriteBatch());
     }
 
-    public IDb LeafDb { get; } = leafDb;
-    public IDb InternalNodeDb { get; } = internalNodeDb;
+    public IDb LeafDb { get; } = columns.GetColumnDb(VerkleDbColumns.Leaf);
+    public IDb InternalNodeDb { get; } = columns.GetColumnDb(VerkleDbColumns.InternalNodes);
 
     public byte[]? GetLeaf(ReadOnlySpan<byte> key)
     {

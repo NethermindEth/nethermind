@@ -67,8 +67,7 @@ namespace Nethermind.Db
             {
                 RegisterColumnsDb<BlobTxsColumns>(BuildDbSettings(DbNames.BlobTransactions));
             }
-            RegisterDb(BuildDbSettings(DbNames.Leaf));
-            RegisterDb(BuildDbSettings(DbNames.InternalNodes));
+            RegisterColumnsDb<VerkleDbColumns>(BuildDbSettings(DbNames.VerkleState));
 
             RegisterDb(BuildDbSettings(DbNames.ForwardDiff));
             RegisterDb(BuildDbSettings(DbNames.ReverseDiff));

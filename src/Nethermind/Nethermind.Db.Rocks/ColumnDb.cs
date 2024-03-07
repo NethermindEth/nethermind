@@ -154,21 +154,20 @@ public class ColumnDb : IDb
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator()
     {
-        using Iterator iterator = _mainDb.CreateIterator(true, _columnFamily);
+        Iterator iterator = _mainDb.CreateIterator(true, _columnFamily);
         return _mainDb.GetAllCore(iterator);
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start)
     {
-        using Iterator iterator = _mainDb.CreateIterator(true, _columnFamily);
-        iterator.Seek(start);
-        return _mainDb.GetAllCore(iterator);
+        Iterator iterator = _mainDb.CreateIterator(start, true, _columnFamily);
+        return _mainDb.WrapInEnumerable(iterator);
     }
 
     public IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
     {
-        using Iterator iterator = _mainDb.CreateIterator(true, _columnFamily);
-        iterator.Seek(start);
-        return _mainDb.GetAllCore(iterator);
+        // TODO: Do this properly?
+        return GetIterator(start)
+            .TakeWhile((kv) => kv.Key.AsSpan().SequenceCompareTo(end.AsSpan()) <= 0);
     }
 }

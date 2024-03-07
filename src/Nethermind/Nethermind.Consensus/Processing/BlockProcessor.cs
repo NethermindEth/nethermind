@@ -248,7 +248,7 @@ public partial class BlockProcessor : IBlockProcessor
         for (var i = 0; i < Math.Min(256, current); i++)
         {
             // an extract check - dont think it is needed
-            if(header.IsGenesis) break;
+            if (header.IsGenesis) break;
             _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
             header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
@@ -299,7 +299,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, worldState);
 
-        if (spec.IsEip2935Enabled )
+        if (spec.IsEip2935Enabled)
         {
             // TODO: find a better way to handle this - no need to have this check everytime
             //      this would just be true on the fork block

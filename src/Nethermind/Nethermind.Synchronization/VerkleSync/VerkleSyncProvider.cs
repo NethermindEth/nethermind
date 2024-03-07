@@ -14,6 +14,7 @@ using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeStore;
+using Nethermind.Verkle.Tree.VerkleDb;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Synchronization.VerkleSync;
@@ -75,7 +76,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
             VerkleProof vProof = ser.Decode(new RlpStream(proofs!));
             try
             {
-                var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemDb(), new MemDb(), new MemDb(), _logManager);
+                var stateStore = new VerkleTreeStore<PersistEveryBlock>(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), _logManager);
                 var localTree = new VerkleTree(stateStore, LimboLogs.Instance);
                 var isCorrect = localTree.CreateStatelessTreeFromRange(vProof, rootPoint, startingStem, subTrees[^1].Path, subTrees);
                 if (!isCorrect)

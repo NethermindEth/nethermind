@@ -18,6 +18,7 @@ using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeNodes;
 using Nethermind.Verkle.Tree.TreeStore;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Synchronization.VerkleSync;
 
@@ -54,7 +55,7 @@ public class VerkleProgressTracker: IRangeProgressTracker<VerkleSyncBatch>, IDis
     public VerkleProgressTracker(IBlockTree blockTree, IDbProvider dbProvider, ILogManager logManager, int subTreeRangePartitionCount = 8)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-        _db = dbProvider.InternalNodesDb ?? throw new ArgumentNullException(nameof(dbProvider));
+        _db = dbProvider.GetColumnDb<VerkleDbColumns>(DbNames.VerkleState).GetColumnDb(VerkleDbColumns.InternalNodes) ?? throw new ArgumentNullException(nameof(dbProvider));
         _verkleStore = new VerkleTreeStore<PersistEveryBlock>(dbProvider, logManager);
         _pivot = new RangeSync.Pivot(blockTree, logManager);
 
