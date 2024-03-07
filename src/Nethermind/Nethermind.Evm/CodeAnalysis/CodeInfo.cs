@@ -3,8 +3,10 @@
 
 using System;
 using System.Threading;
-
+using Nethermind.Core;
 using Nethermind.Evm.Precompiles;
+using Nethermind.Int256;
+using Nethermind.State;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -27,6 +29,14 @@ namespace Nethermind.Evm.CodeAnalysis
             MachineCode = code;
             _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
         }
+
+        public CodeInfo(IWorldState worldState, Address codeOwner)
+        {
+            var verkleWorldState = worldState as VerkleWorldState;
+            MachineCode = verkleWorldState!.GetCodeFromCodeChunksForStatelessProcessing(codeOwner);
+            _analyzer = MachineCode.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(MachineCode);
+        }
+
 
         public bool IsPrecompile => Precompile is not null;
 

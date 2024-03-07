@@ -90,6 +90,7 @@ namespace Nethermind.Serialization.Json
                     new StemConverter(),
                     new IpaProofConverter(),
                     new BanderwagonConverter(),
+                    new ExecutionWitnessConverter()
                 }
             };
 

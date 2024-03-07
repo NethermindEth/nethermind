@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -57,6 +58,15 @@ public class VerkleWorldState : IWorldState
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         _tree = verkleTree;
         _storageProvider = new VerkleStorageProvider(verkleTree, logManager);
+    }
+
+    public void InsertExecutionWitness(ExecutionWitness? executionWitness, Banderwagon root)
+    {
+        _tree.Reset();
+        if (!_tree.InsertIntoStatelessTree(executionWitness, root))
+        {
+            throw new InvalidDataException("stateless tree cannot be created: invalid proof");
+        }
     }
 
     internal VerkleWorldState(VerklePersistentStorageProvider storageProvider, VerkleStateTree verkleTree, IKeyValueStore? codeDb, ILogManager? logManager)
@@ -351,7 +361,9 @@ public class VerkleWorldState : IWorldState
         byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
         if (code is null)
         {
-            throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+            if (codeHash == Keccak.Zero) code = Array.Empty<byte>();
+            else
+                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         return code;
@@ -368,6 +380,33 @@ public class VerkleWorldState : IWorldState
             throw new InvalidOperationException($"Code Chunk {chunk} is missing from the database.");
         }
         return chunk;
+    }
+
+    public ReadOnlyMemory<byte> GetCodeFromCodeChunksForStatelessProcessing(Address owner)
+    {
+        int length = (int)GetAccount(owner).CodeSize;
+        if (0 >= length)
+            return Array.Empty<byte>();
+
+        int endIndex = length - 1;
+
+        int endChunkId = endIndex / 31;
+        int endChunkLoc = (endIndex % 31) + 1;
+
+        byte[] codeSlice = new byte[endIndex + 1];
+        Span<byte> codeSliceSpan = codeSlice;
+
+        for (int i = 0; i < endChunkId; i++)
+        {
+            Hash256? treeKey = AccountHeader.GetTreeKeyForCodeChunk(owner.Bytes, (UInt256)i);
+            byte[]? chunk = _tree.Get(treeKey);
+            chunk?[1..].CopyTo(codeSliceSpan);
+            codeSliceSpan = codeSliceSpan[31..];
+        }
+        Hash256? treeKeyEndChunk = AccountHeader.GetTreeKeyForCodeChunk(owner.Bytes, (UInt256)endChunkId);
+        byte[]? endChunk = _tree.Get(treeKeyEndChunk);
+        endChunk?[1..(endChunkLoc + 1)].CopyTo(codeSliceSpan);
+        return codeSlice;
     }
 
     public byte[] GetCode(Address address)
@@ -661,7 +700,7 @@ public class VerkleWorldState : IWorldState
     public void Reset()
     {
         if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-        // _tree.Reset();
+        _tree.Reset();
         _intraBlockCache.Reset();
         _committedThisRound.Reset();
         _nullAccountReads.Clear();
