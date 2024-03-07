@@ -201,6 +201,10 @@ jobs:
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
         fi
 
+
+        # TEST - remove after
+        echo "skip_docker_build=true" >> $GITHUB_OUTPUT
+
     - name: Trigger Docker Build Action with Cleaned Ref
       if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
