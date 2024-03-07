@@ -8,7 +8,7 @@ using Nethermind.Core.Verkle;
 
 namespace Nethermind.Serialization.Json;
 
-public class ExecutionWitnessConverter: System.Text.Json.Serialization.JsonConverter<ExecutionWitness>
+public class ExecutionWitnessConverter : System.Text.Json.Serialization.JsonConverter<ExecutionWitness>
 {
     public override ExecutionWitness Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {

@@ -393,7 +393,7 @@ public class VerkleWorldState : IWorldState
         int endChunkId = endIndex / 31;
         int endChunkLoc = (endIndex % 31) + 1;
 
-        byte[] codeSlice = new byte[endIndex  + 1];
+        byte[] codeSlice = new byte[endIndex + 1];
         Span<byte> codeSliceSpan = codeSlice;
 
         for (int i = 0; i < endChunkId; i++)

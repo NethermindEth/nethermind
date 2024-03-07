@@ -25,10 +25,10 @@ public class CodeTests
     [Test]
     public void TestByteCodeIsSameAsReconstructedVerkleCode()
     {
-        TestSpecProvider specProvider = new (Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         VerkleStateTree tree = TestItem.Tree.GetVerkleStateTree(null);
-        MemDb codeDb = new ();
-        VerkleWorldState worldState = new (tree, codeDb, LimboLogs.Instance);
+        MemDb codeDb = new();
+        VerkleWorldState worldState = new(tree, codeDb, LimboLogs.Instance);
 
         byte[] code = new byte[2000];
         TestItem.Random.NextBytes(code);
@@ -39,8 +39,8 @@ public class CodeTests
         worldState.Commit(specProvider.SpecToReturn);
         worldState.CommitTree(0);
 
-        CodeInfo byteCode = new (code);
-        CodeInfo verkleCode = new (worldState, TestItem.AddressA);
+        CodeInfo byteCode = new(code);
+        CodeInfo verkleCode = new(worldState, TestItem.AddressA);
 
         Assert.IsTrue(byteCode.MachineCode.Length == verkleCode.MachineCode.Length);
 
@@ -52,10 +52,10 @@ public class CodeTests
     [Test]
     public void TestByteCodeIsSameAsReconstructedVerkleCodeWithIncompleteCode()
     {
-        TestSpecProvider specProvider = new (Prague.Instance);
+        TestSpecProvider specProvider = new(Prague.Instance);
         VerkleStateTree tree = TestItem.Tree.GetVerkleStateTree(null);
-        MemDb codeDb = new ();
-        VerkleWorldState worldState = new (tree, codeDb, LimboLogs.Instance);
+        MemDb codeDb = new();
+        VerkleWorldState worldState = new(tree, codeDb, LimboLogs.Instance);
 
         byte[] code = new byte[2000];
         TestItem.Random.NextBytes(code);
@@ -66,8 +66,8 @@ public class CodeTests
         InsertAlternateChunks(code, tree);
         worldState.CommitTree(0);
 
-        CodeInfo byteCode = new (code);
-        CodeInfo verkleCode = new (worldState, TestItem.AddressA);
+        CodeInfo byteCode = new(code);
+        CodeInfo verkleCode = new(worldState, TestItem.AddressA);
 
         Assert.That(byteCode.MachineCode.Length, Is.EqualTo(verkleCode.MachineCode.Length));
 
@@ -120,7 +120,7 @@ public class CodeTests
             chunkId += 1;
         }
 
-        tree.Set(TestItem.AddressA, new Account(0, 200000, Keccak.EmptyTreeHash, Keccak.MaxValue){CodeSize = 2000});
+        tree.Set(TestItem.AddressA, new Account(0, 200000, Keccak.EmptyTreeHash, Keccak.MaxValue) { CodeSize = 2000 });
         tree.Commit();
     }
 

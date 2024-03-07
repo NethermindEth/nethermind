@@ -14,7 +14,7 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree.TreeStore;
 
-public class EmptyVerkleTreeStore: IVerkleTreeStore
+public class EmptyVerkleTreeStore : IVerkleTreeStore
 {
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetLeafRangeIterator(byte[] fromRange, byte[] toRange, Hash256 stateRoot)
     {
