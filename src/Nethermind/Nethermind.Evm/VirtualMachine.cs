@@ -540,10 +540,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (code is null)
             {
-                MissingCode(codeSource, codeHash);
+                if (worldState.StateType == StateType.Verkle)
+                    cachedCodeInfo = new CodeInfo(worldState, codeSource);
+                else MissingCode(codeSource, codeHash);
             }
-
-            cachedCodeInfo = new CodeInfo(code);
+            else
+            {
+                cachedCodeInfo = new CodeInfo(code);
+            }
             CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
@@ -1571,14 +1575,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         Metrics.BlockhashOpcode++;
 
-                        Hash256 GetBlockHashFromState(ulong blockNumber)
+                        Hash256? GetBlockHashFromState(ulong blockNumber)
                         {
                             StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockNumber);
                             // TODO: find a better way to access without charging
                             long fakeGas = 1000000;
-                            vmState.Env.Witness.AccessAndChargeForStorage(storageCell.Address, storageCell.Index,
+                            vmState.Env.Witness.AccessAndChargeForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
                                 false, ref fakeGas);
-                            return new Hash256(_worldState.Get(blockHashStoreCell));
+                            ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
+                            if (data.Length < 32) return null;
+                            return new Hash256(data);
                         }
 
                         gasAvailable -= GasCostOf.BlockHash;
@@ -2300,8 +2306,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
-        UInt256 result = (UInt256)codeLength;
+        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Length;
+        var result = (UInt256)codeLength;
         stack.PushUInt256(in result);
     }
 

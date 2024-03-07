@@ -164,6 +164,7 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
             }
         }
 
+        _verkleTree.Commit();
         base.CommitCore(tracer);
         _originalValues.Reset();
         _committedThisRound.Reset();
