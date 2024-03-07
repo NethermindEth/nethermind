@@ -361,7 +361,9 @@ public class VerkleWorldState : IWorldState
         byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
         if (code is null)
         {
-            throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+            if (codeHash == Keccak.Zero) code = Array.Empty<byte>();
+            else
+                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         return code;
