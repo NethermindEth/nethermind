@@ -194,7 +194,7 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            var totalDataGas = BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length);
+            ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length);
             if (totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction)
             {
                 error = TxErrorMessages.BlobTxGasLimitExceeded;
