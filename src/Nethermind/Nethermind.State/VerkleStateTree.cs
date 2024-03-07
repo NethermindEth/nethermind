@@ -16,6 +16,7 @@ using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.TreeStore;
 using Nethermind.Verkle.Tree.Utils;
+using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.State;
 
@@ -78,7 +79,7 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
 
     public static VerkleStateTree CreateStatelessTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, ILogManager logManager)
     {
-        VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemDb(), new MemDb(), new MemDb(), logManager);
+        VerkleTreeStore<PersistEveryBlock>? stateStore = new(new MemColumnsDb<VerkleDbColumns>(), new MemDb(), logManager);
         VerkleStateTree? tree = new(stateStore, logManager);
         if (!tree.InsertIntoStatelessTree(execWitness, root))
         {

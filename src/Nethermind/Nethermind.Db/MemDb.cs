@@ -109,7 +109,9 @@ namespace Nethermind.Db
         public virtual IEnumerable<KeyValuePair<byte[], byte[]?>> GetIterator(byte[] start, byte[] end)
         {
             if (_sortedKeys is null) throw new ArgumentException($"cannot get ordered data");
+
             if (Bytes.BytesComparer.Compare(start, end) > 0) yield break;
+
             using SortedSet<byte[]>.Enumerator keyEnumerator = _sortedKeys
                 .GetViewBetween(start, end)
                 .GetEnumerator();
