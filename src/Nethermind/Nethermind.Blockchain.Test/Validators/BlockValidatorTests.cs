@@ -171,7 +171,7 @@ namespace Nethermind.Blockchain.Test.Validators
             Substitute.For<ISpecProvider>(),
             "InvalidUnclesHash");
 
-            yield return new TestCaseData(   
+            yield return new TestCaseData(
             Build.A.Block.WithHeader(Build.A.BlockHeader.WithTransactionsRoot(Keccak.Zero).TestObject).TestObject,
             Substitute.For<ISpecProvider>(),
             "InvalidTxRoot");
@@ -191,9 +191,9 @@ namespace Nethermind.Blockchain.Test.Validators
         }
 
         [TestCaseSource(nameof(BadSuggestedBlocks))]
-        public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider,string expectedError)
+        public void ValidateSuggestedBlock_SuggestedBlockIsInvalid_CorrectErrorIsSet(Block suggestedBlock, ISpecProvider specProvider, string expectedError)
         {
-            TxValidator txValidator = new(TestBlockchainIds.ChainId);            
+            TxValidator txValidator = new(TestBlockchainIds.ChainId);
             BlockValidator sut = new(txValidator, Always.Valid, Always.Valid, specProvider, LimboLogs.Instance);
             string? error;
 
