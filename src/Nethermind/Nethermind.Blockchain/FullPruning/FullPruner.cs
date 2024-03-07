@@ -230,6 +230,7 @@ namespace Nethermind.Blockchain.FullPruning
         private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
         {
             INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
+            ICopyTreeVisitor visitor = null;
 
             try
             {
@@ -260,16 +261,15 @@ namespace Nethermind.Blockchain.FullPruning
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
-                ICopyTreeVisitor visitor = null;
                 if (targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
                 {
-                    using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+                    CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
                     visitor = copyTreeVisitor;
                     _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
                 }
                 else
                 {
-                    using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+                    CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
                     visitor = copyTreeVisitor;
                     _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
                 }
@@ -296,6 +296,10 @@ namespace Nethermind.Blockchain.FullPruning
                 _logger.Error("Error during pruning. ", e);
                 _nodeStorage.Scheme = originalKeyScheme;
                 throw;
+            }
+            finally
+            {
+                visitor?.Dispose();
             }
         }
 
