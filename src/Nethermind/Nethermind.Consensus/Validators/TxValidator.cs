@@ -194,19 +194,19 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
-            ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(transaction.BlobVersionedHashes!.Length);
+            int blobCount = transaction.BlobVersionedHashes.Length;
+            ulong totalDataGas = BlobGasCalculator.CalculateBlobGas(blobCount);
             if (totalDataGas > Eip4844Constants.MaxBlobGasPerTransaction)
             {
                 error = TxErrorMessages.BlobTxGasLimitExceeded;
                 return false;
             }
-            if (transaction.BlobVersionedHashes!.Length < Eip4844Constants.MinBlobsPerTransaction)
+
+            if (blobCount < Eip4844Constants.MinBlobsPerTransaction)
             {
                 error = TxErrorMessages.BlobTxMissingBlobs;
                 return false;
             }
-
-            int blobCount = transaction.BlobVersionedHashes.Length;
 
             for (int i = 0; i < blobCount; i++)
             {
@@ -215,13 +215,14 @@ namespace Nethermind.Consensus.Validators
                     error = TxErrorMessages.MissingBlobVersionedHash;
                     return false;
                 }
-                if (transaction.BlobVersionedHashes![i].Length !=
-                KzgPolynomialCommitments.BytesPerBlobVersionedHash)
+
+                if (transaction.BlobVersionedHashes[i].Length != KzgPolynomialCommitments.BytesPerBlobVersionedHash)
                 {
                     error = TxErrorMessages.InvalidBlobVersionedHashSize;
                     return false;
                 }
-                if (transaction.BlobVersionedHashes![i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
+
+                if (transaction.BlobVersionedHashes[i][0] != KzgPolynomialCommitments.KzgBlobHashVersionV1)
                 {
                     error = TxErrorMessages.InvalidBlobVersionedHashVersion;
                     return false;
@@ -236,11 +237,13 @@ namespace Nethermind.Consensus.Validators
                     error = TxErrorMessages.InvalidBlobData;
                     return false;
                 }
+
                 if (wrapper.Commitments.Length != blobCount)
                 {
                     error = TxErrorMessages.InvalidBlobData;
                     return false;
                 }
+
                 if (wrapper.Proofs.Length != blobCount)
                 {
                     error = TxErrorMessages.InvalidBlobData;
@@ -278,8 +281,7 @@ namespace Nethermind.Consensus.Validators
                     }
                 }
 
-                if (!KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs,
-                    wrapper.Commitments, wrapper.Proofs))
+                if (!KzgPolynomialCommitments.AreProofsValid(wrapper.Blobs, wrapper.Commitments, wrapper.Proofs))
                 {
                     error = TxErrorMessages.InvalidBlobProof;
                     return false;
