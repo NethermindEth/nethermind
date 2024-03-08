@@ -11,16 +11,11 @@ namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 public interface IValidatorRegistryContract
 {
     /// <summary>
-    /// Removes a validator from the validator registry.
+    /// Sends a registration or deregistration update to the validator registry.
     /// </summary>
-    /// <param name="blockHeader"></param>
-    ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader, ulong validatorIndex);
-
-    /// <summary>
-    /// Adds a validator to the validator registry.
-    /// </summary>
-    /// <param name="blockHeader"></param>
-    ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader, ulong validatorIndex);
+    /// <param name="message"></param>
+    /// <param name="signature"></param>
+    ValueTask<AcceptTxResult?> SendUpdate(byte[] message, byte[] signature);
 
     /// <summary>
     /// Returns the number of previous updates to the registry.

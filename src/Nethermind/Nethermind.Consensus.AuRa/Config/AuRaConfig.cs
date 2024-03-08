@@ -22,5 +22,6 @@ namespace Nethermind.Consensus.AuRa.Config
         public string ShutterKeyperSetManagerContractAddress { get; set; }
         public string[] ShutterKeyperP2PAddresses { get; set; }
         public int ShutterP2PPort { get; set; }
+        public string ShutterValidatorInfoFile { get; set; }
     }
 }

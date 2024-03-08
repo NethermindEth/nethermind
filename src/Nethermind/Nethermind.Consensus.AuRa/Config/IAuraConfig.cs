@@ -35,7 +35,6 @@ public interface IAuraConfig : IConfig
         DefaultValue = "null")]
     string ShutterValidatorRegistryContractAddress { get; set; }
 
-
     [ConfigItem(Description = "The address of the Shutter key broadcast contract.",
         DefaultValue = "null")]
     string ShutterKeyBroadcastContractAddress { get; set; }
@@ -51,4 +50,9 @@ public interface IAuraConfig : IConfig
     [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
         DefaultValue = "23001")]
     int ShutterP2PPort { get; set; }
+
+
+    [ConfigItem(Description = "The filepath of the validator info json file.",
+        DefaultValue = "null")]
+    string ShutterValidatorInfoFile { get; set; }
 }

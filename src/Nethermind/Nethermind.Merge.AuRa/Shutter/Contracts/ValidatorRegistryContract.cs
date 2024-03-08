@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -26,19 +25,16 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     private readonly ISigner _signer;
     private readonly ITxSender _txSender;
     private readonly ITxSealer _txSealer;
-    private readonly IValidatorStore _validatorStore;
     private const string update = "update";
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
-    internal const byte validatorRegistryMessageVersion = 0;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer, IValidatorStore validatorStore, BlockHeader blockHeader)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
         _signer = signer;
         _txSender = txSender;
         _txSealer = txSealer;
-        _validatorStore = validatorStore;
     }
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
@@ -58,43 +54,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return update;
     }
 
-    public async ValueTask<AcceptTxResult?> Deregister(BlockHeader blockHeader, ulong validatorIndex)
+    public bool IsRegistered(BlockHeader blockHeader, Address validatorAddress)
     {
-        ulong nonce = GetNextNonce(blockHeader, validatorIndex);
-        Address validatorAddress = _validatorStore.GetValidators()[validatorIndex];
-        byte[] deregistrationMessage = new Message(validatorAddress, validatorIndex, nonce).ComputeDeregistrationMessage();
-        AcceptTxResult? res = await Update(deregistrationMessage, Sign(deregistrationMessage));
-
-        if (res != AcceptTxResult.Accepted)
+        UInt256 updates = GetNumUpdates(blockHeader);
+        for (UInt256 i = updates - 1; i >= 0; i -= 1)
         {
-            throw new Exception("Failed to deregister as Shutter validator");
-        }
-
-        return res;
-    }
-
-    public async ValueTask<AcceptTxResult?> Register(BlockHeader blockHeader, ulong validatorIndex)
-    {
-        ulong nonce = GetNextNonce(blockHeader, validatorIndex);
-        Address validatorAddress = _validatorStore.GetValidators()[validatorIndex];
-        byte[] registrationMessage = new Message(validatorAddress, validatorIndex, nonce).ComputeRegistrationMessage();
-        AcceptTxResult? res = await Update(registrationMessage, Sign(registrationMessage));
-
-        if (res != AcceptTxResult.Accepted)
-        {
-            throw new Exception("Failed to register as Shutter validator");
-        }
-
-        return res;
-    }
-
-    public bool IsRegistered(BlockHeader blockHeader, ulong validatorIndex)
-    {
-        UInt256 update = GetNumUpdates(blockHeader);
-        for (UInt256 i = 0; i < update; i += 1)
-        {
-            Message msg = GetUpdateMessage(blockHeader, update - i - 1);
-            Address validatorAddress = _validatorStore.GetValidators()[validatorIndex];
+            Message msg = GetUpdateMessage(blockHeader, i);
             if (msg.Sender == validatorAddress && msg.IsRegistration)
             {
                 return true;
@@ -103,55 +68,18 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return false;
     }
 
-    internal ulong GetNextNonce(BlockHeader blockHeader, ulong validatorIndex)
-    {
-        UInt256 update = GetNumUpdates(blockHeader);
-        for (UInt256 i = 0; i < update; i += 1)
-        {
-            Message msg = GetUpdateMessage(blockHeader, update - i - 1);
-            Address validatorAddress = _validatorStore.GetValidators()[validatorIndex];
-            if (msg.Sender == validatorAddress)
-            {
-                return msg.Nonce + 1;
-            }
-        }
-        return 0;
-    }
-
-    // internal ulong GetValidatorIndex(IValidatorStore validatorStore)
-    // {
-    //     Address[] validators = validatorStore.GetValidators();
-    //     for (int i = 0; i < validators.Length; i++)
-    //     {
-    //         if (validators[i] == ContractAddress!)
-    //         {
-    //             return (ulong)i;
-    //         }
-    //     }
-
-    //     throw new Exception("Not registered as validator on beacon chain, cannot be Shutter validator.");
-    // }
-
-    internal Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
-    {
-        Update update = GetUpdate(blockHeader, i);
-        return new Message(update.Message.AsSpan()[..46]);
-    }
-
-    internal byte[] Sign(byte[] message)
-    {
-        // todo: get BLS private key from somewhere, env?
-        BlsSigner.PrivateKey sk;
-        sk.Bytes = _signer.Key!.KeyBytes;
-        return BlsSigner.Sign(sk, message).Bytes;
-    }
-
-    internal async ValueTask<AcceptTxResult?> Update(byte[] message, byte[] signature)
+    public async ValueTask<AcceptTxResult?> SendUpdate(byte[] message, byte[] signature)
     {
         Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] { message, signature });
         await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
         (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
         return res;
+    }
+
+    internal Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
+    {
+        Update update = GetUpdate(blockHeader, i);
+        return new Message(update.Message.AsSpan()[..46]);
     }
 
     internal class Message
@@ -162,15 +90,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         public readonly ulong ValidatorIndex;
         public readonly ulong Nonce;
         public readonly bool IsRegistration;
-
-        public Message(Address sender, ulong validatorIndex, ulong nonce)
-        {
-            Version = validatorRegistryMessageVersion;
-            ChainId = BlockchainIds.Gnosis;
-            Sender = sender;
-            ValidatorIndex = validatorIndex;
-            Nonce = nonce;
-        }
 
         public Message(Span<byte> encodedMessage)
         {
@@ -185,30 +104,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             ValidatorIndex = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[29..]);
             Nonce = BinaryPrimitives.ReadUInt64BigEndian(encodedMessage[37..]);
             IsRegistration = encodedMessage[45] == 1;
-        }
-
-        public byte[] ComputeDeregistrationMessage()
-        {
-            Span<byte> registryMessagePrefix = stackalloc byte[46];
-            ComputeRegistryMessagePrefix(registryMessagePrefix);
-            return registryMessagePrefix.ToArray();
-        }
-
-        public byte[] ComputeRegistrationMessage()
-        {
-            Span<byte> registryMessagePrefix = stackalloc byte[46];
-            ComputeRegistryMessagePrefix(registryMessagePrefix);
-            registryMessagePrefix[45] = 1;
-            return registryMessagePrefix.ToArray();
-        }
-
-        public void ComputeRegistryMessagePrefix(Span<byte> registryMessagePrefix)
-        {
-            registryMessagePrefix[0] = Version;
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[1..], ChainId);
-            Sender.Bytes.CopyTo(registryMessagePrefix[9..]);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[29..], ValidatorIndex);
-            BinaryPrimitives.WriteUInt64BigEndian(registryMessagePrefix[37..], Nonce);
         }
     }
 }

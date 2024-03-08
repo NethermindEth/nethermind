@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
+using System.Text.Json;
 using System.Threading.Tasks;
 using Microsoft.ClearScript.JavaScript;
 using Nethermind.Api;
@@ -21,6 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -61,7 +64,7 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public override async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
                 _auraApi!,
@@ -79,41 +82,33 @@ namespace Nethermind.Merge.AuRa
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-            if (_auraConfig!.UseShutter)
-            {
-                BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
-                Address[] validators = _auraApi!.ValidatorStore!.GetValidators();
-                Address[] validatorAddresses = _api.ChainSpec.AuRa.Validators.Addresses;
-
-                if (validatorAddresses is null || validatorAddresses.Length == 0)
+                if (_auraConfig!.UseShutter)
                 {
-                    throw new Exception("Cannot get validator addresses");
-                }
+                    BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
+                    Shutter.Contracts.ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
 
-                IEnumerable<ulong> validatorIndices = validatorAddresses.Select((Address validatorAddress) =>
-                {
-                    for (int i = 0; i < validators.Length; i++)
+                    string validatorInfoRaw = File.ReadAllText(_auraConfig.ShutterValidatorInfoFile);
+                    JsonDocument validatorInfo = JsonDocument.Parse(validatorInfoRaw);
+
+                    foreach (JsonProperty p in validatorInfo.RootElement.EnumerateObject())
                     {
-                        if (validators[i] == validatorAddress)
+                        Address validatorAddress = new(p.Value.GetProperty("address").GetString()!);
+                        byte[] message = p.Value.GetProperty("message").GetBytesFromBase64();
+                        byte[] signature = p.Value.GetProperty("signature").GetBytesFromBase64();
+
+                        if (!validatorRegistryContract.IsRegistered(blockHeader, validatorAddress))
                         {
-                            return (ulong)i;
+                            AcceptTxResult? res = await validatorRegistryContract.SendUpdate(message, signature);
+
+                            if (res != AcceptTxResult.Accepted)
+                            {
+                                throw new Exception("Failed to register as Shutter validator for validator index " + p.Name);
+                            }
                         }
                     }
-                    throw new Exception("Validator " + validatorAddress + " is not registed on the beacon chain.");
-                });
-
-                Shutter.Contracts.ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!), _auraApi.ValidatorStore, blockHeader);
-                foreach (ulong validatorIndex in validatorIndices)
-                {
-                    if (!validatorRegistryContract.IsRegistered(blockHeader, validatorIndex))
-                    {
-                        // todo: safe to do this in another thread?
-                        var _ = validatorRegistryContract.Register(blockHeader, validatorIndex);
-                    }
                 }
-            }
 
-            return base.InitBlockProducer(consensusPlugin);
+            return base.InitBlockProducer(consensusPlugin).Result;
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -129,8 +124,6 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-            Debug.Assert(_api?.ChainSpec is not null,
-                $"{nameof(_api.ChainSpec)} has not been initialized.");
 
             ShutterTxSource? shutterTxSource = null;
 
