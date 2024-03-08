@@ -340,7 +340,7 @@ public class BlockValidator : IBlockValidator
 
         if (blobGasUsed > Eip4844Constants.MaxBlobGasPerBlock)
         {
-            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit();
+            error = BlockErrorMessages.BlobGasUsedAboveBlockLimit;
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} {error}.");
             return false;
         }
