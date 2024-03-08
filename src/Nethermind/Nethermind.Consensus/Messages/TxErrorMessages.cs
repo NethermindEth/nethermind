@@ -67,7 +67,7 @@ public static class TxErrorMessages
     public static string ExceededBlobCommitmentSize =>
         $"ExceededBlobCommitmentSize: Cannot be more than {Ckzg.Ckzg.BytesPerCommitment}.";
 
-    public static string InvalidBlobProofSize =>
+    public static readonly string InvalidBlobProofSize =
         $"InvalidBlobProofSize: Cannot be more than {Ckzg.Ckzg.BytesPerProof}.";
 
     public const string InvalidBlobCommitmentHash =
