@@ -201,10 +201,6 @@ jobs:
           echo "skip_docker_build=false" >> $GITHUB_OUTPUT
         fi
 
-
-        # TEST - remove after
-        echo "skip_docker_build=true" >> $GITHUB_OUTPUT
-
     - name: Trigger Docker Build Action with Cleaned Ref
       if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
@@ -278,8 +274,7 @@ jobs:
       with:
           workflow: run-single-node.yml
           repo: NethermindEth/post-merge-smoke-tests
-          #ref: "main"
-          ref: "kch/optimism"
+          ref: "main"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
@@ -301,8 +296,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
-        #REF: 'main'
-        REF: 'kch/optimism'
+        REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
