@@ -55,7 +55,7 @@ public static class TxErrorMessages
     public const string MissingBlobVersionedHash =
         "MissingBlobVersionedHash: Must be set.";
 
-    public static string InvalidBlobVersionedHashSize =>
+    public static readonly string InvalidBlobVersionedHashSize =
         $"InvalidBlobVersionedHashSize: Cannot exceed {KzgPolynomialCommitments.BytesPerBlobVersionedHash}.";
 
     public const string InvalidBlobVersionedHashVersion =
