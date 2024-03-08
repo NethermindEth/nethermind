@@ -8,7 +8,6 @@ using System.IO;
 using System.Linq;
 using System.Text.Json;
 using System.Threading.Tasks;
-using Microsoft.ClearScript.JavaScript;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.Find;
@@ -16,19 +15,15 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
-using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Processing;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
-using Nethermind.Init.Steps;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Merge.AuRa.Shutter.Contracts;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -64,7 +59,7 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
                 _auraApi!,
@@ -82,33 +77,7 @@ namespace Nethermind.Merge.AuRa
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-                if (_auraConfig!.UseShutter)
-                {
-                    BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
-                    Shutter.Contracts.ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
-
-                    string validatorInfoRaw = File.ReadAllText(_auraConfig.ShutterValidatorInfoFile);
-                    JsonDocument validatorInfo = JsonDocument.Parse(validatorInfoRaw);
-
-                    foreach (JsonProperty p in validatorInfo.RootElement.EnumerateObject())
-                    {
-                        Address validatorAddress = new(p.Value.GetProperty("address").GetString()!);
-                        byte[] message = p.Value.GetProperty("message").GetBytesFromBase64();
-                        byte[] signature = p.Value.GetProperty("signature").GetBytesFromBase64();
-
-                        if (!validatorRegistryContract.IsRegistered(blockHeader, validatorAddress))
-                        {
-                            AcceptTxResult? res = await validatorRegistryContract.SendUpdate(message, signature);
-
-                            if (res != AcceptTxResult.Accepted)
-                            {
-                                throw new Exception("Failed to register as Shutter validator for validator index " + p.Name);
-                            }
-                        }
-                    }
-                }
-
-            return base.InitBlockProducer(consensusPlugin).Result;
+            return base.InitBlockProducer(consensusPlugin);
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -129,9 +98,43 @@ namespace Nethermind.Merge.AuRa
 
             if (_auraConfig!.UseShutter)
             {
+                // parse validator info file
+                IEnumerable<ValidatorRegistryContract.ValidatorInfo> validatorsInfo = [];
+                try
+                {
+                    JsonDocument validatorsInfoDoc = JsonDocument.Parse(File.ReadAllText(_auraConfig.ShutterValidatorInfoFile));
+                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().Select((JsonProperty p) =>
+                    {
+                        return new ValidatorRegistryContract.ValidatorInfo()
+                        {
+                            ValidatorIndex = p.Name,
+                            Address = new(p.Value.GetProperty("address").GetString()!),
+                            Message = p.Value.GetProperty("message").GetBytesFromBase64(),
+                            Signature = p.Value.GetProperty("signature").GetBytesFromBase64()
+                        };
+                    });
+                }
+                catch (Exception e)
+                {
+                    throw new Exception("Could not load Shutter validator info file: " + e.Message);
+                }
+
+                // on sync register as Shutter validator
+                _api.Synchronizer!.SyncEvent += async (object? sender, Synchronization.SyncEventArgs e) =>
+                {
+                    if (e.SyncEvent == Synchronization.SyncEvent.Completed)
+                    {
+                        BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
+                        ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
+                        await validatorRegistryContract.RegisterValidators(blockHeader, validatorsInfo);
+                    }
+                };
+
+                // init Shutter transaction source
                 LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
 
+                // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
                 {
                     if (decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys.Gnosis.Slot)
@@ -139,8 +142,8 @@ namespace Nethermind.Merge.AuRa
                         shutterTxSource.DecryptionKeys = decryptionKeys;
                     }
                 };
-                Shutter.Contracts.KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
-                Shutter.Contracts.KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
+                KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
+                KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
                 ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, _api, _auraConfig.ShutterKeyperP2PAddresses, _auraConfig.ShutterP2PPort.ToString());
             }
 
@@ -152,5 +155,6 @@ namespace Nethermind.Merge.AuRa
             _mergeConfig = api.Config<IMergeConfig>();
             return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
         }
+
     }
 }

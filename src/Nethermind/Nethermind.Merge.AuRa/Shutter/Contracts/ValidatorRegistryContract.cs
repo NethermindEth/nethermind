@@ -3,6 +3,8 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
@@ -37,6 +39,22 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         _txSealer = txSealer;
     }
 
+    public async Task RegisterValidators(BlockHeader blockHeader, IEnumerable<ValidatorInfo> validatorsInfo)
+    {
+        foreach (ValidatorInfo validatorInfo in validatorsInfo)
+        {
+            if (!IsRegistered(blockHeader, validatorInfo.Address))
+            {
+                AcceptTxResult? res = await SendUpdate(validatorInfo.Message, validatorInfo.Signature);
+
+                if (res != AcceptTxResult.Accepted)
+                {
+                    throw new Exception("Failed to register as Shutter validator for validator index " + validatorInfo.ValidatorIndex);
+                }
+            }
+        }
+    }
+
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
     {
         object[] res = Call(blockHeader, getNumUpdates, Address.Zero, []);
@@ -54,7 +72,23 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         return update;
     }
 
-    public bool IsRegistered(BlockHeader blockHeader, Address validatorAddress)
+    public async ValueTask<AcceptTxResult?> SendUpdate(byte[] message, byte[] signature)
+    {
+        Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] { message, signature });
+        await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
+        (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
+        return res;
+    }
+
+    public struct ValidatorInfo
+    {
+        public string ValidatorIndex;
+        public Address Address;
+        public byte[] Message;
+        public byte[] Signature;
+    }
+
+    internal bool IsRegistered(BlockHeader blockHeader, Address validatorAddress)
     {
         UInt256 updates = GetNumUpdates(blockHeader);
         for (UInt256 i = updates - 1; i >= 0; i -= 1)
@@ -66,14 +100,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             }
         }
         return false;
-    }
-
-    public async ValueTask<AcceptTxResult?> SendUpdate(byte[] message, byte[] signature)
-    {
-        Transaction transaction = GenerateTransaction<GeneratedTransaction>(update, _signer.Address, new[] { message, signature });
-        await _txSealer.Seal(transaction, TxHandlingOptions.AllowReplacingSignature);
-        (Hash256 _, AcceptTxResult? res) = await _txSender.SendTransaction(transaction, TxHandlingOptions.PersistentBroadcast);
-        return res;
     }
 
     internal Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
