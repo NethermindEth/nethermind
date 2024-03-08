@@ -61,7 +61,7 @@ public static class TxErrorMessages
     public const string InvalidBlobVersionedHashVersion =
         "InvalidBlobVersionedHashVersion: Blob version not supported.";
 
-    public static string ExceededBlobSize =>
+    public static readonly string ExceededBlobSize =
         $"ExceededBlobSize: Cannot be more than {Ckzg.Ckzg.BytesPerBlob}.";
 
     public static readonly string ExceededBlobCommitmentSize =
