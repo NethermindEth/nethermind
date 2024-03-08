@@ -38,6 +38,7 @@ using Nethermind.Synchronization.Reporting;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -481,7 +482,35 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateOrphanedBlock(Block block, out string? error)
+            public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
             {
                 Thread.Sleep(1000);
                 error = null;

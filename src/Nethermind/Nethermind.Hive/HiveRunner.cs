@@ -201,7 +201,7 @@ namespace Nethermind.Hive
                 // Start of block processing, setting flag BlockSuggested to default value: false
                 BlockSuggested = false;
 
-                if (!_blockValidator.ValidateSuggestedBlock(block))
+                if (!_blockValidator.ValidateSuggestedBlock(block, out _))
                 {
                     if (_logger.IsInfo) _logger.Info($"Invalid block {block}");
                     return;
