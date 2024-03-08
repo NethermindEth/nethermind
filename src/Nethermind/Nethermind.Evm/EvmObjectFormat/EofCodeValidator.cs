@@ -30,6 +30,13 @@ internal static class EvmObjectFormat
         public ushort StackHeight;
     }
 
+    public enum ValidationStrategy
+    {
+        None = 0,
+        Validate = 1,
+        ValidateSubContainers = Validate | 2
+    }
+
     private interface IEofVersionHandler
     {
         bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header);
@@ -71,8 +78,14 @@ internal static class EvmObjectFormat
 
     public static bool IsEofn(ReadOnlySpan<byte> container, byte version) => container.Length >= MAGIC.Length + 1 && container.StartsWith(MAGIC) && container[MAGIC.Length] == version;
 
-    public static bool IsValidEof(ReadOnlySpan<byte> container, bool validateSubContainers, [NotNullWhen(true)] out EofHeader? header)
+    public static bool IsValidEof(ReadOnlySpan<byte> container, ValidationStrategy strategy, [NotNullWhen(true)] out EofHeader? header)
     {
+        if(strategy == ValidationStrategy.None)
+        {
+            header = null;
+            return true;
+        }
+
         if (container.Length > VERSION_OFFSET
             && _eofVersionHandlers.TryGetValue(container[VERSION_OFFSET], out IEofVersionHandler handler)
             && handler.TryParseEofHeader(container, out header))
@@ -80,14 +93,14 @@ internal static class EvmObjectFormat
             EofHeader h = header.Value;
             if (handler.ValidateBody(container, h))
             {
-                if(validateSubContainers && header?.ContainerSection?.Count > 0)
+                if(strategy == ValidationStrategy.ValidateSubContainers && header?.ContainerSection?.Count > 0)
                 {
                     int containerSize = header.Value.ContainerSection.Value.Count;
 
                     for (int i = 0; i < containerSize; i++)
                     {
                         ReadOnlySpan<byte> subContainer = container.Slice(header.Value.ContainerSection.Value.Start + header.Value.ContainerSection.Value[i].Start, header.Value.ContainerSection.Value[i].Size);
-                        if(!IsValidEof(subContainer, validateSubContainers, out _))
+                        if(!IsValidEof(subContainer, strategy, out _))
                         {
                             return false;
                         }

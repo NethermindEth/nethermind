@@ -48,7 +48,7 @@ namespace Nethermind.Evm
             bool valid = code.Length >= 1
                   && codeVersion >= fromVersion
                   && (isCodeEof ?  // this needs test cases
-                       EvmObjectFormat.IsValidEof(code, false, out _) :
+                       EvmObjectFormat.IsValidEof(code, EvmObjectFormat.ValidationStrategy.Validate, out _) :
                             fromVersion > 0 ? false : IsValidWithLegacyRules(code));
             return valid;
         }

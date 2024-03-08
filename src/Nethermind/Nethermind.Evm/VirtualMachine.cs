@@ -488,7 +488,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 bytecodeResultArray = bytecodeResult.ToArray();
                             }
 
-                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, false, out _)
+                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.Validate, out _)
                                 && bytecodeResultArray.Length < spec.MaxCodeSize;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
@@ -3096,7 +3096,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (!EvmObjectFormat.IsValidEof(initCode.Span, instruction is Instruction.TXCREATE, out _))
+        if (!EvmObjectFormat.IsValidEof(initCode.Span, instruction is Instruction.TXCREATE ? EvmObjectFormat.ValidationStrategy.ValidateSubContainers : EvmObjectFormat.ValidationStrategy.Validate, out _))
         {
             // handle invalid Eof code
             _returnDataBuffer = Array.Empty<byte>();
