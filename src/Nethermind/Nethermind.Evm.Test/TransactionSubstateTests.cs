@@ -136,7 +136,7 @@ namespace Nethermind.Evm.Test
                 "Reverted unknown panic code (0xff)");
 
             // Invalid case
-            yield return (new byte[] { 0x4e, 0x48, 0x7b, 0x71 }, "Reverted NH{q");
+            yield return (new byte[] { 0xf0, 0x28, 0x8c, 0x28 }, "Reverted 0xf0288c28");
         }
 
         [Test]
