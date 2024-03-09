@@ -408,12 +408,14 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
 
         // This adds a hashtable-like index per block (the 16kb block)
-        // In theory, this should reduce CPU, but I don't see any different.
-        // It seems to increase disk space use by about 1 GB, which again, could be just noise. I'll just keep this.
-        // That said, on lower block size, it'll probably be useless.
-        // Note, the index points to a restart interval (see above), not to the value itself.
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
+        // In, this reduce CPU and therefore latency under high block cache hit scenario.
+        // It seems to increase disk space use by about 1 GB.
+        double? dataBlockIndexUtilRatio = dbConfig.DataBlockIndexUtilRatio;
+        if (dataBlockIndexUtilRatio.HasValue && dataBlockIndexUtilRatio.Value > 0)
+        {
+            _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
+            _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, dataBlockIndexUtilRatio.Value);
+        }
 
         ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache is not null && blockCacheSize == 0)

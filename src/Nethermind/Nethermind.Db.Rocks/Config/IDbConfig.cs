@@ -50,6 +50,7 @@ public interface IDbConfig : IConfig
     int? BloomFilterBitsPerKey { get; set; }
     int? UseRibbonFilterStartingFromLevel { get; set; }
     ulong BytesPerSync { get; set; }
+    double? DataBlockIndexUtilRatio { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -219,6 +220,7 @@ public interface IDbConfig : IConfig
     bool StateDbAdviseRandomOnOpen { get; set; }
     int? StateDbBloomFilterBitsPerKey { get; set; }
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
+    double? StateDbDataBlockIndexUtilRatio { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
