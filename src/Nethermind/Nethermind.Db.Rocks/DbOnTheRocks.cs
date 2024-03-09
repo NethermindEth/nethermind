@@ -454,6 +454,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             options.SetCompression(Compression.No);
         }
+        else if (dbConfig.UseLz4 == true)
+        {
+            // Its faster sometimes, its slower sometimes, depends on the DB.
+            options.SetCompression(Compression.Lz4);
+        }
         else if (dbConfig.OnlyCompressLastLevel)
         {
             // So the bottommost level is about 80-90% of the database. So it may make sense to only compress that

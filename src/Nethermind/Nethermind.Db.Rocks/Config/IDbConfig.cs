@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
     bool? DisableCompression { get; set; }
+    bool? UseLz4 { get; set; }
     ulong? CompactionReadAhead { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
@@ -200,6 +201,7 @@ public interface IDbConfig : IConfig
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
+    bool? StateDbUseLz4 { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
     bool StateDbUseTwoLevelIndex { get; set; }
     bool StateDbUseHashIndex { get; set; }
