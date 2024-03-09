@@ -50,6 +50,7 @@ public class DbConfig : IDbConfig
     public int? BloomFilterBitsPerKey { get; set; } = 10;
     public int? UseRibbonFilterStartingFromLevel { get; set; }
     public ulong BytesPerSync { get; set; } = 0;
+    public double? DataBlockIndexUtilRatio { get; set; }
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;
@@ -221,6 +222,7 @@ public class DbConfig : IDbConfig
     public bool StateDbAdviseRandomOnOpen { get; set; }
     public int? StateDbBloomFilterBitsPerKey { get; set; }
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
+    public double? StateDbDataBlockIndexUtilRatio { get; set; }
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

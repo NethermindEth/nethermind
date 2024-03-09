@@ -72,6 +72,7 @@ public class PerTableDbConfig
     public int? BloomFilterBitsPerKey => ReadConfig<int?>(nameof(BloomFilterBitsPerKey));
     public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
+    public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
 
     private T? ReadConfig<T>(string propertyName)
     {
