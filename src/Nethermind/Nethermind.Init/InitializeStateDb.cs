@@ -55,6 +55,12 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
+        if (syncConfig.SnapServingEnabled && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
@@ -90,8 +96,9 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()) // TODO: memory hint should define this
-                .TrackingPastKeys(pruningConfig.TrackedPastKeyCount);
+            pruningStrategy = Prune
+                .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
         {

@@ -33,5 +33,6 @@ namespace Nethermind.Db
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
         public int TrackedPastKeyCount { get; set; } = 1000000;
+        public int PruningBoundary { get; set; } = 64;
     }
 }

@@ -95,4 +95,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "[TECHNICAL] Number of past persisted keys to keep track off for possible pruning.", DefaultValue = "1000000")]
     int TrackedPastKeyCount { get; set; }
+
+    [ConfigItem(Description = "Past N state before state gets pruned Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    int PruningBoundary { get; set; }
 }

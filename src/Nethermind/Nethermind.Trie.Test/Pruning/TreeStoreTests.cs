@@ -39,8 +39,7 @@ namespace Nethermind.Trie.Test.Pruning
         private TrieStore CreateTrieStore(
             IPruningStrategy? pruningStrategy = null,
             IKeyValueStoreWithBatching? kvStore = null,
-            IPersistenceStrategy? persistenceStrategy = null,
-            long? reorgDepthOverride = null
+            IPersistenceStrategy? persistenceStrategy = null
         )
         {
             pruningStrategy ??= No.Pruning;
@@ -50,8 +49,7 @@ namespace Nethermind.Trie.Test.Pruning
                 new NodeStorage(kvStore, _scheme, requirePath: _scheme == INodeStorage.KeyScheme.HalfPath),
                 pruningStrategy,
                 persistenceStrategy,
-                _logManager,
-                reorgDepthOverride: reorgDepthOverride);
+                _logManager);
         }
 
         [SetUp]
@@ -830,9 +828,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 100000),
-                persistenceStrategy: No.Persistence,
-                reorgDepthOverride: 2);
+                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
+                persistenceStrategy: No.Persistence);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
@@ -866,9 +863,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 100000),
-                persistenceStrategy: isPruningPersistenceStrategy,
-                reorgDepthOverride: 2);
+                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
+                persistenceStrategy: isPruningPersistenceStrategy);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 
@@ -894,9 +890,8 @@ namespace Nethermind.Trie.Test.Pruning
 
             using TrieStore fullTrieStore = CreateTrieStore(
                 kvStore: memDb,
-                pruningStrategy: new TestPruningStrategy(true, true, 100000),
-                persistenceStrategy: No.Persistence,
-                reorgDepthOverride: 2);
+                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
+                persistenceStrategy: No.Persistence);
 
             IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
 

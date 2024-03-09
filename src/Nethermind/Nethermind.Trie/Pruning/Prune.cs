@@ -12,5 +12,8 @@ namespace Nethermind.Trie.Pruning
             => trackedPastKeyCount <= 0
                 ? baseStrategy
                 : new TrackedPastKeyCountStrategy(baseStrategy, trackedPastKeyCount);
+
+        public static IPruningStrategy KeepingLastNState(this IPruningStrategy baseStrategy, int n)
+            => new KeepLastNPruningStrategy(baseStrategy, n);
     }
 }
