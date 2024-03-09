@@ -383,7 +383,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         tableOptions.SetFormatVersion(5);
         if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
         {
-            if (dbConfig.UseRibbonFilterStartingFromLevel != null)
+            if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
             {
                 // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
                 // false positive rate. This config allow the use of ribbon filter only for lower levels.
