@@ -24,6 +24,8 @@ case "$1" in
   ;;
 
   remove|upgrade|failed-upgrade|abort-install|abort-upgrade|disappear)
+    rm -f /usr/bin/nethermind
+
     if [[ -d /usr/share/nethermind ]]; then
       cd /usr/share/nethermind
 
