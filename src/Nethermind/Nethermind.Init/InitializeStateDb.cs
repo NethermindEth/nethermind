@@ -55,13 +55,12 @@ public class InitializeStateDb : IStep
         _logger = getApi.LogManager.GetClassLogger();
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
-        IStateConfig stateConfig = getApi.Config<IStateConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
-        if (syncConfig.SnapServingEnabled && stateConfig.KeepLastNState < 128)
+        if (syncConfig.SnapServingEnabled && pruningConfig.PruningBoundary < 128)
         {
-            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(stateConfig.KeepLastNState)} is less than 128. Setting to 128.");
-            stateConfig.KeepLastNState = 128;
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
         }
 
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
@@ -101,7 +100,7 @@ public class InitializeStateDb : IStep
 
             pruningStrategy = Prune
                 .WhenCacheReaches(pruningConfig.CacheMb.MB())
-                .KeepingLastNState(stateConfig.KeepLastNState);
+                .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
         {
