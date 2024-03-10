@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
@@ -13,6 +14,8 @@ namespace Nethermind.Trie
     [DebuggerStepThrough]
     public static class Nibbles
     {
+        private const int StackAllocLengthLimit = 255;
+
         public static Nibble[] FromBytes(params byte[] bytes)
         {
             return FromBytes(bytes.AsSpan());
@@ -140,6 +143,36 @@ namespace Nethermind.Trie
             }
 
             return bytes;
+        }
+
+        public static byte[] CompactToHexEncode(byte[] compactPath)
+        {
+            if (compactPath.Length == 0)
+            {
+                return compactPath;
+            }
+            int nibblesCount = compactPath.Length * 2 + 1;
+            byte[]? array = null;
+            Span<byte> nibbles = nibblesCount < StackAllocLengthLimit
+                ? stackalloc byte[nibblesCount]
+                : array ??= ArrayPool<byte>.Shared.Rent(nibblesCount);
+
+            BytesToNibbleBytes(compactPath, nibbles.Slice(0, 2 * compactPath.Length));
+            nibbles[^1] = 16;
+
+            if (nibbles[0] < 2)
+            {
+                nibbles = nibbles[..^1];
+            }
+
+            int chop = 2 - (nibbles[0] & 1);
+            byte[] result = nibbles[chop..].ToArray();
+            if (array is not null)
+            {
+                ArrayPool<byte>.Shared.Return(array);
+            }
+
+            return result;
         }
 
         public static byte[] ToCompactHexEncoding(ReadOnlySpan<byte> nibbles)

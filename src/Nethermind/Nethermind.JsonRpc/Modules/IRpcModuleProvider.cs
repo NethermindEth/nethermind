@@ -2,12 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Reflection;
 using System.Threading.Tasks;
 
 using Nethermind.Serialization.Json;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+using static Nethermind.JsonRpc.Modules.RpcModuleProvider;
 
 namespace Nethermind.JsonRpc.Modules
 {
@@ -24,7 +22,7 @@ namespace Nethermind.JsonRpc.Modules
 
         ModuleResolution Check(string methodName, JsonRpcContext context);
 
-        (MethodInfo MethodInfo, ParameterInfo[], bool ReadOnly) Resolve(string methodName);
+        ResolvedMethodInfo? Resolve(string methodName);
 
         Task<IRpcModule> Rent(string methodName, bool canBeShared);
 

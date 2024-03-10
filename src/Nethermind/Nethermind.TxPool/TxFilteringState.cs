@@ -5,18 +5,20 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
-public class TxFilteringState
+public class TxFilteringState(Transaction tx, IAccountStateProvider accounts)
 {
+    private AccountStruct _senderAccount;
 
-    private readonly IAccountStateProvider _accounts;
-    private readonly Transaction _tx;
-
-    public TxFilteringState(Transaction tx, IAccountStateProvider accounts)
+    public AccountStruct SenderAccount
     {
-        _accounts = accounts;
-        _tx = tx;
-    }
+        get
+        {
+            if (_senderAccount.IsNull)
+            {
+                accounts.TryGetAccount(tx.SenderAddress!, out _senderAccount);
+            }
 
-    private AccountStruct? _senderAccount = null;
-    public AccountStruct SenderAccount { get { return _senderAccount ??= _accounts.GetAccount(_tx.SenderAddress!); } }
+            return _senderAccount;
+        }
+    }
 }

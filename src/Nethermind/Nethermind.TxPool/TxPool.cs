@@ -160,10 +160,10 @@ namespace Nethermind.TxPool
 
         public int GetPendingTransactionsCount() => _transactions.Count;
 
-        public IDictionary<Address, Transaction[]> GetPendingTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingTransactionsBySender() =>
             _transactions.GetBucketSnapshot();
 
-        public IDictionary<Address, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
+        public IDictionary<AddressAsKey, Transaction[]> GetPendingLightBlobTransactionsBySender() =>
             _blobTransactions.GetBucketSnapshot();
 
         public Transaction[] GetPendingTransactionsBySender(Address address) =>
@@ -553,10 +553,7 @@ namespace Nethermind.TxPool
 
         private void UpdateBuckets()
         {
-            _transactions.VerifyCapacity();
             _transactions.UpdatePool(_accounts, _updateBucket);
-
-            _blobTransactions.VerifyCapacity();
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
@@ -644,17 +641,13 @@ namespace Nethermind.TxPool
             ? _blobTransactions.ContainsKey(hash)
             : _transactions.ContainsKey(hash) || _broadcaster.ContainsTx(hash);
 
-        public bool TryGetPendingTransaction(Hash256 hash, out Transaction? transaction)
-        {
-            return _transactions.TryGetValue(hash, out transaction)
-                    || _blobTransactions.TryGetValue(hash, out transaction)
-                    || _broadcaster.TryGetPersistentTx(hash, out transaction);
-        }
+        public bool TryGetPendingTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? transaction) =>
+            _transactions.TryGetValue(hash, out transaction)
+            || _blobTransactions.TryGetValue(hash, out transaction)
+            || _broadcaster.TryGetPersistentTx(hash, out transaction);
 
-        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction)
-        {
-            return _blobTransactions.TryGetValue(hash, out blobTransaction);
-        }
+        public bool TryGetPendingBlobTransaction(Hash256 hash, [NotNullWhen(true)] out Transaction? blobTransaction) =>
+            _blobTransactions.TryGetValue(hash, out blobTransaction);
 
         // only for tests - to test sorting
         internal void TryGetBlobTxSortingEquivalent(Hash256 hash, out Transaction? transaction)
@@ -664,7 +657,7 @@ namespace Nethermind.TxPool
         // maybe it should use NonceManager, as it already has info about local txs?
         public UInt256 GetLatestPendingNonce(Address address)
         {
-            UInt256 maxPendingNonce = _accounts.GetAccount(address).Nonce;
+            UInt256 maxPendingNonce = _accounts.GetNonce(address);
 
             bool hasPendingTxs = _transactions.GetBucketCount(address) > 0;
             if (!hasPendingTxs && !(_blobTransactions.GetBucketCount(address) > 0))
@@ -732,7 +725,7 @@ namespace Nethermind.TxPool
         private static void AddNodeInfoEntryForTxPool()
         {
             ThisNodeInfo.AddInfo("Mem est tx   :",
-                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
+                $"{(LruCache<ValueHash256, object>.CalculateMemorySize(32, MemoryAllowance.TxHashCacheSize) + LruCache<Hash256AsKey, Transaction>.CalculateMemorySize(4096, MemoryAllowance.MemPoolSize)) / 1000 / 1000} MB"
                     .PadLeft(8));
         }
 
