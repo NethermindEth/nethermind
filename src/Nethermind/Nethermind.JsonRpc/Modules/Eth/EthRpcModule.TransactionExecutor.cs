@@ -49,11 +49,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         ErrorCodes.ResourceUnavailable);
                 }
 
-                bool noBaseFee = transactionCall.GasPrice is null;
                 BlockHeader clonedHeader = header.Clone();
+                bool noBaseFee = transactionCall.GasPrice is null && transactionCall.MaxFeePerGas is null;
                 if (noBaseFee)
                 {
                     clonedHeader.BaseFeePerGas = 0;
+                }
+                bool noBlobGasFee = transactionCall.MaxFeePerBlobGas is null;
+                if (noBlobGasFee)
+                {
+                    clonedHeader.ExcessBlobGas = Eip4844Constants.MaxBlobGasPerBlock;
                 }
 
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
