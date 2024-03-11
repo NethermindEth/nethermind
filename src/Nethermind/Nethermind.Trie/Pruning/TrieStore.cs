@@ -663,8 +663,11 @@ namespace Nethermind.Trie.Pruning
                     PersistBlockCommitSet(null, blockCommitSet, writeBatch, persistedHashes: persistedHashes);
                 }
 
-                RemovePastKeys(persistedHashes, writeBatch);
+                // Run in parallel. Reduce time by about 30%.
+                Task deleteTask = Task.Run(() => RemovePastKeys(persistedHashes));
+
                 writeBatch.Dispose();
+                deleteTask.Wait();
 
                 foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
                 {
@@ -686,7 +689,7 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes, INodeStorage.WriteBatch writeBatch)
+        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes)
         {
             if (persistedHashes == null) return;
 
@@ -709,20 +712,38 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
+            INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+
+            long removed = 0;
+            void DoAct(KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair)
             {
                 (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
-                if (key.path.Length > TinyTreePath.MaxNibbleLength) continue;
+                if (key.path.Length > TinyTreePath.MaxNibbleLength) return;
                 if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
+                        Interlocked.Increment(ref removed);
                         Metrics.RemovedNodeCount++;
                         writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
+
+                _pastPathHash.Set((key.addr, key.path), keyValuePair.Value);
             }
+
+            ActionBlock<KeyValuePair<(Hash256?, TinyTreePath), Hash256>> actionBlock =
+                new ActionBlock<KeyValuePair<(Hash256?, TinyTreePath), Hash256>>(DoAct);
+
+            foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
+            {
+                actionBlock.Post(keyValuePair);
+            }
+
+            actionBlock.Complete();
+            actionBlock.Completion.Wait();
+            writeBatch.Dispose();
         }
 
         /// <summary>
@@ -761,6 +782,13 @@ namespace Nethermind.Trie.Pruning
                 : null;
 
             long newMemory = 0;
+            ActionBlock<TrieNode>? pruneAndRecalculateAction =
+                new ActionBlock<TrieNode>(node =>
+                {
+                    node.PrunePersistedRecursively(1);
+                    Interlocked.Add(ref newMemory, node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage);
+                });
+
             foreach ((DirtyNodesCache.Key key, TrieNode node) in _dirtyNodes.AllNodes)
             {
                 if (node.IsPersisted)
@@ -798,12 +826,13 @@ namespace Nethermind.Trie.Pruning
                 }
                 else if (!skipRecalculateMemory)
                 {
-                    node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage;
+                    pruneAndRecalculateAction.Post(node);
                 }
             }
 
+            pruneAndRecalculateAction.Complete();
             trackNodesAction?.Complete();
+            pruneAndRecalculateAction.Completion.Wait();
             trackNodesAction?.Completion.Wait();
 
             if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory + _persistedLastSeens.Count * 48;
