@@ -62,7 +62,7 @@ jobs:
         if [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* ]]; then
           skip_docker_build="true"
           
-          if [[ "$event_name" == "repository_dispatch" ]]; then
+          if [[ "$event_name" == "workflow_dispatch" ]]; then
             skip_wait_for_docker="true"
           fi
         fi
