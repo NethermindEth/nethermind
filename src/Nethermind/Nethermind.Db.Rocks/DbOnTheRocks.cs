@@ -1724,7 +1724,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
-        internal class IteratorHolder: IDisposable
+        internal class IteratorHolder : IDisposable
         {
             public Iterator? Iterator = null;
             public int Usage = 0;

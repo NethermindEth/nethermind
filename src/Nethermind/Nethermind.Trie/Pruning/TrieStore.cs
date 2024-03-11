@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -578,14 +579,24 @@ namespace Nethermind.Trie.Pruning
                             {
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                                 {
-                                    PruneCache();
+                                    // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
+                                    // usually faster to just SaveSnapshot causing most of the entry to be persisted.
+                                    // Not saving snapshot just save about 5% of memory at most most of the time, causing
+                                    // an elevated pruning a few blocks after making it not very effective especially
+                                    // on constant block processing such as during forward sync where it can take up to
+                                    // 30% of the total time on halfpath as the block processing portion got faster.
+                                    //
+                                    // With halfpath's live pruning, there is a slight complication, the currently loaded
+                                    // persisted node have a pretty good hit rate and tend to conflict with the persisted
+                                    // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
+                                    // really helps increase nodes that can be removed.
+                                    PruneCache(true);
 
-                                    if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
-                                    {
-                                        break;
-                                    }
+                                    SaveSnapshot();
+
+                                    PruneCache();
                                 }
                             }
                         }
@@ -600,7 +611,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private bool CanPruneCacheFurther()
+        private bool SaveSnapshot()
         {
             if (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
             {
@@ -737,10 +748,17 @@ namespace Nethermind.Trie.Pruning
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
         /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache()
+        private void PruneCache(bool skipRecalculateMemory = false)
         {
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
+
+            // Run in parallel
+            bool shouldTrackPersistedNode = _pastPathHash != null && !_persistenceStrategy.IsFullPruning;
+            ActionBlock<(DirtyNodesCache.Key key, TrieNode node)>? trackNodesAction = shouldTrackPersistedNode
+                ? new ActionBlock<(DirtyNodesCache.Key key, TrieNode node)>(
+                    entry => TrackPrunedPersistedNodes(entry.key, entry.node))
+                : null;
 
             long newMemory = 0;
             foreach ((DirtyNodesCache.Key key, TrieNode node) in _dirtyNodes.AllNodes)
@@ -749,7 +767,7 @@ namespace Nethermind.Trie.Pruning
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
-                    TrackPrunedPersistedNodes(key, node);
+                    trackNodesAction?.Post((key, node));
 
                     Hash256? keccak = node.Keccak;
                     if (keccak is null)
@@ -778,14 +796,17 @@ namespace Nethermind.Trie.Pruning
 
                     Metrics.PrunedTransientNodesCount++;
                 }
-                else
+                else if (!skipRecalculateMemory)
                 {
                     node.PrunePersistedRecursively(1);
                     newMemory += node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage;
                 }
             }
 
-            MemoryUsedByDirtyCache = newMemory + _persistedLastSeens.Count * 48;
+            trackNodesAction?.Complete();
+            trackNodesAction?.Completion.Wait();
+
+            if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory + _persistedLastSeens.Count * 48;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
@@ -796,9 +817,6 @@ namespace Nethermind.Trie.Pruning
         private void TrackPrunedPersistedNodes(in DirtyNodesCache.Key key, TrieNode node)
         {
             if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
-            if (_pastPathHash == null) return;
-            if (_persistenceStrategy.IsFullPruning) return;
-
             TinyTreePath treePath = new TinyTreePath(key.Path);
             // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
             // recalculated to the same hash.
