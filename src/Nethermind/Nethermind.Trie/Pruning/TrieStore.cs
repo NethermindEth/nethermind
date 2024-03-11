@@ -209,7 +209,7 @@ namespace Nethermind.Trie.Pruning
 
                 public override int GetHashCode()
                 {
-                    return Keccak.GetHashCode();
+                    return HashCode.Combine(Keccak.GetHashCode(), Address?.GetHashCode() ?? 0, Path.GetHashCode());
                 }
 
                 public bool Equals(Key other)
