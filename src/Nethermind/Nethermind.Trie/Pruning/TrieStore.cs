@@ -707,6 +707,7 @@ namespace Nethermind.Trie.Pruning
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
+                        Metrics.RemovedNodeCount++;
                         writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
