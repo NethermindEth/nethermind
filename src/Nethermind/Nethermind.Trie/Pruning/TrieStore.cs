@@ -652,7 +652,8 @@ namespace Nethermind.Trie.Pruning
                     PersistBlockCommitSet(null, blockCommitSet, writeBatch, persistedHashes: persistedHashes);
                 }
 
-                RemovePastKeys(persistedHashes);
+                RemovePastKeys(persistedHashes, writeBatch);
+                writeBatch.Dispose();
 
                 foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
                 {
@@ -661,7 +662,6 @@ namespace Nethermind.Trie.Pruning
                         _persistedLastSeens.Remove(keyValuePair.Key, out _);
                     }
                 }
-                writeBatch.Dispose();
 
                 if (candidateSets.Count > 0)
                 {
@@ -675,7 +675,7 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes, INodeStorage.WriteBatch writeBatch)
         {
             if (persistedHashes == null) return;
 
@@ -698,7 +698,6 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            using INodeStorage.WriteBatch deleteNodeBatch = _nodeStorage.StartWriteBatch();
             foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
             {
                 (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
@@ -708,7 +707,7 @@ namespace Nethermind.Trie.Pruning
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
-                        deleteNodeBatch.Remove(key.addr, fullPath, prevHash);
+                        writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
             }
