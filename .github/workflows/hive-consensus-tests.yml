@@ -12,6 +12,10 @@ on:
         type: choice
         options: ['1', '2', '3', '4', '8', '16']
 
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
   create_docker_image:
     name: "Generate docker image"
