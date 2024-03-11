@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using FluentAssertions;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Snap.Messages;
@@ -18,13 +21,27 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         public static readonly byte[] Code1 = { 0, 1 };
 
         [Test]
+        public void Roundtrip_NoAccountsNoProofs_HasCorrectLength()
+        {
+            AccountRangeMessage msg = new()
+            {
+                RequestId = 1,
+                PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
+                Proofs = ArrayPoolList<byte[]>.Empty(),
+            };
+
+            AccountRangeMessageSerializer serializer = new();
+            serializer.Serialize(msg).ToHexString().Should().Be("c301c0c0");
+        }
+
+        [Test]
         public void Roundtrip_NoAccountsNoProofs()
         {
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = System.Array.Empty<PathWithAccount>(),
-                Proofs = Array.Empty<byte[]>()
+                PathsWithAccounts = ArrayPoolList<PathWithAccount>.Empty(),
+                Proofs = ArrayPoolList<byte[]>.Empty()
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -49,8 +66,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
-                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(2) { new PathWithAccount(TestItem.KeccakA, acc01), new PathWithAccount(TestItem.KeccakB, acc02) },
+                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -70,8 +87,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
-                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();
@@ -91,8 +108,8 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
             AccountRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                PathsWithAccounts = new[] { new PathWithAccount(TestItem.KeccakB, acc01) },
-                Proofs = new[] { TestItem.RandomDataA, TestItem.RandomDataB }
+                PathsWithAccounts = new ArrayPoolList<PathWithAccount>(1) { new(TestItem.KeccakB, acc01) },
+                Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA, TestItem.RandomDataB }
             };
 
             AccountRangeMessageSerializer serializer = new();

@@ -5,7 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -25,7 +25,7 @@ using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
+public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 {
     public int SoftMaxRecoveryQueueSizeInTx = 10000; // adjust based on tx or gas
     public const int MaxProcessingQueueSize = 2000; // adjust based on tx or gas
@@ -134,7 +134,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, ProcessingResult.QueueException, e));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
                 if (e is not InvalidOperationException || !_recoveryQueue.IsAddingCompleted)
                 {
                     throw;
@@ -209,7 +209,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
         {
             Interlocked.Decrement(ref _queueCount);
-            BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, processingResult, exception));
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, processingResult, exception));
             FireProcessingQueueEmpty();
         }
 
@@ -305,7 +305,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                     throw new InvalidOperationException("Processing loop expects only resolved blocks");
                 }
 
@@ -313,24 +313,23 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
                 if (processedBlock is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
                 }
                 else
                 {
                     if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
             }
             finally
             {
@@ -353,12 +352,17 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
     }
 
     public event EventHandler? ProcessingQueueEmpty;
-    public event EventHandler<BlockHashEventArgs>? BlockRemoved;
+    public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
 
     int IBlockProcessingQueue.Count => _queueCount;
 
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
     {
+        return Process(suggestedBlock, options, tracer, out _);
+    }
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    {
+        error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
@@ -384,7 +388,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
         if (processedBlocks is null)
         {
             return null;
@@ -469,7 +473,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -494,35 +498,43 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 processingBranch.BlocksToProcess,
                 options,
                 tracer);
+            error = null;
         }
         catch (InvalidBlockException ex)
         {
-            InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = ex.InvalidBlock, });
-
             invalidBlockHash = ex.InvalidBlock.Hash;
+            error = ex.Message;
+            Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
+            if (invalidBlock is not null)
+            {
+                InvalidBlock?.Invoke(this, new IBlockchainProcessor.InvalidBlockEventArgs { InvalidBlock = invalidBlock, });
 
+                BlockTraceDumper.LogDiagnosticRlp(invalidBlock, _logger,
+                    (_options.DumpOptions & DumpOptions.Rlp) != 0,
+                    (_options.DumpOptions & DumpOptions.RlpLog) != 0);
 
-            BlockTraceDumper.LogDiagnosticRlp(ex.InvalidBlock, _logger,
-                (_options.DumpOptions & DumpOptions.Rlp) != 0,
-                (_options.DumpOptions & DumpOptions.RlpLog) != 0);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new BlockReceiptsTracer(),
+                    DumpOptions.Receipts);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new BlockReceiptsTracer(),
-                DumpOptions.Receipts);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
+                    DumpOptions.Parity);
 
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new ParityLikeBlockTracer(ParityTraceTypes.StateDiff | ParityTraceTypes.Trace),
-                DumpOptions.Parity);
-
-            TraceFailingBranch(
-                processingBranch,
-                options,
-                new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
-                DumpOptions.Geth);
+                TraceFailingBranch(
+                    processingBranch,
+                    options,
+                    new GethLikeBlockMemoryTracer(GethTraceOptions.Default),
+                    DumpOptions.Geth);
+            }
+            else
+            {
+                if (_logger.IsError) _logger.Error($"Unexpected situation occurred during the handling of an invalid block {ex.InvalidBlock}", ex);
+            }
 
             processedBlocks = null;
         }
@@ -566,14 +578,14 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             if (!blocksToProcess[0].IsGenesis)
             {
                 BlockHeader? parentOfFirstBlock = _blockTree.FindHeader(blocksToProcess[0].ParentHash!, BlockTreeLookupOptions.None);
-                if (parentOfFirstBlock == null)
+                if (parentOfFirstBlock is null)
                 {
                     throw new InvalidOperationException("Attempted to process a disconnected blockchain");
                 }
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException("Attempted to process a blockchain without having starting state");
+                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
                 }
             }
         }
@@ -750,8 +762,6 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         _recoveryQueue.Dispose();
         _blockQueue.Dispose();
         _loopCancellationSource?.Dispose();
-        _recoveryTask?.Dispose();
-        _processorTask?.Dispose();
         _blockTree.NewBestSuggestedBlock -= OnNewBestBlock;
         _blockTree.NewHeadBlock -= OnNewHeadBlock;
     }

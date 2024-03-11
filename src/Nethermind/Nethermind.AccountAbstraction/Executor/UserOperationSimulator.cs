@@ -77,7 +77,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 foreach (KeyValuePair<Address, Hash256> kv in userOperation.AddressesToCodeHashes)
                 {
                     (Address address, Hash256 expectedCodeHash) = kv;
-                    Hash256 codeHash = _stateProvider.GetCodeHash(address);
+                    ValueHash256 codeHash = _stateProvider.GetCodeHash(address);
                     if (codeHash != expectedCodeHash)
                     {
                         return ResultWrapper<Hash256>.Fail($"codehash of address {address} changed since initial simulation");
@@ -148,7 +148,7 @@ namespace Nethermind.AccountAbstraction.Executor
             IDictionary<Address, Hash256> addressesToCodeHashes = new Dictionary<Address, Hash256>();
             foreach (Address accessedAddress in txTracer.AccessedAddresses)
             {
-                addressesToCodeHashes[accessedAddress] = _stateProvider.GetCodeHash(accessedAddress);
+                addressesToCodeHashes[accessedAddress] = new Hash256(_stateProvider.GetCodeHash(accessedAddress));
             }
 
             return new UserOperationSimulationResult()

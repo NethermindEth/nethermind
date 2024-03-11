@@ -673,10 +673,33 @@ namespace Nethermind.Trie.Test.Pruning
             readOnlyNode.Should().NotBe(originalNode);
             readOnlyNode.Should().BeEquivalentTo(originalNode,
                 eq => eq.Including(t => t.Keccak)
-                    .Including(t => t.FullRlp)
                     .Including(t => t.NodeType));
 
+            var origRlp = originalNode.FullRlp;
+            var readOnlyRlp = readOnlyNode.FullRlp;
+            readOnlyRlp.Should().BeEquivalentTo(origRlp);
+
             readOnlyNode.Key?.ToString().Should().Be(originalNode.Key?.ToString());
+        }
+
+        [Test]
+        public void After_commit_should_have_has_root()
+        {
+            MemDb db = new();
+            TrieStore trieStore = new TrieStore(db, LimboLogs.Instance);
+            trieStore.HasRoot(Keccak.EmptyTreeHash).Should().BeTrue();
+
+            Account account = new(1);
+            StateTree stateTree = new(trieStore, LimboLogs.Instance);
+            stateTree.Set(TestItem.AddressA, account);
+            stateTree.Commit(0);
+            trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
+
+            stateTree.Get(TestItem.AddressA);
+            account = account.WithChangedBalance(2);
+            stateTree.Set(TestItem.AddressA, account);
+            stateTree.Commit(0);
+            trieStore.HasRoot(stateTree.RootHash).Should().BeTrue();
         }
     }
 }

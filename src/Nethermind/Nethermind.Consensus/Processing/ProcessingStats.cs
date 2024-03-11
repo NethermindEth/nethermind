@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         private readonly Stopwatch _runStopwatch = new();
         private long _lastBlockNumber;
         private long _lastElapsedRunningMicroseconds;
-        private decimal _lastTotalMGas;
+        private double _lastTotalMGas;
         private long _lastTotalTx;
         private long _lastTotalCalls;
         private long _lastTotalEmptyCalls;
@@ -35,19 +35,18 @@ namespace Nethermind.Consensus.Processing
         private long _lastSelfDestructs;
         private long _maxMemory;
         private long _totalBlocks;
-        private readonly bool _isDebugMode = false;
-        private decimal _processingMicroseconds;
+        private long _processingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;
 
         public ProcessingStats(ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             // the line below just to avoid compilation errors
-            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_isDebugMode}");
+            if (_logger.IsTrace) _logger.Trace($"Processing Stats in debug mode?: {_logger.IsDebug}");
 #if DEBUG
-            _isDebugMode = true;
+            _logger.SetDebugMode();
 #endif
         }
 
@@ -60,6 +59,8 @@ namespace Nethermind.Consensus.Processing
             const string redText = "\u001b[38;5;196m";
             const string greenText = "\u001b[92m";
             const string darkGreenText = "\u001b[32m";
+            const string darkCyanText = "\u001b[36m";
+            const string blueText = "\u001b[94m";
             const string darkGreyText = resetColor; // "\u001b[90m";
 
             if (block is null)
@@ -76,7 +77,7 @@ namespace Nethermind.Consensus.Processing
 
             _processingMicroseconds += blockProcessingTimeInMicros;
 
-            Metrics.Mgas += block.GasUsed / 1_000_000m;
+            Metrics.Mgas += block.GasUsed / 1_000_000.0;
             Metrics.Transactions += block.Transactions.Length;
             Metrics.Blocks = block.Number;
             Metrics.TotalDifficulty = block.TotalDifficulty ?? UInt256.Zero;
@@ -91,7 +92,7 @@ namespace Nethermind.Consensus.Processing
 
             long processingMicroseconds = _processingStopwatch.ElapsedMicroseconds();
             long runningMicroseconds = _runStopwatch.ElapsedMicroseconds();
-            decimal runMicroseconds = (runningMicroseconds - _lastElapsedRunningMicroseconds);
+            long runMicroseconds = (runningMicroseconds - _lastElapsedRunningMicroseconds);
 
             long reportMs = Environment.TickCount64;
             if (reportMs - _lastReportMs > 1000)
@@ -107,30 +108,46 @@ namespace Nethermind.Consensus.Processing
 
                 if (_logger.IsInfo)
                 {
-                    decimal chunkMicroseconds = _processingMicroseconds;
-                    decimal totalMicroseconds = processingMicroseconds;
+                    double chunkMicroseconds = _processingMicroseconds;
+                    double totalMicroseconds = processingMicroseconds;
                     long chunkTx = Metrics.Transactions - _lastTotalTx;
                     long chunkCalls = Evm.Metrics.Calls - _lastTotalCalls;
                     long chunkEmptyCalls = Evm.Metrics.EmptyCalls - _lastTotalEmptyCalls;
                     long chunkCreates = Evm.Metrics.Creates - _lastTotalCreates;
                     long chunkSload = Evm.Metrics.SloadOpcode - _lastTotalSLoad;
                     long chunkSstore = Evm.Metrics.SstoreOpcode - _lastTotalSStore;
-                    decimal chunkMGas = Metrics.Mgas - _lastTotalMGas;
-                    decimal mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1000 * 1000;
-                    decimal totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1000 * 1000;
-                    decimal totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1000 * 1000;
-                    decimal totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1000 * 1000;
-                    decimal txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1000 * 1000;
-                    decimal bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1000 * 1000;
-                    decimal chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000);
-                    decimal runMs = (runMicroseconds == 0 ? -1 : runMicroseconds / 1000);
-                    string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $" Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+                    double chunkMGas = Metrics.Mgas - _lastTotalMGas;
+                    double mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1_000_000.0;
+                    double totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1_000_000.0;
+                    double totalTxPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Transactions / totalMicroseconds * 1_000_000.0;
+                    double totalBlocksPerSecond = totalMicroseconds == 0 ? -1 : _totalBlocks / totalMicroseconds * 1_000_000.0;
+                    double txps = chunkMicroseconds == 0 ? -1 : chunkTx / chunkMicroseconds * 1_000_000.0;
+                    double bps = chunkMicroseconds == 0 ? -1 : chunkBlocks / chunkMicroseconds * 1_000_000.0;
+                    double chunkMs = (chunkMicroseconds == 0 ? -1 : chunkMicroseconds / 1000.0);
+                    double runMs = (runMicroseconds == 0 ? -1 : runMicroseconds / 1000.0);
+                    string blockGas = Evm.Metrics.BlockMinGasPrice != float.MaxValue ? $"⛽ Gas gwei: {Evm.Metrics.BlockMinGasPrice:N2} .. {whiteText}{Math.Max(Evm.Metrics.BlockMinGasPrice, Evm.Metrics.BlockEstMedianGasPrice):N2}{resetColor} ({Evm.Metrics.BlockAveGasPrice:N2}) .. {Evm.Metrics.BlockMaxGasPrice:N2}" : "";
+                    string mgasColor = whiteText;
+
                     if (chunkBlocks > 1)
                     {
                         _logger.Info($"Processed   {block.Number - chunkBlocks + 1,9}...{block.Number,9} | {chunkMs,9:N2} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                     }
                     else
                     {
+                        mgasColor = (chunkMGas / (block.GasLimit / 16_000_000.0)) switch
+                        {
+                            // At 30M gas limit the values are in comments
+                            > 15 => redText, // 28.125 MGas
+                            > 14 => orangeText, // 26.25 MGas
+                            > 13 => yellowText, // 24.375 MGas
+                            > 10 => darkGreenText, // 18.75 MGas
+                            > 7 => greenText, // 13.125 MGas
+                            > 6 => darkGreenText, // 11.25 MGas
+                            > 5 => whiteText, // 9.375 MGas
+                            > 4 => resetColor, // 7.5 MGas
+                            > 3 => darkCyanText, // 5.625 MGas
+                            _ => blueText
+                        };
                         var chunkColor = chunkMs switch
                         {
                             < 200 => greenText,
@@ -143,12 +160,16 @@ namespace Nethermind.Consensus.Processing
                         _logger.Info($"Processed           {block.Number,9}     | {chunkColor}{chunkMs,9:N2}{resetColor} ms  |  slot    {runMs,7:N0} ms |{blockGas}");
                     }
 
-                    var mgasColor = chunkMGas switch
+                    string mgasPerSecondColor = (mgasPerSecond / (block.GasLimit / 1_000_000.0)) switch
                     {
-                        > 28 => greenText,
-                        > 25 => darkGreenText,
-                        > 15 => whiteText,
-                        _ => resetColor
+                        // At 30M gas limit the values are in comments
+                        > 3 => greenText, // 90 MGas/s
+                        > 2.5f => darkGreenText, // 75 MGas/s
+                        > 2 => whiteText, // 60 MGas/s
+                        > 1.5f => resetColor, // 45 MGas/s
+                        > 1 => yellowText, // 30 MGas/s
+                        > 0.5f => orangeText, // 15 MGas/s
+                        _ => redText
                     };
                     var sstoreColor = chunkBlocks > 1 ? "" : chunkSstore switch
                     {
@@ -177,11 +198,11 @@ namespace Nethermind.Consensus.Processing
                         _ => ""
                     };
                     _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}" : "           ")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
-                    _logger.Info($"- Block throughput {mgasPerSecond,7:F2} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
+                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,7:F2}{resetColor} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
                     // Only output the total throughput in debug mode
                     if (_logger.IsDebug)
                     {
-                        _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |       {totalBlocksPerSecond,7:F2} Blk/s | Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
+                        _logger.Debug($"- Total throughput {totalMgasPerSecond,7:F2} MGas/s | {totalTxPerSecond,9:F2} t/s |       {totalBlocksPerSecond,7:F2} Blk/s |⛽ Gas gwei: {Evm.Metrics.MinGasPrice:N2} .. {Math.Max(Evm.Metrics.MinGasPrice, Evm.Metrics.EstMedianGasPrice):N2} ({Evm.Metrics.AveGasPrice:N2}) .. {Evm.Metrics.MaxGasPrice:N2}");
                     }
 
                     if (_logger.IsTrace)

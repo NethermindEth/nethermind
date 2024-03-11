@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -36,7 +37,7 @@ namespace Nethermind.Merge.Plugin;
 public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlugin
 {
     protected INethermindApi _api = null!;
-    private ILogger _logger = null!;
+    private ILogger _logger;
     protected IMergeConfig _mergeConfig = null!;
     private ISyncConfig _syncConfig = null!;
     protected IBlocksConfig _blocksConfig = null!;
@@ -72,6 +73,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
 
         _logger = _api.LogManager.GetClassLogger();
+
+        EnsureNotConflictingSettings();
 
         if (MergeEnabled)
         {
@@ -120,6 +123,16 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         }
 
         return Task.CompletedTask;
+    }
+
+    private void EnsureNotConflictingSettings()
+    {
+        if (!_mergeConfig.Enabled && _mergeConfig.TerminalTotalDifficulty is not null)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(MergeConfig)}.{nameof(MergeConfig.TerminalTotalDifficulty)} cannot be set when {nameof(MergeConfig)}.{nameof(MergeConfig.Enabled)} is false.",
+                ExitCodes.ConflictingConfigurations);
+        }
     }
 
     internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
@@ -313,7 +326,6 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
-                    _api.Config<IInitConfig>(),
                     _syncConfig,
                     _poSSwitcher,
                     _beaconSync,
@@ -323,7 +335,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _invalidChainTracker,
                     _beaconSync,
                     _api.LogManager,
-                    TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
+                    TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+                    _api.Config<IReceiptConfig>().StoreReceipts),
                 new ForkchoiceUpdatedHandler(
                     _api.BlockTree,
                     _blockFinalizationManager,
@@ -336,6 +349,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                     _beaconPivot,
                     _peerRefresher,
                     _api.SpecProvider,
+                    _api.SyncPeerPool!,
                     _api.LogManager,
                     _api.Config<IBlocksConfig>().SecondsPerSlot,
                     _api.Config<IMergeConfig>().SimulateBlockProduction),

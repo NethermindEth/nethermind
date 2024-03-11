@@ -30,8 +30,8 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new();
-            private readonly ConcurrentStack<int[]> _returnStackPool = new();
+            private readonly Stack<byte[]> _dataStackPool = new(32);
+            private readonly Stack<int[]> _returnStackPool = new(32);
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;
@@ -55,7 +55,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _dataStackPoolDepth);
+                _dataStackPoolDepth++;
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _returnStackPoolDepth);
+                _returnStackPoolDepth++;
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
@@ -104,7 +104,7 @@ namespace Nethermind.Evm
         // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
         // As we can add here from VM, we need it as ICollection
-        public ICollection<Address> CreateList => _createList;
+        public ICollection<AddressAsKey> CreateList => _createList;
         // As we can add here from VM, we need it as ICollection
         public ICollection<LogEntry> Logs => _logs;
 
@@ -112,7 +112,7 @@ namespace Nethermind.Evm
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
-        private readonly HashSet<Address> _createList;
+        private readonly HashSet<AddressAsKey> _createList;
         private readonly int _accessedAddressesSnapshot;
         private readonly int _accessedStorageKeysSnapshot;
         private readonly int _destroyListSnapshot;
@@ -190,7 +190,7 @@ namespace Nethermind.Evm
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
-                _createList = new HashSet<Address>();
+                _createList = new HashSet<AddressAsKey>();
                 _logs = new JournalCollection<LogEntry>();
             }
             if (executionType.IsAnyCreate())
@@ -242,7 +242,9 @@ namespace Nethermind.Evm
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
         public Snapshot Snapshot { get; } // TODO: move to CallEnv
-        public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
+
+        private EvmPooledMemory _memory;
+        public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
 
         public void Dispose()
         {
@@ -254,15 +256,14 @@ namespace Nethermind.Evm
                 ReturnStack = null;
             }
             Restore(); // we are trying to restore when disposing
-            Memory?.Dispose();
-            Memory = null;
+            Memory.Dispose();
+            Memory = default;
         }
 
         public void InitStacks()
         {
             if (DataStack is null)
             {
-                Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
@@ -273,7 +274,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList is not null)
+            if (accessList?.IsEmpty == false)
             {
                 foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {

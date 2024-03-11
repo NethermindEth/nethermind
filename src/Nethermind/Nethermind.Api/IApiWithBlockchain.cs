@@ -12,6 +12,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Evm.TransactionProcessing;
@@ -94,5 +95,6 @@ namespace Nethermind.Api
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
+        BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
     }
 }

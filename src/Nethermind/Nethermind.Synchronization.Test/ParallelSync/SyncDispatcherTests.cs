@@ -39,7 +39,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             {
             }
 
-            public async Task<SyncPeerAllocation> Allocate(IPeerAllocationStrategy peerAllocationStrategy, AllocationContexts contexts, int timeoutMilliseconds = 0)
+            public async Task<SyncPeerAllocation> Allocate(
+                IPeerAllocationStrategy peerAllocationStrategy,
+                AllocationContexts contexts,
+                int timeoutMilliseconds = 0,
+                CancellationToken cancellationToken = default)
             {
                 await _peerSemaphore.WaitAsync();
                 ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
@@ -287,7 +291,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
             syncFeed.Activate();
             await Task.Delay(100);
 
-            Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(2000, 100));
+            Assert.That(() => syncFeed.HighestRequested, Is.EqualTo(expectedHighestRequest).After(4000, 100));
             syncFeed.UnlockResponse();
         }
     }

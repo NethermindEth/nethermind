@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Network.P2P.Messages;
 
@@ -17,10 +18,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         {
         }
 
-        public BlockBodiesMessage(Block[] blocks)
+        public BlockBodiesMessage(IReadOnlyList<Block> blocks)
         {
-            BlockBody[] bodies = new BlockBody[blocks.Length];
-            for (int i = 0; i < blocks.Length; i++)
+            BlockBody[] bodies = new BlockBody[blocks.Count];
+            for (int i = 0; i < blocks.Count; i++)
             {
                 bodies[i] = blocks[i]?.Body;
             }

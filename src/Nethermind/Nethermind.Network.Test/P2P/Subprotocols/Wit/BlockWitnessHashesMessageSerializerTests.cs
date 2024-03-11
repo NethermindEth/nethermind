@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -16,7 +17,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_zero()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new Hash256[0]);
+            using BlockWitnessHashesMessage message = new(1, Array.Empty<Hash256>());
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -24,7 +25,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_one()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, new[] { Keccak.Zero });
+            using BlockWitnessHashesMessage message = new(1, new[] { Keccak.Zero });
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -32,7 +33,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_many()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, TestItem.Keccaks);
+            using BlockWitnessHashesMessage message = new(1, TestItem.Keccaks);
             SerializerTester.TestZero(serializer, message);
         }
 
@@ -40,7 +41,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public void Can_handle_null()
         {
             BlockWitnessHashesMessageSerializer serializer = new();
-            BlockWitnessHashesMessage message = new(1, null);
+            using BlockWitnessHashesMessage message = new(1, null);
             byte[] serialized = serializer.Serialize(message);
             serialized[0].Should().Be(194);
             serializer.Deserialize(serialized);

@@ -22,7 +22,7 @@ namespace Nethermind.Core
 
     public ref struct LogEntryStructRef
     {
-        public LogEntryStructRef(AddressStructRef address, Span<byte> data, Span<byte> topicsRlp)
+        public LogEntryStructRef(AddressStructRef address, ReadOnlySpan<byte> data, ReadOnlySpan<byte> topicsRlp)
         {
             LoggersAddress = address;
             Data = data;
@@ -45,8 +45,8 @@ namespace Nethermind.Core
         /// <summary>
         /// Rlp encoded array of Keccak
         /// </summary>
-        public Span<byte> TopicsRlp { get; }
+        public ReadOnlySpan<byte> TopicsRlp { get; }
 
-        public Span<byte> Data { get; }
+        public ReadOnlySpan<byte> Data { get; }
     }
 }

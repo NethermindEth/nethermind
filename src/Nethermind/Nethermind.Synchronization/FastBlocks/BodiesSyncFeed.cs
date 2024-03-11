@@ -186,7 +186,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
-                batch.Response?.Dispose();
+                batch?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }

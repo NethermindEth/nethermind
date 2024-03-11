@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
+using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Collections
 {
@@ -25,6 +26,7 @@ namespace Nethermind.TxPool.Collections
         protected McsPriorityLock Lock { get; } = new();
 
         private readonly int _capacity;
+        private readonly ILogger _logger;
 
         // comparer for a bucket
         private readonly IComparer<TValue> _groupComparer;
@@ -48,7 +50,7 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         /// <param name="capacity">Max capacity, after surpassing it elements will be removed based on last by <see cref="comparer"/>.</param>
         /// <param name="comparer">Comparer to sort items.</param>
-        protected SortedPool(int capacity, IComparer<TValue> comparer)
+        protected SortedPool(int capacity, IComparer<TValue> comparer, ILogManager logManager)
         {
             _capacity = capacity;
             // ReSharper disable VirtualMemberCallInConstructor
@@ -57,6 +59,7 @@ namespace Nethermind.TxPool.Collections
             _cacheMap = new Dictionary<TKey, TValue>(); // do not initialize it at the full capacity
             _buckets = new Dictionary<TGroupKey, EnhancedSortedSet<TValue>>();
             _worstSortedValues = new DictionarySortedSet<TValue, TKey>(_sortedComparer);
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         /// <summary>
@@ -98,7 +101,7 @@ namespace Nethermind.TxPool.Collections
         /// <summary>
         /// Gets all items in groups in supplied comparer order in groups.
         /// </summary>
-        public IDictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
+        public Dictionary<TGroupKey, TValue[]> GetBucketSnapshot(Predicate<TGroupKey>? where = null)
         {
             using var lockRelease = Lock.Acquire();
 
@@ -188,7 +191,7 @@ namespace Nethermind.TxPool.Collections
 
         protected bool TryRemoveNonLocked(TKey key, bool evicted, [NotNullWhen(true)] out TValue? value, out ICollection<TValue>? bucket)
         {
-            if (_cacheMap.TryGetValue(key, out value) && value != null)
+            if (_cacheMap.TryGetValue(key, out value) && value is not null)
             {
                 if (Remove(key, value))
                 {
@@ -286,7 +289,7 @@ namespace Nethermind.TxPool.Collections
         {
             using var lockRelease = Lock.Acquire();
 
-            return _cacheMap.TryGetValue(key, out value) && value != null;
+            return _cacheMap.TryGetValue(key, out value) && value is not null;
         }
 
         /// <summary>
@@ -310,7 +313,14 @@ namespace Nethermind.TxPool.Collections
 
                     if (_cacheMap.Count > _capacity)
                     {
-                        RemoveLast(out removed);
+                        if (!RemoveLast(out removed) || _cacheMap.Count > _capacity)
+                        {
+                            if (_cacheMap.Count > _capacity && _logger.IsWarn)
+                                _logger.Warn($"Capacity exceeded or failed to remove the last item from the pool, the current state is {Count}/{_capacity}. {GetInfoAboutWorstValues}");
+                            UpdateWorstValue();
+                            RemoveLast(out removed);
+                        }
+
                         return true;
                     }
 
@@ -325,16 +335,17 @@ namespace Nethermind.TxPool.Collections
 
         public bool TryInsert(TKey key, TValue value) => TryInsert(key, value, out _);
 
-        private void RemoveLast(out TValue? removed)
+        private bool RemoveLast(out TValue? removed)
         {
             TKey? key = _worstValue.GetValueOrDefault().Value;
             if (key is not null)
             {
-                TryRemoveNonLocked(key, true, out removed, out _);
+                return TryRemoveNonLocked(key, true, out removed, out _);
             }
             else
             {
                 removed = default;
+                return false;
             }
         }
 
@@ -447,6 +458,46 @@ namespace Nethermind.TxPool.Collections
             return false;
         }
 
+        protected void EnsureCapacity(int? expectedCapacity = null)
+        {
+            expectedCapacity ??= _capacity; // expectedCapacity is added for testing purpose. null should be used in production code
+            if (Count <= expectedCapacity)
+                return;
+
+            if (_logger.IsWarn)
+                _logger.Warn($"{ShortPoolName} exceeds the config size {Count}/{expectedCapacity}. Trying to repair the pool");
+
+            // Trying to auto-recover TxPool. If this code is executed, it means that something is wrong with our TxPool logic.
+            // However, auto-recover mitigates bad consequences of such bugs.
+            int maxIterations = 10; // We don't want to add an infinite loop, so we can break after a few iterations.
+            int iterations = 0;
+            while (Count > expectedCapacity)
+            {
+                ++iterations;
+                if (RemoveLast(out TValue? removed))
+                {
+                    if (_logger.IsInfo)
+                        _logger.Info($"Removed the last item {removed} from the pool, the current state is {Count}/{expectedCapacity}. {GetInfoAboutWorstValues}");
+                }
+                else
+                {
+                    if (_logger.IsWarn)
+                        _logger.Warn($"Failed to remove the last item from the pool, the current state is {Count}/{expectedCapacity}. {GetInfoAboutWorstValues}");
+                    UpdateWorstValue();
+                }
+
+                if (iterations >= maxIterations) break;
+            }
+        }
+
+        private string GetInfoAboutWorstValues()
+        {
+            TKey? key = _worstValue.GetValueOrDefault().Value;
+            var isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value != null;
+            return
+                $"Worst value {_worstValue}, items in worstSortedValues {_worstSortedValues.Count}, GetVakye: {_worstValue.GetValueOrDefault()} current max in worst values {_worstSortedValues.Max}, IsWorstValueInPool {isWorstValueInPool}";
+        }
+
         public void UpdatePool(Func<TGroupKey, IReadOnlySortedSet<TValue>, IEnumerable<(TValue Tx, Action<TValue>? Change)>> changingElements)
         {
             using var lockRelease = Lock.Acquire();
@@ -479,5 +530,7 @@ namespace Nethermind.TxPool.Collections
                 change?.Invoke(value);
             }
         }
+
+        protected virtual string ShortPoolName => "SortedPool";
     }
 }

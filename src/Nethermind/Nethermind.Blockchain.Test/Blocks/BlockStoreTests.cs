@@ -26,12 +26,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, cached);
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         retrieved.Should().BeEquivalentTo(block);
 
         store.Delete(block.Number, block.Hash!);
 
-        store.Get(block.Number, block.Hash!, cached).Should().BeNull();
+        store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached).Should().BeNull();
     }
 
     [Test]
@@ -57,7 +57,7 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         db[block.Hash!.Bytes] = (new BlockDecoder()).Encode(block).Bytes;
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, cached);
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, cached);
         retrieved.Should().BeEquivalentTo(block);
     }
 
@@ -83,12 +83,12 @@ public class BlockStoreTests
         Block block = Build.A.Block.WithNumber(1).TestObject;
         store.Insert(block);
 
-        Block? retrieved = store.Get(block.Number, block.Hash!, true);
+        Block? retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved.Should().BeEquivalentTo(block);
 
         db.Clear();
 
-        retrieved = store.Get(block.Number, block.Hash!, true);
+        retrieved = store.Get(block.Number, block.Hash!, RlpBehaviors.None, true);
         retrieved.Should().BeEquivalentTo(block);
     }
 

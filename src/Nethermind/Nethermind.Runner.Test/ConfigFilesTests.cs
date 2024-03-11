@@ -8,6 +8,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Analytics;
 using Nethermind.Api;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Config.Test;
@@ -170,10 +171,9 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta", 50)]
+        [TestCase("^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
         [TestCase("volta", 25)]
-        [TestCase("mainnet", 100)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);
@@ -190,12 +190,13 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("mainnet", 2048)]
-        [TestCase("holesky", 2048)]
+        [TestCase("holesky", 1024)]
+        [TestCase("sepolia", 1024)]
         [TestCase("gnosis", 2048)]
         [TestCase("poacore", 2048)]
         [TestCase("energy", 2048)]
-        [TestCase("chiado", 2048)]
-        [TestCase("^mainnet ^holesky ^spaceneth ^volta ^energy ^poacore ^gnosis ^chiado", 1024)]
+        [TestCase("chiado", 1024)]
+        [TestCase("^mainnet ^spaceneth ^volta ^energy ^poacore ^gnosis", 1024)]
         [TestCase("spaceneth", 128)]
         public void Tx_pool_defaults_are_correct(string configWildcard, int poolSize)
         {
@@ -296,7 +297,7 @@ namespace Nethermind.Runner.Test
         [TestCase("validators", false)]
         public void Stores_receipts(string configWildcard, bool storeReceipts)
         {
-            Test<IInitConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
+            Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
         }
 
         [TestCase("clique")]
@@ -334,12 +335,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("^goerli", BlobsSupportMode.Disabled)]
-        [TestCase("sepolia", BlobsSupportMode.Disabled)]
-        [TestCase("holesky", BlobsSupportMode.Disabled)]
-        [TestCase("mainnet", BlobsSupportMode.Disabled)]
-        [TestCase("chiado", BlobsSupportMode.Disabled)]
-        [TestCase("gnosis", BlobsSupportMode.Disabled)]
+        [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("mainnet", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("gnosis", BlobsSupportMode.StorageWithReorgs)]
+        [TestCase("^goerli ^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {
             Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
