@@ -49,6 +49,13 @@ namespace Nethermind.JsonRpc.Modules.Eth
                         ErrorCodes.ResourceUnavailable);
                 }
 
+                bool noBaseFee = transactionCall.GasPrice is null;
+                BlockHeader clonedHeader = header.Clone();
+                if (noBaseFee)
+                {
+                    clonedHeader.BaseFeePerGas = 0;
+                }
+
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
@@ -58,7 +65,8 @@ namespace Nethermind.JsonRpc.Modules.Eth
                     return ResultWrapper<TResult>.Fail("Contract creation without any data provided.",
                                                ErrorCodes.InvalidInput);
                 }
-                return ExecuteTx(header.Clone(), tx, cancellationTokenSource.Token);
+
+                return ExecuteTx(clonedHeader, tx, cancellationTokenSource.Token);
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
