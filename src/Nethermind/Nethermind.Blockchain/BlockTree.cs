@@ -1306,7 +1306,7 @@ namespace Nethermind.Blockchain
                     blockNumber.Value,
                     blockHash,
                     (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                    shouldCache: false);
+                    shouldCache: true);
             }
 
             if (block is null)
