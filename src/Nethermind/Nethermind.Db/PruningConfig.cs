@@ -32,7 +32,7 @@ namespace Nethermind.Db
         public int FullPruningMinimumDelayHours { get; set; } = 240;
         public FullPruningCompletionBehavior FullPruningCompletionBehavior { get; set; } = FullPruningCompletionBehavior.None;
         public bool AvailableSpaceCheckEnabled { get; set; } = true;
-        public int TrackedPastKeyCount { get; set; } = 1000000;
+        public double TrackedPastKeyCountMemoryRatio { get; set; } = 0.1;
         public int PruningBoundary { get; set; } = 64;
     }
 }

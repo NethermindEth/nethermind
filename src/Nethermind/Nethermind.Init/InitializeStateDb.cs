@@ -98,6 +98,9 @@ public class InitializeStateDb : IStep
 
             pruningStrategy = Prune
                 .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
+                // depends on CacheMb.
+                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB()*pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
                 .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
