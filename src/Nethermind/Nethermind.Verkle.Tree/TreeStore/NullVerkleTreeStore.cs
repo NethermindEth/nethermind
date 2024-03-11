@@ -14,7 +14,12 @@ using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.Verkle.Tree.TreeStore;
 
-public class EmptyVerkleTreeStore : IVerkleTreeStore
+public class ReadOnlyNullVerkleTreeStore : NullVerkleTreeStore, IReadOnlyVerkleTreeStore
+{
+
+}
+
+public class NullVerkleTreeStore : IVerkleTreeStore
 {
     public IEnumerable<KeyValuePair<byte[], byte[]>> GetLeafRangeIterator(byte[] fromRange, byte[] toRange, Hash256 stateRoot)
     {
@@ -61,7 +66,7 @@ public class EmptyVerkleTreeStore : IVerkleTreeStore
 
     public IReadOnlyVerkleTreeStore AsReadOnly(VerkleMemoryDb tempKeyValueStore)
     {
-        throw new NotImplementedException();
+        return new ReadOnlyNullVerkleTreeStore();
     }
 
     public ulong GetBlockNumber(Hash256 rootHash)

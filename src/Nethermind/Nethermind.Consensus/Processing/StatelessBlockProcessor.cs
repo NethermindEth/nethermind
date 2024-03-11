@@ -51,7 +51,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
     {
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager)); ;
         _logger = _logManager.GetClassLogger<StatelessBlockProcessor>();
-        EmptyVerkleTreeStore stateStore = new();
+        NullVerkleTreeStore stateStore = new();
         VerkleStateTree? tree = new(stateStore, logManager);
         _statelessWorldState = new VerkleWorldState(tree, new MemDb(), logManager);
     }
