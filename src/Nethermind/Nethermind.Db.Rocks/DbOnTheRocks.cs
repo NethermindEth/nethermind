@@ -46,7 +46,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
-    private ReadOptions? _readAheadReadOptions = null;
+    internal ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
 
@@ -73,13 +73,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private readonly List<IDisposable> _metricsUpdaters = new();
 
-    private readonly ManagedIterators _readaheadIterators = new();
-    private readonly ManagedIterators _readaheadIterators2 = new();
-    private readonly ManagedIterators _readaheadIterators3 = new();
-
     internal long _allocatedSpan = 0;
     private long _totalReads;
     private long _totalWrites;
+
+    private readonly IteratorManager _iteratorManager;
 
     public DbOnTheRocks(
         string basePath,
@@ -103,6 +101,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
         }
+
+        _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -693,20 +693,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        ManagedIterators iterators = _readaheadIterators;
-        if ((flags & ReadFlags.HintReadAhead2) != 0)
-        {
-            iterators = _readaheadIterators2;
-        }
-        else if ((flags & ReadFlags.HintReadAhead3) != 0)
-        {
-            iterators = _readaheadIterators3;
-        }
-
-        return GetWithColumnFamily(key, null, iterators, flags);
+        return GetWithColumnFamily(key, null, _iteratorManager, flags);
     }
 
-    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags = ReadFlags.None)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -716,22 +706,24 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
             {
-                if (!readaheadIterators.IsValueCreated)
+                Iterator iterator = iteratorManager.Rent(flags);
+
+                try
                 {
-                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
+                    if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+                    {
+                        return closeRes;
+                    }
+
+                    iterator.Seek(key);
+                    if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
+                    {
+                        return iterator.Value();
+                    }
                 }
-
-                Iterator iterator = readaheadIterators.Value!;
-
-                if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
+                finally
                 {
-                    return closeRes;
-                }
-
-                iterator.Seek(key);
-                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
-                {
-                    return iterator.Value();
+                    iteratorManager.Return(iterator, flags);
                 }
             }
 
@@ -1346,10 +1338,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             batch.Dispose();
         }
 
-        _readaheadIterators.DisposeAll();
-        _readaheadIterators2.DisposeAll();
-        _readaheadIterators3.DisposeAll();
-
+        _iteratorManager.Dispose();
         _db.Dispose();
 
         if (_cache.HasValue)
@@ -1608,29 +1597,142 @@ public class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
-    internal sealed class ManagedIterators : ThreadLocal<Iterator>
+    /// <summary>
+    /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
+    ///
+    /// This class handles a periodic timer which periodically dispose all iterator.
+    /// </summary>
+    internal class IteratorManager : IDisposable
     {
-        public ManagedIterators() : base(trackAllValues: true)
+        private readonly ManagedIterators _readaheadIterators = new();
+        private readonly ManagedIterators _readaheadIterators2 = new();
+        private readonly ManagedIterators _readaheadIterators3 = new();
+        private readonly RocksDb _rocksDb;
+        private readonly ColumnFamilyHandle? _cf;
+        private readonly ReadOptions? _readOptions;
+        private readonly Timer _timer;
+
+        // This is about once every two second maybe at max throughput.
+        private const int IteratorUsageLimit = 1000000;
+
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
         {
+            _rocksDb = rocksDb;
+            _cf = cf;
+            _readOptions = readOptions;
+
+            _timer = new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
         }
 
-        public void DisposeAll()
+        private void OnTimer(object? state)
         {
-            foreach (Iterator iterator in Values)
+            _readaheadIterators.ClearIterators();
+            _readaheadIterators2.ClearIterators();
+            _readaheadIterators3.ClearIterators();
+        }
+
+        public void Dispose()
+        {
+            _timer.Dispose();
+            _readaheadIterators.DisposeAll();
+            _readaheadIterators2.DisposeAll();
+            _readaheadIterators3.DisposeAll();
+        }
+
+        public Iterator Rent(ReadFlags flags)
+        {
+            ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
             {
-                iterator.Dispose();
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
             }
 
-            Dispose();
+            IteratorHolder holder = iterators.Value!;
+            // If null, we create a new one.
+            Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
+            return iterator ?? _rocksDb.NewIterator(_cf, _readOptions);
         }
 
-        protected override void Dispose(bool disposing)
+        public void Return(Iterator iterator, ReadFlags flags)
         {
-            // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
-            Value?.Dispose();
-            Value = null!;
-            base.Dispose(disposing);
+            ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
+            {
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
+            }
+
+            IteratorHolder holder = iterators.Value!;
+
+            // We don't keep using the same iterator for too long.
+            if (holder.Usage > IteratorUsageLimit)
+            {
+                iterator.Dispose();
+                holder.Usage = 0;
+                return;
+            }
+
+            holder.Usage++;
+
+            Iterator? oldIterator = Interlocked.Exchange(ref holder.Iterator, iterator);
+            if (oldIterator != null)
+            {
+                // Well... this is weird. I'll just dispose it.
+                oldIterator.Dispose();
+            }
+        }
+
+        // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
+        internal sealed class ManagedIterators : ThreadLocal<IteratorHolder>
+        {
+            private bool _disposed = false;
+
+            public ManagedIterators() : base(() => new IteratorHolder(), trackAllValues: true)
+            {
+            }
+
+            public void ClearIterators()
+            {
+                if (_disposed) return;
+
+                foreach (IteratorHolder iterator in Values)
+                {
+                    iterator.Dispose();
+                }
+            }
+
+            public void DisposeAll()
+            {
+                ClearIterators();
+                Dispose();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
+                Value?.Dispose();
+                Value = null!;
+                _disposed = true;
+                base.Dispose(disposing);
+            }
+        }
+
+        internal class IteratorHolder: IDisposable
+        {
+            public Iterator? Iterator = null;
+            public int Usage = 0;
+
+            public void Dispose()
+            {
+                Interlocked.Exchange(ref Iterator, null)?.Dispose();
+            }
         }
     }
 }
