@@ -31,7 +31,7 @@ public class BlockBodiesMessageSerializerTests
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(1024 * 16);
         BlockBodiesMessageSerializer serializer = new();
         serializer.Serialize(buffer, new BlockBodiesMessage(bodies));
-        BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
+        using BlockBodiesMessage deserializedMessage = serializer.Deserialize(buffer);
         foreach (BlockBody? body in deserializedMessage.Bodies.Bodies)
         {
             if (body is null) continue;
@@ -60,7 +60,7 @@ public class BlockBodiesMessageSerializerTests
 
         yield return new BlockBody[]
         {
-            // body with emtpy withdrawals
+            // body with empty withdrawals
             new(new[] { tx }, new[] { header }, Array.Empty<Withdrawal>()),
             // body with a single withdrawals
             new(new[] { tx }, Array.Empty<BlockHeader>(),

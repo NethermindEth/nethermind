@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Core.Buffers;
 
@@ -17,6 +19,8 @@ public readonly struct CappedArray<T>
     private readonly static CappedArray<T> _empty = new CappedArray<T>(Array.Empty<T>());
     public static ref readonly CappedArray<T> Null => ref _null;
     public static ref readonly CappedArray<T> Empty => ref _empty;
+    public static object NullBoxed { get; } = _null;
+    public static object EmptyBoxed { get; } = _empty;
 
     private readonly T[]? _array;
     private readonly int _length;
@@ -51,14 +55,31 @@ public readonly struct CappedArray<T>
     {
         get
         {
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _length);
-            return _array![index];
+            T[] array = _array!;
+            if (index >= _length || (uint)index >= (uint)array.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            return array[index];
         }
         set
         {
-            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _length);
-            _array![index] = value;
+            T[] array = _array!;
+            if (index >= _length || (uint)index >= (uint)array.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            array[index] = value;
         }
+    }
+
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowArgumentOutOfRangeException()
+    {
+        throw new ArgumentOutOfRangeException();
     }
 
     public readonly int Length => _length;
@@ -82,8 +103,11 @@ public readonly struct CappedArray<T>
 
     public readonly T[]? ToArray()
     {
-        if (_array is null) return null;
-        if (_length == _array?.Length) return _array;
+        T[]? array = _array;
+
+        if (array is null) return null;
+        if (array.Length == 0) return Array.Empty<T>();
+        if (_length == array.Length) return array;
         return AsSpan().ToArray();
     }
 }

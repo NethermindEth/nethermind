@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -17,7 +19,7 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore keyValueStore) => this;
+        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) => this;
 
         public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
         {
@@ -39,6 +41,11 @@ namespace Nethermind.Trie.Pruning
 
         public void Set(in ValueHash256 hash, byte[] rlp)
         {
+        }
+
+        public bool HasRoot(Hash256 stateRoot)
+        {
+            return stateRoot == Keccak.EmptyTreeHash;
         }
     }
 }

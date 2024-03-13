@@ -141,13 +141,7 @@ namespace Nethermind.Db
 
             public void Clear() => _wrapped.Clear();
 
-            public long GetSize() => _wrapped.GetSize();
-
-            public long GetCacheSize() => _wrapped.GetCacheSize();
-
-            public long GetIndexSize() => _wrapped.GetIndexSize();
-
-            public long GetMemtableSize() => _wrapped.GetMemtableSize();
+            public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _wrapped.GatherMetric(includeSharedCache);
 
             public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
                 => _wrapped.Set(key, Compress(value), flags);

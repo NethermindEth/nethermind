@@ -6,6 +6,7 @@ using System;
 using Nethermind.Serialization.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Int256;
 
@@ -72,10 +73,7 @@ namespace Nethermind.JsonRpc
 
         public override void Dispose()
         {
-            if (Result is IDisposable disposable)
-            {
-                disposable.Dispose();
-            }
+            Result.TryDispose();
             base.Dispose();
         }
     }

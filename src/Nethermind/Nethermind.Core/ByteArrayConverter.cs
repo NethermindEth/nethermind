@@ -96,7 +96,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
             array = ArrayPool<byte>.Shared.Rent(length);
         }
 
-        Span<byte> hex = (array is null ? stackalloc byte[stackLength] : array)[..length];
+        Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
         hex[^1] = (byte)'"';
         hex[0] = (byte)'"';
         hex[1] = (byte)'0';

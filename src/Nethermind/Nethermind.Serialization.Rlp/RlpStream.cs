@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Runtime.CompilerServices;
@@ -11,6 +12,7 @@ using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -555,7 +557,7 @@ namespace Nethermind.Serialization.Rlp
             Encode(input.Value.Span);
         }
 
-        public void Encode(Span<byte> input)
+        public void Encode(ReadOnlySpan<byte> input)
         {
             if (input.IsEmpty)
             {
@@ -1135,6 +1137,28 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public ArrayPoolList<T> DecodeArrayPoolList<T>(Func<RlpStream, T> decodeItem, bool checkPositions = true,
+            T defaultElement = default)
+        {
+            int positionCheck = ReadSequenceLength() + Position;
+            int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
+            ArrayPoolList<T> result = new ArrayPoolList<T>(count, count);
+            for (int i = 0; i < result.Count; i++)
+            {
+                if (PeekByte() == Rlp.OfEmptySequence[0])
+                {
+                    result[i] = defaultElement;
+                    Position++;
+                }
+                else
+                {
+                    result[i] = decodeItem(this);
+                }
+            }
+
+            return result;
+        }
+
         public string DecodeString()
         {
             ReadOnlySpan<byte> bytes = DecodeByteArraySpan();
@@ -1302,57 +1326,96 @@ namespace Nethermind.Serialization.Rlp
             return bytes.Length == 0 ? 0L : bytes.ReadEthUInt64();
         }
 
-        public byte[] DecodeByteArray() => DecodeByteArraySpan().ToArray();
+        public byte[] DecodeByteArray()
+        {
+            return Rlp.ByteSpanToArray(DecodeByteArraySpan());
+        }
+
+        public ArrayPoolList<byte> DecodeByteArrayPoolList()
+        {
+            return Rlp.ByteSpanToArrayPool(DecodeByteArraySpan());
+        }
 
         public ReadOnlySpan<byte> DecodeByteArraySpan()
         {
             int prefix = ReadByte();
-            if (prefix == 0)
+            ReadOnlySpan<byte> span = RlpStream.SingleBytes;
+            if ((uint)prefix < (uint)span.Length)
             {
-                return new byte[] { 0 };
-            }
-
-            if (prefix < 128)
-            {
-                return new[] { (byte)prefix };
+                return span.Slice(prefix, 1);
             }
 
             if (prefix == 128)
             {
-                return Array.Empty<byte>();
+                return default;
             }
 
             if (prefix <= 183)
             {
                 int length = prefix - 128;
-                Span<byte> buffer = Read(length);
-                if (length == 1 && buffer[0] < 128)
+                ReadOnlySpan<byte> buffer = Read(length);
+                if (buffer.Length == 1 && buffer[0] < 128)
                 {
-                    throw new RlpException($"Unexpected byte value {buffer[0]}");
+                    ThrowUnexpectedValue(buffer[0]);
                 }
 
                 return buffer;
             }
 
+            return DecodeLargerByteArraySpan(prefix);
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnexpectedValue(int buffer0)
+            {
+                throw new RlpException($"Unexpected byte value {buffer0}");
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        private ReadOnlySpan<byte> DecodeLargerByteArraySpan(int prefix)
+        {
             if (prefix < 192)
             {
                 int lengthOfLength = prefix - 183;
                 if (lengthOfLength > 4)
                 {
                     // strange but needed to pass tests - seems that spec gives int64 length and tests int32 length
-                    throw new RlpException("Expected length of length less or equal 4");
+                    ThrowUnexpectedLengthOfLength();
                 }
 
                 int length = DeserializeLength(lengthOfLength);
                 if (length < 56)
                 {
-                    throw new RlpException($"Expected length greater or equal 56 and was {length}");
+                    ThrowUnexpectedLength(length);
                 }
 
                 return Read(length);
             }
 
-            throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+            ThrowUnexpectedPrefix(prefix);
+            return default;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnexpectedPrefix(int prefix)
+            {
+                throw new RlpException($"Unexpected prefix value of {prefix} when decoding a byte array.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnexpectedLength(int length)
+            {
+                throw new RlpException($"Expected length greater or equal 56 and was {length}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnexpectedLengthOfLength()
+            {
+                throw new RlpException("Expected length of length less or equal 4");
+            }
         }
 
         public void SkipItem()
@@ -1403,5 +1466,8 @@ namespace Nethermind.Serialization.Rlp
 
             return result;
         }
+
+        internal static ReadOnlySpan<byte> SingleBytes => new byte[128] { 0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127 };
+        internal static byte[][] SingleByteArrays = new byte[128][] { [0], [1], [2], [3], [4], [5], [6], [7], [8], [9], [10], [11], [12], [13], [14], [15], [16], [17], [18], [19], [20], [21], [22], [23], [24], [25], [26], [27], [28], [29], [30], [31], [32], [33], [34], [35], [36], [37], [38], [39], [40], [41], [42], [43], [44], [45], [46], [47], [48], [49], [50], [51], [52], [53], [54], [55], [56], [57], [58], [59], [60], [61], [62], [63], [64], [65], [66], [67], [68], [69], [70], [71], [72], [73], [74], [75], [76], [77], [78], [79], [80], [81], [82], [83], [84], [85], [86], [87], [88], [89], [90], [91], [92], [93], [94], [95], [96], [97], [98], [99], [100], [101], [102], [103], [104], [105], [106], [107], [108], [109], [110], [111], [112], [113], [114], [115], [116], [117], [118], [119], [120], [121], [122], [123], [124], [125], [126], [127] };
     }
 }

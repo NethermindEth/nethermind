@@ -13,6 +13,7 @@ using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
 #pragma warning disable 618
@@ -356,26 +357,30 @@ namespace Nethermind.Blockchain.Receipts
             if (_receiptConfig.TxLookupLimit != 0 && block.Number <= headNumber - _receiptConfig.TxLookupLimit) return;
             if (_receiptConfig.CompactTxIndex)
             {
+                byte[] blockNumber = Rlp.Encode(block.Number).Bytes;
                 foreach (Transaction tx in block.Transactions)
                 {
-                    writeBatch[tx.Hash.Bytes] = Rlp.Encode(block.Number).Bytes;
+                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    writeBatch[hash.Bytes] = blockNumber;
                 }
             }
             else
             {
+                byte[] blockHash = block.Hash.BytesToArray();
                 foreach (Transaction tx in block.Transactions)
                 {
-                    writeBatch[tx.Hash.Bytes] = block.Hash.BytesToArray();
+                    Hash256 hash = (tx.Hash ??= tx.CalculateHash());
+                    writeBatch[hash.Bytes] = blockHash;
                 }
             }
         }
 
         private void RemoveBlockTx(Block block, Block? exceptBlock = null)
         {
-            HashSet<Hash256> newTxs = null;
+            HashSet<Hash256AsKey> newTxs = null;
             if (exceptBlock is not null)
             {
-                newTxs = new HashSet<Hash256>(exceptBlock.Transactions.Select((tx) => tx.Hash));
+                newTxs = new HashSet<Hash256AsKey>(exceptBlock.Transactions.Select((tx) => new Hash256AsKey(tx.Hash)));
             }
 
             using IWriteBatch writeBatch = _transactionDb.StartWriteBatch();

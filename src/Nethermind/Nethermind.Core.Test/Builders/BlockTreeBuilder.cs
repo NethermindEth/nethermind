@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -259,8 +260,18 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
+                    Build.A.Transaction
+                        .WithValue(1)
+                        .WithData(Rlp.Encode(blockIndex).Bytes)
+                        .WithGasLimit(GasCostOf.Transaction * 2)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .TestObject,
+                    Build.A.Transaction
+                        .WithValue(2)
+                        .WithData(Rlp.Encode(blockIndex + 1).Bytes)
+                        .WithGasLimit(GasCostOf.Transaction * 2)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .TestObject
                 };
 
                 currentBlock = currentBlockBuilder
@@ -287,7 +298,9 @@ namespace Nethermind.Core.Test.Builders
 
                 currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = ReceiptTrie.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts);
+                currentBlock.Header.ReceiptsRoot =
+                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts,
+                        ReceiptMessageDecoder.Instance);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {

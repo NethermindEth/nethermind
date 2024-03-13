@@ -20,7 +20,7 @@ public static class Wait
         {
             if (condition(t))
             {
-                completion.SetResult();
+                completion.TrySetResult();
             }
         };
 
@@ -28,8 +28,10 @@ public static class Wait
 
         try
         {
-            cancellationToken.Register(() => completion.SetCanceled(cancellationToken));
-            await completion.Task;
+            await using (cancellationToken.Register(() => completion.TrySetCanceled(cancellationToken)))
+            {
+                await completion.Task;
+            }
         }
         finally
         {

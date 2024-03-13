@@ -64,10 +64,10 @@ namespace Nethermind.Init
                 AssignFastBlocksMemory(syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
-                AssignTrieCacheMemory();
+                AssignTrieCacheMemory(dbConfig);
                 _remainingMemory -= TrieCacheMemory;
                 if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
-                UpdateDbConfig(cpuCount, syncConfig, dbConfig, initConfig);
+                UpdateDbConfig(dbConfig, initConfig);
                 _remainingMemory -= DbMemory;
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
 
@@ -104,10 +104,10 @@ namespace Nethermind.Init
         public long PeersMemory { get; private set; }
         public long TrieCacheMemory { get; private set; }
 
-        private void AssignTrieCacheMemory()
+        private void AssignTrieCacheMemory(IDbConfig dbConfig)
         {
             TrieCacheMemory = (long)(0.2 * _remainingMemory);
-            Trie.MemoryAllowance.TrieNodeCacheMemory = TrieCacheMemory;
+            dbConfig.StateDbRowCacheSize = (ulong)TrieCacheMemory;
         }
 
         private void AssignPeersMemory(INetworkConfig networkConfig)
@@ -144,7 +144,7 @@ namespace Nethermind.Init
 
         private void AssignFastBlocksMemory(ISyncConfig syncConfig)
         {
-            if (syncConfig.FastBlocks)
+            if (syncConfig.FastSync)
             {
                 if (!syncConfig.DownloadBodiesInFastSync && !syncConfig.DownloadReceiptsInFastSync)
                 {
@@ -159,7 +159,7 @@ namespace Nethermind.Init
             }
         }
 
-        private void UpdateDbConfig(uint cpuCount, ISyncConfig syncConfig, IDbConfig dbConfig, IInitConfig initConfig)
+        private void UpdateDbConfig(IDbConfig dbConfig, IInitConfig initConfig)
         {
             if (initConfig.DiagnosticMode == DiagnosticMode.MemDb)
             {
@@ -170,101 +170,7 @@ namespace Nethermind.Init
             if (dbConfig.SkipMemoryHintSetting) return;
 
             DbMemory = _remainingMemory;
-            long remaining = DbMemory;
-            DbNeeds dbNeeds = GetHeaderNeeds(cpuCount);
-            DbGets dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.HeadersDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.HeadersDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.HeadersDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetBlocksNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.BlocksDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.BlocksDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.BlocksDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetBlockInfosNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.BlockInfosDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.BlockInfosDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.BlockInfosDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetReceiptsNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.ReceiptsDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.ReceiptsDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.ReceiptsDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetCodeNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.CodeDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.CodeDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.CodeDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetPendingTxNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.PendingTxsDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.PendingTxsDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.PendingTxsDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbNeeds = GetStateNeeds(cpuCount);
-            dbGets = GiveItWhatYouCan(dbNeeds, DbMemory, remaining);
-            remaining -= dbGets.CacheMem + dbGets.Buffers * dbGets.SingleBufferMem;
-            dbConfig.StateDbWriteBufferNumber = dbGets.Buffers;
-            dbConfig.StateDbWriteBufferSize = (ulong)dbGets.SingleBufferMem;
-            dbConfig.StateDbBlockCacheSize = (ulong)dbGets.CacheMem;
-
-            dbConfig.SharedBlockCacheSize = (ulong)remaining;
-        }
-
-        private DbGets GiveItWhatYouCan(DbNeeds dbNeeds, long memoryHint, long remaining)
-        {
-            uint buffers = dbNeeds.PreferredBuffers; // this is fine for now
-            decimal maxPercentage = Math.Min((decimal)remaining / memoryHint, dbNeeds.PreferredMemoryPercentage);
-            long availableMemory = remaining;
-            long minBufferMem = buffers * dbNeeds.PreferredMinBufferMemory;
-            long minCacheMem = dbNeeds.PreferredMinMemory;
-            long maxBufferMem = buffers * dbNeeds.PreferredMaxBufferMemory;
-            long minMemory = minBufferMem + minCacheMem;
-            if (minMemory > availableMemory)
-            {
-                throw new ArgumentException($"Memory hint of {TotalMemory} is not enough to cover DB requirements.");
-            }
-
-            long maxWantedMemory = Math.Max(minMemory, (long)(memoryHint * maxPercentage));
-            long availableDynamic = minMemory >= maxWantedMemory ? 0L : maxWantedMemory - minMemory;
-            long availableForBuffer = (long)(availableDynamic * 0.2m);
-            long bufferDynamic = Math.Min(maxBufferMem, availableForBuffer);
-            long bufferMem = minBufferMem + bufferDynamic;
-            long cacheDynamic = availableDynamic - bufferDynamic;
-            long cacheMem = Math.Min(dbNeeds.PreferredMaxMemory, minCacheMem + cacheDynamic);
-
-            Debug.Assert(bufferDynamic + cacheDynamic <= availableDynamic, "dynamic exceeded");
-            Debug.Assert(bufferMem + cacheMem <= maxWantedMemory, "max wanted exceeded");
-            Debug.Assert(bufferMem + cacheMem <= availableMemory, "available exceeded");
-
-            DbGets dbGets = new DbGets(buffers, bufferMem / buffers, cacheMem);
-            return dbGets;
-        }
-
-        private struct DbGets
-        {
-            public DbGets(uint buffers, long singleBufferMem, long cacheMem)
-            {
-                Buffers = buffers;
-                SingleBufferMem = singleBufferMem;
-                CacheMem = cacheMem;
-            }
-
-            public uint Buffers { get; set; }
-            public long SingleBufferMem { get; set; }
-            public long CacheMem { get; set; }
+            dbConfig.SharedBlockCacheSize = (ulong)DbMemory;
         }
 
         private struct DbNeeds
@@ -291,91 +197,6 @@ namespace Nethermind.Init
             public long PreferredMinMemory { get; set; }
             public long PreferredMaxMemory { get; set; }
             public decimal PreferredMemoryPercentage { get; set; }
-        }
-
-        private static DbNeeds GetStateNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            // remove optimize for point lookup here?
-            return new DbNeeds(
-                preferredBuffers,
-                1.MB(), // min buffer size
-                64.MB(), // max buffer size
-                0, // min block cache
-                0, // max block cache
-                1m); // db memory %
-        }
-
-        private static DbNeeds GetBlockInfosNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            // remove optimize for point lookup here?
-            return new DbNeeds(
-                preferredBuffers,
-                1.MB(), // min buffer size
-                8.MB(), // max buffer size
-                1.MB(), // min block cache
-                512.MB(), // max block cache
-                0.02m); // db memory %
-        }
-
-        private static DbNeeds GetHeaderNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            return new DbNeeds(
-                preferredBuffers,
-                4.MB(), // min buffer size
-                16.MB(), // max buffer size
-                1.MB(), // min block cache
-                1.GB(), // max block cache
-                0.05m); // db memory %
-        }
-
-        private static DbNeeds GetBlocksNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            return new DbNeeds(
-                preferredBuffers,
-                4.MB(), // min buffer size
-                64.MB(), // max buffer size
-                8.MB(), // min block cache
-                2.GB(), // max block cache
-                0.04m); // db memory %
-        }
-
-        private static DbNeeds GetReceiptsNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            return new DbNeeds(
-                preferredBuffers,
-                2.MB(), // min buffer size
-                64.MB(), // max buffer size
-                8.MB(), // min block cache
-                2.GB(), // max block cache
-                0.01m); // db memory %
-        }
-
-        private static DbNeeds GetPendingTxNeeds(uint cpuCount)
-        {
-            return new DbNeeds(
-                4,
-                1.MB(), // min buffer size
-                16.MB(), // max buffer size
-                2.MB(), // min block cache
-                128.MB(), // max block cache
-                0.01m); // db memory %
-        }
-
-        private static DbNeeds GetCodeNeeds(uint cpuCount)
-        {
-            uint preferredBuffers = Math.Min(cpuCount, 2u);
-            return new DbNeeds(
-                preferredBuffers,
-                1.MB(), // min buffer size
-                4.MB(), // max buffer size
-                0, // min block cache
-                0, // max block cache
-                0); // db memory %
         }
 
         private void AssignNettyMemory(INetworkConfig networkConfig, uint cpuCount)

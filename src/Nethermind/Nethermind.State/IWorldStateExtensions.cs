@@ -15,8 +15,8 @@ namespace Nethermind.State
     {
         public static byte[] GetCode(this IWorldState stateProvider, Address address)
         {
-            Account account = stateProvider.GetAccount(address);
-            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash);
+            stateProvider.TryGetAccount(address, out AccountStruct account);
+            return !account.HasCode ? Array.Empty<byte>() : stateProvider.GetCode(account.CodeHash) ?? Array.Empty<byte>();
         }
 
         public static void InsertCode(this IWorldState worldState, Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
@@ -30,17 +30,6 @@ namespace Nethermind.State
             TreeDumper dumper = new();
             stateProvider.Accept(dumper, stateProvider.StateRoot);
             return dumper.ToString();
-        }
-
-        public static TrieStats CollectStats(this IWorldState stateProvider, IKeyValueStore codeStorage, ILogManager logManager)
-        {
-            TrieStatsCollector collector = new(codeStorage, logManager);
-            stateProvider.Accept(collector, stateProvider.StateRoot, new VisitingOptions
-            {
-                MaxDegreeOfParallelism = Environment.ProcessorCount,
-                FullScanMemoryBudget = 16.GiB(), // Gonna guess that if you are running this, you have a decent setup.
-            });
-            return collector.Stats;
         }
     }
 }

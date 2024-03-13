@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -76,6 +77,19 @@ namespace Nethermind.Db
             }
 
             _registeredColumnDbs.TryAdd(dbName, db);
+        }
+
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
+        {
+            foreach (KeyValuePair<string, IDb> kv in _registeredDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, kv.Value);
+            }
+
+            foreach (KeyValuePair<string, object> kv in _registeredColumnDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, (IDbMeta)kv.Value);
+            }
         }
     }
 }

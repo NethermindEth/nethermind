@@ -121,6 +121,8 @@ public static class Program
         _ = app.HelpOption("-?|-h|--help");
         _ = app.VersionOption("-v|--version", () => ProductInfo.Version, GetProductInfo);
 
+        ConsoleHelpers.EnableConsoleColorOutput();
+
         CommandOption dataDir = app.Option("-dd|--datadir <dataDir>", "Data directory", CommandOptionType.SingleValue);
         CommandOption configFile = app.Option("-c|--config <configFile>", "Config file path", CommandOptionType.SingleValue);
         CommandOption dbBasePath = app.Option("-d|--baseDbPath <baseDbPath>", "Base db path", CommandOptionType.SingleValue);
@@ -249,12 +251,9 @@ public static class Program
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
-        const string macosSnappyPath = "/opt/homebrew/Cellar/snappy";
         var alternativePath = nativeLibraryName switch
         {
             "libdl" => "libdl.so.2",
-            "libsnappy" or "snappy" => Directory.Exists(macosSnappyPath) ?
-                Directory.EnumerateFiles(macosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
             _ => null
         };
 

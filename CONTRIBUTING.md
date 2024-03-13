@@ -1,6 +1,6 @@
 # Contributing to Nethermind
 
-The Nethermind team maintains guidelines for contributing to the Nethermind repos. Check out our [docs page](https://docs.nethermind.io/nethermind/) for more info about us.
+The Nethermind team maintains guidelines for contributing to the Nethermind repos. Check out our [docs page](https://docs.nethermind.io/) for more info about us.
 
 ### Code of Conduct
 

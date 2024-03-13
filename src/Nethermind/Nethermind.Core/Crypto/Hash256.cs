@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -15,8 +16,14 @@ namespace Nethermind.Core.Crypto
 {
     [DebuggerStepThrough]
     [DebuggerDisplay("{ToString()}")]
+    [JsonConverter(typeof(ValueHash256Converter))]
     public readonly struct ValueHash256 : IEquatable<ValueHash256>, IComparable<ValueHash256>, IEquatable<Hash256>
     {
+        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
+        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // the performance of the network as a whole.
+        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+
         private readonly Vector256<byte> _bytes;
 
         public const int MemorySize = 32;
@@ -61,15 +68,12 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            long v0 = Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes));
-            long v1 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 1);
-            long v2 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 2);
-            long v3 = Unsafe.Add(ref Unsafe.As<Vector256<byte>, long>(ref Unsafe.AsRef(in _bytes)), 3);
-            v0 ^= v1;
-            v2 ^= v3;
-            v0 ^= v2;
-
-            return (int)v0 ^ (int)(v0 >> 32);
+            uint hash = s_instanceRandom;
+            hash = BitOperations.Crc32C(hash, Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)));
+            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 1));
+            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 2));
+            hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 3));
+            return (int)hash;
         }
 
         public int CompareTo(ValueHash256 other)
@@ -115,6 +119,18 @@ namespace Nethermind.Core.Crypto
         public static bool operator <(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) < 0;
         public static bool operator >=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) >= 0;
         public static bool operator <=(in ValueHash256 left, in ValueHash256 right) => left.CompareTo(in right) <= 0;
+    }
+
+    public readonly struct Hash256AsKey(Hash256 key) : IEquatable<Hash256AsKey>
+    {
+        private readonly Hash256 _key = key;
+        public Hash256 Value => _key;
+
+        public static implicit operator Hash256(Hash256AsKey key) => key._key;
+        public static implicit operator Hash256AsKey(Hash256 key) => new(key);
+
+        public bool Equals(Hash256AsKey other) => _key.Equals(other._key);
+        public override int GetHashCode() => _key.GetHashCode();
     }
 
     [JsonConverter(typeof(Hash256Converter))]
@@ -282,9 +298,9 @@ namespace Nethermind.Core.Crypto
 
         public static int MemorySize => MemorySizes.ArrayOverhead + Size;
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
-        public Hash256StructRef(Span<byte> bytes)
+        public Hash256StructRef(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != Size)
             {
