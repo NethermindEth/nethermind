@@ -10,32 +10,39 @@ using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
+    public enum LockMode
+    {
+        NoLock,
+        Read,
+        Write,
+        ReadWrite
+    }
     public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
-        private readonly bool _useLock;
+        private readonly LockMode _lockMode;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name, bool useLock = true)
+        public LruCache(int maxCapacity, int startCapacity, string name, LockMode lockMode = LockMode.ReadWrite)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
-            _useLock = useLock;
+            _lockMode = lockMode;
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
-        public LruCache(int maxCapacity, string name, bool useLock = true)
-            : this(maxCapacity, 0, name, useLock)
+        public LruCache(int maxCapacity, string name, LockMode lockMode = LockMode.ReadWrite)
+            : this(maxCapacity, 0, name, lockMode)
         {
         }
 
         public void Clear()
         {
-            if (_useLock)
+            if (_lockMode > LockMode.NoLock) // think: is clearing also a write?
             {
                 using var lockRelease = _lock.Acquire();
                 ClearNoLock();
@@ -54,13 +61,10 @@ namespace Nethermind.Core.Caching
 
         public TValue Get(TKey key)
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return GetNoLock(key);
-            }
-
+            if (_lockMode is not (LockMode.Read or LockMode.ReadWrite)) return GetNoLock(key);
+            using var lockRelease = _lock.Acquire();
             return GetNoLock(key);
+
         }
 
         private TValue GetNoLock(TKey key)
@@ -81,13 +85,10 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return TryGetNoLock(key, out value);
-            }
-
+            if (_lockMode is not (LockMode.Read or LockMode.ReadWrite)) return TryGetNoLock(key, out value);
+            using var lockRelease = _lock.Acquire();
             return TryGetNoLock(key, out value);
+
         }
 
         private bool TryGetNoLock(TKey key, out TValue value)
@@ -108,13 +109,10 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key, TValue val)
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return SetNoLock(key, val);
-            }
-
+            if (_lockMode != LockMode.Write && _lockMode != LockMode.ReadWrite) return SetNoLock(key, val);
+            using var lockRelease = _lock.Acquire();
             return SetNoLock(key, val);
+
         }
         private bool SetNoLock(TKey key, TValue val)
         {
@@ -148,51 +146,40 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return DeleteNoLock(key);
-            }
-
+            if (_lockMode != LockMode.Write && _lockMode != LockMode.ReadWrite) return DeleteNoLock(key);
+            using var lockRelease = _lock.Acquire();
             return DeleteNoLock(key);
+
         }
 
         private bool DeleteNoLock(TKey key)
         {
-            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
-            {
-                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
-                _cacheMap.Remove(key);
-                return true;
-            }
+            if (!_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node)) return false;
+            LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+            _cacheMap.Remove(key);
+            return true;
 
-            return false;
         }
 
         public bool Contains(TKey key)
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return _cacheMap.ContainsKey(key);
-            }
-
+            if (_lockMode != LockMode.Read && _lockMode != LockMode.ReadWrite) return _cacheMap.ContainsKey(key);
+            using var lockRelease = _lock.Acquire();
             return _cacheMap.ContainsKey(key);
+
         }
 
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
-            if (_useLock)
-            {
-                using var lockRelease = _lock.Acquire();
-                return ToArrayNoLock();
-            }
+            if (_lockMode != LockMode.Read && _lockMode != LockMode.ReadWrite) return ToArrayNoLock();
+            using var lockRelease = _lock.Acquire();
             return ToArrayNoLock();
         }
-        public KeyValuePair<TKey, TValue>[] ToArrayNoLock()
+
+        private KeyValuePair<TKey, TValue>[] ToArrayNoLock()
         {
             int i = 0;
-            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -205,7 +192,7 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            TValue[] array = new TValue[_cacheMap.Count];
+            var array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;
@@ -236,16 +223,10 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private struct LruCacheItem
+        private struct LruCacheItem(TKey k, TValue v)
         {
-            public LruCacheItem(TKey k, TValue v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public readonly TKey Key;
-            public TValue Value;
+            public readonly TKey Key = k;
+            public TValue Value = v;
         }
 
         public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);

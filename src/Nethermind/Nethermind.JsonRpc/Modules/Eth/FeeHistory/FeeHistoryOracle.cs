@@ -20,7 +20,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
     {
         private const int MaxBlockCount = 1024;
         private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(MaxBlockCount * 2, "BlockFeeHistoryCache", false);
+            = new(MaxBlockCount * 2, "BlockFeeHistoryCache", LockMode.Write);
 
 
         private readonly struct BlockFeeHistorySearchInfo(
