@@ -7,6 +7,7 @@ using System.Net.WebSockets;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Authentication;
+using Nethermind.Core.Extensions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -62,12 +63,11 @@ namespace Nethermind.JsonRpc.WebSockets
                 throw new InvalidOperationException($"WebSocket connection on port {port} should be authenticated");
             }
 
-            JsonRpcSocketsClient? socketsClient = new(
+            JsonRpcSocketsClient<WebSocketMessageStream>? socketsClient = new(
                 clientName,
-                new WebSocketHandler(webSocket, _logManager),
+                new WebSocketMessageStream(webSocket, _logManager),
                 RpcEndpoint.Ws,
                 _jsonRpcProcessor,
-                _jsonRpcService,
                 _jsonRpcLocalStats,
                 _jsonSerializer,
                 jsonRpcUrl,
@@ -80,10 +80,9 @@ namespace Nethermind.JsonRpc.WebSockets
 
         public void RemoveClient(string id)
         {
-            if (_clients.TryRemove(id, out ISocketsClient? client)
-                && client is IDisposable disposableClient)
+            if (_clients.TryRemove(id, out ISocketsClient? client))
             {
-                disposableClient.Dispose();
+                client.TryDispose();
             }
         }
 

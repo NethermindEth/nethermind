@@ -297,7 +297,7 @@ namespace Nethermind.Network
 
                     if (_logger.IsTrace || (_logger.IsDebug && _logCounter % 5 == 0))
                     {
-                        KeyValuePair<PublicKey, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
+                        KeyValuePair<PublicKeyAsKey, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
                         int activePeersCount = activePeers.Length;
                         if (activePeersCount != previousActivePeersCount)
                         {
@@ -372,9 +372,9 @@ namespace Nethermind.Network
             // Once the connection was established, the active peer count will increase, but it might
             // not pass the handshake and the status check. So we wait for a bit to see if we can get
             // the active peer count to go down within this time window.
-            DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.Now < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();
@@ -733,7 +733,7 @@ namespace Nethermind.Network
             if (!session.Node.IsStatic && _peerPool.ActivePeers.Count >= MaxActivePeers)
             {
                 int initCount = 0;
-                foreach (KeyValuePair<PublicKey, Peer> pair in _peerPool.ActivePeers)
+                foreach (KeyValuePair<PublicKeyAsKey, Peer> pair in _peerPool.ActivePeers)
                 {
                     // we need to count initialized as we may have a list of active peers that is just being initialized
                     // and we do not know yet whether they are fine or not

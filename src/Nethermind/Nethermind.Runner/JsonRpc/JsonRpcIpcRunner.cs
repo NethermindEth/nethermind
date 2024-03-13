@@ -28,7 +28,6 @@ namespace Nethermind.Runner.JsonRpc
         private readonly IJsonSerializer _jsonSerializer;
         private readonly IFileSystem _fileSystem;
         private readonly IJsonRpcProcessor _jsonRpcProcessor;
-        private readonly IJsonRpcService _jsonRpcService;
         private readonly IJsonRpcConfig _jsonRpcConfig;
 
         private string _path;
@@ -37,7 +36,6 @@ namespace Nethermind.Runner.JsonRpc
 
         public JsonRpcIpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,
-            IJsonRpcService jsonRpcService,
             IConfigProvider configurationProvider,
             ILogManager logManager,
             IJsonRpcLocalStats jsonRpcLocalStats,
@@ -46,7 +44,6 @@ namespace Nethermind.Runner.JsonRpc
         {
             _jsonRpcConfig = configurationProvider.GetConfig<IJsonRpcConfig>();
             _jsonRpcProcessor = jsonRpcProcessor;
-            _jsonRpcService = jsonRpcService;
             _logger = logManager.GetClassLogger();
             _jsonRpcLocalStats = jsonRpcLocalStats;
             _jsonSerializer = jsonSerializer;
@@ -112,8 +109,6 @@ namespace Nethermind.Runner.JsonRpc
 
         private async void AcceptCallback(IAsyncResult ar)
         {
-            JsonRpcSocketsClient socketsClient = null;
-
             try
             {
                 Socket socket = _server.EndAccept(ar);
@@ -122,17 +117,16 @@ namespace Nethermind.Runner.JsonRpc
 
                 _resetEvent.Set();
 
-                socketsClient = new JsonRpcSocketsClient(
+                using JsonRpcSocketsClient<IpcSocketMessageStream>? socketsClient = new(
                     string.Empty,
-                    new IpcSocketsHandler(socket),
+                    new IpcSocketMessageStream(socket),
                     RpcEndpoint.IPC,
                     _jsonRpcProcessor,
-                    _jsonRpcService,
                     _jsonRpcLocalStats,
                     _jsonSerializer,
                     maxBatchResponseBodySize: _jsonRpcConfig.MaxBatchResponseBodySize);
 
-                await socketsClient.ReceiveAsync();
+                await socketsClient.ReceiveLoopAsync();
             }
             catch (IOException exc) when (exc.InnerException is SocketException { SocketErrorCode: SocketError.ConnectionReset })
             {
@@ -149,10 +143,6 @@ namespace Nethermind.Runner.JsonRpc
             catch (Exception exc)
             {
                 if (_logger.IsError) _logger.Error("Error when handling IPC communication with a client.", exc);
-            }
-            finally
-            {
-                socketsClient?.Dispose();
             }
         }
 

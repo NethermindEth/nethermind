@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -69,11 +70,11 @@ public class HealingStorageTree : StorageTree
             GetTrieNodesRequest request = new()
             {
                 RootHash = _stateRoot,
-                AccountAndStoragePaths = new[]
+                AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
                 {
-                    new PathGroup
+                    new()
                     {
-                        Group = new[] { ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart) }
+                        Group = [ValueKeccak.Compute(_address.Bytes).ToByteArray(), Nibbles.EncodePath(pathPart)]
                     }
                 }
             };

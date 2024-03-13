@@ -17,6 +17,7 @@ using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Validators
@@ -318,6 +319,17 @@ namespace Nethermind.Blockchain.Test.Validators
 
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
+        }
+
+        [Test]
+        public void Validate_HashIsWrong_ErrorMessageIsSet()
+        {
+            HeaderValidator sut = new HeaderValidator(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
+            _block.Header.Hash = Keccak.Zero;
+            string? error;
+            sut.Validate(_block.Header, false, out error);
+
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"));
         }
     }
 }
