@@ -7,6 +7,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
+using NSubstitute.ReceivedExtensions;
 
 namespace Nethermind.Tools.t8n;
 using System.Text.Json;
@@ -195,36 +196,39 @@ public class T8N
 
         List<Transaction> successfulTxs = new List<Transaction>();
         List<TxReceipt> successfulTxReceipts = new List<TxReceipt>();
-        List<TxReceipt> rejectedTxReceipts = new List<TxReceipt>();
 
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions.ToArray()).TestObject;
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
 
+        List<RejectedTx> rejectedTxReceipts = new();
+        int txIndex = 0;
         foreach (Transaction tx in transactions)
         {
             bool isValid = txValidator.IsWellFormed(tx, spec);
             if (isValid)
             {
                 tracer.StartNewTxTrace(tx);
-                transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
+                TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
                 tracer.EndTxTrace();
 
-                if (tracer.LastReceipt.Index != 3)
+                if (transactionResult.Success)
                 {
                     successfulTxs.Add(tx);
                     tracer.LastReceipt.PostTransactionState = null;
                     tracer.LastReceipt.BlockHash = null;
                     tracer.LastReceipt.BlockNumber = 0;
                     successfulTxReceipts.Add(tracer.LastReceipt);
-                } else if (tracer.LastReceipt.StatusCode == 0)
+                } else
                 {
-                    rejectedTxReceipts.Add(tracer.LastReceipt);
+                    rejectedTxReceipts.Add(new RejectedTx(txIndex, transactionResult.Error));
                     stateProvider.Reset();
                 }
                 stateProvider.RecalculateStateRoot();
             }
+
+            txIndex++;
         }
 
         ulong gasUsed = 0;
@@ -235,14 +239,14 @@ public class T8N
 
         var stateRoot = stateProvider.StateRoot;
         var txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
-        var receiptsRoot = ReceiptTrie.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray());
+        var receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
 
         ExecutionResult executionResult = new ExecutionResult();
         executionResult.StateRoot = stateRoot;
         executionResult.TxRoot = txRoot;
         executionResult.ReceiptRoot = receiptsRoot;
         executionResult.Receipts = successfulTxReceipts.ToArray();
-        executionResult.Rejected = rejectedTxReceipts.Select(rejectedTx => new RejectedTx(rejectedTx.Index, rejectedTx.Error)).ToArray();
+        executionResult.Rejected = rejectedTxReceipts.ToArray();
         executionResult.Difficulty = header.Difficulty;
         executionResult.GasUsed = new UInt256(gasUsed);
 
