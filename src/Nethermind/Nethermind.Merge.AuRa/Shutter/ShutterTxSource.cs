@@ -27,6 +27,8 @@ public class ShutterTxSource : ITxSource
     public Dto.DecryptionKeys DecryptionKeys = new();
     private ILogFinder? _logFinder;
     private LogFilter? _logFilter;
+    private Contracts.IValidatorRegistryContract? _validatorRegistryContract;
+    private IEnumerable<(ulong, byte[])> _validatorsInfo;
     private static readonly UInt256 EncryptedGasLimit = 300;
     internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
@@ -39,16 +41,24 @@ public class ShutterTxSource : ITxSource
         ]
     );
 
-    public ShutterTxSource(string sequencerAddress, ILogFinder logFinder, IFilterStore filterStore)
+    public ShutterTxSource(string sequencerAddress, ILogFinder logFinder, IFilterStore filterStore, Contracts.IValidatorRegistryContract validatorRegistryContract, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
         IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
         _logFinder = logFinder;
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, sequencerAddress, topics);
+        _validatorRegistryContract = validatorRegistryContract;
+        _validatorsInfo = validatorsInfo;
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo) {
+            if (!_validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey)) {
+                throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator");
+            }
+        }
+
         // todo: cache? check changes in header?
         if (DecryptionKeys.Gnosis.Slot != (ulong)parent.Number)
         {

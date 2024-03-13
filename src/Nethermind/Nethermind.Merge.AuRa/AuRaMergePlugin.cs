@@ -98,41 +98,23 @@ namespace Nethermind.Merge.AuRa
 
             if (_auraConfig!.UseShutter)
             {
-                // parse validator info file
-                IEnumerable<ValidatorRegistryContract.ValidatorInfo> validatorsInfo = [];
+                // parse validator info file (index, pk)
+                IEnumerable<(ulong, byte[])> validatorsInfo = [];
                 try
                 {
                     JsonDocument validatorsInfoDoc = JsonDocument.Parse(File.ReadAllText(_auraConfig.ShutterValidatorInfoFile));
-                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().Select((JsonProperty p) =>
-                    {
-                        return new ValidatorRegistryContract.ValidatorInfo()
-                        {
-                            ValidatorIndex = p.Name,
-                            Address = new(p.Value.GetProperty("address").GetString()!),
-                            Message = p.Value.GetProperty("message").GetBytesFromBase64(),
-                            Signature = p.Value.GetProperty("signature").GetBytesFromBase64()
-                        };
-                    });
+                    validatorsInfo = validatorsInfoDoc.RootElement.EnumerateObject().Select((JsonProperty p) => (Convert.ToUInt64(p.Name), Convert.FromHexString(p.Value.GetString()!.Substring(2))));
                 }
                 catch (Exception e)
                 {
                     throw new Exception("Could not load Shutter validator info file: " + e.Message);
                 }
 
-                // on sync register as Shutter validator
-                _api.Synchronizer!.SyncEvent += async (object? sender, Synchronization.SyncEventArgs e) =>
-                {
-                    if (e.SyncEvent == Synchronization.SyncEvent.Completed)
-                    {
-                        BlockHeader blockHeader = _api.BlockTree!.Head!.Header;
-                        ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
-                        await validatorRegistryContract.RegisterValidators(blockHeader, validatorsInfo);
-                    }
-                };
+                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
 
                 // init Shutter transaction source
                 LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
-                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!);
+                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
 
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
