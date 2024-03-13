@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             long gasLimit,
             Hash256? blockParentHash,
             Transaction[] blockTransactions,
-            TxReceipt[] blockTxReceipts)
+            List<(long GasUsed, UInt256 PremiumPerGas)>? rewardsInBlocks)
         {
             public long BlockNumber { get; } = blockNumber;
             public UInt256 BaseFeePerGas { get; } = baseFeePerGas;
@@ -42,7 +42,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             public long GasLimit { get; } = gasLimit;
             public ulong? BlobGasUsed { get; } = blobGasUsed;
             public Hash256? BlockParentHash { get; } = blockParentHash;
-            public TxReceipt[] BlockTxReceipts { get; } = blockTxReceipts;
+            public List<(long GasUsed, UInt256 PremiumPerGas)>? RewardsInBlocks { get; } = rewardsInBlocks;
         }
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash)
@@ -55,7 +55,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             // [how to deal with genesis block? since we find by hash and not block number? ignore because its unlikely to reach?]
 
             BlockFeeHistorySearchInfo historyInfo = new(block.Number, block.BaseFeePerGas, block.Header, block.GasUsed,
-                block.BlobGasUsed, block.GasLimit, block.Header.ParentHash, block.Transactions, receiptStorage.Get(block));
+                block.BlobGasUsed, block.GasLimit, block.Header.ParentHash, block.Transactions, GetRewardsInBlock(block));
             _feeHistoryCache.Set(block.Hash, historyInfo);
 
             return historyInfo;
@@ -117,7 +117,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 }
 
                 blockCount--;
-                // assuminng block has a parent with hash (genesis block does not)
+                // assuming block has a parent with hash (genesis block does not)
                 historyInfo = GetHistorySearchInfo(info.BlockParentHash!);
             }
 
@@ -133,21 +133,21 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length).ToList();
             }
 
-            var rewardsInBlock = GetRewardsInBlock(blockInfo);
+            var rewardsInBlock = blockInfo.RewardsInBlocks;
             return rewardsInBlock is null
                 ? null
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, rewardsInBlock);
         }
 
-        private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(BlockFeeHistorySearchInfo blockInfo)
+        private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(Block block)
         {
-            TxReceipt[]? receipts = blockInfo.BlockTxReceipts;
-            Transaction[] txs = blockInfo.BlockTransactions;
+            TxReceipt[]? receipts = receiptStorage.Get(block);
+            Transaction[] txs = block.Transactions;
             List<(long GasUsed, UInt256 PremiumPerGas)> valueTuples = new(txs.Length);
             for (int i = 0; i < txs.Length; i++)
             {
                 Transaction tx = txs[i];
-                tx.TryCalculatePremiumPerGas(blockInfo.BaseFeePerGas, out UInt256 premiumPerGas);
+                tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
                 valueTuples.Add((receipts[i].GasUsed, premiumPerGas));
             }
 
