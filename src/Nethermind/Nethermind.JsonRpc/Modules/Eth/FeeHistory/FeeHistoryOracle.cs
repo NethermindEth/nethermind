@@ -7,6 +7,8 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -14,18 +16,28 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    public class FeeHistoryOracle : IFeeHistoryOracle
+    public class FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider)
+        : IFeeHistoryOracle
     {
         private const int MaxBlockCount = 1024;
-        private readonly IBlockFinder _blockFinder;
-        private readonly IReceiptStorage _receiptStorage;
-        private readonly ISpecProvider _specProvider;
+        private readonly LruCache<ValueHash256, BlockFeeHistoryInfo> _feeHistoryCache
+            = new(MaxBlockCount * 2, "BlockFeeHistoryCache", false);
 
-        public FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider)
+
+        private readonly struct BlockFeeHistoryInfo(
+            long oldestBlockNumber,
+            UInt256[] baseFeePerGas,
+            double[] gasUsedRatio,
+            UInt256[] baseFeePerBlobGas,
+            double[] blobGasUsedRatio,
+            UInt256[][]? rewards)
         {
-            _blockFinder = blockFinder;
-            _receiptStorage = receiptStorage;
-            _specProvider = specProvider;
+            public long OldestBlockNumber {get; } = oldestBlockNumber;
+            public UInt256[] BaseFeePerGas { get; } = baseFeePerGas;
+            public UInt256[] BaseFeePerBlobGas { get; } = baseFeePerBlobGas;
+            public UInt256[][]? Rewards { get; } = rewards;
+            public double[] GasUsedRatio { get; } = gasUsedRatio;
+            public double[] BlobGasUsedRatio { get; } = blobGasUsedRatio;
         }
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
@@ -36,46 +48,62 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return initialCheckResult;
             }
 
-            Block? block = _blockFinder.FindBlock(newestBlock);
-            if (block is null)
+            BlockFeeHistoryInfo historyInfo;
+            if (!_feeHistoryCache.Contains(newestBlock.BlockHash))
             {
-                return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
-            }
-
-            long oldestBlockNumber = block!.Number;
-            Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
-            baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpecFor1559(block!.Number + 1)));
-            Stack<UInt256> baseFeePerBlobGas = new((int)(blockCount + 1));
-            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out UInt256 blobGas);
-            baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
-
-            Stack<double> gasUsedRatio = new((int)blockCount);
-            Stack<double> blobGasUsedRatio = new((int)blockCount);
-
-            Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0 ? null : new Stack<UInt256[]>((int)blockCount);
-
-            while (block is not null && blockCount > 0)
-            {
-                oldestBlockNumber = block.Number;
-                baseFeePerGas.Push(block.BaseFeePerGas);
-                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out blobGas);
-                baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
-                gasUsedRatio.Push(block.GasUsed / (double)block.GasLimit);
-                blobGasUsedRatio.Push((block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock);
-                if (rewards is not null)
+                Block? block = blockFinder.FindBlock(newestBlock);
+                if (block is null)
                 {
-                    List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
-                    if (rewardsInBlock is not null)
-                    {
-                        rewards.Push(rewardsInBlock.ToArray());
-                    }
+                    return ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available", ErrorCodes.ResourceUnavailable);
                 }
 
-                blockCount--;
-                block = _blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
+                long oldestBlockNumber = block!.Number;
+                Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
+                baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, specProvider.GetSpecFor1559(block!.Number + 1)));
+                Stack<UInt256> baseFeePerBlobGas = new((int)(blockCount + 1));
+                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out UInt256 blobGas);
+                baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
+
+                Stack<double> gasUsedRatio = new((int)blockCount);
+                Stack<double> blobGasUsedRatio = new((int)blockCount);
+
+                Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0 ? null : new Stack<UInt256[]>((int)blockCount);
+
+                while (block is not null && blockCount > 0)
+                {
+                    oldestBlockNumber = block.Number;
+                    baseFeePerGas.Push(block.BaseFeePerGas);
+                    BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out blobGas);
+                    baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
+                    gasUsedRatio.Push(block.GasUsed / (double)block.GasLimit);
+                    blobGasUsedRatio.Push((block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock);
+                    if (rewards is not null)
+                    {
+                        List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(block, rewardPercentiles);
+                        if (rewardsInBlock is not null)
+                        {
+                            rewards.Push(rewardsInBlock.ToArray());
+                        }
+                    }
+
+                    blockCount--;
+                    block = blockFinder.FindParent(block, BlockTreeLookupOptions.RequireCanonical);
+                }
+
+                // maybe take into account that block history creates a sequential path to oldest block
+                // implying all younger blocks results would be subsets of the results in older blocks
+                // this might be useful in caching (space) and creating results from older [partial] results
+                // Also why stacks? instead of arrays/arraylists.
+                historyInfo = new BlockFeeHistoryInfo(oldestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(),
+                    baseFeePerBlobGas.ToArray(), blobGasUsedRatio.ToArray(), rewards?.ToArray());
+                _feeHistoryCache.Set(newestBlock.BlockHash, historyInfo!);
             }
 
-            FeeHistoryResults feeHistoryResults = new(oldestBlockNumber, baseFeePerGas.ToArray(), gasUsedRatio.ToArray(), baseFeePerBlobGas.ToArray(), blobGasUsedRatio.ToArray(), rewards?.ToArray());
+            historyInfo = _feeHistoryCache.Get(newestBlock.BlockHash);
+
+
+            FeeHistoryResults feeHistoryResults = new(historyInfo.OldestBlockNumber, historyInfo.BaseFeePerGas,
+                historyInfo.GasUsedRatio, historyInfo.BaseFeePerBlobGas, historyInfo!.BlobGasUsedRatio, historyInfo!.Rewards);
             return ResultWrapper<FeeHistoryResults>.Success(feeHistoryResults);
         }
 
@@ -91,7 +119,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(Block block)
         {
-            TxReceipt[]? receipts = _receiptStorage.Get(block);
+            TxReceipt[]? receipts = receiptStorage.Get(block);
             Transaction[] txs = block.Transactions;
             List<(long GasUsed, UInt256 PremiumPerGas)> valueTuples = new(txs.Length);
             for (int i = 0; i < txs.Length; i++)
