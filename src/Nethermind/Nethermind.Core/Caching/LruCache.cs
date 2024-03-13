@@ -35,12 +35,19 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            // does scoping affect using?
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                ClearNoLock();
             }
+            else
+            {
+                ClearNoLock();
+            }
+        }
 
+        private void ClearNoLock()
+        {
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
         }
@@ -50,7 +57,14 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return GetNoLock(key);
             }
+
+            return GetNoLock(key);
+        }
+
+        private TValue GetNoLock(TKey key)
+        {
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -70,8 +84,14 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return TryGetNoLock(key, out value);
             }
 
+            return TryGetNoLock(key, out value);
+        }
+
+        private bool TryGetNoLock(TKey key, out TValue value)
+        {
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node.Value.Value;
@@ -91,8 +111,13 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return SetNoLock(key, val);
             }
 
+            return SetNoLock(key, val);
+        }
+        private bool SetNoLock(TKey key, TValue val)
+        {
             if (val is null)
             {
                 return DeleteNoLock(key);
@@ -126,6 +151,7 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return DeleteNoLock(key);
             }
 
             return DeleteNoLock(key);
@@ -148,6 +174,7 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return _cacheMap.ContainsKey(key);
             }
 
             return _cacheMap.ContainsKey(key);
@@ -158,8 +185,12 @@ namespace Nethermind.Core.Caching
             if (_useLock)
             {
                 using var lockRelease = _lock.Acquire();
+                return ToArrayNoLock();
             }
-
+            return ToArrayNoLock();
+        }
+        public KeyValuePair<TKey, TValue>[] ToArrayNoLock()
+        {
             int i = 0;
             KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
