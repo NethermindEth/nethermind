@@ -15,6 +15,7 @@ namespace Nethermind.Evm.Tracing
 {
     public class GasEstimator
     {
+        private const double EstimateGasErrorMargin = 0.015d;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
@@ -52,13 +53,20 @@ namespace Nethermind.Evm.Tracing
                 : header.GasLimit;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, token);
+            return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, token);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, CancellationToken token)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, CancellationToken token)
         {
+            long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * 64d / 63d);
+            if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
+                rightBound = optimisticGasEstimate;
+            else
+                leftBound = optimisticGasEstimate;
+
             long cap = rightBound;
-            while (leftBound + 1 < rightBound)
+            while ((rightBound - leftBound) / (double)leftBound > EstimateGasErrorMargin
+                && leftBound + 1 < rightBound)
             {
                 long mid = (leftBound + rightBound) / 2;
                 if (!TryExecutableTransaction(tx, header, mid, token))
