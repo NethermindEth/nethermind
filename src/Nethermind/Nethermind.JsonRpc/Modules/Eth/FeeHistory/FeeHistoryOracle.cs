@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             double[] blobGasUsedRatio,
             UInt256[][]? rewards)
         {
-            public long OldestBlockNumber {get; } = oldestBlockNumber;
+            public long OldestBlockNumber { get; } = oldestBlockNumber;
             public UInt256[] BaseFeePerGas { get; } = baseFeePerGas;
             public UInt256[] BaseFeePerBlobGas { get; } = baseFeePerBlobGas;
             public UInt256[][]? Rewards { get; } = rewards;

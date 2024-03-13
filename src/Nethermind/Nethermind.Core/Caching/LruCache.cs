@@ -18,7 +18,7 @@ namespace Nethermind.Core.Caching
         private readonly bool _useLock;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name, bool useLock=true)
+        public LruCache(int maxCapacity, int startCapacity, string name, bool useLock = true)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
             _useLock = useLock;
@@ -28,7 +28,7 @@ namespace Nethermind.Core.Caching
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
-        public LruCache(int maxCapacity, string name, bool useLock=true)
+        public LruCache(int maxCapacity, string name, bool useLock = true)
             : this(maxCapacity, 0, name, useLock)
         {
         }
