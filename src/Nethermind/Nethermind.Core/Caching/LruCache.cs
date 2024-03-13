@@ -15,26 +15,31 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
+        private readonly bool _useLock;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
-        public LruCache(int maxCapacity, int startCapacity, string name)
+        public LruCache(int maxCapacity, int startCapacity, string name, bool useLock=true)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
-
+            _useLock = useLock;
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
-        public LruCache(int maxCapacity, string name)
-            : this(maxCapacity, 0, name)
+        public LruCache(int maxCapacity, string name, bool useLock=true)
+            : this(maxCapacity, 0, name, useLock)
         {
         }
 
         public void Clear()
         {
-            using var lockRelease = _lock.Acquire();
+            // does scoping affect using?
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             _leastRecentlyUsed = null;
             _cacheMap.Clear();
@@ -42,7 +47,10 @@ namespace Nethermind.Core.Caching
 
         public TValue Get(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -59,7 +67,10 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
@@ -77,7 +88,10 @@ namespace Nethermind.Core.Caching
 
         public bool Set(TKey key, TValue val)
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             if (val is null)
             {
@@ -109,7 +123,10 @@ namespace Nethermind.Core.Caching
 
         public bool Delete(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             return DeleteNoLock(key);
         }
@@ -128,14 +145,20 @@ namespace Nethermind.Core.Caching
 
         public bool Contains(TKey key)
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             return _cacheMap.ContainsKey(key);
         }
 
         public KeyValuePair<TKey, TValue>[] ToArray()
         {
-            using var lockRelease = _lock.Acquire();
+            if (_useLock)
+            {
+                using var lockRelease = _lock.Acquire();
+            }
 
             int i = 0;
             KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
