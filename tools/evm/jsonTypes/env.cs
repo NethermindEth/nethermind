@@ -44,6 +44,7 @@ namespace JsonTypes
         public UInt64 CurrentDataGasUsed { get; set; } = 0;
         public string ParentTimestamp { get; set; } = "0";
         public string ParentDifficulty { get; set; } = "0";
+        public string CurrentBaseFee { get; set; } = "0x";
         public string CurrentDifficulty { get; set; } = "0";
         public Hash256 ParentUncleHash { get; set; } = Keccak.Zero;
         public Hash256 ParentBeaconBlockRoot { get; set; } = Keccak.Zero;

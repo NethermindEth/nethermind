@@ -1,5 +1,8 @@
+using System.Globalization;
 using JsonTypes;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
@@ -161,7 +164,10 @@ public class T8N
             Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
             envJson.CurrentTimestamp,
             Array.Empty<byte>()
-        );
+        )
+        {
+            BaseFeePerGas = Bytes.FromHexString(envJson.CurrentBaseFee).ToUInt256()
+        };
 
         TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
         IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)envJson.CurrentNumber);
@@ -205,7 +211,7 @@ public class T8N
                 transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
                 tracer.EndTxTrace();
 
-                if (tracer.LastReceipt.StatusCode == 1)
+                if (tracer.LastReceipt.Index != 3)
                 {
                     successfulTxs.Add(tx);
                     tracer.LastReceipt.PostTransactionState = null;
@@ -261,12 +267,17 @@ public class T8N
     {
         Transaction tx = new Transaction();
         tx.Value = Bytes.FromHexString(jsonTx.Value).ToUInt256();
-        tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
         tx.Data = Bytes.FromHexString(jsonTx.Input);
         tx.To = jsonTx.To;
         tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
         tx.GasLimit = Bytes.FromHexString(jsonTx.Gas).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
-        tx.Hash = new Hash256(Bytes.FromHexString(jsonTx.Hash));
+
+        if (jsonTx.SecretKey != null)
+        {
+            PrivateKey privateKey = new PrivateKey(jsonTx.SecretKey);
+            tx.SenderAddress = privateKey.Address;
+        }
+
         //Legacy doesn't need type
         if (jsonTx.Type is null || jsonTx.Type == "0x0")
         {
@@ -276,7 +287,8 @@ public class T8N
         else if (jsonTx.Type == "0x1")
         {
             tx.Type = TxType.AccessList;
-            tx.AccessList = jsonTx.AccessList;
+            AccessList.Builder builder = new();
+            JsonToEthereumTest.ProcessAccessList(jsonTx.AccessList, builder);
         }
         else if (jsonTx.Type == "0x2")
         {
@@ -292,6 +304,24 @@ public class T8N
         {
             throw new Exception("Unsupported tx type");
         }
+        ulong chainId = 0;
+        if (jsonTx.ChainId != null)
+        {
+            chainId = ulong.Parse(jsonTx.ChainId.Substring(2), NumberStyles.HexNumber);
+            tx.ChainId = chainId;
+        }
+        if (chainId != 0 && jsonTx.SecretKey != null)
+        {
+            PrivateKey privateKey = new PrivateKey(jsonTx.SecretKey);
+            var signer = new Signer(chainId, privateKey, NullLogManager.Instance);
+            signer.Sign(tx);
+        }
+        else
+        {
+            tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
+        }
+        if (jsonTx.Hash != null) tx.Hash = new Hash256(Bytes.FromHexString(jsonTx.Hash));
+        else tx.Hash = tx.CalculateHash();
         return tx;
 
     }
