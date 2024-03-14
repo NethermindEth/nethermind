@@ -112,7 +112,18 @@ public static class Program
     {
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
-
+        try{
+            string duplicateArgument = CheckForDuplicateArgs(args); 
+            if(!string.IsNullOrEmpty(duplicateArgument)){
+                Environment.ExitCode = ExitCodes.DuplicateArguments; 
+                throw new Exception($"Duplicate arguments passed - {duplicateArgument}.");;
+            }
+        }
+        catch(Exception e){
+            _logger.Error($"Failed due to duplicate arguments passed while execution - ", e);
+            _appClosed.Wait();
+            throw;
+        }
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -249,6 +260,34 @@ public static class Program
         }
     }
 
+    private static string CheckForDuplicateArgs(string[] args)
+    {
+        Dictionary<string, string> argPairs = new Dictionary<string, string>();
+        for (int i = 0; i < args.Length; i++)
+        {
+            string arg = args[i];
+
+            if (arg.StartsWith("-"))
+            {
+                string key = arg.TrimStart('-');
+
+                if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
+                {
+                    string value = args[i + 1];
+                    if (argPairs.ContainsKey(key)){
+                        return key;
+                    }
+                    argPairs[key] = value;
+                    i++;
+                }
+                else
+                {
+                    argPairs[key] = string.Empty;
+                }
+            }
+        }
+        return string.Empty;
+    }
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
         var alternativePath = nativeLibraryName switch
