@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using FastEnumUtility;
 using Nethermind.Core.Specs;
 
@@ -177,9 +180,49 @@ namespace Nethermind.Evm
         SELFDESTRUCT = 0xff,
     }
 
-    public struct OpcodeInfo(Instruction instruction, ReadOnlyMemory<byte>? arguments)
+    public struct OpcodeInfo(Instruction instruction, ReadOnlyMemory<byte>? arguments, long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush)
     {
-        public Instruction Instruction { get; set; } = instruction;
+        /// <summary>
+        /// The actual instruction
+        /// </summary>
+        public Instruction Instruction { get; }
+
+        /// <summary>
+        /// The gas cost.
+        /// </summary>
+        public long GasCost { get; } = gasCost;
+
+        /// <summary>
+        /// How many following bytes does this instruction have.
+        /// </summary>
+        public byte AdditionalBytes { get; } = additionalBytes;
+
+        /// <summary>
+        /// How many bytes are popped by this instruction.
+        /// </summary>
+        public byte StackBehaviorPop { get; } = stackBehaviorPop;
+
+        /// <summary>
+        /// How many bytes are pushed by this instruction.
+        /// </summary>
+        public byte StackBehaviorPush { get; } = stackBehaviorPush;
+
+        public static readonly IReadOnlyDictionary<Instruction, OpcodeInfo> Operations =
+            new OpcodeInfo[]
+            {
+                new(Instruction.POP, ReadOnlyMemory<byte>.Empty, GasCostOf.Base, 0, 1, 0),
+                new(Instruction.PC, ReadOnlyMemory<byte>.Empty, GasCostOf.Base, 0, 0, 1),
+                new(Instruction.PUSH1, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 1, 0, 1),
+                new(Instruction.PUSH2, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 2, 0, 1),
+                new(Instruction.PUSH4, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 4, 0, 1),
+                new(Instruction.JUMPDEST, ReadOnlyMemory<byte>.Empty, GasCostOf.JumpDest, 0, 0, 0),
+                new(Instruction.JUMP, ReadOnlyMemory<byte>.Empty, GasCostOf.Mid, 0, 1, 0),
+                new(Instruction.JUMPI, ReadOnlyMemory<byte>.Empty, GasCostOf.High, 0, 2, 0),
+                new(Instruction.SUB, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 0, 2, 1),
+                new(Instruction.DUP1, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 0, 1, 2),
+                new(Instruction.SWAP1, ReadOnlyMemory<byte>.Empty, GasCostOf.VeryLow, 0, 2, 2)
+            }.ToFrozenDictionary(op => op.Instruction);
+        public Instruction Operation { get; set; } = instruction;
         public ReadOnlyMemory<byte>? Arguments { get; set; } = arguments;
     }
 
