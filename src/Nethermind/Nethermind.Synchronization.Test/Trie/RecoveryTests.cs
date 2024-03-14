@@ -78,9 +78,9 @@ public class RecoveryTests
         _snapRequest = new GetTrieNodesRequest
         {
             AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
-        {
-            new() { Group = [TestItem.KeccakA.BytesToArray()] }
-        }
+            {
+                new() { Group = [TestItem.KeccakA.BytesToArray()] }
+            }
         };
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _snapRecovery = new SnapTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
