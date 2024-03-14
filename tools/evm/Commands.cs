@@ -123,7 +123,7 @@ public class T8N
         TrieStore trieStore = new(stateDb, _logManager);
 
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
+        var blockhashProvider = new TestBlockhashProvider();
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             specProvider,
@@ -169,6 +169,12 @@ public class T8N
         {
             BaseFeePerGas = Bytes.FromHexString(envJson.CurrentBaseFee).ToUInt256()
         };
+        header.Hash = header.CalculateHash();
+        blockhashProvider.Insert(header.Hash, header.Number);
+        foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envJson.BlockHashes)
+        {
+            blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
+        }
 
         TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
         IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)envJson.CurrentNumber);
@@ -186,12 +192,14 @@ public class T8N
                 extraData: Array.Empty<byte>()
             )
             {
+                Hash = envJson.PreviousHash,
                 BlobGasUsed = envJson.ParentBlobGasUsed,
                 ExcessBlobGas = envJson.ParentExcessBlobGas,
                 BaseFeePerGas = envJson.ParentBaseFee
             };
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
+            blockhashProvider.Insert(parent.Hash, parent.Number);
         }
 
         List<Transaction> successfulTxs = new List<Transaction>();
