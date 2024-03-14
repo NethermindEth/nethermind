@@ -10,6 +10,9 @@ using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;
@@ -27,8 +30,8 @@ public class RecoveryTests
     private Hash256 _key = null!;
     private ISyncPeer _syncPeerEth66 = null!;
     private PeerInfo _peerEth66 = null!;
-    private ISyncPeer _syncPeerEth67 = null!;
     private PeerInfo _peerEth67 = null!;
+    private PeerInfo _peerEth67_2 = null!;
     private ISnapSyncPeer _snapSyncPeer = null!;
     private GetTrieNodesRequest _snapRequest = null!;
     private ISyncPeerPool _syncPeerPool = null!;
@@ -48,18 +51,37 @@ public class RecoveryTests
 
         _snapSyncPeer = Substitute.For<ISnapSyncPeer>();
         _snapSyncPeer.GetTrieNodes(Arg.Any<GetTrieNodesRequest>(), Arg.Any<CancellationToken>())
-            .Returns(c => Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]>(1) { _returnedRlp }));
-        _syncPeerEth67 = Substitute.For<ISyncPeer>();
-        _syncPeerEth67.ProtocolVersion.Returns(EthVersions.Eth67);
-        _syncPeerEth67.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
             .Returns(c =>
             {
-                c[1] = _snapSyncPeer;
-                return true;
+                GetTrieNodesRequest request = (GetTrieNodesRequest)c[0];
+                _ = request.AccountAndStoragePaths.Count; // Trigger dispose exception if disposed
+                request.AccountAndStoragePaths.Dispose();
+                return Task.FromResult<IOwnedReadOnlyList<byte[]>>(new ArrayPoolList<byte[]>(1) { _returnedRlp });
             });
-        _peerEth67 = new(_syncPeerEth67);
 
-        _snapRequest = new GetTrieNodesRequest { AccountAndStoragePaths = ArrayPoolList<PathGroup>.Empty() };
+        ISyncPeer MakeEth67Peer()
+        {
+            ISyncPeer peer = Substitute.For<ISyncPeer>();
+            peer.ProtocolVersion.Returns(EthVersions.Eth67);
+            peer.TryGetSatelliteProtocol(Protocol.Snap, out Arg.Any<ISnapSyncPeer>())
+                .Returns(c =>
+                {
+                    c[1] = _snapSyncPeer;
+                    return true;
+                });
+
+            return peer;
+        }
+        _peerEth67 = new(MakeEth67Peer());
+        _peerEth67_2 = new(MakeEth67Peer());
+
+        _snapRequest = new GetTrieNodesRequest
+        {
+            AccountAndStoragePaths = new ArrayPoolList<PathGroup>(1)
+        {
+            new() { Group = [TestItem.KeccakA.BytesToArray()] }
+        }
+        };
         _syncPeerPool = Substitute.For<ISyncPeerPool>();
         _snapRecovery = new SnapTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
         _nodeDataRecovery = new GetNodeDataTrieNodeRecovery(_syncPeerPool, LimboLogs.Instance);
@@ -103,6 +125,13 @@ public class RecoveryTests
     public async Task can_recover_eth67()
     {
         byte[]? rlp = await Recover(_snapRecovery, _snapRequest, _peerEth67);
+        rlp.Should().BeEquivalentTo(_keyRlp);
+    }
+
+    [Test]
+    public async Task can_recover_eth67_2_peer()
+    {
+        byte[]? rlp = await Recover(_snapRecovery, _snapRequest, _peerEth67, _peerEth67_2);
         rlp.Should().BeEquivalentTo(_keyRlp);
     }
 
