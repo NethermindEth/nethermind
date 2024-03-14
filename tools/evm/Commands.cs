@@ -139,10 +139,10 @@ public class T8N
 
         List<Transaction> transactions = new List<Transaction>();
         if (inputTxs.EndsWith(".json")) {
-            JsonTypes.Transaction[] txsJson = JsonConvert.DeserializeObject<JsonTypes.Transaction[]>(File.ReadAllText(inputTxs));
+            JsonTypes.Transaction[] txsJson = _ethereumJsonSerializer.Deserialize<JsonTypes.Transaction[]>(File.ReadAllText(inputTxs));
             foreach (JsonTypes.Transaction jsonTx in txsJson)
             {
-                transactions.Add(convertToTx(jsonTx));
+                transactions.Add(jsonTx.ConvertToTx());
             }
         } else {
             String rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
@@ -275,68 +275,7 @@ public class T8N
         return Task.CompletedTask;
     }
 
-    private static Transaction convertToTx(JsonTypes.Transaction jsonTx)
-    {
-        Transaction tx = new Transaction();
-        tx.Value = Bytes.FromHexString(jsonTx.Value).ToUInt256();
-        tx.Data = Bytes.FromHexString(jsonTx.Input);
-        tx.To = jsonTx.To;
-        tx.Nonce = Bytes.FromHexString(jsonTx.Nonce).ToUInt256();
-        tx.GasLimit = Bytes.FromHexString(jsonTx.Gas).ToLongFromBigEndianByteArrayWithoutLeadingZeros();
 
-        if (jsonTx.SecretKey != null)
-        {
-            PrivateKey privateKey = new PrivateKey(jsonTx.SecretKey);
-            tx.SenderAddress = privateKey.Address;
-        }
-
-        //Legacy doesn't need type
-        if (jsonTx.Type is null || jsonTx.Type == "0x0")
-        {
-            tx.Type = TxType.Legacy;
-            tx.GasPrice = Bytes.FromHexString(jsonTx.GasPrice).ToUInt256();
-        }
-        else if (jsonTx.Type == "0x1")
-        {
-            tx.Type = TxType.AccessList;
-            AccessList.Builder builder = new();
-            JsonToEthereumTest.ProcessAccessList(jsonTx.AccessList, builder);
-        }
-        else if (jsonTx.Type == "0x2")
-        {
-            tx.Type = TxType.EIP1559;
-            tx.DecodedMaxFeePerGas = Bytes.FromHexString(jsonTx.MaxFeePerGas).ToUInt256();
-            tx.GasPrice = Bytes.FromHexString(jsonTx.MaxPriorityFeePerGas).ToUInt256();
-        }
-        else if (jsonTx.Type == "0x3")
-        {
-            tx.Type = TxType.Blob;
-        }
-        else
-        {
-            throw new Exception("Unsupported tx type");
-        }
-        ulong chainId = 0;
-        if (jsonTx.ChainId != null)
-        {
-            chainId = ulong.Parse(jsonTx.ChainId.Substring(2), NumberStyles.HexNumber);
-            tx.ChainId = chainId;
-        }
-        if (chainId != 0 && jsonTx.SecretKey != null)
-        {
-            PrivateKey privateKey = new PrivateKey(jsonTx.SecretKey);
-            var signer = new Signer(chainId, privateKey, NullLogManager.Instance);
-            signer.Sign(tx);
-        }
-        else
-        {
-            tx.Signature = new Signature(Bytes.FromHexString(jsonTx.R), Bytes.FromHexString(jsonTx.S), (ulong)Bytes.FromHexString(jsonTx.V).ToLongFromBigEndianByteArrayWithoutLeadingZeros());
-        }
-        if (jsonTx.Hash != null) tx.Hash = new Hash256(Bytes.FromHexString(jsonTx.Hash));
-        else tx.Hash = tx.CalculateHash();
-        return tx;
-
-    }
 
 
     //Setup up the initial state
