@@ -1,19 +1,13 @@
-using System.Globalization;
+using Evm.JsonTypes;
 using JsonTypes;
 using Microsoft.IdentityModel.Tokens;
-using Nethermind.Consensus;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Serialization.Json;
 using Nethermind.State.Proofs;
-using NSubstitute.ReceivedExtensions;
 
-namespace Nethermind.Tools.t8n;
-using System.Text.Json;
-using System.Text.Json.Serialization;
+namespace Evm;
 using Ethereum.Test.Base;
-using Newtonsoft.Json;
 using Nethermind.Db;
 using Nethermind.Specs;
 using Nethermind.Logging;
@@ -34,7 +28,6 @@ using Nethermind.Serialization.Rlp;
 
 
 
-
 public class TraceOptions
 {
     public bool Memory { get; set; }
@@ -44,17 +37,11 @@ public class TraceOptions
     public bool ReturnData { get; set; }
 }
 
-public class T8nOutput
-{
-    public bool Alloc { get; set; }
-    public bool Result { get; set; }
-    public bool Body { get; set; }
-}
-
 public class T8N
 {
-    private TxDecoder _txDecoder = new();
-    private EthereumJsonSerializer _ethereumJsonSerializer = new();
+    private readonly TxDecoder _txDecoder = new();
+    private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
+    private readonly LimboLogs _logManager = LimboLogs.Instance;
 
     public static async Task<int> HandleAsync(
         string inputAlloc,
@@ -108,18 +95,22 @@ public class T8N
         bool traceNoStack,
         bool traceReturnData)
     {
-        Dictionary<Address, JsonTypes.AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, JsonTypes.AccountState>>(File.ReadAllText(inputAlloc));
-        Env envJson = _ethereumJsonSerializer.Deserialize<Env>(File.ReadAllText(inputEnv));
+        Dictionary<Address, AccountStateJson> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountStateJson>>(File.ReadAllText(inputAlloc));
+        EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
+        List<Transaction> transactions;
+        if (inputTxs.EndsWith(".json")) {
+            TransactionInfo[] txInfoList = _ethereumJsonSerializer.Deserialize<TransactionInfo[]>(File.ReadAllText(inputTxs));
+            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToList();
+        } else {
+            string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
+            RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
+            transactions = _txDecoder.DecodeArray(rlp).ToList();
+        }
 
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        ILogManager _logManager = LimboLogs.Instance;
-        ILogger _logger = _logManager.GetClassLogger();
-
-        ISpecProvider specProvider = new CustomSpecProvider(
-    ((ForkActivation)0, Frontier.Instance), // TODO: this thing took a lot of time to find after it was removed!, genesis block is always initialized with Frontier
-    ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork)));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork)));
         TrieStore trieStore = new(stateDb, _logManager);
 
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
@@ -137,19 +128,6 @@ public class T8N
 
         InitializeFromAlloc(allocJson, stateProvider, specProvider);
 
-        List<Transaction> transactions = new List<Transaction>();
-        if (inputTxs.EndsWith(".json")) {
-            JsonTypes.Transaction[] txsJson = _ethereumJsonSerializer.Deserialize<JsonTypes.Transaction[]>(File.ReadAllText(inputTxs));
-            foreach (JsonTypes.Transaction jsonTx in txsJson)
-            {
-                transactions.Add(jsonTx.ConvertToTx());
-            }
-        } else {
-            String rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
-            RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
-            transactions = _txDecoder.DecodeArray(rlp).ToList();
-        }
-
         IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
         foreach (Transaction transaction in transactions)
         {
@@ -157,60 +135,60 @@ public class T8N
         }
 
         BlockHeader header = new(
-            envJson.PreviousHash,
+            envInfo.PreviousHash,
             Keccak.OfAnEmptySequenceRlp,
-            envJson.CurrentCoinbase,
-            Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
-            envJson.CurrentNumber,
-            Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
-            envJson.CurrentTimestamp,
+            envInfo.CurrentCoinbase,
+            Bytes.FromHexString(envInfo.CurrentDifficulty).ToUInt256(),
+            envInfo.CurrentNumber,
+            Bytes.FromHexString(envInfo.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+            envInfo.CurrentTimestamp,
             Array.Empty<byte>()
         )
         {
-            BaseFeePerGas = Bytes.FromHexString(envJson.CurrentBaseFee).ToUInt256()
+            BaseFeePerGas = Bytes.FromHexString(envInfo.CurrentBaseFee).ToUInt256()
         };
         header.Hash = header.CalculateHash();
         blockhashProvider.Insert(header.Hash, header.Number);
-        foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envJson.BlockHashes)
+        foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envInfo.BlockHashes)
         {
             blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
         }
 
-        TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
-        IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)envJson.CurrentNumber);
-        IReceiptSpec? receiptSpec = specProvider.GetSpec(header);
-        if (envJson.ParentBlobGasUsed is not null && envJson.ParentExcessBlobGas is not null)
+        TxValidator txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)envInfo.CurrentNumber);
+        IReceiptSpec receiptSpec = specProvider.GetSpec(header);
+        if (envInfo.ParentBlobGasUsed is not null && envInfo.ParentExcessBlobGas is not null)
         {
             BlockHeader parent = new(
                 parentHash: Keccak.Zero,
                 unclesHash: Keccak.OfAnEmptySequenceRlp,
-                beneficiary: envJson.CurrentCoinbase,
-                difficulty: Bytes.FromHexString(envJson.CurrentDifficulty).ToUInt256(),
-                number: envJson.CurrentNumber - 1,
-                gasLimit: Bytes.FromHexString(envJson.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
-                timestamp: envJson.CurrentTimestamp,
+                beneficiary: envInfo.CurrentCoinbase,
+                difficulty: Bytes.FromHexString(envInfo.CurrentDifficulty).ToUInt256(),
+                number: envInfo.CurrentNumber - 1,
+                gasLimit: Bytes.FromHexString(envInfo.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+                timestamp: envInfo.CurrentTimestamp,
                 extraData: Array.Empty<byte>()
             )
             {
-                Hash = envJson.PreviousHash,
-                BlobGasUsed = envJson.ParentBlobGasUsed,
-                ExcessBlobGas = envJson.ParentExcessBlobGas,
-                BaseFeePerGas = envJson.ParentBaseFee
+                Hash = envInfo.PreviousHash,
+                BlobGasUsed = envInfo.ParentBlobGasUsed,
+                ExcessBlobGas = envInfo.ParentExcessBlobGas,
+                BaseFeePerGas = envInfo.ParentBaseFee
             };
             header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
             blockhashProvider.Insert(parent.Hash, parent.Number);
         }
 
-        List<Transaction> successfulTxs = new List<Transaction>();
-        List<TxReceipt> successfulTxReceipts = new List<TxReceipt>();
+        List<Transaction> successfulTxs = [];
+        List<TxReceipt> successfulTxReceipts = [];
 
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions.ToArray()).TestObject;
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
 
-        List<RejectedTx> rejectedTxReceipts = new();
+        List<RejectedTx> rejectedTxReceipts = [];
         int txIndex = 0;
         foreach (Transaction tx in transactions)
         {
@@ -228,7 +206,7 @@ public class T8N
                     tracer.LastReceipt.BlockHash = null;
                     tracer.LastReceipt.BlockNumber = 0;
                     successfulTxReceipts.Add(tracer.LastReceipt);
-                } else
+                } else if (transactionResult.Error != null)
                 {
                     rejectedTxReceipts.Add(new RejectedTx(txIndex, transactionResult.Error));
                     stateProvider.Reset();
@@ -245,54 +223,44 @@ public class T8N
              gasUsed = (ulong) tracer.LastReceipt.GasUsed;
         }
 
-        var stateRoot = stateProvider.StateRoot;
-        var txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
-        var receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
+        Hash256 stateRoot = stateProvider.StateRoot;
+        Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
+        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
 
-        ExecutionResult executionResult = new ExecutionResult();
-        executionResult.StateRoot = stateRoot;
-        executionResult.TxRoot = txRoot;
-        executionResult.ReceiptRoot = receiptsRoot;
-        executionResult.Receipts = successfulTxReceipts.ToArray();
-        executionResult.Rejected = rejectedTxReceipts.ToArray();
-        executionResult.Difficulty = header.Difficulty;
-        executionResult.GasUsed = new UInt256(gasUsed);
-
-        string json = _ethereumJsonSerializer.Serialize(executionResult, true);
-        Console.WriteLine(json);
-
-        Dictionary<Address, Account> accounts = new Dictionary<Address, Account>();
-        foreach (var address in allocJson.Keys)
+        var executionResult = new ExecutionResult
         {
-            accounts.Add(address, stateProvider.GetAccount(address));
-        }
+            StateRoot = stateRoot,
+            TxRoot = txRoot,
+            ReceiptRoot = receiptsRoot,
+            Receipts = successfulTxReceipts.ToArray(),
+            Rejected = rejectedTxReceipts.ToArray(),
+            Difficulty = header.Difficulty,
+            GasUsed = new UInt256(gasUsed)
+        };
 
+        var accounts = allocJson.Keys.ToDictionary(address => address, address => stateProvider.GetAccount(address));
         accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
-        string accountsJson = new EthereumJsonSerializer().Serialize(accounts, true);
 
-        Console.WriteLine(accountsJson);
+        var t8NOutput = new T8NOutput(executionResult, accounts);
+
+        Console.WriteLine(_ethereumJsonSerializer.Serialize(t8NOutput, true));
 
         return Task.CompletedTask;
     }
 
-
-
-
-    //Setup up the initial state
-    private static void InitializeFromAlloc(Dictionary<Address, JsonTypes.AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeFromAlloc(Dictionary<Address, AccountStateJson> alloc, WorldState stateProvider, ISpecProvider specProvider)
     {
-        foreach (KeyValuePair<Address, JsonTypes.AccountState> accountState in alloc)
+        foreach ((Address address, AccountStateJson accountStateJson) in alloc)
         {
-            foreach (KeyValuePair<string, string> storageItem in accountState.Value.Storage)
+            AccountState accountState = JsonToEthereumTest.Convert(accountStateJson);
+            foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
-                UInt256 storageKey = Bytes.FromHexString(storageItem.Key).ToUInt256();
-                byte[] storageValue = Bytes.FromHexString(storageItem.Key);
-                stateProvider.Set(new StorageCell(accountState.Key, storageKey), storageValue.WithoutLeadingZeros().ToArray());
-
+                stateProvider.Set(new StorageCell(address, storageItem.Key), storageItem.Value);
             }
-            stateProvider.CreateAccount(accountState.Key, Bytes.FromHexString(accountState.Value.Balance).ToUInt256(), Bytes.FromHexString(accountState.Value.Nonce).ToUInt256());
-            stateProvider.InsertCode(accountState.Key, Bytes.FromHexString(accountState.Value.Code), specProvider.GenesisSpec);
+            stateProvider.CreateAccount(address, accountState.Balance, accountState.Nonce);
+            stateProvider.InsertCode(address, accountState.Code, specProvider.GenesisSpec);
         }
+
         stateProvider.Commit(specProvider.GenesisSpec);
         stateProvider.CommitTree(0);
         stateProvider.Reset();

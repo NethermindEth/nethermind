@@ -11,6 +11,7 @@ namespace JsonTypes;
 
 public class ExecutionResult
 {
+
     public Hash256? StateRoot { get; set; }
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptRoot { get; set; }
@@ -23,19 +24,6 @@ public class ExecutionResult
     public UInt256? GasUsed { get; set; }
     public Hash256? BaseFee { get; set; }
 }
-
-// public class Receipt
-// {
-//     public string PostState { get; set; }
-//     public ulong CumulativeGasUsed { get; set; }
-//     public string Bloom { get; set; }
-//     public List<Log> Logs { get; set; }
-//     public bool Success { get; set; }
-//     public string ContractAddress { get; set; }
-//     public BigInteger GasUsed { get; set; }
-//     public BigInteger? Fee { get; set; }
-// }
-
 
 public class RejectedTx
 {

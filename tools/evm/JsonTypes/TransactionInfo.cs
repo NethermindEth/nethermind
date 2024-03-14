@@ -6,10 +6,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
-namespace JsonTypes
+namespace Evm.JsonTypes
 {
-
-    public class Transaction
+    public class TransactionInfo
     {
         public byte[]? Input { get; set; }
         public long Gas { get; set; }
@@ -29,9 +28,9 @@ namespace JsonTypes
         public AccessListItemJson[]? AccessList { get; set; }
         public bool? Protected { get; set; }
 
-        public Nethermind.Core.Transaction ConvertToTx()
+        public Transaction ConvertToTx()
         {
-            TransactionBuilder<Nethermind.Core.Transaction> transactionBuilder = new();
+            TransactionBuilder<Transaction> transactionBuilder = new();
 
             transactionBuilder.WithValue(Value);
             if (Input != null)

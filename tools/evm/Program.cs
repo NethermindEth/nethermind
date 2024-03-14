@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Evm;
 
 namespace Nethermind.Tools.t8n
 {

@@ -171,7 +171,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        public static Transaction Convert(LegacyTransactionJson transactionJson)
+        private static Transaction Convert(LegacyTransactionJson transactionJson)
         {
             Transaction transaction = new();
             transaction.Value = transactionJson.Value;
@@ -185,7 +185,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static AccountState Convert(AccountStateJson accountStateJson)
+        public static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new();
             state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
