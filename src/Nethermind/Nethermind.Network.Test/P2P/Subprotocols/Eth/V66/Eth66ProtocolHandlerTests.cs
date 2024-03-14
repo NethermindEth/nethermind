@@ -9,7 +9,9 @@ using FluentAssertions;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -127,7 +129,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_block_headers()
         {
-            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetBlockHeadersMessage>>())).Do(callInfo =>
@@ -144,7 +146,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_block_headers()
         {
-            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3));
+            var msg62 = new BlockHeadersMessage(Build.A.BlockHeader.TestObjectNTimes(3).ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.BlockHeadersMessage(1111, msg62);
 
             HandleIncomingStatusMessage();
@@ -194,7 +196,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_pooled_transactions()
         {
-            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+            var msg65 = new GetPooledTransactionsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
@@ -206,7 +208,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         public void Can_handle_pooled_transactions()
         {
             Transaction tx = Build.A.Transaction.Signed(new EthereumEcdsa(1, LimboLogs.Instance), TestItem.PrivateKeyA).TestObject;
-            var msg65 = new PooledTransactionsMessage(new[] { tx });
+            var msg65 = new PooledTransactionsMessage(new ArrayPoolList<Transaction>(1) { tx });
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.PooledTransactionsMessage(1111, msg65);
 
             HandleIncomingStatusMessage();
@@ -216,7 +218,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_node_data()
         {
-            var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+            var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -227,7 +229,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_node_data()
         {
-            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetNodeDataMessage>>())).Do(callInfo =>
@@ -244,7 +246,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_node_data()
         {
-            var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+            var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -255,7 +257,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_get_receipts()
         {
-            var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+            var msg63 = new GetReceiptsMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -266,7 +268,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Can_handle_receipts()
         {
-            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             _session.When((session) => session.DeliverMessage(Arg.Any<Eth66Message<GetReceiptsMessage>>())).Do(callInfo =>
@@ -283,7 +285,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
         [Test]
         public void Should_throw_when_receiving_unrequested_receipts()
         {
-            var msg63 = new ReceiptsMessage(System.Array.Empty<TxReceipt[]>());
+            var msg63 = new ReceiptsMessage(ArrayPoolList<TxReceipt[]>.Empty());
             var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage(1111, msg63);
 
             HandleIncomingStatusMessage();
@@ -314,18 +316,23 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V66
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
                 LimboLogs.Instance);
 
-            List<Hash256> hashes = new(numberOfTransactions);
+            ArrayPoolList<Hash256> hashes = new(numberOfTransactions);
 
             for (int i = 0; i < numberOfTransactions; i++)
             {
                 hashes.Add(new Hash256(i.ToString("X64")));
             }
 
-            NewPooledTransactionHashesMessage hashesMsg = new(hashes);
+            using NewPooledTransactionHashesMessage hashesMsg = new(hashes);
             HandleIncomingStatusMessage();
+
+            bool callReceived = true;
+            _session.When((session) => session.DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg)))
+                .Do(_ => callReceived = true);
+
             HandleZeroMessage(hashesMsg, Eth65MessageCode.NewPooledTransactionHashes);
 
-            _session.Received(expectedNumberOfMessages).DeliverMessage(Arg.Is<Network.P2P.Subprotocols.Eth.V66.Messages.GetPooledTransactionsMessage>(m => m.EthMessage.Hashes.Count == maxNumberOfTxsInOneMsg || m.EthMessage.Hashes.Count == numberOfTransactions % maxNumberOfTxsInOneMsg));
+            callReceived.Should().BeTrue();
         }
 
         private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase

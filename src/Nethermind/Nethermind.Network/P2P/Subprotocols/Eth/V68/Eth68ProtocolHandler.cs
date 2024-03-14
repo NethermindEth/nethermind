@@ -75,8 +75,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void Handle(NewPooledTransactionHashesMessage68 message)
+    private void Handle(NewPooledTransactionHashesMessage68 msg)
     {
+        using var message = msg;
         bool isTrace = Logger.IsTrace;
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
@@ -111,7 +112,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
+            SendMessage(
+                new ArrayPoolList<byte>((byte)tx.Type),
+                new ArrayPoolList<int>(tx.GetLength()),
+                new ArrayPoolList<Hash256>(1) { tx.Hash }
+            );
         }
     }
 
@@ -158,7 +163,7 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

@@ -73,7 +73,7 @@ namespace Nethermind.Network.Test.Rlpx
             Transaction a = Build.A.Transaction.TestObject;
             Transaction b = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(a, b).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -96,7 +96,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
             Block block = Build.A.Block.WithTransactions(a).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test.Rlpx
         {
             Transaction[] a = Build.A.Transaction.TestObjectNTimes(64);
             Block block = Build.A.Block.WithTransactions(a).TestObject;
-            NewBlockMessage newBlockMessage = new();
+            using NewBlockMessage newBlockMessage = new();
             newBlockMessage.Block = block;
 
             NewBlockMessageSerializer newBlockMessageSerializer = new();

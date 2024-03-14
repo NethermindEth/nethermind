@@ -117,7 +117,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         timeout ??= DefaultTimeout;
         DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout.Value;
 
-        IActivity activity = new Activity<TReq>()
+        IActivity activity = new Activity<TReq>
         {
             Deadline = deadline,
             Request = request,
@@ -126,6 +126,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         if (!_taskQueue.Writer.TryWrite(activity))
         {
+            request.TryDispose();
             // This should never happen unless something goes very wrong.
             throw new InvalidOperationException("Unable to write to background task queue.");
         }

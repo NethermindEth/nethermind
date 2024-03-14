@@ -126,7 +126,7 @@ public class JsonRpcService : IJsonRpcService
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
                     // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
-                    bool isExplicit = providedParameters.GetArrayLength() >= parameterIndex + 1;
+                    bool isExplicit = providedParametersLength >= parameterIndex + 1;
                     if (nullable && isExplicit)
                     {
                         explicitNullableParamsCount += 1;
@@ -444,7 +444,7 @@ public class JsonRpcService : IJsonRpcService
         ModuleResolution result = _rpcModuleProvider.Check(methodName, context);
         return result switch
         {
-            ModuleResolution.Unknown => ((int?)ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
+            ModuleResolution.Unknown => (ErrorCodes.MethodNotFound, $"Method {methodName} is not supported"),
             ModuleResolution.Disabled => (ErrorCodes.InvalidRequest, $"{methodName} found but the containing module is disabled for the url '{context.Url?.ToString() ?? string.Empty}', consider adding module in JsonRpcConfig.AdditionalRpcUrls for additional url, or to JsonRpcConfig.EnabledModules for default url"),
             ModuleResolution.EndpointDisabled => (ErrorCodes.InvalidRequest, $"{methodName} found for the url '{context.Url?.ToString() ?? string.Empty}' but is disabled for {context.RpcEndpoint}"),
             ModuleResolution.NotAuthenticated => (ErrorCodes.InvalidRequest, $"Method {methodName} should be authenticated"),

@@ -35,7 +35,7 @@ namespace Nethermind.TxPool.Collections
             IComparer<TValue> comparer,
             IEqualityComparer<TValue> distinctComparer,
             ILogManager logManager)
-            : base(capacity, comparer)
+            : base(capacity, comparer, logManager)
         {
             // ReSharper disable once VirtualMemberCallInConstructor
             _comparer = GetReplacementComparer(comparer ?? throw new ArgumentNullException(nameof(comparer)));

@@ -5,7 +5,7 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
 {
-    public abstract class Eth66Message<T> : P2PMessage where T : P2PMessage
+    public abstract class Eth66Message<T> : P2PMessage, IEth66Message where T : P2PMessage
     {
         public override int PacketType => EthMessage.PacketType;
         public override string Protocol => EthMessage.Protocol;
@@ -30,5 +30,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages
             base.Dispose();
             EthMessage.Dispose();
         }
+    }
+
+    public interface IEth66Message
+    {
+        long RequestId { get; }
     }
 }

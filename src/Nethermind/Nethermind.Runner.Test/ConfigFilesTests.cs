@@ -41,15 +41,15 @@ namespace Nethermind.Runner.Test
             }
         }
 
-        [TestCase("validators", true, true)]
-        [TestCase("poacore_validator.cfg", true, true)]
-        [TestCase("spaceneth", false, false)]
-        [TestCase("archive", false, false)]
-        [TestCase("fast", true, true)]
-        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled, bool fastBlocksEnabled)
+        // maybe leave in test since deprecation has not fully happened?
+        [TestCase("validators", true)]
+        [TestCase("poacore_validator.cfg", true)]
+        [TestCase("spaceneth", false)]
+        [TestCase("archive", false)]
+        [TestCase("fast", true)]
+        public void Sync_defaults_are_correct(string configWildcard, bool fastSyncEnabled)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.FastSync, fastSyncEnabled);
-            Test<ISyncConfig, bool>(configWildcard, c => c.FastBlocks, fastBlocksEnabled);
         }
 
         [TestCase("archive")]
@@ -171,10 +171,9 @@ namespace Nethermind.Runner.Test
             Test<IMetricsConfig, string>(configWildcard, c => c.PushGatewayUrl, "");
         }
 
-        [TestCase("^mainnet ^spaceneth ^volta", 50)]
+        [TestCase("^spaceneth ^volta", 50)]
         [TestCase("spaceneth", 4)]
         [TestCase("volta", 25)]
-        [TestCase("mainnet", 50)]
         public void Network_defaults_are_correct(string configWildcard, int activePeers = 50)
         {
             Test<INetworkConfig, int>(configWildcard, c => c.DiscoveryPort, 30303);

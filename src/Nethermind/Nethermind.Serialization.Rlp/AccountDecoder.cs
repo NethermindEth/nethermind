@@ -14,6 +14,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly bool _slimFormat;
 
         public static AccountDecoder Instance => new();
+        public static AccountDecoder Slim => new(slimFormat: true);
 
         public AccountDecoder() { }
 
@@ -307,19 +308,21 @@ namespace Nethermind.Serialization.Rlp
             return codeHash;
         }
 
-        public AccountStruct? DecodeStruct(ref Rlp.ValueDecoderContext decoderContext)
+        public bool TryDecodeStruct(ref Rlp.ValueDecoderContext decoderContext, out AccountStruct account)
         {
             int length = decoderContext.ReadSequenceLength();
             if (length == 1)
             {
-                return null;
+                account = AccountStruct.TotallyEmpty;
+                return false;
             }
 
             UInt256 nonce = decoderContext.DecodeUInt256();
             UInt256 balance = decoderContext.DecodeUInt256();
             ValueHash256 storageRoot = DecodeStorageRootStruct(ref decoderContext);
             ValueHash256 codeHash = DecodeCodeHashStruct(ref decoderContext);
-            return new AccountStruct(nonce, balance, storageRoot, codeHash);
+            account = new AccountStruct(nonce, balance, storageRoot, codeHash);
+            return true;
         }
     }
 }
