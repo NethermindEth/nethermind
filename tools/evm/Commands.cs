@@ -135,17 +135,19 @@ public class T8N
         }
 
         BlockHeader header = new(
-            envInfo.PreviousHash,
+            Keccak.Zero,
             Keccak.OfAnEmptySequenceRlp,
             envInfo.CurrentCoinbase,
-            Bytes.FromHexString(envInfo.CurrentDifficulty).ToUInt256(),
+            envInfo.CurrentDifficulty,
             envInfo.CurrentNumber,
-            Bytes.FromHexString(envInfo.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
+            envInfo.CurrentGasLimit,
             envInfo.CurrentTimestamp,
             Array.Empty<byte>()
         )
         {
-            BaseFeePerGas = Bytes.FromHexString(envInfo.CurrentBaseFee).ToUInt256()
+            ExcessBlobGas = envInfo.CurrentExcessBlobGas,
+            ParentBeaconBlockRoot = envInfo.ParentBeaconBlockRoot,
+            BaseFeePerGas = envInfo.CurrentBaseFee
         };
         header.Hash = header.CalculateHash();
         blockhashProvider.Insert(header.Hash, header.Number);
@@ -163,14 +165,14 @@ public class T8N
                 parentHash: Keccak.Zero,
                 unclesHash: Keccak.OfAnEmptySequenceRlp,
                 beneficiary: envInfo.CurrentCoinbase,
-                difficulty: Bytes.FromHexString(envInfo.CurrentDifficulty).ToUInt256(),
+                difficulty: envInfo.ParentDifficulty,
                 number: envInfo.CurrentNumber - 1,
-                gasLimit: Bytes.FromHexString(envInfo.CurrentGasLimit).ToLongFromBigEndianByteArrayWithoutLeadingZeros(),
-                timestamp: envInfo.CurrentTimestamp,
+                gasLimit: envInfo.ParentGasLimit,
+                timestamp: envInfo.ParentTimestamp,
                 extraData: Array.Empty<byte>()
             )
             {
-                Hash = envInfo.PreviousHash,
+                GasUsed = envInfo.ParentGasUsed,
                 BlobGasUsed = envInfo.ParentBlobGasUsed,
                 ExcessBlobGas = envInfo.ParentExcessBlobGas,
                 BaseFeePerGas = envInfo.ParentBaseFee
