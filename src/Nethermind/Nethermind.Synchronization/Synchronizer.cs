@@ -158,10 +158,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.FastSync)
             {
-                if (_syncConfig.FastBlocks)
-                {
-                    StartFastBlocksComponents();
-                }
+                StartFastBlocksComponents();
 
                 StartFastSyncComponents();
 
@@ -191,19 +188,19 @@ namespace Nethermind.Synchronization
 
         private HeadersSyncFeed? CreateHeadersSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync) return null;
             return new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
         }
 
         private BodiesSyncFeed? CreateBodiesSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
             return new BodiesSyncFeed(_specProvider, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _dbProvider.MetadataDb, _logManager);
         }
 
         private ReceiptsSyncFeed? CreateReceiptsSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
             return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.MetadataDb, _logManager);
         }
 

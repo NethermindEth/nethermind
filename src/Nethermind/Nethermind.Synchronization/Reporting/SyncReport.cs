@@ -230,12 +230,11 @@ namespace Nethermind.Synchronization.Reporting
             if (!_logger.IsTrace) return;
 
             bool isFastSync = _syncConfig.FastSync;
-            bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
 
             StringBuilder builder = new();
-            if (isFastSync && isFastBlocks)
+            if (isFastSync)
             {
                 builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
                 if (bodiesInFastBlocks)
@@ -247,10 +246,6 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     builder.Append(" + receipts");
                 }
-            }
-            else if (isFastSync)
-            {
-                builder.Append("Sync config - fast sync without fast blocks");
             }
             else
             {
