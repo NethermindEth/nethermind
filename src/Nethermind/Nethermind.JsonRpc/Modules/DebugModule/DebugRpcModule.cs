@@ -84,7 +84,33 @@ public class DebugRpcModule : IDebugRpcModule
         if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {tx.Hash}, result: trace");
         return ResultWrapper<GethLikeTxTrace>.Success(transactionTrace);
     }
+    
+        public ResultWrapper<IEnumerable<GethLikeTxTrace>> debug_traceCallMany(TransactionForRpc[] calls, BlockParameter? blockParameter = null, GethTraceOptions? options = null)
+    {
+        using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
+        CancellationToken cancellationToken = cancellationTokenSource.Token;
 
+        blockParameter ??= BlockParameter.Latest;
+        Transaction[] txs = new Transaction[calls.Length];
+        for (int i = 0; i < calls.Length; i++)
+        {
+            calls[i].EnsureDefaults(_jsonRpcConfig.GasCap);
+            Transaction tx = calls[i].ToTransaction();
+            txs[i] = tx;
+        }
+        List<GethLikeTxTrace> txnTraces = new List<GethLikeTxTrace>(); 
+        for (int i = 0; i < txs.Length; i++)
+        {
+            GethLikeTxTrace transactionTrace = _debugBridge.GetTransactionTrace(txs[i], blockParameter, cancellationToken, options);
+            if (transactionTrace is null)
+            {
+                return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Fail($"Cannot find transactionTrace for hash: {txs[i].Hash}", ErrorCodes.ResourceNotFound);
+            }
+            if (_logger.IsTrace) _logger.Trace($"{nameof(debug_traceTransaction)} request {txs[i].Hash}, result: trace");
+            txnTraces.Add(transactionTrace);
+        }
+        return ResultWrapper<IEnumerable<GethLikeTxTrace>>.Success(txnTraces.AsEnumerable());
+    }
     public ResultWrapper<GethLikeTxTrace> debug_traceTransactionByBlockhashAndIndex(Hash256 blockhash, int index, GethTraceOptions options = null)
     {
         using CancellationTokenSource cancellationTokenSource = new(_traceTimeout);
