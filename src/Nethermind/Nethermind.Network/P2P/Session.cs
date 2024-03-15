@@ -178,6 +178,8 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            RecordIncomingPacketMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
+
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
@@ -259,12 +261,7 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            byte version = _protocols.TryGetValue(packet.Protocol, out IProtocolHandler? handler)
-                ? handler!.ProtocolVersion
-                : (byte)0;
-            (string, byte, int) metricKey = (packet.Protocol, version, packet.PacketType);
-            IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
-            IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, packet.Data.Length);
+            RecordIncomingPacketMetric(protocol, messageId, packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -668,6 +665,16 @@ namespace Nethermind.Network.P2P
         public void StartTrackingSession()
         {
             _isTracked = true;
+        }
+
+        private void RecordIncomingPacketMetric(string protocol, int packetType, int size)
+        {
+            byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+            (string, byte, int) metricKey = (protocol, version, packetType);
+            IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
         }
 
         private static long IncrementMetric((string, byte, int) _, long value)
