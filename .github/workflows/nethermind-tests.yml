@@ -80,10 +80,6 @@ jobs:
         submodules: recursive
     - name: Set up .NET
       uses: actions/setup-dotnet@v4
-    - name: Install Linux packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install libsnappy-dev -y --no-install-recommends
     - name: ${{ matrix.project }}
       id: test
       run: |
@@ -150,10 +146,6 @@ jobs:
         submodules: recursive
     - name: Set up .NET
       uses: actions/setup-dotnet@v4
-    - name: Install Linux packages
-      run: |
-        sudo apt-get update
-        sudo apt-get install libsnappy-dev -y --no-install-recommends
     - name: ${{ matrix.project }}
       id: test
       run: |
