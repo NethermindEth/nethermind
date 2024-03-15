@@ -7,12 +7,18 @@ namespace Evm.JsonTypes;
 
 public class T8NExecutionResult
 {
-    public PostState PostState;
-    public Dictionary<Address, Account> Alloc;
+    public PostState? PostState;
+    public Dictionary<Address, Account>? Alloc;
+    public string? ErrorMessage;
 
     public T8NExecutionResult(PostState postState, Dictionary<Address, Account> alloc)
     {
         PostState = postState;
         Alloc = alloc;
+    }
+
+    public T8NExecutionResult(string errorMessage)
+    {
+        ErrorMessage = errorMessage;
     }
 }

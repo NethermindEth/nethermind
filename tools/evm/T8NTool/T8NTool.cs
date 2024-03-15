@@ -34,8 +34,7 @@ public class T8NTool
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly LimboLogs _logManager = LimboLogs.Instance;
 
-    public T8NExecutionResult Execute(
-        string inputAlloc,
+    public void Execute(string inputAlloc,
         string inputEnv,
         string inputTxs,
         string outputAlloc,
@@ -50,6 +49,25 @@ public class T8NTool
         bool traceNoReturnData,
         bool traceNoStack,
         bool traceReturnData)
+    {
+        T8NExecutionResult t8NExecutionResult;
+        try
+        {
+            t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork);
+        }
+        catch (Exception e)
+        {
+            t8NExecutionResult = new T8NExecutionResult(e.Message);
+        }
+
+        Console.WriteLine(t8NExecutionResult);
+    }
+
+    public T8NExecutionResult Execute(
+        string inputAlloc,
+        string inputEnv,
+        string inputTxs,
+        string stateFork)
     {
         Dictionary<Address, AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
@@ -177,10 +195,6 @@ public class T8NTool
             accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
         }
 
-        var t8NOutput = new T8NExecutionResult(postState, accounts);
-
-        Console.WriteLine(_ethereumJsonSerializer.Serialize(t8NOutput, true));
-
-        return t8NOutput;
+        return new T8NExecutionResult(postState, accounts);
     }
 }
