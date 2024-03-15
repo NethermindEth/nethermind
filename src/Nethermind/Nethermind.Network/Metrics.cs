@@ -414,7 +414,7 @@ namespace Nethermind.Network
 
         static void TranslateFromMessageNumberToName(NonBlocking.ConcurrentDictionary<(string, byte, int), long> from, NonBlocking.ConcurrentDictionary<(string, string), long> to)
         {
-            foreach (KeyValuePair<(string, byte, int),long> kv in from)
+            foreach (KeyValuePair<(string, byte, int), long> kv in from)
             {
                 if (!MessageNames.TryGetValue((kv.Key.Item1, kv.Key.Item3), out string messageName))
                 {
@@ -454,5 +454,5 @@ namespace Nethermind.Network
                 .Where((field) => field.FieldType.IsAssignableTo(typeof(int)))
                 .Select((field) => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
         }
-     }
+    }
 }

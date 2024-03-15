@@ -178,7 +178,7 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
-            RecordIncomingPacketMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
+            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
@@ -227,13 +227,7 @@ namespace Nethermind.Network.P2P
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             int size = _packetSender.Enqueue(message);
 
-            byte version = _protocols.TryGetValue(message.Protocol, out IProtocolHandler? handler)
-                ? handler!.ProtocolVersion
-                : (byte)0;
-
-            (string, byte, int) metricKey = (message.Protocol, version, message.PacketType);
-            OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
-            OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+            RecordOutgoingMessageMetric(message, size);
 
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
 
@@ -261,7 +255,7 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            RecordIncomingPacketMetric(protocol, messageId, packet.Data.Length);
+            RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -667,7 +661,18 @@ namespace Nethermind.Network.P2P
             _isTracked = true;
         }
 
-        private void RecordIncomingPacketMetric(string protocol, int packetType, int size)
+        private void RecordOutgoingMessageMetric<T>(T message, int size) where T : P2PMessage
+        {
+            byte version = _protocols.TryGetValue(message.Protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+
+            (string, byte, int) metricKey = (message.Protocol, version, message.PacketType);
+            OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+        }
+
+        private void RecordIncomingMessageMetric(string protocol, int packetType, int size)
         {
             byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
                 ? handler!.ProtocolVersion

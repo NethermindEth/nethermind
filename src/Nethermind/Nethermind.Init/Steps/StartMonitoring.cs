@@ -204,10 +204,7 @@ public class StartMonitoring : IStep
             Synchronization.Metrics.SyncTime = (long?)_api.EthSyncingInfo?.UpdateAndGetSyncTime().TotalSeconds ?? 0;
         });
 
-        monitoringService.AddMetricsUpdateAction(() =>
-        {
-            Network.Metrics.UpdateP2PMetrics();
-        });
+        monitoringService.AddMetricsUpdateAction(Network.Metrics.UpdateP2PMetrics);
     }
 
     private void PrepareProductInfoMetrics()
