@@ -91,14 +91,16 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>
         {
+            private readonly int _errorMargin;
             public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
                 : base(blockchainBridge, blockFinder, rpcConfig)
             {
+                _errorMargin = rpcConfig.EstimateErrorMargin;
             }
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
-                BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
+                BlockchainBridge.CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, token);
 
                 if (result.Error is null)
                 {

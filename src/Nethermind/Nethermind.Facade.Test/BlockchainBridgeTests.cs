@@ -133,7 +133,7 @@ namespace Nethermind.Facade.Test
             tx.Data = new byte[0];
             tx.GasLimit = Transaction.BaseTxGasCost;
 
-            var gas = _blockchainBridge.EstimateGas(header, tx, default);
+            var gas = _blockchainBridge.EstimateGas(header, tx, 0, default);
             gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
 
             _transactionProcessor.Received().CallAndRestore(

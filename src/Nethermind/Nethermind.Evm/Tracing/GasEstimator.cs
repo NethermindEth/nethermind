@@ -15,7 +15,11 @@ namespace Nethermind.Evm.Tracing
 {
     public class GasEstimator
     {
-        private const double EstimateGasErrorMargin = 64d / 63d - 1;
+        /// <summary>
+        /// Error margin used if none other is specified expressed in basis points.
+        /// </summary>
+        public const int DefaultErrorMargin = 150;
+
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyStateProvider _stateProvider;
         private readonly ISpecProvider _specProvider;
@@ -32,6 +36,12 @@ namespace Nethermind.Evm.Tracing
 
         public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, CancellationToken token = new())
         {
+            return Estimate(tx, header, gasTracer, DefaultErrorMargin, token);
+        }
+        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token = new())
+        {
+            if (errorMargin < 0) throw new ArgumentException("Cannot be negative.", nameof(errorMargin));
+            if (errorMargin >= 10000) throw new ArgumentException("Expression cannot exceed 100% in basis points.", nameof(errorMargin));
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
@@ -53,21 +63,22 @@ namespace Nethermind.Evm.Tracing
                 : header.GasLimit;
 
             // Execute binary search to find the optimal gas estimation.
-            return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, token);
+            return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
         }
 
-        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, CancellationToken token)
+        private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
         {
+            double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
             //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced
-            long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * (EstimateGasErrorMargin + 1));
+            long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
             if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
                 rightBound = optimisticGasEstimate;
             else
                 leftBound = optimisticGasEstimate;
 
             long cap = rightBound;
-            //This will match Geth's approach by stopping, when the estimation is within a certain margin of error
-            while ((rightBound - leftBound) / (double)leftBound > EstimateGasErrorMargin
+            //This is similar to Geth's approach by stopping, when the estimation is within a certain margin of error
+            while ((rightBound - leftBound) / (double)leftBound > (marginWithDecimals - 1)
                 && leftBound + 1 < rightBound)
             {
                 long mid = (leftBound + rightBound) / 2;
