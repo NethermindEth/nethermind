@@ -53,8 +53,10 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo) {
-            if (!_validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey)) {
+        foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo)
+        {
+            if (!_validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
+            {
                 throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator");
             }
         }
