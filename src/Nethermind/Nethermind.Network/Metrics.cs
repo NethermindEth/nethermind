@@ -400,34 +400,34 @@ namespace Nethermind.Network
             TranslateFromMessageNumberToName(Session.IncomingP2PMessageBytes, IncomingP2PMessageBytes);
         }
 
-        static void TranslateFromMessageNumberToName(NonBlocking.ConcurrentDictionary<(string, int), long> from, NonBlocking.ConcurrentDictionary<(string, string), long> to)
+        static void TranslateFromMessageNumberToName(NonBlocking.ConcurrentDictionary<(string, byte, int), long> from, NonBlocking.ConcurrentDictionary<(string, string), long> to)
         {
-            foreach (KeyValuePair<(string, int),long> kv in from)
+            foreach (KeyValuePair<(string, byte, int),long> kv in from)
             {
                 if (!MessageNames.TryGetValue(kv.Key, out string messageName))
                 {
 #if DEBUG
                     throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item2} not set.");
 #endif
-
                     messageName = kv.Key.Item2.ToString(); // Just use the integer directly then
                 }
 
-                to[(kv.Key.Item1, messageName)] = kv.Value;
+                to[(kv.Key.Item1 + kv.Key.Item2, messageName)] = kv.Value;
             }
         }
 
         // Should this be in a different place? Maybe. Still not sure.
-        private static FrozenDictionary<(string, int), string> MessageNames =
-            FromMessageCodeClass("snap0", typeof(SnapMessageCode))
+        private static FrozenDictionary<(string, byte, int), string> MessageNames =
+            FromMessageCodeClass("p2p", 0, typeof(P2PMessageCode))
+                .Concat(FromMessageCodeClass("snap", 0, typeof(SnapMessageCode)))
                 .ToFrozenDictionary();
 
-        static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType)
+        static IEnumerable<KeyValuePair<(string, byte, int), string>> FromMessageCodeClass(string protocol, byte version, Type classType)
         {
             return classType.GetFields(
                     BindingFlags.Public | BindingFlags.Static)
                 .Where((field) => field.FieldType.IsAssignableTo(typeof(int)))
-                .Select((field) => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
+                .Select((field) => KeyValuePair.Create((protocol, version, (int)field.GetValue(null)), field.Name));
         }
      }
 }

@@ -225,11 +225,14 @@ namespace Nethermind.Network.P2P
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             int size = _packetSender.Enqueue(message);
 
-            OutgoingP2PMessages.AddOrUpdate((message.Protocol, message.PacketType), 0, static (_, v) => v + 1);
-            IncomingP2PMessageBytes.AddOrUpdate((message.Protocol, message.PacketType),
-                static (_, _) => 0,
-                static (_, v, arg) => v + arg,
-                size);
+            byte version = _protocols.TryGetValue(message.Protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+
+            (string, byte, int) metricKey = (message.Protocol, version, message.PacketType);
+            OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
 
             return size;
@@ -256,11 +259,12 @@ namespace Nethermind.Network.P2P
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
 
-            IncomingP2PMessages.AddOrUpdate((protocol, messageId), 0, static (_, v) => v + 1);
-            IncomingP2PMessageBytes.AddOrUpdate((protocol, messageId),
-                static (_, _) => 0,
-                static (_, v, arg) => v + arg,
-                packet.Data.Length);
+            byte version = _protocols.TryGetValue(packet.Protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+            (string, byte, int) metricKey = (packet.Protocol, version, packet.PacketType);
+            IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -666,11 +670,26 @@ namespace Nethermind.Network.P2P
             _isTracked = true;
         }
 
+        private static long IncrementMetric((string, byte, int) _, long value)
+        {
+            return value + 1;
+        }
+
+        private static long ZeroMetric((string, byte, int) _, int i)
+        {
+            return 0;
+        }
+
+        private static long AddMetric((string, byte, int) _, long value, int toAdd)
+        {
+            return value + toAdd;
+        }
+
         // So it does not set the metric directly because we don't have the string name of the message id at this point
         // and even if we do, we kinda want to avoid the string lookup overhead in this relatively critical portion of the code.
-        public static NonBlocking.ConcurrentDictionary<(string, int), long> OutgoingP2PMessages = new();
-        public static NonBlocking.ConcurrentDictionary<(string, int), long> OutgoingP2PMessageBytes = new();
-        public static NonBlocking.ConcurrentDictionary<(string, int), long> IncomingP2PMessages = new();
-        public static NonBlocking.ConcurrentDictionary<(string, int), long> IncomingP2PMessageBytes = new();
+        public static NonBlocking.ConcurrentDictionary<(string, byte, int), long> OutgoingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, byte, int), long> OutgoingP2PMessageBytes = new();
+        public static NonBlocking.ConcurrentDictionary<(string, byte, int), long> IncomingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, byte, int), long> IncomingP2PMessageBytes = new();
     }
 }
