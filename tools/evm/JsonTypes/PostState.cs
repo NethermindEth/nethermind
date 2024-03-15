@@ -4,12 +4,10 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
-using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
 
-namespace JsonTypes;
+namespace Evm.JsonTypes;
 
-public class ExecutionResult
+public class PostState
 {
 
     public Hash256? StateRoot { get; set; }
@@ -19,7 +17,6 @@ public class ExecutionResult
     public Bloom? Bloom { get; set; }
     public TxReceipt[]? Receipts { get; set; }
     public RejectedTx[]? Rejected { get; set; }
-    [JsonConverter(typeof(NullableUInt256Converter))]
     public UInt256? Difficulty { get; set; }
     public UInt256? GasUsed { get; set; }
     public Hash256? BaseFee { get; set; }

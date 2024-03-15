@@ -1,84 +1,40 @@
+﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-License-Identifier: LGPL-3.0-only
+
+using Ethereum.Test.Base;
 using Evm.JsonTypes;
-using JsonTypes;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus.Validators;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Serialization.Json;
-using Nethermind.State.Proofs;
-
-namespace Evm;
-using Ethereum.Test.Base;
 using Nethermind.Db;
-using Nethermind.Specs;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Nethermind.Trie.Pruning;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Core.Crypto;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
-using Nethermind.Consensus.Validators;
-using Nethermind.Int256;
-using Nethermind.Evm.TransactionProcessing;
-using Nethermind.Serialization.Rlp;
 
+namespace Evm.T8NTool;
 
-
-public class TraceOptions
-{
-    public bool Memory { get; set; }
-    public bool NoMemory { get; set; }
-    public bool NoReturnData { get; set; }
-    public bool NoStack { get; set; }
-    public bool ReturnData { get; set; }
-}
-
-public class T8N
+public class T8NTool
 {
     private readonly TxDecoder _txDecoder = new();
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly LimboLogs _logManager = LimboLogs.Instance;
 
-    public static async Task<int> HandleAsync(
-        string inputAlloc,
-        string inputEnv,
-        string inputTxs,
-        string outputAlloc,
-        string? outputBaseDir,
-        string? outputBody,
-        string outputResult,
-        int stateChainId,
-        string stateFork,
-        int stateReward,
-        TraceOptions traceOpts
-        )
-    {
-        var t8n = new T8N();
-        await t8n.RunAsync(
-            inputAlloc,
-            inputEnv,
-            inputTxs,
-            outputAlloc,
-            outputBaseDir,
-            outputBody,
-            outputResult,
-            stateChainId,
-            stateFork,
-            stateReward,
-            traceOpts.Memory,
-            traceOpts.NoMemory,
-            traceOpts.NoReturnData,
-            traceOpts.NoStack,
-            traceOpts.ReturnData
-            );
-        return 0;
-    }
-
-    public Task RunAsync(
+    public T8NExecutionResult Execute(
         string inputAlloc,
         string inputEnv,
         string inputTxs,
@@ -204,7 +160,7 @@ public class T8N
         Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
 
-        var executionResult = new ExecutionResult
+        var postState = new PostState
         {
             StateRoot = stateRoot,
             TxRoot = txRoot,
@@ -216,13 +172,16 @@ public class T8N
         };
 
         var accounts = allocJson.Keys.ToDictionary(address => address, address => stateProvider.GetAccount(address));
-        accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
+        if (header.Beneficiary != null)
+        {
+            accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
+        }
 
-        var t8NOutput = new T8NOutput(executionResult, accounts);
+        var t8NOutput = new T8NExecutionResult(postState, accounts);
 
         Console.WriteLine(_ethereumJsonSerializer.Serialize(t8NOutput, true));
 
-        return Task.CompletedTask;
+        return t8NOutput;
     }
 
     private static void InitializeFromAlloc(Dictionary<Address, AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)

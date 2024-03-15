@@ -1,8 +1,16 @@
 using System.CommandLine;
-using Evm;
 
-namespace Nethermind.Tools.t8n
+namespace Evm
 {
+    public class TraceOptions
+    {
+        public bool Memory { get; set; }
+        public bool NoMemory { get; set; }
+        public bool NoReturnData { get; set; }
+        public bool NoStack { get; set; }
+        public bool ReturnData { get; set; }
+    }
+
     public static class Program
     {
         public static async Task Main(string[] args)
@@ -54,6 +62,7 @@ namespace Nethermind.Tools.t8n
             cmd.AddAlias("transition");
             rootCmd.Add(cmd);
 
+            var t8NTool = new T8NTool.T8NTool();
 
 
             cmd.SetHandler(
@@ -69,18 +78,23 @@ namespace Nethermind.Tools.t8n
                         NoStack = context.ParseResult.GetValueForOption<bool>(traceNoStackOpt),
                         ReturnData = context.ParseResult.GetValueForOption<bool>(traceReturnDataOpt),
                     };
-                    await T8N.HandleAsync(
-                        context.ParseResult.GetValueForOption<string>(inputAllocOpt),
-                        context.ParseResult.GetValueForOption<string>(inputEnvOpt),
-                        context.ParseResult.GetValueForOption<string>(inputTxsOpt),
-                        context.ParseResult.GetValueForOption<string>(outputAllocOpt),
-                        context.ParseResult.GetValueForOption<string>(outputBaseDirOpt),
-                        context.ParseResult.GetValueForOption<string>(outputBodyOpt),
-                        context.ParseResult.GetValueForOption<string>(outputResultOpt),
-                        context.ParseResult.GetValueForOption<int>(stateChainIdOpt),
-                        context.ParseResult.GetValueForOption<string>(stateForkOpt),
-                        context.ParseResult.GetValueForOption<int>(stateRewardOpt),
-                        traceOpts
+
+                    t8NTool.Execute(
+                        context.ParseResult.GetValueForOption(inputAllocOpt),
+                        context.ParseResult.GetValueForOption(inputEnvOpt),
+                        context.ParseResult.GetValueForOption(inputTxsOpt),
+                        context.ParseResult.GetValueForOption(outputAllocOpt),
+                        context.ParseResult.GetValueForOption(outputBaseDirOpt),
+                        context.ParseResult.GetValueForOption(outputBodyOpt),
+                        context.ParseResult.GetValueForOption(outputResultOpt),
+                        context.ParseResult.GetValueForOption(stateChainIdOpt),
+                        context.ParseResult.GetValueForOption(stateForkOpt),
+                        context.ParseResult.GetValueForOption(stateRewardOpt),
+                        traceOpts.Memory,
+                        traceOpts.NoMemory,
+                        traceOpts.NoReturnData,
+                        traceOpts.NoStack,
+                        traceOpts.ReturnData
                         );
                 });
         }
