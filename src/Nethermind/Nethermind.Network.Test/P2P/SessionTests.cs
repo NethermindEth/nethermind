@@ -625,9 +625,9 @@ namespace Nethermind.Network.Test.P2P
         public void UpdateMetric()
         {
             Session.IncomingP2PMessages.Clear();
-            Session.IncomingP2PMessages.TryAdd(("p2p", 0, 0), 111);
+            Session.IncomingP2PMessages.TryAdd(("p2p", 5, 0), 111);
             Metrics.UpdateP2PMetrics();
-            Metrics.IncomingP2PMessages[("p2p0", "Hello")].Should().Be(111);
+            Metrics.IncomingP2PMessages[("p2p5", "Hello")].Should().Be(111);
         }
     }
 }

@@ -11,7 +11,15 @@ using System.Reflection;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
+using Nethermind.Network.P2P.Subprotocols.Eth.V68;
+using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
+using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -409,7 +417,8 @@ namespace Nethermind.Network
 #if DEBUG
                     throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item2} not set.");
 #endif
-                    messageName = kv.Key.Item2.ToString(); // Just use the integer directly then
+
+                    messageName = kv.Key.Item3.ToString(); // Just use the integer directly then
                 }
 
                 to[(kv.Key.Item1 + kv.Key.Item2, messageName)] = kv.Value;
@@ -418,8 +427,30 @@ namespace Nethermind.Network
 
         // Should this be in a different place? Maybe. Still not sure.
         private static FrozenDictionary<(string, byte, int), string> MessageNames =
-            FromMessageCodeClass("p2p", 0, typeof(P2PMessageCode))
-                .Concat(FromMessageCodeClass("snap", 0, typeof(SnapMessageCode)))
+            FromMessageCodeClass("p2p", 5, typeof(P2PMessageCode))
+
+                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth62MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth63MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth65MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth66MessageCode)))
+
+                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth62MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth63MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth65MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth66MessageCode)))
+
+                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth62MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth63MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth65MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth66MessageCode)))
+                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth68MessageCode)))
+
+                .Concat(FromMessageCodeClass("nodedata", 1, typeof(NodeDataMessageCode)))
+                .Concat(FromMessageCodeClass("wit", 0, typeof(WitMessageCode)))
+                .Concat(FromMessageCodeClass("les", 0, typeof(LesMessageCode)))
+
+                .Concat(FromMessageCodeClass("snap", 1, typeof(SnapMessageCode)))
+
                 .ToFrozenDictionary();
 
         static IEnumerable<KeyValuePair<(string, byte, int), string>> FromMessageCodeClass(string protocol, byte version, Type classType)
