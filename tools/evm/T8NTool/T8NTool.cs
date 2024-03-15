@@ -82,9 +82,9 @@ public class T8NTool
             virtualMachine,
             _logManager);
 
-        InitializeFromAlloc(allocJson, stateProvider, specProvider);
+        GeneralStateTestBase.InitializeTestPreState(allocJson, stateProvider, specProvider);
 
-        IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
+        var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
         foreach (Transaction transaction in transactions)
         {
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
@@ -182,22 +182,5 @@ public class T8NTool
         Console.WriteLine(_ethereumJsonSerializer.Serialize(t8NOutput, true));
 
         return t8NOutput;
-    }
-
-    private static void InitializeFromAlloc(Dictionary<Address, AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
-    {
-        foreach ((Address address, AccountState accountState) in alloc)
-        {
-            foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
-            {
-                stateProvider.Set(new StorageCell(address, storageItem.Key), storageItem.Value);
-            }
-            stateProvider.CreateAccount(address, accountState.Balance, accountState.Nonce);
-            stateProvider.InsertCode(address, accountState.Code, specProvider.GenesisSpec);
-        }
-
-        stateProvider.Commit(specProvider.GenesisSpec);
-        stateProvider.CommitTree(0);
-        stateProvider.Reset();
     }
 }
