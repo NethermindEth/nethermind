@@ -170,7 +170,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
 
                     SyncConfig.FastSync = false;
-                    SyncConfig.FastBlocks = false;
                     SyncConfig.PivotNumber = Pivot.Number.ToString();
                     SyncConfig.PivotHash = Keccak.Zero.ToString();
                     SyncConfig.SynchronizationEnabled = true;
@@ -296,7 +295,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks()
+                public ScenarioBuilder IfThisNodeIsInTheMiddleOfFastSyncAndFastBlocks(FastBlocksState fastBlocksState = FastBlocksState.None)
                 {
                     _syncProgressSetups.Add(
                         () =>
@@ -305,7 +304,7 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                             SyncProgressResolver.FindBestFullBlock().Returns(0);
                             SyncProgressResolver.FindBestFullState().Returns(0);
                             SyncProgressResolver.FindBestProcessedBlock().Returns(0);
-                            SyncProgressResolver.IsFastBlocksFinished().Returns(FastBlocksState.None);
+                            SyncProgressResolver.IsFastBlocksFinished().Returns(fastBlocksState);
                             SyncProgressResolver.ChainDifficulty.Returns(UInt256.Zero);
                             return "mid fast sync and fast blocks";
                         }
@@ -678,15 +677,13 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                 public ScenarioBuilder ThenInAnySyncConfiguration()
                 {
                     WhenFullArchiveSyncIsConfigured();
-                    When_FastSync_NoSnapSync_FastBlocks_Configured();
-                    When_FastSync_NoSnapSync_WithoutFastBlocks_Configured();
+                    When_FastSync_NoSnapSync_Configured();
                     return this;
                 }
 
                 public ScenarioBuilder ThenInAnyFastSyncConfiguration()
                 {
-                    When_FastSync_NoSnapSync_FastBlocks_Configured();
-                    When_FastSync_NoSnapSync_WithoutFastBlocks_Configured();
+                    When_FastSync_NoSnapSync_Configured();
                     return this;
                 }
 
@@ -728,12 +725,11 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder When_FastSync_NoSnapSync_FastBlocks_Configured()
+                public ScenarioBuilder When_FastSync_NoSnapSync_Configured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
-                        SyncConfig.FastBlocks = true;
                         SyncConfig.SnapSync = false;
                         return "fast sync with fast blocks";
                     });
@@ -741,52 +737,24 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     return this;
                 }
 
-                public ScenarioBuilder When_FastSync_NoSnapSync_WithoutFastBlocks_Configured()
-                {
-                    _configActions.Add(() =>
-                    {
-                        SyncConfig.FastSync = true;
-                        SyncConfig.FastBlocks = false;
-                        SyncConfig.SnapSync = false;
-                        return "fast sync without fast blocks";
-                    });
-
-                    return this;
-                }
-
-                public ScenarioBuilder WhenSnapSyncWithFastBlocksIsConfigured()
+                public ScenarioBuilder WhenSnapSyncIsConfigured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
                         SyncConfig.SnapSync = true;
-                        SyncConfig.FastBlocks = true;
                         return "snap sync with fast blocks";
                     });
 
                     return this;
                 }
 
-                public ScenarioBuilder WhenFastSyncWithFastBlocksIsConfigured()
+                public ScenarioBuilder WhenFastSyncIsConfigured()
                 {
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = true;
-                        SyncConfig.FastBlocks = true;
                         return "fast sync with fast blocks";
-                    });
-
-                    return this;
-                }
-
-                public ScenarioBuilder WhenSnapSyncWithoutFastBlocksIsConfigured()
-                {
-                    _configActions.Add(() =>
-                    {
-                        SyncConfig.FastSync = true;
-                        SyncConfig.SnapSync = true;
-                        SyncConfig.FastBlocks = false;
-                        return "snap sync without fast blocks";
                     });
 
                     return this;
@@ -797,7 +765,6 @@ namespace Nethermind.Synchronization.Test.ParallelSync
                     _configActions.Add(() =>
                     {
                         SyncConfig.FastSync = false;
-                        SyncConfig.FastBlocks = false;
                         return "full archive";
                     });
 

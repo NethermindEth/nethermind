@@ -184,10 +184,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
         {
-            throw new ApplicationException(
-                $"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
-                $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
-                "or similar depending on your distribution.");
+            throw;
         }
         catch (RocksDbException x) when (x.Message.Contains("LOCK"))
         {
@@ -378,7 +375,23 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         tableOptions.SetFormatVersion(5);
-        tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(10, false));
+        if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
+        {
+            if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
+            {
+                // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
+                // false positive rate. This config allow the use of ribbon filter only for lower levels.
+                IntPtr filter = _rocksDbNative.rocksdb_filterpolicy_create_ribbon_hybrid(
+                    dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(),
+                    dbConfig.UseRibbonFilterStartingFromLevel.Value);
+                tableOptions.SetFilterPolicy(filter);
+            }
+            else
+            {
+                // Bloom filter size for the sst files.
+                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(), false));
+            }
+        }
 
         // Default value is 16.
         // So each block consist of several "restart" and each "restart" is BlockRestartInterval number of key.
@@ -386,7 +399,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval);
+        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
 
         // This adds a hashtable-like index per block (the 16kb block)
         // In theory, this should reduce CPU, but I don't see any different.
@@ -441,8 +454,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         // But read does go through the write buffer first, before going through the rowcache (or is it before memtable?)
         // block cache and then finally the LSM/SST files.
         #region WriteBuffer
+
+        // The memtable have a bloom filter whose size depends on the `prefix_bloom_size_ratio`, which is not actually
+        // just for prefix.
         _rocksDbNative.rocksdb_options_set_memtable_whole_key_filtering(options.Handle, true);
-        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, 0.02);
+        _rocksDbNative.rocksdb_options_set_memtable_prefix_bloom_size_ratio(options.Handle, dbConfig.MemtablePrefixBloomSizeRatio);
 
         // Note: Write buffer and write buffer num are modified by MemoryHintMan.
         ulong writeBufferSize = dbConfig.WriteBufferSize;
@@ -510,7 +526,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This one set the threadpool env, so its actually different from the above two
         options.IncreaseParallelism(Environment.ProcessorCount);
 
-        options.SetLevelCompactionDynamicLevelBytes(false);
+        // Set to true to enable dynamic level bytes. Its drastically different than standard compaction.
+        options.SetLevelCompactionDynamicLevelBytes(dbConfig.LevelCompactionDynamicLevelBytes);
 
         // VERY important to reduce stalls. Allow L0->L1 compaction to happen with multiple thread.
         _rocksDbNative.rocksdb_options_set_max_subcompactions(options.Handle, (uint)Environment.ProcessorCount);
@@ -525,6 +542,9 @@ public class DbOnTheRocks : IDb, ITunableDb
         // filter anyway, and recently written keys are likely to be read and they tend to be at the top of the LSM
         // tree which means they are more cacheable, so at that point you are trading CPU for cacheability.
         options.SetMaxBytesForLevelMultiplier(dbConfig.MaxBytesForLevelMultiplier);
+
+        // How many bytes before the SST files get synced to disk.
+        options.SetBytesPerSync(dbConfig.BytesPerSync);
 
         // For reducing temporarily used disk space but come at the cost of parallel compaction.
         if (dbConfig.MaxCompactionBytes.HasValue)
@@ -558,7 +578,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         options.SetCreateIfMissing();
-        options.SetAdviseRandomOnOpen(true);
+
+        // From looking into the source code, this does not have an effect on Windows.
+        options.SetAdviseRandomOnOpen(dbConfig.AdviseRandomOnOpen);
+
         if (dbConfig.MaxOpenFiles.HasValue)
         {
             options.SetMaxOpenFiles(dbConfig.MaxOpenFiles.Value);
@@ -608,10 +631,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
         _defaultReadOptions = new ReadOptions();
-        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
 
         _hintCacheMissOptions = new ReadOptions();
-        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
         _hintCacheMissOptions.SetFillCache(false);
 
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
@@ -622,7 +645,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }

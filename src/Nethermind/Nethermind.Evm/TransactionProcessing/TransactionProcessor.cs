@@ -127,7 +127,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
-            ExecutionEnvironment env = BuildExecutionEnvironment(tx, blCtx, spec, effectiveGasPrice);
+            ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
@@ -182,7 +182,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
         private static void UpdateMetrics(ExecutionOptions opts, UInt256 effectiveGasPrice)
         {
-            if (opts == ExecutionOptions.Commit || opts == ExecutionOptions.None)
+            if (opts is ExecutionOptions.Commit or ExecutionOptions.None)
             {
                 float gasPrice = (float)((double)effectiveGasPrice / 1_000_000_000.0);
                 Metrics.MinGasPrice = Math.Min(gasPrice, Metrics.MinGasPrice);
@@ -396,7 +396,7 @@ namespace Nethermind.Evm.TransactionProcessing
             return TransactionResult.Ok;
         }
 
-        protected virtual ExecutionEnvironment BuildExecutionEnvironment(
+        protected ExecutionEnvironment BuildExecutionEnvironment(
             Transaction tx,
             in BlockExecutionContext blCtx,
             IReleaseSpec spec,
@@ -407,7 +407,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
             TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
-            CodeInfo codeInfo = tx.IsContractCreation ? new(tx.Data?.AsArray() ?? Array.Empty<byte>())
+            CodeInfo codeInfo = tx.IsContractCreation
+                ? new(tx.Data ?? Memory<byte>.Empty)
                 : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();

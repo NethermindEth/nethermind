@@ -102,7 +102,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _blockTree = Substitute.For<IBlockTree>();
             _metadataDb = new TestMemDb();
 
-            _syncConfig = new SyncConfig { FastBlocks = true, FastSync = true };
+            _syncConfig = new SyncConfig { FastSync = true };
             _syncConfig.PivotNumber = _pivotNumber.ToString();
             _syncConfig.PivotHash = Keccak.Zero.ToString();
 
@@ -140,9 +140,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         }
 
         [Test]
-        public void Should_throw_when_fast_blocks_not_enabled()
+        public void Should_throw_when_fast_block_not_enabled()
         {
-            _syncConfig = new SyncConfig { FastBlocks = false };
+            _syncConfig = new SyncConfig { FastSync = false };
             Assert.Throws<InvalidOperationException>(
                 () => _feed = new ReceiptsSyncFeed(
                     _specProvider,
@@ -412,7 +412,6 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _blockTree = Substitute.For<IBlockTree>();
             _syncConfig = new SyncConfig()
             {
-                FastBlocks = true,
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
@@ -435,7 +434,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
             _blockTree = Substitute.For<IBlockTree>();
             _syncConfig = new SyncConfig()
             {
-                FastBlocks = true,
+                FastSync = true,
                 DownloadBodiesInFastSync = false,
                 DownloadReceiptsInFastSync = true,
                 PivotNumber = "1",
