@@ -33,6 +33,7 @@ class ShutterTxSourceTests
     public void SetUp()
     {
         ILogFinder logFinder = Substitute.For<ILogFinder>();
+        Shutter.Contracts.IValidatorRegistryContract validatorRegistryContract = Substitute.For<Shutter.Contracts.IValidatorRegistryContract>();
 
         List<IFilterLog> logs = new();
 
@@ -50,7 +51,7 @@ class ShutterTxSourceTests
         }
 
         logFinder.FindLogs(Arg.Any<LogFilter>()).Returns(logs);
-        _shutterTxSource = new(Address.Zero.ToString(), logFinder, new FilterStore());
+        _shutterTxSource = new(Address.Zero.ToString(), logFinder, new FilterStore(), validatorRegistryContract, []);
     }
 
     [Test]
