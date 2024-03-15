@@ -224,7 +224,14 @@ namespace Nethermind.Network.P2P
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             int size = _packetSender.Enqueue(message);
+
+            OutgoingP2PMessages.AddOrUpdate((message.Protocol, message.PacketType), 0, static (_, v) => v + 1);
+            IncomingP2PMessageBytes.AddOrUpdate((message.Protocol, message.PacketType),
+                static (_, _) => 0,
+                static (_, v, arg) => v + arg,
+                size);
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+
             return size;
         }
 
@@ -248,6 +255,12 @@ namespace Nethermind.Network.P2P
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
+
+            IncomingP2PMessages.AddOrUpdate((protocol, messageId), 0, static (_, v) => v + 1);
+            IncomingP2PMessageBytes.AddOrUpdate((protocol, messageId),
+                static (_, _) => 0,
+                static (_, v, arg) => v + arg,
+                packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -652,5 +665,12 @@ namespace Nethermind.Network.P2P
         {
             _isTracked = true;
         }
+
+        // So it does not set the metric directly because we don't have the string name of the message id at this point
+        // and even if we do, we kinda want to avoid the string lookup overhead in this relatively critical portion of the code.
+        public static NonBlocking.ConcurrentDictionary<(string, int), long> OutgoingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, int), long> OutgoingP2PMessageBytes = new();
+        public static NonBlocking.ConcurrentDictionary<(string, int), long> IncomingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, int), long> IncomingP2PMessageBytes = new();
     }
 }

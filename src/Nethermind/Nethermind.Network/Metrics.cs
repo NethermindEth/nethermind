@@ -1,10 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Concurrent;
+using System.Collections.Frozen;
+using System.Collections.Generic;
 using System.ComponentModel;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
+using Nethermind.Network.P2P;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -37,27 +41,27 @@ namespace Nethermind.Network
         public static long HandshakeTimeouts { get; set; }
 
         [CounterMetric]
-        [Description("Number of devp2p hello messages received")]
+        [Description("_Deprecated._ Number of devp2p hello messages received")]
         public static long HellosReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of devp2p hello messages sent")]
+        [Description("_Deprecated._ Number of devp2p hello messages sent")]
         public static long HellosSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth status messages received")]
+        [Description("_Deprecated._ Number of eth status messages received")]
         public static long StatusesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth status messages sent")]
+        [Description("_Deprecated._ Number of eth status messages sent")]
         public static long StatusesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of les status messages received")]
+        [Description("_Deprecated._ Number of les status messages received")]
         public static long LesStatusesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of les status messages sent")]
+        [Description("_Deprecated._ Number of les status messages sent")]
         public static long LesStatusesSent { get; set; }
 
         [CounterMetric]
@@ -165,183 +169,183 @@ namespace Nethermind.Network
         public static long LocalTcpSubsystemErrorDisconnects { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 NewBlockHashes messages received")]
+        [Description("_Deprecated._ Number of eth.62 NewBlockHashes messages received")]
         public static long Eth62NewBlockHashesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 Transactions messages received")]
+        [Description("_Deprecated._ Number of eth.62 Transactions messages received")]
         public static long Eth62TransactionsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 GetBlockHeaders messages received")]
+        [Description("_Deprecated._ Number of eth.62 GetBlockHeaders messages received")]
         public static long Eth62GetBlockHeadersReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 BlockHeaders messages received")]
+        [Description("_Deprecated._ Number of eth.62 BlockHeaders messages received")]
         public static long Eth62BlockHeadersReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 GetBlockBodies messages received")]
+        [Description("_Deprecated._ Number of eth.62 GetBlockBodies messages received")]
         public static long Eth62GetBlockBodiesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 BlockBodies messages received")]
+        [Description("_Deprecated._ Number of eth.62 BlockBodies messages received")]
         public static long Eth62BlockBodiesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.62 NewBlock messages received")]
+        [Description("_Deprecated._ Number of eth.62 NewBlock messages received")]
         public static long Eth62NewBlockReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.63 GetReceipts messages received")]
+        [Description("_Deprecated._ Number of eth.63 GetReceipts messages received")]
         public static long Eth63GetReceiptsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.63 Receipts messages received")]
+        [Description("_Deprecated._ Number of eth.63 Receipts messages received")]
         public static long Eth63ReceiptsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.63 GetNodeData messages received")]
+        [Description("_Deprecated._ Number of eth.63 GetNodeData messages received")]
         public static long Eth63GetNodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.63 NodeData messages received")]
+        [Description("_Deprecated._ Number of eth.63 NodeData messages received")]
         public static long Eth63NodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.65 NewPooledTransactionHashes messages received")]
+        [Description("_Deprecated._ Number of eth.65 NewPooledTransactionHashes messages received")]
         public static long Eth65NewPooledTransactionHashesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.65 NewPooledTransactionHashes messages sent")]
+        [Description("_Deprecated._ Number of eth.65 NewPooledTransactionHashes messages sent")]
         public static long Eth65NewPooledTransactionHashesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.68 NewPooledTransactionHashes messages received")]
+        [Description("_Deprecated._ Number of eth.68 NewPooledTransactionHashes messages received")]
         public static long Eth68NewPooledTransactionHashesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.68 NewPooledTransactionHashes messages sent")]
+        [Description("_Deprecated._ Number of eth.68 NewPooledTransactionHashes messages sent")]
         public static long Eth68NewPooledTransactionHashesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.65 GetPooledTransactions messages received")]
+        [Description("_Deprecated._ Number of eth.65 GetPooledTransactions messages received")]
         public static long Eth65GetPooledTransactionsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.65 GetPooledTransactions messages sent")]
+        [Description("_Deprecated._ Number of eth.65 GetPooledTransactions messages sent")]
         public static long Eth65GetPooledTransactionsRequested { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.65 PooledTransactions messages received")]
+        [Description("_Deprecated._ Number of eth.65 PooledTransactions messages received")]
         public static long Eth65PooledTransactionsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetBlockHeaders messages received")]
+        [Description("_Deprecated._ Number of eth.66 GetBlockHeaders messages received")]
         public static long Eth66GetBlockHeadersReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 BlockHeaders messages received")]
+        [Description("_Deprecated._ Number of eth.66 BlockHeaders messages received")]
         public static long Eth66BlockHeadersReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetBlockBodies messages received")]
+        [Description("_Deprecated._ Number of eth.66 GetBlockBodies messages received")]
         public static long Eth66GetBlockBodiesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 BlockBodies messages received")]
+        [Description("_Deprecated._ Number of eth.66 BlockBodies messages received")]
         public static long Eth66BlockBodiesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetNodeData messages received")]
+        [Description("_Deprecated._ Number of eth.66 GetNodeData messages received")]
         public static long Eth66GetNodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 NodeData messages received")]
+        [Description("_Deprecated._ Number of eth.66 NodeData messages received")]
         public static long Eth66NodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetReceipts messages received")]
+        [Description("_Deprecated._ Number of eth.66 GetReceipts messages received")]
         public static long Eth66GetReceiptsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 Receipts messages received")]
+        [Description("_Deprecated._ Number of eth.66 Receipts messages received")]
         public static long Eth66ReceiptsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetPooledTransactions messages received")]
+        [Description("_Deprecated._ Number of eth.66 GetPooledTransactions messages received")]
         public static long Eth66GetPooledTransactionsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 GetPooledTransactions messages sent")]
+        [Description("_Deprecated._ Number of eth.66 GetPooledTransactions messages sent")]
         public static long Eth66GetPooledTransactionsRequested { get; set; }
 
         [CounterMetric]
-        [Description("Number of eth.66 PooledTransactions messages received")]
+        [Description("_Deprecated._ Number of eth.66 PooledTransactions messages received")]
         public static long Eth66PooledTransactionsReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetAccountRange messages received")]
+        [Description("_Deprecated._ Number of SNAP GetAccountRange messages received")]
         public static long SnapGetAccountRangeReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetAccountRange messages sent")]
+        [Description("_Deprecated._ Number of SNAP GetAccountRange messages sent")]
         public static long SnapGetAccountRangeSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP AccountRange messages received")]
+        [Description("_Deprecated._ Number of SNAP AccountRange messages received")]
         public static long SnapAccountRangeReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetStorageRanges messages received")]
+        [Description("_Deprecated._ Number of SNAP GetStorageRanges messages received")]
         public static long SnapGetStorageRangesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetStorageRanges messages sent")]
+        [Description("_Deprecated._ Number of SNAP GetStorageRanges messages sent")]
         public static long SnapGetStorageRangesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP StorageRanges messages received")]
+        [Description("_Deprecated._ Number of SNAP StorageRanges messages received")]
         public static long SnapStorageRangesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetByteCodes messages received")]
+        [Description("_Deprecated._ Number of SNAP GetByteCodes messages received")]
         public static long SnapGetByteCodesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetByteCodes messages sent")]
+        [Description("_Deprecated._ Number of SNAP GetByteCodes messages sent")]
         public static long SnapGetByteCodesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP ByteCodes messages received")]
+        [Description("_Deprecated._ Number of SNAP ByteCodes messages received")]
         public static long SnapByteCodesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetTrieNodes messages received")]
+        [Description("_Deprecated._ Number of SNAP GetTrieNodes messages received")]
         public static long SnapGetTrieNodesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP GetTrieNodes messages sent")]
+        [Description("_Deprecated._ Number of SNAP GetTrieNodes messages sent")]
         public static long SnapGetTrieNodesSent { get; set; }
 
         [CounterMetric]
-        [Description("Number of SNAP TrieNodes messages received")]
+        [Description("_Deprecated._ Number of SNAP TrieNodes messages received")]
         public static long SnapTrieNodesReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of GetNodeData messages received via NodeData protocol")]
+        [Description("_Deprecated._ Number of GetNodeData messages received via NodeData protocol")]
         public static long GetNodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of NodeData messages received via NodeData protocol")]
+        [Description("_Deprecated._ Number of NodeData messages received via NodeData protocol")]
         public static long NodeDataReceived { get; set; }
 
         [CounterMetric]
-        [Description("Number of bytes sent through P2P (TCP).")]
+        [Description("_Deprecated._ Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;
 
         [CounterMetric]
-        [Description("Number of bytes received through P2P (TCP).")]
+        [Description("_Deprecated._ Number of bytes received through P2P (TCP).")]
         public static long P2PBytesReceived;
 
         [CounterMetric]
@@ -364,5 +368,56 @@ namespace Nethermind.Network
         [Description("The maximum number of peers this node allows to connect.")]
         [DataMember(Name = "ethereum_peer_limit")]
         public static long PeerLimit { get; set; }
+
+        [CounterMetric]
+        [Description("Number of outgoing p2p packets.")]
+        [KeyIsLabel("protocol", "message")]
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessages = new();
+
+        [CounterMetric]
+        [Description("Bytes of outgoing p2p packets.")]
+        [KeyIsLabel("protocol", "message")]
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessageBytes = new();
+
+        [CounterMetric]
+        [Description("Number of incoming p2p packets.")]
+        [KeyIsLabel("protocol", "message")]
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessages = new();
+
+        [CounterMetric]
+        [Description("Bytes of incoming p2p packets.")]
+        [KeyIsLabel("protocol", "message")]
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessageBytes = new();
+
+        public static void UpdateP2PMetrics()
+        {
+            TranslateFromMessageNumberToName(Session.OutgoingP2PMessages, OutgoingP2PMessages);
+            TranslateFromMessageNumberToName(Session.OutgoingP2PMessageBytes, OutgoingP2PMessageBytes);
+            TranslateFromMessageNumberToName(Session.IncomingP2PMessages, IncomingP2PMessages);
+            TranslateFromMessageNumberToName(Session.IncomingP2PMessageBytes, IncomingP2PMessageBytes);
+        }
+
+        static void TranslateFromMessageNumberToName(NonBlocking.ConcurrentDictionary<(string, int), long> from, NonBlocking.ConcurrentDictionary<(string, string), long> to)
+        {
+            foreach (KeyValuePair<(string, int),long> kv in from)
+            {
+                if (!MessageNames.TryGetValue(kv.Key, out string messageName))
+                {
+#if DEBUG
+                    throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item2} not set.");
+#endif
+
+                    messageName = kv.Key.Item2.ToString(); // Just use the integer directly then
+                }
+
+                to[(kv.Key.Item1, messageName)] = kv.Value;
+            }
+        }
+
+        // Should this be in a different place? Maybe. Still not sure.
+        private static FrozenDictionary<(string, int), string> MessageNames = new Dictionary<(string, int), string>()
+        {
+
+        }.ToFrozenDictionary();
     }
 }
