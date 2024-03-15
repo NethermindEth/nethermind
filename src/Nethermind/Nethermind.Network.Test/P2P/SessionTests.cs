@@ -13,6 +13,7 @@ using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats.Model;
+using NonBlocking;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
 using NUnit.Framework;
@@ -618,6 +619,15 @@ namespace Nethermind.Network.Test.P2P
             afterRemote = Network.Metrics.OtherDisconnects;
             Assert.That(afterLocal, Is.EqualTo(beforeLocal));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
+        }
+
+        [Test]
+        public void UpdateMetric()
+        {
+            Session.IncomingP2PMessages.Clear();
+            Session.IncomingP2PMessages.TryAdd(("snap0", 0), 111);
+            Metrics.UpdateP2PMetrics();
+            Metrics.IncomingP2PMessages[("snap0", "GetAccountRange")].Should().Be(111);
         }
     }
 }

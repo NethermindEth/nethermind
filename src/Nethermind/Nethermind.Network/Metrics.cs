@@ -6,9 +6,12 @@ using System.Collections.Concurrent;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.ComponentModel;
+using System.Linq;
+using System.Reflection;
 using System.Runtime.Serialization;
 using Nethermind.Core.Attributes;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Stats.Model;
 
 namespace Nethermind.Network
@@ -415,9 +418,16 @@ namespace Nethermind.Network
         }
 
         // Should this be in a different place? Maybe. Still not sure.
-        private static FrozenDictionary<(string, int), string> MessageNames = new Dictionary<(string, int), string>()
-        {
+        private static FrozenDictionary<(string, int), string> MessageNames =
+            FromMessageCodeClass("snap0", typeof(SnapMessageCode))
+                .ToFrozenDictionary();
 
-        }.ToFrozenDictionary();
-    }
+        static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType)
+        {
+            return classType.GetFields(
+                    BindingFlags.Public | BindingFlags.Static)
+                .Where((field) => field.FieldType.IsAssignableTo(typeof(int)))
+                .Select((field) => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
+        }
+     }
 }
