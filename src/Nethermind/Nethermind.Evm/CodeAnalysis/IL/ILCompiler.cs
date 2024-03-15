@@ -165,26 +165,90 @@ internal class ILCompiler
                     break;
 
                 case Instruction.MOD:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
+                        il => {
+                            Label label = il.DefineLabel();
+
+                            il.Emit(OpCodes.Dup);
+                            il.Emit(OpCodes.Ldc_I4_0);
+                            il.Emit(OpCodes.Ceq);
+
+                            il.Emit(OpCodes.Brfalse, label);
+
+                            il.Emit(OpCodes.Ldc_I4_0);
+
+                            il.MarkLabel(label);
+                        });
                     break;
 
                 case Instruction.DIV:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
+                        il => {
+                            Label label = il.DefineLabel();
+
+                            il.Emit(OpCodes.Dup);
+                            il.Emit(OpCodes.Ldc_I4_0);
+                            il.Emit(OpCodes.Ceq);
+
+                            il.Emit(OpCodes.Brfalse, label);
+
+                            il.Emit(OpCodes.Ldc_I4_0);
+
+                            il.MarkLabel(label);
+                        });
                     break;
 
                 case Instruction.EXP:
                     EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
                     break;
+                case Instruction.LT:
+                    EmitComparaisonUInt256Method(il, current, typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256), typeof(UInt256) }));
+                    break;
+                case Instruction.GT:
+                    EmitComparaisonUInt256Method(il, current, typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256), typeof(UInt256) }));
+                    break;
+                case Instruction.EQ:
+                    EmitComparaisonUInt256Method(il, current, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256), typeof(UInt256) }));
+                    break;
+                case Instruction.ISZERO:
+                    il.StackLoadPrevious(current, 1);
+                    il.EmitCall(OpCodes.Call, Word.GetIsZero, null);
+                    il.StackPush(current);
+                    il.StackPop(current, 1);
+                    break;
+
             }
         }
+
+        Func<long, EvmExceptionType> del = method.CreateDelegate<Func<long, EvmExceptionType>>();
+        return del;
     }
 
-    private static void EmitBinaryUInt256Method(ILGenerator il, LocalBuilder uint256R, LocalBuilder current, MethodInfo operation)
+    private static void EmitComparaisonUInt256Method(ILGenerator il, LocalBuilder current, MethodInfo operatin)
     {
         il.StackLoadPrevious(current, 1);
         il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
         il.StackLoadPrevious(current, 2);
         il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        // invoke op < on the uint256
+        il.EmitCall(OpCodes.Call, operatin, null);
+        // if true, push 1, else 0
+        il.Emit(OpCodes.Ldc_I4_0);
+        il.Emit(OpCodes.Ceq);
+        il.StackPush(current);
+        il.StackPop(current, 2);
+    }
+
+    private static void EmitBinaryUInt256Method(ILGenerator il, LocalBuilder uint256R, LocalBuilder current, MethodInfo operation, Action<ILGenerator> customHandling = null)
+    {
+        il.StackLoadPrevious(current, 1);
+        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        il.StackLoadPrevious(current, 2);
+        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+
+        customHandling.Invoke(il);
+
+
         il.EmitCall(OpCodes.Call, operation, null);
         il.Store(uint256R);
         il.StackPop(current, 2);
@@ -203,7 +267,7 @@ internal class ILCompiler
 
         for (int pc = 0; pc < code.Length; pc++)
         {
-            OpcodeInfo op = OpcodeInfo.Operations[(Instruction)code[pc]]
+            OpcodeInfo op = OpcodeInfo.Operations[(Instruction)code[pc]];
             switch (op.Instruction)
             {
                 case Instruction.JUMPDEST:
