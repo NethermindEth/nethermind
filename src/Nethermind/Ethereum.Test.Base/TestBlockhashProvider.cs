@@ -17,9 +17,12 @@ namespace Ethereum.Test.Base
             return _blockHashes[number] ?? throw new InvalidDataException($"BlockHash for block {number} not provided");
         }
 
-        public void Insert(Hash256 blockHash, long number)
+        public void Insert(Hash256? blockHash, long number)
         {
-            _blockHashes.Add(number, blockHash);
+          if (blockHash != null)
+          {
+            _blockHashes[number] = blockHash;
+          }
         }
     }
 }

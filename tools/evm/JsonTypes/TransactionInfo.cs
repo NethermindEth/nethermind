@@ -40,12 +40,6 @@ namespace Evm.JsonTypes
             transactionBuilder.WithTo(To);
             transactionBuilder.WithNonce(Nonce);
             transactionBuilder.WithGasLimit(Gas);
-            if (SecretKey != null)
-            {
-                var privateKey = new PrivateKey(SecretKey);
-                transactionBuilder.WithSenderAddress(privateKey.Address);
-            }
-
             transactionBuilder.WithType(Type);
             transactionBuilder.WithGasPrice(GasPrice);
             AccessList.Builder builder = new();
@@ -67,7 +61,8 @@ namespace Evm.JsonTypes
             if (SecretKey != null)
             {
                 var privateKey = new PrivateKey(SecretKey);
-                transactionBuilder.Signed(privateKey);
+                transactionBuilder.WithSenderAddress(privateKey.Address);
+                transactionBuilder.Signed(privateKey, Protected ?? true);
             }
             else
             {

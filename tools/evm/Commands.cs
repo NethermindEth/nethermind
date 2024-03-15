@@ -95,7 +95,7 @@ public class T8N
         bool traceNoStack,
         bool traceReturnData)
     {
-        Dictionary<Address, AccountStateJson> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountStateJson>>(File.ReadAllText(inputAlloc));
+        Dictionary<Address, AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
         List<Transaction> transactions;
         if (inputTxs.EndsWith(".json")) {
@@ -134,23 +134,9 @@ public class T8N
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
         }
 
-        BlockHeader header = new(
-            Keccak.Zero,
-            Keccak.OfAnEmptySequenceRlp,
-            envInfo.CurrentCoinbase,
-            envInfo.CurrentDifficulty,
-            envInfo.CurrentNumber,
-            envInfo.CurrentGasLimit,
-            envInfo.CurrentTimestamp,
-            Array.Empty<byte>()
-        )
-        {
-            ExcessBlobGas = envInfo.CurrentExcessBlobGas,
-            ParentBeaconBlockRoot = envInfo.ParentBeaconBlockRoot,
-            BaseFeePerGas = envInfo.CurrentBaseFee
-        };
-        header.Hash = header.CalculateHash();
+        BlockHeader header = envInfo.GetBlockHeader();
         blockhashProvider.Insert(header.Hash, header.Number);
+
         foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envInfo.BlockHashes)
         {
             blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
@@ -159,28 +145,17 @@ public class T8N
         TxValidator txValidator = new(MainnetSpecProvider.Instance.ChainId);
         IReleaseSpec spec = specProvider.GetSpec((ForkActivation)envInfo.CurrentNumber);
         IReceiptSpec receiptSpec = specProvider.GetSpec(header);
-        if (envInfo.ParentBlobGasUsed is not null && envInfo.ParentExcessBlobGas is not null)
+        BlockHeader parent = envInfo.GetParentBlockHeader();
+        header.ExcessBlobGas ??= BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+        if (header.BaseFeePerGas.IsZero)
         {
-            BlockHeader parent = new(
-                parentHash: Keccak.Zero,
-                unclesHash: Keccak.OfAnEmptySequenceRlp,
-                beneficiary: envInfo.CurrentCoinbase,
-                difficulty: envInfo.ParentDifficulty,
-                number: envInfo.CurrentNumber - 1,
-                gasLimit: envInfo.ParentGasLimit,
-                timestamp: envInfo.ParentTimestamp,
-                extraData: Array.Empty<byte>()
-            )
+            if (spec.IsEip1559Enabled && parent.BaseFeePerGas.IsZero)
             {
-                GasUsed = envInfo.ParentGasUsed,
-                BlobGasUsed = envInfo.ParentBlobGasUsed,
-                ExcessBlobGas = envInfo.ParentExcessBlobGas,
-                BaseFeePerGas = envInfo.ParentBaseFee
-            };
-            header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+                throw new Exception("EIP-1559 config but missing 'currentBaseFee' in env section");
+            }
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
-            blockhashProvider.Insert(parent.Hash, parent.Number);
         }
+        blockhashProvider.Insert(parent.Hash, parent.Number);
 
         List<Transaction> successfulTxs = [];
         List<TxReceipt> successfulTxReceipts = [];
@@ -250,11 +225,10 @@ public class T8N
         return Task.CompletedTask;
     }
 
-    private static void InitializeFromAlloc(Dictionary<Address, AccountStateJson> alloc, WorldState stateProvider, ISpecProvider specProvider)
+    private static void InitializeFromAlloc(Dictionary<Address, AccountState> alloc, WorldState stateProvider, ISpecProvider specProvider)
     {
-        foreach ((Address address, AccountStateJson accountStateJson) in alloc)
+        foreach ((Address address, AccountState accountState) in alloc)
         {
-            AccountState accountState = JsonToEthereumTest.Convert(accountStateJson);
             foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
             {
                 stateProvider.Set(new StorageCell(address, storageItem.Key), storageItem.Value);
