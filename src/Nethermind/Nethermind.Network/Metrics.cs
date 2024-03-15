@@ -381,24 +381,28 @@ namespace Nethermind.Network
         public static long PeerLimit { get; set; }
 
         [CounterMetric]
+        [DataMember(Name = "nethermind_outgoing_p2p_messages")]
         [Description("Number of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessages { get; } = new();
 
         [CounterMetric]
+        [DataMember(Name = "nethermind_outgoing_p2p_message_bytes")]
         [Description("Bytes of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessageBytes = new();
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessageBytes { get; } = new();
 
         [CounterMetric]
+        [DataMember(Name = "nethermind_incoming_p2p_messages")]
         [Description("Number of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessages = new();
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessages { get; } = new();
 
         [CounterMetric]
+        [DataMember(Name = "nethermind_incoming_p2p_message_bytes")]
         [Description("Bytes of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessageBytes = new();
+        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessageBytes { get; } = new();
 
         public static void UpdateP2PMetrics()
         {
@@ -412,7 +416,7 @@ namespace Nethermind.Network
         {
             foreach (KeyValuePair<(string, byte, int),long> kv in from)
             {
-                if (!MessageNames.TryGetValue(kv.Key, out string messageName))
+                if (!MessageNames.TryGetValue((kv.Key.Item1, kv.Key.Item3), out string messageName))
                 {
 #if DEBUG
                     throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item2} not set.");
@@ -426,39 +430,29 @@ namespace Nethermind.Network
         }
 
         // Should this be in a different place? Maybe. Still not sure.
-        private static FrozenDictionary<(string, byte, int), string> MessageNames =
-            FromMessageCodeClass("p2p", 5, typeof(P2PMessageCode))
+        private static FrozenDictionary<(string, int), string> MessageNames =
+            FromMessageCodeClass("p2p", typeof(P2PMessageCode))
 
-                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth62MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth63MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth65MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 66, typeof(Eth66MessageCode)))
+                .Concat(FromMessageCodeClass("eth", typeof(Eth62MessageCode)))
+                .Concat(FromMessageCodeClass("eth", typeof(Eth63MessageCode)))
+                .Concat(FromMessageCodeClass("eth", typeof(Eth65MessageCode)))
+                .Concat(FromMessageCodeClass("eth", typeof(Eth66MessageCode)))
+                .Concat(FromMessageCodeClass("eth", typeof(Eth68MessageCode)))
 
-                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth62MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth63MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth65MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 67, typeof(Eth66MessageCode)))
+                .Concat(FromMessageCodeClass("nodedata", typeof(NodeDataMessageCode)))
+                .Concat(FromMessageCodeClass("wit", typeof(WitMessageCode)))
+                .Concat(FromMessageCodeClass("les", typeof(LesMessageCode)))
 
-                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth62MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth63MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth65MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth66MessageCode)))
-                .Concat(FromMessageCodeClass("eth", 68, typeof(Eth68MessageCode)))
-
-                .Concat(FromMessageCodeClass("nodedata", 1, typeof(NodeDataMessageCode)))
-                .Concat(FromMessageCodeClass("wit", 0, typeof(WitMessageCode)))
-                .Concat(FromMessageCodeClass("les", 0, typeof(LesMessageCode)))
-
-                .Concat(FromMessageCodeClass("snap", 1, typeof(SnapMessageCode)))
+                .Concat(FromMessageCodeClass("snap", typeof(SnapMessageCode)))
 
                 .ToFrozenDictionary();
 
-        static IEnumerable<KeyValuePair<(string, byte, int), string>> FromMessageCodeClass(string protocol, byte version, Type classType)
+        static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType)
         {
             return classType.GetFields(
                     BindingFlags.Public | BindingFlags.Static)
                 .Where((field) => field.FieldType.IsAssignableTo(typeof(int)))
-                .Select((field) => KeyValuePair.Create((protocol, version, (int)field.GetValue(null)), field.Name));
+                .Select((field) => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
         }
      }
 }
