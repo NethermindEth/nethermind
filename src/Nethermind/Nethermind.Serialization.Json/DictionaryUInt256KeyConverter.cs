@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -9,7 +9,6 @@ using System.Text.Json.Serialization;
 using Nethermind.Int256;
 
 namespace Nethermind.Serialization.Json;
-
 
 public class DictionaryUInt256KeyConverter : JsonConverterFactory
 {

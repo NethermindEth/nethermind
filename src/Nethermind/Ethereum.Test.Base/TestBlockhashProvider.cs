@@ -19,10 +19,10 @@ namespace Ethereum.Test.Base
 
         public void Insert(Hash256? blockHash, long number)
         {
-          if (blockHash != null)
-          {
-            _blockHashes[number] = blockHash;
-          }
+            if (blockHash != null)
+            {
+                _blockHashes[number] = blockHash;
+            }
         }
     }
 }
