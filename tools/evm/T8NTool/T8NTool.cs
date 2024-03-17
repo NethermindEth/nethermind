@@ -63,7 +63,7 @@ public class T8NTool
         Console.WriteLine(t8NExecutionResult);
     }
 
-    public T8NExecutionResult Execute(
+    private T8NExecutionResult Execute(
         string inputAlloc,
         string inputEnv,
         string inputTxs,
@@ -88,7 +88,7 @@ public class T8NTool
         TrieStore trieStore = new(stateDb, _logManager);
 
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        var blockhashProvider = new TestBlockhashProvider();
+        var blockhashProvider = new T8NBlockHashProvider();
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
             specProvider,
