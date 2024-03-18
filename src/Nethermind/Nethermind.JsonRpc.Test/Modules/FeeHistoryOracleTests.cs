@@ -25,7 +25,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_BlocksToCheckLess1_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            ResultWrapper<FeeHistoryResults> expected =
+            var expected =
                 ResultWrapper<FeeHistoryResults>.Fail("blockCount: Value 0 is less than 1", ErrorCodes.InvalidParams);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest);
@@ -37,7 +37,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public void GetFeeHistory_HashParameter_ReturnsFailingWrapper()
         {
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle();
-            ResultWrapper<FeeHistoryResults> expected =
+            var expected =
                 ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Is not correct block number", ErrorCodes.InvalidParams);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA));
@@ -51,7 +51,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindBlock(Arg.Any<long>()).Returns((Block?)null);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
-            ResultWrapper<FeeHistoryResults> expected =
+            var expected =
                     ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available",
                         ErrorCodes.ResourceUnavailable);
 
@@ -69,7 +69,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             blockFinder.FindPendingBlock().Returns(Build.A.Block.WithNumber(pendingBlockNumber).TestObject);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
-            ResultWrapper<FeeHistoryResults> expected =
+            var expected =
                     ResultWrapper<FeeHistoryResults>.Fail("newestBlock: Block is not available",
                         ErrorCodes.ResourceUnavailable);
 
@@ -109,10 +109,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
         }
 
-        [TestCase(3, 3, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6 
-        [TestCase(3, 3, 11, 13)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 2 = 13 
+        [TestCase(3, 3, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
+        [TestCase(3, 3, 11, 13)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5) * 11) / 8, 1) = 2 | Next Base Fee = 11 + 2 = 13
         [TestCase(100, 95, 20, 22)] //Target gas used: 100/2 = 50 | Actual Gas used = 95 | Base Fee Delta = Max((((95-50)/50) * 20) / 8, 1) = 2 | Next Base Fee = 20 + 2 = 22
-        [TestCase(100, 40, 20, 20)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20 
+        [TestCase(100, 40, 20, 20)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 20) / 8 = 0 | Next Base Fee = 20 - 0 = 20
         [TestCase(100, 40, 50, 49)] //Target gas used: 100/2 = 50 | Actual Gas used = 40 | Base Fee Delta = (((50-40)/50) * 50) / 8 = 1 | Next Base Fee = 50 - 1 = 49
         public void GetFeeHistory_IfLondonEnabled_NextBaseFeePerGasCalculatedCorrectly(long gasLimit, long gasUsed, long baseFee, long expectedNextBaseFee)
         {
@@ -289,10 +289,55 @@ namespace Nethermind.JsonRpc.Test.Modules
             resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expectedUInt256);
         }
 
+
+        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes_TestCases()
+        {
+            return
+            [
+                new object[]
+                {
+                    new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
+                    new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
+                    15
+                },
+                new object[]
+                {
+                    new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
+                    new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    15
+                }
+            ];
+        }
+
+        [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes_TestCases))]
+        public void GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes(double[][] rewardPercentilesArray, ulong[][] expectedArray, int repetitions)
+        {
+            Transaction[] transactions = GetTestTransactions();
+            Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            BlockParameter newestBlockParameter = new((long)0);
+            blockFinder.FindBlock(newestBlockParameter).Returns(headBlock);
+            IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
+            while (repetitions-- > 0)
+            {
+                for (var i = 0; i < rewardPercentilesArray.Length; i++)
+                {
+                    ResultWrapper<FeeHistoryResults> resultWrapper =
+                        feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
+
+                    UInt256[] expectedUInt256 = expectedArray[i].Select(x => (UInt256)x).ToArray();
+                    resultWrapper.Data.Reward!.Length.Should().Be(1);
+                    resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expectedUInt256);
+                }
+
+            }
+        }
+
         private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, long[] gasUsedArray)
         {
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            List<TxReceipt> txReceipts = new List<TxReceipt>();
+            var txReceipts = new List<TxReceipt>();
             foreach (long txGasUsed in gasUsedArray)
             {
                 txReceipts.Add(new() { GasUsed = txGasUsed });
@@ -304,9 +349,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
         private static Transaction[] GetTestTransactions()
         {
-            Transaction[] transactions = new Transaction[]
+            var transactions = new Transaction[]
             {
-                //Rewards: 
+                //Rewards:
                 Build.A.Transaction.WithHash(TestItem.KeccakA).WithMaxFeePerGas(20).WithMaxPriorityFeePerGas(13)
                     .WithType(TxType.EIP1559).TestObject, //13
                 Build.A.Transaction.WithHash(TestItem.KeccakB).WithMaxFeePerGas(10).WithMaxPriorityFeePerGas(7).TestObject, //4
@@ -333,7 +378,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter)
             {
-                Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1 
+                Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1
                 Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
                 Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithBlobGasUsed(3 * Eip4844Constants.GasPerBlob).WithExcessBlobGas(0).WithGasLimit(5)
                     .WithTransactions(txFirstBlock).TestObject;
