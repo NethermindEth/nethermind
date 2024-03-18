@@ -420,9 +420,10 @@ namespace Nethermind.Network
                 {
 #if DEBUG
                     throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item3} not set.");
+#else
+                    messageName = kv.Key.Item3.ToString(); // Just use the integer directly then
 #endif
 
-                    messageName = kv.Key.Item3.ToString(); // Just use the integer directly then
                 }
 
                 to[(kv.Key.Item1 + kv.Key.Item2, messageName)] = kv.Value;
