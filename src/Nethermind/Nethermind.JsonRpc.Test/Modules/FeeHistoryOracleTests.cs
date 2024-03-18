@@ -290,7 +290,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
 
-        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes_TestCases()
+        private static object[] GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases()
         {
             return
             [
@@ -298,19 +298,21 @@ namespace Nethermind.JsonRpc.Test.Modules
                 {
                     new double[][] {[ 20, 40, 60, 80.5 ], [10, 20, 30, 40 ]},
                     new ulong[][] { [4, 10, 10, 22], [4, 4, 10, 10] },
+                    3,
                     15
                 },
                 new object[]
                 {
                     new double[][] {[ 10, 20, 30, 40 ], [ 20, 40, 60, 80.5 ]},
                     new ulong[][] {[ 4, 4, 10, 10 ], [ 4, 10, 10, 22 ]},
+                    3,
                     15
                 }
             ];
         }
 
-        [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes_TestCases))]
-        public void GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyMultipleTimes(double[][] rewardPercentilesArray, ulong[][] expectedArray, int repetitions)
+        [TestCaseSource(nameof(GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls_TestCases))]
+        public void GetFeeHistory_GivenValidInputs_CalculatesPercentilesCorrectlyOnMultipleCalls(double[][] rewardPercentilesArray, ulong[][] expectedArray, int cacheSize, int repetitions)
         {
             Transaction[] transactions = GetTestTransactions();
             Block headBlock = Build.A.Block.Genesis.WithBaseFeePerGas(3).WithGasUsed(100).WithTransactions(transactions).TestObject;
@@ -318,7 +320,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new((long)0);
             blockFinder.FindBlock(newestBlockParameter).Returns(headBlock);
             IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
-            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
+            FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage, cacheSize: cacheSize);
             while (repetitions-- > 0)
             {
                 for (var i = 0; i < rewardPercentilesArray.Length; i++)
@@ -397,15 +399,19 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        public static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
+        private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
             IBlockFinder? blockFinder = null,
             IReceiptStorage? receiptStorage = null,
-            ISpecProvider? specProvider = null)
+            ISpecProvider? specProvider = null,
+            int? cacheSize = null,
+            int? maxDistFromHead = null)
         {
             return new(
                 blockFinder ?? Substitute.For<IBlockFinder>(),
                 receiptStorage ?? Substitute.For<IReceiptStorage>(),
-                specProvider ?? Substitute.For<ISpecProvider>());
+                specProvider ?? Substitute.For<ISpecProvider>(),
+                cacheSize,
+                maxDistFromHead);
         }
     }
 }

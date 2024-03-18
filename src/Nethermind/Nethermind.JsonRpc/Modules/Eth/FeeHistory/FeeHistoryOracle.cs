@@ -16,13 +16,13 @@ using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    public class FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider)
+    public class FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider, int? cacheSize = null, int? maxDistanceFromHead = null)
         : IFeeHistoryOracle
     {
         private const int MaxBlockCount = 1024;
-        private const int OldestBlockFromHeadAllowedInCache = 40;
+        private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? 40;
         private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(MaxBlockCount * 2, "BlockFeeHistoryCache");
+            = new(cacheSize ?? MaxBlockCount * 2, "BlockFeeHistoryCache");
 
 
         private readonly struct BlockFeeHistorySearchInfo(
@@ -71,13 +71,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return block is null ? null : SaveHistorySearchInfo(block);
         }
 
-        // only saves block younger than the OldestBlockFromHeadAllowedInCache.
+        // only saves block younger than the Oldest Block From the Head Allowed In Cache.
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
-            if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - OldestBlockFromHeadAllowedInCache)
+            if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache)
                 _feeHistoryCache.Set(block.Hash, historyInfo);
             return historyInfo;
         }
