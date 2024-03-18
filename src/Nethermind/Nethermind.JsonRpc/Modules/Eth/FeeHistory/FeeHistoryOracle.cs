@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
@@ -19,46 +20,82 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         : IFeeHistoryOracle
     {
         private const int MaxBlockCount = 1024;
+        private const int OldestBlockFromHeadAllowedInCache = 40;
         private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(MaxBlockCount * 2, "BlockFeeHistoryCache", LockMode.Write);
+            = new(MaxBlockCount * 2, "BlockFeeHistoryCache");
 
 
         private readonly struct BlockFeeHistorySearchInfo(
             long blockNumber,
-            UInt256 baseFeePerGas,
-            BlockHeader blockHeader,
+            UInt256 blockBaseFeePerGas,
+            UInt256 baseFeePerGasEst,
+            UInt256 baseFeePerBlobGas,
+            double gasUsedRatio,
+            double blobGasUsedRatio,
+            Hash256? parentHash,
             long gasUsed,
-            ulong? blobGasUsed,
-            long gasLimit,
-            Hash256? blockParentHash,
-            Transaction[] blockTransactions,
+            int blockTransactionsLength,
             List<(long GasUsed, UInt256 PremiumPerGas)>? rewardsInBlocks)
         {
             public long BlockNumber { get; } = blockNumber;
-            public UInt256 BaseFeePerGas { get; } = baseFeePerGas;
-            public BlockHeader BlockHeader { get; } = blockHeader;
-            public Transaction[] BlockTransactions { get; } = blockTransactions;
+            public UInt256 BlockBaseFeePerGas { get; } = blockBaseFeePerGas;
+            public UInt256 BaseFeePerGasEst { get; } = baseFeePerGasEst;
+            public UInt256 BaseFeePerBlobGas { get; } = baseFeePerBlobGas;
+            public double GasUsedRatio { get; } = gasUsedRatio;
+            public double BlobGasUsedRatio { get; } = blobGasUsedRatio;
+            public Hash256? ParentHash { get; } = parentHash;
             public long GasUsed { get; } = gasUsed;
-            public long GasLimit { get; } = gasLimit;
-            public ulong? BlobGasUsed { get; } = blobGasUsed;
-            public Hash256? BlockParentHash { get; } = blockParentHash;
+            public int BlockTransactionsLength { get; } = blockTransactionsLength;
             public List<(long GasUsed, UInt256 PremiumPerGas)>? RewardsInBlocks { get; } = rewardsInBlocks;
         }
 
-        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash)
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
+        {
+            Block? block;
+            if (blockParameter.Type != BlockParameterType.BlockHash)
+            {
+                block = blockFinder.FindBlock(blockParameter);
+                return block is null ? null : BlockFeeHistorySearchInfoFromBlock(block);
+            }
+
+            if (_feeHistoryCache.Contains(blockParameter.BlockHash)) return _feeHistoryCache.Get(blockParameter.BlockHash);
+
+            block = blockFinder.FindBlock(blockParameter);
+
+            return block is null ? null : SaveHistorySearchInfo(block);
+        }
+        private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
         {
             if (_feeHistoryCache.Contains(blockHash)) return _feeHistoryCache.Get(blockHash);
+            Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
+            return block is null ? null : SaveHistorySearchInfo(block);
+        }
 
-            Block? block = blockFinder.FindBlock(blockHash);
-            if (block is null) return null; // do not cache. might be a new unavailable block!
-            // findBlock by number might be more efficient! since newer blocks have higher numbers
-            // [how to deal with genesis block? since we find by hash and not block number? ignore because its unlikely to reach?]
+        // only saves block younger than the OldestBlockFromHeadAllowedInCache.
+        // As time passes and the head progresses only older least used blocks are auto removed from the cache
+        private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
+        {
+            BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
-            BlockFeeHistorySearchInfo historyInfo = new(block.Number, block.BaseFeePerGas, block.Header, block.GasUsed,
-                block.BlobGasUsed, block.GasLimit, block.Header.ParentHash, block.Transactions, GetRewardsInBlock(block));
-            _feeHistoryCache.Set(block.Hash, historyInfo);
-
+            if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - OldestBlockFromHeadAllowedInCache)
+                _feeHistoryCache.Set(block.Hash, historyInfo);
             return historyInfo;
+        }
+
+        private BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block block)
+        {
+            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out UInt256 blobGas);
+            return new(
+                block.Number,
+                block.BaseFeePerGas,
+                BaseFeeCalculator.Calculate(block.Header, specProvider.GetSpecFor1559(block.Number + 1)),
+                blobGas == UInt256.MaxValue ? 0 : blobGas,
+                block.GasUsed / (double)block.GasLimit,
+                (block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
+                block.ParentHash,
+                block.GasUsed,
+                block.Transactions.Length,
+                GetRewardsInBlock(block));
         }
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(long blockCount, BlockParameter newestBlock,
@@ -71,9 +108,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return initialCheckResult;
             }
 
-            // assumes blockParameter would always contain the hash! This is because a block params identity (=/$) involve
-            // all of hash and block number
-            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock.BlockHash!);
+            BlockFeeHistorySearchInfo? historyInfo = GetHistorySearchInfo(newestBlock);
 
             if (historyInfo is null)
             {
@@ -83,30 +118,26 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
 
-            long oldestBlockNumber = info.BlockNumber;
             Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
-            baseFeePerGas.Push(BaseFeeCalculator.Calculate(info.BlockHeader,
-                specProvider.GetSpecFor1559(info.BlockNumber + 1)));
             Stack<UInt256> baseFeePerBlobGas = new((int)(blockCount + 1));
-            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(info.BlockHeader, out UInt256 blobGas);
-            baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
-
             Stack<double> gasUsedRatio = new((int)blockCount);
             Stack<double> blobGasUsedRatio = new((int)blockCount);
-
             Stack<UInt256[]>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0
                 ? null
                 : new Stack<UInt256[]>((int)blockCount);
+
+            long oldestBlockNumber = info.BlockNumber;
+            baseFeePerGas.Push(info.BaseFeePerGasEst);
+            baseFeePerBlobGas.Push(info.BaseFeePerBlobGas);
 
             while (historyInfo is not null && blockCount > 0)
             {
                 info = historyInfo.Value;
                 oldestBlockNumber = info.BlockNumber;
-                baseFeePerGas.Push(info.BaseFeePerGas);
-                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(info.BlockHeader, out blobGas);
-                baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
-                gasUsedRatio.Push(info.GasUsed / (double)info.GasLimit);
-                blobGasUsedRatio.Push((info.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock);
+                baseFeePerGas.Push(info.BlockBaseFeePerGas);
+                baseFeePerBlobGas.Push(info.BaseFeePerBlobGas);
+                gasUsedRatio.Push(info.GasUsedRatio);
+                blobGasUsedRatio.Push(info.BlobGasUsedRatio);
                 if (rewards is not null)
                 {
                     List<UInt256> rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
@@ -115,10 +146,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                         rewards.Push(rewardsInBlock.ToArray());
                     }
                 }
-
                 blockCount--;
-                // assuming block has a parent with hash (genesis block does not)
-                historyInfo = GetHistorySearchInfo(info.BlockParentHash!);
+                historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas.ToArray(),
@@ -128,12 +157,12 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private List<UInt256>? CalculateRewardsPercentiles(BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles)
         {
-            if (blockInfo.BlockTransactions.Length == 0)
+            if (blockInfo.BlockTransactionsLength == 0)
             {
                 return Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length).ToList();
             }
 
-            var rewardsInBlock = blockInfo.RewardsInBlocks;
+            List<(long GasUsed, UInt256 PremiumPerGas)>? rewardsInBlock = blockInfo.RewardsInBlocks;
             return rewardsInBlock is null
                 ? null
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, rewardsInBlock);
