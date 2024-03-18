@@ -13,9 +13,9 @@ namespace Nethermind.Core.Test.Caching
     [TestFixture(typeof(LruCache<Address, Account>))]
     public class LruCacheTests<TCache>
     {
-        private static ICache<Address, Account> Create(LockMode lockMode)
+        private static ICache<Address, Account> Create()
         {
-            return (ICache<Address, Account>)Activator.CreateInstance(typeof(TCache), Capacity, "test", lockMode)!;
+            return (ICache<Address, Account>)Activator.CreateInstance(typeof(TCache), Capacity, "test")!;
         }
 
         private const int Capacity = 16;
@@ -34,9 +34,9 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void At_capacity([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void At_capacity()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i], _accounts[i]);
@@ -47,25 +47,25 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Can_reset([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Can_reset()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
             cache.Set(_addresses[0], _accounts[1]);
             cache.Get(_addresses[0]).Should().Be(_accounts[1]);
         }
 
         [Test]
-        public void Can_ask_before_first_set([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Can_ask_before_first_set()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             cache.Get(_addresses[0]).Should().BeNull();
         }
 
         [Test]
-        public void Can_clear([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Can_clear()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
             cache.Clear();
             cache.Get(_addresses[0]).Should().BeNull();
@@ -74,9 +74,9 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Beyond_capacity([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Beyond_capacity()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             for (int i = 0; i < Capacity * 2; i++)
             {
                 cache.Set(_addresses[i], _accounts[i]);
@@ -87,9 +87,9 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Can_set_and_then_set_null([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Can_set_and_then_set_null()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]).Should().BeTrue();
             cache.Set(_addresses[0], _accounts[0]).Should().BeFalse();
             cache.Set(_addresses[0], null!).Should().BeTrue();
@@ -97,9 +97,9 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Can_delete([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Can_delete()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             cache.Set(_addresses[0], _accounts[0]);
             cache.Delete(_addresses[0]).Should().BeTrue();
             cache.Get(_addresses[0]).Should().Be(null);
@@ -107,9 +107,9 @@ namespace Nethermind.Core.Test.Caching
         }
 
         [Test]
-        public void Clear_should_free_all_capacity([Values(LockMode.ReadWrite)] LockMode lockMode)
+        public void Clear_should_free_all_capacity()
         {
-            ICache<Address, Account> cache = Create(lockMode);
+            ICache<Address, Account> cache = Create();
             for (int i = 0; i < Capacity; i++)
             {
                 cache.Set(_addresses[i], _accounts[i]);
