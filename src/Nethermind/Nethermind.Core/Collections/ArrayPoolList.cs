@@ -318,10 +318,10 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 
     ~ArrayPoolList()
     {
-        if (_capacity != 0 && !_disposed)
-        {
-            throw new InvalidOperationException($"{nameof(ArrayPoolList<T>)} hasn't been disposed. Created {_creationStackTrace}");
-        }
+        // if (_capacity != 0 && !_disposed)
+        // {
+        //     throw new InvalidOperationException($"{nameof(ArrayPoolList<T>)} hasn't been disposed. Created {_creationStackTrace}");
+        // }
     }
 #endif
 

@@ -93,7 +93,6 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
-
             ShutterTxSource? shutterTxSource = null;
 
             if (_auraConfig!.UseShutter)
@@ -113,8 +112,7 @@ namespace Nethermind.Merge.AuRa
                 ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
 
                 // init Shutter transaction source
-                LogFinder logFinder = new(_api.BlockTree, _api.ReceiptFinder, _api.ReceiptStorage, _api.BloomStorage, _api.LogManager, new ReceiptsRecovery(_api.EthereumEcdsa, _api.SpecProvider));
-                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, logFinder, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
+                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, _api.LogFinder!, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
 
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
