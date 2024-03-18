@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -19,7 +20,10 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
@@ -219,12 +223,13 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
         }
 
-        protected class SyncPeerMock : ISyncPeer
+        protected class SyncPeerMock : ISyncPeer, ISnapSyncPeer
         {
             public string Name => "Mock";
 
             private readonly IDb _codeDb;
-            private readonly IDb _stateDb;
+            private readonly IReadOnlyKeyValueStore _stateDb;
+            private readonly ISnapServer _snapServer;
 
             private Hash256[]? _filter;
             private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
@@ -238,18 +243,28 @@ namespace Nethermind.Synchronization.Test.FastSync
                 Node? node = null
             )
             {
-                _stateDb = stateDb;
                 _codeDb = codeDb;
                 _executorResultFunction = executorResultFunction;
 
-                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
+                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
+
+                ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
+                alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+                IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
+                    Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
+                _stateDb = trieStore.TrieNodeRlpStore;
+                _snapServer = new SnapServer(
+                    trieStore,
+                    codeDb,
+                    alwaysAvailableRootTracker,
+                    LimboLogs.Instance);
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
             public Hash256 HeadHash { get; set; } = null!;
             public string ProtocolCode { get; } = null!;
-            public byte ProtocolVersion { get; } = default;
+            public byte ProtocolVersion { get; } = 67;
             public string ClientId => "executorMock";
             public Node Node { get; }
             public long HeadNumber { get; set; }
@@ -277,19 +292,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                     if (_filter is null || _filter.Contains(item))
                     {
-                        byte[]? response = _codeDb[item.Bytes] ?? _stateDb[item.Bytes];
-                        if (response == null)
-                        {
-                            // Well, patricia tree can't get the rlp of node yet. So can't really make a correct snap sync implementation.
-                            foreach (KeyValuePair<byte[], byte[]?> keyValuePair in _stateDb.GetAll())
-                            {
-                                if (!Bytes.AreEqual(item.Bytes, keyValuePair.Key.AsSpan()[^32..])) continue;
-
-                                response = keyValuePair.Value;
-                                break;
-                            }
-                        }
-                        responses[i] = response!;
+                        responses[i] = _codeDb[item.Bytes] ?? _stateDb[item.Bytes]!;
                     }
 
                     i++;
@@ -305,6 +308,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
+                if (protocol == Protocol.Snap)
+                {
+                    protocolHandler = (this as T)!;
+                    return true;
+                }
                 protocolHandler = null!;
                 return false;
             }
@@ -354,6 +362,36 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
+            public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+            {
+                return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+            {
+                IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
+                return GetTrieNodes(new GetTrieNodesRequest()
+                {
+                    RootHash = request.RootHash,
+                    AccountAndStoragePaths = groups,
+                }, token);
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+            {
+                var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+                return Task.FromResult(nodes!);
+            }
         }
     }
 }
