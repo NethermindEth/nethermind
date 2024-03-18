@@ -34,11 +34,12 @@ public class T8NTool
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly LimboLogs _logManager = LimboLogs.Instance;
 
-    public void Execute(string inputAlloc,
+    public void Execute(
+        string inputAlloc,
         string inputEnv,
         string inputTxs,
         string outputAlloc,
-        string? outputBaseDir,
+        string? outputBasedir,
         string? outputBody,
         string outputResult,
         int stateChainId,
@@ -50,17 +51,24 @@ public class T8NTool
         bool traceNoStack,
         bool traceReturnData)
     {
-        T8NExecutionResult t8NExecutionResult;
         try
         {
-            t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork);
+            T8NExecutionResult t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork);
+
+            var stdoutObjects = new Dictionary<string, object>();
+            OutputObject(outputAlloc, outputBasedir, "alloc", t8NExecutionResult.Alloc, stdoutObjects);
+            OutputObject(outputResult, outputBasedir, "result", t8NExecutionResult.PostState, stdoutObjects);
+            OutputObject(outputBody, outputBasedir, "body", t8NExecutionResult.Body, stdoutObjects);
+
+            if (!stdoutObjects.IsNullOrEmpty())
+            {
+                Console.WriteLine(_ethereumJsonSerializer.Serialize(stdoutObjects, true));
+            }
         }
         catch (Exception e)
         {
-            t8NExecutionResult = new T8NExecutionResult(e.Message);
+            Console.WriteLine(e.Message);
         }
-
-        Console.WriteLine(t8NExecutionResult);
     }
 
     private T8NExecutionResult Execute(
@@ -194,7 +202,23 @@ public class T8NTool
         {
             accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
         }
+        var body = Rlp.Encode(successfulTxs.ToArray()).Bytes;
 
-        return new T8NExecutionResult(postState, accounts);
+        return new T8NExecutionResult(postState, accounts, body);
+    }
+
+    private void OutputObject(string? filename, string? basedir, string key, object outputObject, IDictionary<string, object> stdoutObjects)
+    {
+        if (filename == "stdout")
+        {
+            stdoutObjects.Add(key, outputObject);
+        }
+        else if (filename != null)
+        {
+            FileInfo fileInfo = new(basedir + filename);
+            Directory.CreateDirectory(fileInfo.DirectoryName!);
+            using StreamWriter writer = new(fileInfo.FullName);
+            writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
+        }
     }
 }

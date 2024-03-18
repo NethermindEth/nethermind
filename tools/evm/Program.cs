@@ -28,7 +28,7 @@ namespace Evm
              var inputEnvOpt = new Option<string>("--input.env", description: "Input environment", getDefaultValue: () => "env.json");
              var inputTxsOpt = new Option<string>("--input.txs", description: "Input transactions", getDefaultValue: () => "txs.json");
              var outputAllocOpt = new Option<string>("--output.alloc", description: "Output allocations", getDefaultValue: () => "alloc.json");
-             var outputBaseDirOpt = new Option<string>("--output.baseDir", description: "Output base directory");
+             var outputBaseDirOpt = new Option<string>("--output.basedir", description: "Output base directory");
              var outputBodyOpt = new Option<string>("--output.body", description: "Output body");
              var outputResultOpt = new Option<string>("--output.result", description: "Output result", getDefaultValue: () => "result.json");
              var stateChainIdOpt = new Option<int>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
@@ -64,7 +64,6 @@ namespace Evm
 
             var t8NTool = new T8NTool.T8NTool();
 
-
             cmd.SetHandler(
                 async (context) =>
                 {
@@ -72,30 +71,33 @@ namespace Evm
                     // t8n accepts less options (15) than 16 but command extension methods supports max 8 anyway
                     var traceOpts = new TraceOptions()
                     {
-                        Memory = context.ParseResult.GetValueForOption<bool>(traceMemoryOpt),
-                        NoMemory = context.ParseResult.GetValueForOption<bool>(traceNoMemoryOpt),
-                        NoReturnData = context.ParseResult.GetValueForOption<bool>(traceNoReturnDataOpt),
-                        NoStack = context.ParseResult.GetValueForOption<bool>(traceNoStackOpt),
-                        ReturnData = context.ParseResult.GetValueForOption<bool>(traceReturnDataOpt),
+                        Memory = context.ParseResult.GetValueForOption(traceMemoryOpt),
+                        NoMemory = context.ParseResult.GetValueForOption(traceNoMemoryOpt),
+                        NoReturnData = context.ParseResult.GetValueForOption(traceNoReturnDataOpt),
+                        NoStack = context.ParseResult.GetValueForOption(traceNoStackOpt),
+                        ReturnData = context.ParseResult.GetValueForOption(traceReturnDataOpt),
                     };
 
-                    t8NTool.Execute(
-                        context.ParseResult.GetValueForOption(inputAllocOpt),
-                        context.ParseResult.GetValueForOption(inputEnvOpt),
-                        context.ParseResult.GetValueForOption(inputTxsOpt),
-                        context.ParseResult.GetValueForOption(outputAllocOpt),
-                        context.ParseResult.GetValueForOption(outputBaseDirOpt),
-                        context.ParseResult.GetValueForOption(outputBodyOpt),
-                        context.ParseResult.GetValueForOption(outputResultOpt),
-                        context.ParseResult.GetValueForOption(stateChainIdOpt),
-                        context.ParseResult.GetValueForOption(stateForkOpt),
-                        context.ParseResult.GetValueForOption(stateRewardOpt),
-                        traceOpts.Memory,
-                        traceOpts.NoMemory,
-                        traceOpts.NoReturnData,
-                        traceOpts.NoStack,
-                        traceOpts.ReturnData
+                    await Task.Run(() =>
+                    {
+                        t8NTool.Execute(
+                            context.ParseResult.GetValueForOption(inputAllocOpt),
+                            context.ParseResult.GetValueForOption(inputEnvOpt),
+                            context.ParseResult.GetValueForOption(inputTxsOpt),
+                            context.ParseResult.GetValueForOption(outputAllocOpt),
+                            context.ParseResult.GetValueForOption(outputBaseDirOpt),
+                            context.ParseResult.GetValueForOption(outputBodyOpt),
+                            context.ParseResult.GetValueForOption(outputResultOpt),
+                            context.ParseResult.GetValueForOption(stateChainIdOpt),
+                            context.ParseResult.GetValueForOption(stateForkOpt),
+                            context.ParseResult.GetValueForOption(stateRewardOpt),
+                            traceOpts.Memory,
+                            traceOpts.NoMemory,
+                            traceOpts.NoReturnData,
+                            traceOpts.NoStack,
+                            traceOpts.ReturnData
                         );
+                    });
                 });
         }
     }
