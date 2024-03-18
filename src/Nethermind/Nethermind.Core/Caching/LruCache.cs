@@ -138,7 +138,7 @@ namespace Nethermind.Core.Caching
             using var lockRelease = _lock.Acquire();
 
             int i = 0;
-            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -151,7 +151,7 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            TValue[] array = new TValue[_cacheMap.Count];
+            var array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;
@@ -182,16 +182,10 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private struct LruCacheItem
+        private struct LruCacheItem(TKey k, TValue v)
         {
-            public LruCacheItem(TKey k, TValue v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public readonly TKey Key;
-            public TValue Value;
+            public readonly TKey Key = k;
+            public TValue Value = v;
         }
 
         public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);
