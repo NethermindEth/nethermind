@@ -1,11 +1,9 @@
 name: 'Hive consensus tests'
 
 on:
-  workflow_run:
-    workflows: ["Publish Docker image"]
-    branches: ["release/*"]
-    types:
-      - completed
+  push:
+    branches: [release/*]
+    
   workflow_dispatch:
     inputs:
       parallelism:
@@ -14,6 +12,10 @@ on:
         default: '8'
         type: choice
         options: ['1', '2', '3', '4', '8', '16']
+
+concurrency: 
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   create_docker_image:
@@ -25,12 +27,12 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ github.event.workflow_run.head_branch || github.ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.event.workflow_run.head_branch || github.ref }}
+        REF_NAME=${{ github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
         echo "cleanRef=$CLEAN_REF" >> $GITHUB_OUTPUT
@@ -44,18 +46,30 @@ jobs:
     - name: Check if master or release branch
       id: check_conditions
       run: |
-        ref="${{ github.event.workflow_run.head_branch || github.ref }}"
+        ref="${{ github.ref }}"
+        event_name="${{ github.event_name }}"
 
         # Append "refs/heads/" prefix if it's not already there
         if [[ $ref != refs/heads/* ]]; then
           ref="refs/heads/$ref"
         fi
 
+        # Initialize variables
+        skip_docker_build="false"
+        skip_wait_for_docker="false"
+
+        # Set conditions based on branch and event type
         if [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* ]]; then
-          echo "skip_docker_build=true" >> $GITHUB_OUTPUT
-        else
-          echo "skip_docker_build=false" >> $GITHUB_OUTPUT
+          skip_docker_build="true"
+          
+          if [[ "$event_name" == "workflow_dispatch" ]]; then
+            skip_wait_for_docker="true"
+          fi
         fi
+
+        # Output the variables
+        echo "skip_docker_build=$skip_docker_build" >> $GITHUB_OUTPUT
+        echo "wait_for_docker=$wait_for_docker" >> $GITHUB_OUTPUT
 
     - name: Trigger Docker Build Action with Cleaned Ref
       if: steps.check_conditions.outputs.skip_docker_build != 'true'
@@ -73,7 +87,7 @@ jobs:
            }'
 
     - name: Wait for Docker Build Action to complete
-      if: steps.check_conditions.outputs.skip_docker_build != 'true'
+      if: steps.check_conditions.outputs.skip_wait_for_docker != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         WORKFLOW_ID: 'publish-docker.yml'
