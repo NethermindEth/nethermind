@@ -4,6 +4,7 @@
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,6 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -92,10 +94,12 @@ public class T8NTool
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)1, JsonToEthereumTest.ParseSpec(stateFork)));
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)envInfo.CurrentNumber, JsonToEthereumTest.ParseSpec(stateFork)));
         TrieStore trieStore = new(stateDb, _logManager);
 
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
+        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)envInfo.CurrentNumber);
+
         var blockhashProvider = new T8NBlockHashProvider();
         IVirtualMachine virtualMachine = new VirtualMachine(
             blockhashProvider,
@@ -117,27 +121,20 @@ public class T8NTool
         }
 
         BlockHeader header = envInfo.GetBlockHeader();
-        blockhashProvider.Insert(header.Hash, header.Number);
+        BlockHeader parent = envInfo.GetParentBlockHeader();
 
+        envInfo.ApplyChecks(specProvider, spec);
+
+        blockhashProvider.Insert(header.Hash, header.Number);
+        blockhashProvider.Insert(parent.Hash, parent.Number);
         foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envInfo.BlockHashes)
         {
             blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
         }
 
         TxValidator txValidator = new(MainnetSpecProvider.Instance.ChainId);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)envInfo.CurrentNumber);
         IReceiptSpec receiptSpec = specProvider.GetSpec(header);
-        BlockHeader parent = envInfo.GetParentBlockHeader();
         header.ExcessBlobGas ??= BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
-        if (header.BaseFeePerGas.IsZero)
-        {
-            if (spec.IsEip1559Enabled && parent.BaseFeePerGas.IsZero)
-            {
-                throw new Exception("EIP-1559 config but missing 'currentBaseFee' in env section");
-            }
-            header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, spec);
-        }
-        blockhashProvider.Insert(parent.Hash, parent.Number);
 
         List<Transaction> successfulTxs = [];
         List<TxReceipt> successfulTxReceipts = [];
@@ -221,4 +218,6 @@ public class T8NTool
             writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
         }
     }
+
+
 }
