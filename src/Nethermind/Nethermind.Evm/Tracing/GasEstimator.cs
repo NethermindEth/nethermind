@@ -54,11 +54,13 @@ namespace Nethermind.Evm.Tracing
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
 
+            long intrinsicGas = IntrinsicGasCalculator.Calculate(tx, releaseSpec);
+
             // Setting boundaries for binary search - determine lowest and highest gas can be used during the estimation:
-            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= Transaction.BaseTxGasCost)
+            long leftBound = (gasTracer.GasSpent != 0 && gasTracer.GasSpent >= intrinsicGas)
                 ? gasTracer.GasSpent - 1
-                : Transaction.BaseTxGasCost - 1;
-            long rightBound = (tx.GasLimit != 0 && tx.GasPrice >= Transaction.BaseTxGasCost)
+                : intrinsicGas - 1;
+            long rightBound = (tx.GasLimit != 0 && tx.GasLimit >= intrinsicGas)
                 ? tx.GasLimit
                 : header.GasLimit;
 
@@ -71,10 +73,13 @@ namespace Nethermind.Evm.Tracing
             double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
             //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced
             long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
-            if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
-                rightBound = optimisticGasEstimate;
-            else
-                leftBound = optimisticGasEstimate;
+            if (optimisticGasEstimate >= leftBound && optimisticGasEstimate <= rightBound)
+            {
+                if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
+                    rightBound = optimisticGasEstimate;
+                else
+                    leftBound = optimisticGasEstimate;
+            }
 
             long cap = rightBound;
             //This is similar to Geth's approach by stopping, when the estimation is within a certain margin of error
@@ -111,7 +116,6 @@ namespace Nethermind.Evm.Tracing
 
             BlockExecutionContext blCtx = new(block);
             _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
-
             transaction.GasLimit = originalGasLimit;
 
             return !tracer.OutOfGas;
