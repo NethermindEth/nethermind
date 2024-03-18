@@ -1,6 +1,7 @@
 ﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
@@ -17,11 +18,11 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
-using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -36,7 +37,7 @@ public class T8NTool
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly LimboLogs _logManager = LimboLogs.Instance;
 
-    public void Execute(
+    public int Execute(
         string inputAlloc,
         string inputEnv,
         string inputTxs,
@@ -66,10 +67,16 @@ public class T8NTool
             {
                 Console.WriteLine(_ethereumJsonSerializer.Serialize(stdoutObjects, true));
             }
+
+            return 0;
         }
-        catch (Exception e)
+        catch (IOException e)
         {
-            Console.WriteLine(e.Message);
+            throw new T8NException(e, ExitCodes.ErrorIO);
+        }
+        catch (JsonException e)
+        {
+            throw new T8NException(e, ExitCodes.ErrorJson);
         }
     }
 
@@ -81,14 +88,14 @@ public class T8NTool
     {
         Dictionary<Address, AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
-        List<Transaction> transactions;
+        Transaction[] transactions;
         if (inputTxs.EndsWith(".json")) {
             TransactionInfo[] txInfoList = _ethereumJsonSerializer.Deserialize<TransactionInfo[]>(File.ReadAllText(inputTxs));
-            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToList();
+            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToArray();
         } else {
             string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
-            transactions = _txDecoder.DecodeArray(rlp).ToList();
+            transactions = _txDecoder.DecodeArray(rlp).ToArray();
         }
 
         IDb stateDb = new MemDb();
@@ -139,7 +146,7 @@ public class T8NTool
         List<Transaction> successfulTxs = [];
         List<TxReceipt> successfulTxReceipts = [];
 
-        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions.ToArray()).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).TestObject;
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);

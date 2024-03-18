@@ -1,4 +1,6 @@
 using System.CommandLine;
+using Evm.T8NTool;
+using Nethermind.Core.Exceptions;
 
 namespace Evm
 {
@@ -80,23 +82,31 @@ namespace Evm
 
                     await Task.Run(() =>
                     {
-                        t8NTool.Execute(
-                            context.ParseResult.GetValueForOption(inputAllocOpt),
-                            context.ParseResult.GetValueForOption(inputEnvOpt),
-                            context.ParseResult.GetValueForOption(inputTxsOpt),
-                            context.ParseResult.GetValueForOption(outputAllocOpt),
-                            context.ParseResult.GetValueForOption(outputBaseDirOpt),
-                            context.ParseResult.GetValueForOption(outputBodyOpt),
-                            context.ParseResult.GetValueForOption(outputResultOpt),
-                            context.ParseResult.GetValueForOption(stateChainIdOpt),
-                            context.ParseResult.GetValueForOption(stateForkOpt),
-                            context.ParseResult.GetValueForOption(stateRewardOpt),
-                            traceOpts.Memory,
-                            traceOpts.NoMemory,
-                            traceOpts.NoReturnData,
-                            traceOpts.NoStack,
-                            traceOpts.ReturnData
-                        );
+                        try
+                        {
+                            Environment.ExitCode = t8NTool.Execute(
+                                context.ParseResult.GetValueForOption(inputAllocOpt),
+                                context.ParseResult.GetValueForOption(inputEnvOpt),
+                                context.ParseResult.GetValueForOption(inputTxsOpt),
+                                context.ParseResult.GetValueForOption(outputAllocOpt),
+                                context.ParseResult.GetValueForOption(outputBaseDirOpt),
+                                context.ParseResult.GetValueForOption(outputBodyOpt),
+                                context.ParseResult.GetValueForOption(outputResultOpt),
+                                context.ParseResult.GetValueForOption(stateChainIdOpt),
+                                context.ParseResult.GetValueForOption(stateForkOpt),
+                                context.ParseResult.GetValueForOption(stateRewardOpt),
+                                traceOpts.Memory,
+                                traceOpts.NoMemory,
+                                traceOpts.NoReturnData,
+                                traceOpts.NoStack,
+                                traceOpts.ReturnData
+                            );
+                        }
+                        catch (T8NException e)
+                        {
+                            Environment.ExitCode = e.ExitCode;
+                            Console.WriteLine(e.Message);
+                        }
                     });
                 });
         }
