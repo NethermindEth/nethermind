@@ -1,3 +1,4 @@
+using Evm.T8NTool;
 using Microsoft.ClearScript.Util.Web;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -90,7 +91,7 @@ namespace Evm.JsonTypes
                 CurrentBaseFee = BaseFeeCalculator.Calculate(ParentBaseFee.Value, ParentGasUsed, ParentGasLimit, CurrentNumber - 1, spec);
             }
 
-            throw new Exception("EIP-1559 config but missing 'currentBaseFee' in env section");
+            throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
         }
 
         private void ApplyShanghaiChecks(IReleaseSpec spec)
@@ -98,7 +99,7 @@ namespace Evm.JsonTypes
             if (spec is not Shanghai) return;
             if (Withdrawals == null)
             {
-                throw new Exception("Shanghai config but missing 'withdrawals' in env section");
+                throw new T8NException("Shanghai config but missing 'withdrawals' in env section", ExitCodes.ErrorConfig);
             }
         }
 
@@ -112,7 +113,7 @@ namespace Evm.JsonTypes
 
             if (ParentBeaconBlockRoot == null)
             {
-                throw new Exception("post-cancun env requires parentBeaconBlockRoot to be set");
+                throw new T8NException("post-cancun env requires parentBeaconBlockRoot to be set", ExitCodes.ErrorConfig);
             }
         }
 
@@ -121,18 +122,18 @@ namespace Evm.JsonTypes
             if (CurrentDifficulty != null) return;
             if (!ParentDifficulty.HasValue)
             {
-                throw new Exception(
-                    "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty");
+                throw new T8NException(
+                    "currentDifficulty was not provided, and cannot be calculated due to missing parentDifficulty", ExitCodes.ErrorConfig);
             }
 
             if (CurrentNumber == 0)
             {
-                throw new Exception("currentDifficulty needs to be provided for block number 0");
+                throw new T8NException("currentDifficulty needs to be provided for block number 0", ExitCodes.ErrorConfig);
             }
 
             if (CurrentTimestamp <= ParentTimestamp)
             {
-                throw new Exception($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})");
+                throw new T8NException($"currentDifficulty cannot be calculated -- currentTime ({CurrentTimestamp}) needs to be after parent time ({ParentTimestamp})", ExitCodes.ErrorConfig);
             }
 
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
