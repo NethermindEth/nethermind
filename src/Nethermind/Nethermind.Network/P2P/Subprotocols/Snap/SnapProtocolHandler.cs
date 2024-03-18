@@ -344,7 +344,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return response.Nodes;
         }
 
-        private static IOwnedReadOnlyList<PathGroup> GetPathGroups(AccountsToRefreshRequest request)
+        public static IOwnedReadOnlyList<PathGroup> GetPathGroups(AccountsToRefreshRequest request)
         {
             ArrayPoolList<PathGroup> groups = new(request.Paths.Count);
 
