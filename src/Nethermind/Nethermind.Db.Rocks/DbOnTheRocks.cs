@@ -1590,8 +1590,6 @@ public class DbOnTheRocks : IDb, ITunableDb
     internal class IteratorManager : IDisposable
     {
         private readonly ManagedIterators _readaheadIterators = new();
-        private readonly ManagedIterators _readaheadIterators2 = new();
-        private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
         private readonly ReadOptions? _readOptions;
@@ -1612,30 +1610,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         private void OnTimer(object? state)
         {
             _readaheadIterators.ClearIterators();
-            _readaheadIterators2.ClearIterators();
-            _readaheadIterators3.ClearIterators();
         }
 
         public void Dispose()
         {
             _timer.Dispose();
             _readaheadIterators.DisposeAll();
-            _readaheadIterators2.DisposeAll();
-            _readaheadIterators3.DisposeAll();
         }
 
         public Iterator Rent(ReadFlags flags)
         {
             ManagedIterators iterators = _readaheadIterators;
-            if ((flags & ReadFlags.HintReadAhead2) != 0)
-            {
-                iterators = _readaheadIterators2;
-            }
-            else if ((flags & ReadFlags.HintReadAhead3) != 0)
-            {
-                iterators = _readaheadIterators3;
-            }
-
             IteratorHolder holder = iterators.Value!;
             // If null, we create a new one.
             Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
@@ -1645,15 +1630,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         public void Return(Iterator iterator, ReadFlags flags)
         {
             ManagedIterators iterators = _readaheadIterators;
-            if ((flags & ReadFlags.HintReadAhead2) != 0)
-            {
-                iterators = _readaheadIterators2;
-            }
-            else if ((flags & ReadFlags.HintReadAhead3) != 0)
-            {
-                iterators = _readaheadIterators3;
-            }
-
             IteratorHolder holder = iterators.Value!;
 
             // We don't keep using the same iterator for too long.
