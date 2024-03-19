@@ -114,6 +114,11 @@ namespace Nethermind.Evm.Tracing
             {
             }
 
+            public override void ReportActionError(EvmExceptionType error)
+            {
+                OutOfGas |= error == EvmExceptionType.OutOfGas;
+            }
+
             public override void ReportOperationError(EvmExceptionType error)
             {
                 OutOfGas |= error == EvmExceptionType.OutOfGas;
