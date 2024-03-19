@@ -8,6 +8,11 @@ on:
         description: "A comma-separated list of ips allowed to connect to the node"
         default: ''
         required: false
+      network:
+        type: string
+        description: "Network on which test should be started"
+        default: "mainnet"
+        required: true
       branch_to_compare:
         type: string
         description: "A branch to compare with. Example: \"release/1.25.1\""
@@ -31,11 +36,6 @@ jobs:
     steps:
       - name: Verify if inputs are correctly applied
         run: |
-          if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ -z "$BRANCH_TO_COMPARE" ]; then
-            echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to true."
-            exit 1
-          fi
-
           if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ ! -z "$COMPARE_WITH" ]; then
             echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
             exit 1
@@ -59,11 +59,12 @@ jobs:
       additional_options: >-
         {
           "timeout": "12",
-          "default_dockerfile": "Dockerfile",
+          "default_dockerfile": "Dockerfile.diag",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-16' || '' }}"
+          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-8' || '' }}",
+          "network": "${{ inputs.network || mainnet }}"
         }
       non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
@@ -80,11 +81,12 @@ jobs:
       additional_options: >-
         {
           "timeout": "12",
-          "default_dockerfile": "Dockerfile",
+          "default_dockerfile": "Dockerfile.diag",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-16' || '' }}"
+          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-8' || '' }}",
+          "network": "${{ inputs.network || mainnet }}"
         }
       non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
@@ -134,18 +136,15 @@ jobs:
           main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
           compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
   
-          ls artifacts
           # Check and add the main branch file
           if [ -f "artifacts/$main_branch_file" ]; then
             url_content=$(cat "artifacts/$main_branch_file")
-            echo $url_content
             rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
           fi
   
           # Check and add the compare branch file
           if [ -f "artifacts/$compare_branch_file" ]; then
             url_content=$(cat "artifacts/$compare_branch_file")
-            echo $url_content
             rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
           fi
   
@@ -272,9 +271,14 @@ jobs:
           done
 
           # Flag for comparing to other branch
-          if [ ${#nethermind_urls_str[@]} -gt 1 ]; then
+          if [ ${#nethermind_urls_str[@]} -eq 1 ]; then
+            echo "compare_to_other_branch=true" >> $GITHUB_ENV
+            echo "compare_to_other_branch_params=${nethermind_urls_str[0]}" >> $GITHUB_ENV
+
+          elif [ ${#nethermind_urls_str[@]} -eq 2 ]; then
             echo "compare_to_other_branch=true" >> $GITHUB_ENV
             echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
+
           else
             echo "compare_to_other_branch=false" >> $GITHUB_ENV
           fi
@@ -310,7 +314,7 @@ jobs:
             
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
-                flood "$TEST" ${compare_to_other_branch_params} --rates 10 100 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
+                flood "$TEST" ${compare_to_other_branch_params} --rates 100 1000 10000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
             flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
