@@ -81,7 +81,7 @@ public partial class EthRpcModuleTests
 
     [TestCase(false, 2)]
     [TestCase(true, 2)]
-    [TestCase(true, AccessTxTracer.MaxStorageAccessToOptimize + 5)]
+    [TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -95,7 +95,7 @@ public partial class EthRpcModuleTests
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
             test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
 
-        if (optimize && loads <= AccessTxTracer.MaxStorageAccessToOptimize)
+        if (optimize)
         {
             accessList = GetTestAccessList(loads, false).AccessList;
         }
