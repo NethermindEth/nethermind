@@ -50,16 +50,19 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         topic.OnMessage += (byte[] msg) =>
         {
-            ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_api.BlockTree!.Head!.Header);
-            Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-            Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
-            if (CheckDecryptionKeys(decryptionKeys, eon, Threshhold))
+            lock (_keyperSetManagerContract)
             {
-                _onDecryptionKeysReceived(decryptionKeys);
-            }
-            else
-            {
-                _api.LogManager.GetClassLogger().Warn("Invalid decryption keys received on P2P network.");
+                ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_api.BlockTree!.Head!.Header);
+                Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+                Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+                if (CheckDecryptionKeys(decryptionKeys, eon, Threshhold))
+                {
+                    _onDecryptionKeysReceived(decryptionKeys);
+                }
+                else
+                {
+                    _api.LogManager.GetClassLogger().Warn("Invalid decryption keys received on P2P network.");
+                }
             }
         };
 
