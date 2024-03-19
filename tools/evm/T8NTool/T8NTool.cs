@@ -7,6 +7,7 @@ using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -101,11 +102,37 @@ public class T8NTool
         IDb stateDb = new MemDb();
         IDb codeDb = new MemDb();
 
-        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)envInfo.CurrentNumber, JsonToEthereumTest.ParseSpec(stateFork)));
+        IReleaseSpec spec;
+        try
+        {
+            spec = JsonToEthereumTest.ParseSpec(stateFork);
+        }
+        catch (NotSupportedException e)
+        {
+            throw new T8NException(e, ExitCodes.ErrorConfig);
+        }
+
+        ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)envInfo.CurrentNumber, spec));
+        bool isPostMerge = spec != London.Instance &&
+                           spec != Berlin.Instance &&
+                           spec != MuirGlacier.Instance &&
+                           spec != Istanbul.Instance &&
+                           spec != ConstantinopleFix.Instance &&
+                           spec != Constantinople.Instance &&
+                           spec != Byzantium.Instance &&
+                           spec != SpuriousDragon.Instance &&
+                           spec != TangerineWhistle.Instance &&
+                           spec != Dao.Instance &&
+                           spec != Homestead.Instance &&
+                           spec != Frontier.Instance &&
+                           spec != Olympic.Instance;
+        if (isPostMerge)
+        {
+            specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
+        }
         TrieStore trieStore = new(stateDb, _logManager);
 
         WorldState stateProvider = new(trieStore, codeDb, _logManager);
-        IReleaseSpec spec = specProvider.GetSpec((ForkActivation)envInfo.CurrentNumber);
 
         var blockhashProvider = new T8NBlockHashProvider();
         IVirtualMachine virtualMachine = new VirtualMachine(
@@ -127,10 +154,10 @@ public class T8NTool
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
         }
 
+        envInfo.ApplyChecks(specProvider, spec);
+
         BlockHeader header = envInfo.GetBlockHeader();
         BlockHeader parent = envInfo.GetParentBlockHeader();
-
-        envInfo.ApplyChecks(specProvider, spec);
 
         blockhashProvider.Insert(header.Hash, header.Number);
         blockhashProvider.Insert(parent.Hash, parent.Number);
@@ -146,10 +173,14 @@ public class T8NTool
         List<Transaction> successfulTxs = [];
         List<TxReceipt> successfulTxReceipts = [];
 
-        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).TestObject;
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).TestObject;
 
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
+        var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
+        withdrawalProcessor.ProcessWithdrawals(block, spec);
+        stateProvider.Commit(spec);
+        stateProvider.RecalculateStateRoot();
 
         List<RejectedTx> rejectedTxReceipts = [];
         int txIndex = 0;
@@ -183,7 +214,7 @@ public class T8NTool
         ulong gasUsed = 0;
         if (!tracer.TxReceipts.IsNullOrEmpty())
         {
-             gasUsed = (ulong) tracer.LastReceipt.GasUsed;
+             gasUsed = (ulong) tracer.LastReceipt.GasUsedTotal;
         }
 
         Hash256 stateRoot = stateProvider.StateRoot;
@@ -197,8 +228,10 @@ public class T8NTool
             ReceiptRoot = receiptsRoot,
             Receipts = successfulTxReceipts.ToArray(),
             Rejected = rejectedTxReceipts.ToArray(),
-            Difficulty = header.Difficulty,
-            GasUsed = new UInt256(gasUsed)
+            Difficulty = envInfo.CurrentDifficulty,
+            GasUsed = new UInt256(gasUsed),
+            CurrentBaseFee = envInfo.CurrentBaseFee,
+            WithdrawalsRoot = block.WithdrawalsRoot
         };
 
         var accounts = allocJson.Keys.ToDictionary(address => address, address => stateProvider.GetAccount(address));

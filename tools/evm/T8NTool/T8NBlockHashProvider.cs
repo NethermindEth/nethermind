@@ -9,10 +9,11 @@ namespace Evm.T8NTool;
 
 public class T8NBlockHashProvider : IBlockhashProvider
 {
-    private readonly Dictionary<long, Hash256> _blockHashes = new();
+    private readonly Dictionary<long, Hash256?> _blockHashes = new();
     public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
     {
-        return _blockHashes[number] ?? throw new T8NException($"BlockHash for block {number} not provided", ExitCodes.ErrorMissingBlockhash);
+        return _blockHashes.GetValueOrDefault(number, null)
+               ?? throw new T8NException($"BlockHash for block {number} not provided", ExitCodes.ErrorMissingBlockhash);
     }
 
     public void Insert(Hash256? blockHash, long number)

@@ -1,5 +1,4 @@
 using Evm.T8NTool;
-using Microsoft.ClearScript.Util.Web;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -17,8 +16,9 @@ namespace Evm.JsonTypes
         public ulong CurrentTimestamp { get; set; }
         public long CurrentNumber { get; set; }
 
-        public string[]? Withdrawals { get; set; }
+        public Withdrawal[]? Withdrawals { get; set; }
 
+        public UInt256? CurrentRandom { get; set; }
         public ulong ParentTimestamp { get; set; }
         public UInt256? ParentDifficulty { get; set; }
         public UInt256? CurrentBaseFee { get; set; }
@@ -32,16 +32,6 @@ namespace Evm.JsonTypes
         public ulong? CurrentExcessBlobGas { get; set; }
         public ulong? ParentBlobGasUsed { get; set; }
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
-
-        public BlockHeader header;
-        public BlockHeader parent;
-
-        public EnvInfo()
-        {
-            header = GetBlockHeader();
-            parent = GetParentBlockHeader();
-        }
-
 
         public BlockHeader GetBlockHeader()
         {
@@ -86,12 +76,11 @@ namespace Evm.JsonTypes
             if (spec is not London) return;
             if (CurrentBaseFee != null) return;
 
-            if (ParentBaseFee.HasValue && CurrentNumber != 0)
+            if (!ParentBaseFee.HasValue || CurrentNumber == 0)
             {
-                CurrentBaseFee = BaseFeeCalculator.Calculate(ParentBaseFee.Value, ParentGasUsed, ParentGasLimit, CurrentNumber - 1, spec);
+                throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
             }
-
-            throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
+            CurrentBaseFee = BaseFeeCalculator.Calculate(ParentBaseFee.Value, ParentGasUsed, ParentGasLimit, CurrentNumber - 1, spec);
         }
 
         private void ApplyShanghaiChecks(IReleaseSpec spec)
@@ -119,6 +108,12 @@ namespace Evm.JsonTypes
 
         private void ApplyMergeChecks(ISpecProvider specProvider)
         {
+            if (specProvider.TerminalTotalDifficulty?.IsZero ?? false)
+            {
+                if (CurrentRandom == null) throw new T8NException("post-merge requires currentRandom to be defined in env", ExitCodes.ErrorConfig);
+                if (CurrentDifficulty?.IsZero ?? false) throw new T8NException("post-merge difficulty must be zero (or omitted) in env", ExitCodes.ErrorConfig);
+                return;
+            }
             if (CurrentDifficulty != null) return;
             if (!ParentDifficulty.HasValue)
             {
@@ -138,7 +133,7 @@ namespace Evm.JsonTypes
 
             EthashDifficultyCalculator difficultyCalculator = new(specProvider);
 
-            CurrentDifficulty = difficultyCalculator.Calculate(header, parent);
+            CurrentDifficulty = difficultyCalculator.Calculate(ParentDifficulty.Value, ParentTimestamp, CurrentTimestamp, CurrentNumber, ParentUncleHash != null);
         }
     }
 }

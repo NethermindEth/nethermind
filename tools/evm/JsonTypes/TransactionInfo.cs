@@ -42,9 +42,13 @@ namespace Evm.JsonTypes
             transactionBuilder.WithGasLimit(Gas);
             transactionBuilder.WithType(Type);
             transactionBuilder.WithGasPrice(GasPrice);
-            AccessList.Builder builder = new();
-            JsonToEthereumTest.ProcessAccessList(AccessList, builder);
-            transactionBuilder.WithAccessList(builder.Build());
+            if (AccessList != null)
+            {
+                AccessList.Builder builder = new();
+                JsonToEthereumTest.ProcessAccessList(AccessList, builder);
+                transactionBuilder.WithAccessList(builder.Build());
+            }
+
             if (MaxFeePerGas.HasValue)
             {
                 transactionBuilder.WithMaxFeePerGas(MaxFeePerGas.Value);

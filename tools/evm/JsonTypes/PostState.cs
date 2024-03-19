@@ -13,13 +13,14 @@ public class PostState
     public Hash256? StateRoot { get; set; }
     public Hash256? TxRoot { get; set; }
     public Hash256? ReceiptRoot { get; set; }
+    public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? LogsHash { get; set; }
     public Bloom? Bloom { get; set; }
     public TxReceipt[]? Receipts { get; set; }
     public RejectedTx[]? Rejected { get; set; }
     public UInt256? Difficulty { get; set; }
     public UInt256? GasUsed { get; set; }
-    public Hash256? BaseFee { get; set; }
+    public UInt256? CurrentBaseFee { get; set; }
 }
 
 public class RejectedTx

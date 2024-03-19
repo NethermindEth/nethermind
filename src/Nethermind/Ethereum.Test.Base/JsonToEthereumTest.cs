@@ -59,6 +59,7 @@ namespace Ethereum.Test.Base
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
+                "ArrowGlacier" => ArrowGlacier.Instance,
                 _ => throw new NotSupportedException()
             };
         }
