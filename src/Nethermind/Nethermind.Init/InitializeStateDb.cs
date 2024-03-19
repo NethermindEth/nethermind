@@ -55,7 +55,15 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
-        if (syncConfig.SnapServingEnabled && pruningConfig.PruningBoundary < 128)
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
+
+        if (syncConfig.SnapServingEnabled == null && _api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null)
+        {
+            // Enable snap serving on halfpath
+            syncConfig.SnapServingEnabled = true;
+        }
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
         {
             if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
             pruningConfig.PruningBoundary = 128;
@@ -80,7 +88,6 @@ public class InitializeStateDb : IStep
             setApi.WitnessRepository = NullWitnessCollector.Instance;
         }
 
-        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
         IKeyValueStore codeDb = getApi.DbProvider.CodeDb
             .WitnessedBy(witnessCollector);
         IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);

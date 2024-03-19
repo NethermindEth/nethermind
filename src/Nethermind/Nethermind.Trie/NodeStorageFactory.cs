@@ -22,6 +22,8 @@ public class NodeStorageFactory : INodeStorageFactory
         _currentKeyScheme = null;
     }
 
+    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
+
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
         _currentKeyScheme = DetectKeyScheme(mainStateDb);

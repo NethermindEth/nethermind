@@ -10,4 +10,6 @@ public interface INodeStorageFactory
 {
     INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool usePreferredKeyScheme = false);
     void DetectCurrentKeySchemeFrom(IDb mainStateDb);
+
+    INodeStorage.KeyScheme? CurrentKeyScheme { get; }
 }
