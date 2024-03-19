@@ -74,10 +74,10 @@ namespace Nethermind.Evm.Test.Tracing
                     new Address[] { });
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressB },
-                    new [] { TestItem.AddressA });
+                    new[] { TestItem.AddressA });
                 yield return new TestCaseData(
                     new Address[] { TestItem.AddressA },
-                    new [] { TestItem.AddressB });
+                    new[] { TestItem.AddressB });
             }
         }
 
@@ -90,10 +90,10 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(a=>a.Address).ToArray(), Is.EquivalentTo(expected));
+            Assert.That(sut.AccessList.Select(a => a.Address).ToArray(), Is.EquivalentTo(expected));
         }
 
-        [Test ]
+        [Test]
         public void ReportAccess_AddressAIsSetToOptmizedAndHasStorageCell_AddressAAndBIsInTheAccesslist()
         {
             JournalSet<Address> accessedAddresses = [TestItem.AddressA, TestItem.AddressB];
@@ -102,7 +102,7 @@ namespace Nethermind.Evm.Test.Tracing
 
             sut.ReportAccess(accessedAddresses, accessedStorageCells);
 
-            Assert.That(sut.AccessList.Select(x=>x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
+            Assert.That(sut.AccessList.Select(x => x.Address).ToArray(), Is.EquivalentTo(new[] { TestItem.AddressA, TestItem.AddressB }));
         }
 
         [Test]
