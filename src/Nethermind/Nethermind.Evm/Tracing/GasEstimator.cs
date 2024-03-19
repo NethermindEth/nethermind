@@ -64,6 +64,9 @@ namespace Nethermind.Evm.Tracing
                 ? tx.GasLimit
                 : header.GasLimit;
 
+            if (leftBound > rightBound)
+                return 0;
+
             // Execute binary search to find the optimal gas estimation.
             return BinarySearchEstimate(leftBound, rightBound, tx, header, gasTracer, errorMargin, token);
         }
@@ -71,9 +74,9 @@ namespace Nethermind.Evm.Tracing
         private long BinarySearchEstimate(long leftBound, long rightBound, Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token)
         {
             double marginWithDecimals = errorMargin == 0 ? 1 : errorMargin / 10000d + 1;
-            //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced
+            //This approach is similar to Geth, by starting from an optimistic guess the number of iterations is greatly reduced in most cases
             long optimisticGasEstimate = (long)((gasTracer.GasSpent + gasTracer.TotalRefund + GasCostOf.CallStipend) * marginWithDecimals);
-            if (optimisticGasEstimate >= leftBound && optimisticGasEstimate <= rightBound)
+            if (optimisticGasEstimate > leftBound && optimisticGasEstimate < rightBound)
             {
                 if (TryExecutableTransaction(tx, header, optimisticGasEstimate, token))
                     rightBound = optimisticGasEstimate;
