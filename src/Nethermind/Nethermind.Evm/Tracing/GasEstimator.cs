@@ -64,6 +64,7 @@ namespace Nethermind.Evm.Tracing
                 ? tx.GasLimit
                 : header.GasLimit;
 
+            //This would mean that header gas limit is lower than both intrinsic gas and tx gas limit
             if (leftBound > rightBound)
                 return 0;
 
