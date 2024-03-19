@@ -278,7 +278,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            Assert.That(()=> sut.Estimate(tx, block.Header, tracer, errorMargin), Throws.TypeOf<ArgumentException>());
+            Assert.That(() => sut.Estimate(tx, block.Header, tracer, errorMargin), Throws.TypeOf<ArgumentException>());
         }
 
 
