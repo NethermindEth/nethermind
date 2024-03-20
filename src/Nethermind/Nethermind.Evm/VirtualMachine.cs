@@ -2848,7 +2848,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
 
         if (instruction is Instruction.EXTDELEGATECALL
-                            && env.CodeInfo.Version != 0
                             && targetCodeInfo is not EofCodeInfo)
         {
             _returnDataBuffer = Array.Empty<byte>();
