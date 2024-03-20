@@ -143,10 +143,11 @@ internal class ILCompiler
                 case Instruction.PUSH30:
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
-                    ReadOnlySpan<byte> bytes = op.Arguments.Value.Span;
-                    il.LoadArray(bytes);
+                    int count = (int)op.Operation - (int)Instruction.PUSH0;
+                    ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
+                    il.LoadArray(bytes.ToArray());
                     il.LoadValue(0);
-                    il.EmitCall(OpCodes.Call, typeof(BitConverter).GetProperty(nameof(BitConverter.IsLittleEndian)).GetMethod, null);
+                    il.LoadValue(0);
                     il.Emit(OpCodes.Newobj, typeof(UInt256).GetConstructor(new[] { typeof(Span<byte>), typeof(bool) }));
 
                     il.StackPush(current);
@@ -240,7 +241,7 @@ internal class ILCompiler
                 case Instruction.DUP14:
                 case Instruction.DUP15:
                 case Instruction.DUP16:
-                    int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
+                    count = (int)op.Operation - (int)Instruction.DUP1 + 1;
                     il.Load(current);
                     il.StackLoadPrevious(current, count);
                     il.Emit(OpCodes.Ldobj, typeof(Word));
