@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -28,6 +29,16 @@ namespace Nethermind.Serialization.Rlp
     public interface IRlpValueDecoder<T> : IRlpDecoder<T>
     {
         T Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None);
+    }
+
+    public readonly struct RlpValueDecoderSpanDeserializer<T, TRlpValueDecoder>(TRlpValueDecoder valueDecoder) : ISpanDeserializer<T>
+        where TRlpValueDecoder : IRlpValueDecoder<T>
+    {
+        public T Deserialize(ReadOnlySpan<byte> span)
+        {
+            var decoderContext = new Rlp.ValueDecoderContext(span);
+            return valueDecoder.Decode(ref decoderContext);
+        }
     }
 
     public static class RlpValueDecoderExtensions

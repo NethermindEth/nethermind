@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -305,7 +306,7 @@ namespace Nethermind.Trie.Test.Pruning
             memDb[Keccak.Zero.Bytes] = new byte[] { 1, 2, 3 };
 
             using TrieStore trieStore = new(memDb, _logManager);
-            trieStore.LoadRlp(Keccak.Zero).Should().NotBeNull();
+            trieStore.LoadRlp<byte[]?, ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, Keccak.Zero).Should().NotBeNull();
         }
 
         [Test]
@@ -585,13 +586,14 @@ namespace Nethermind.Trie.Test.Pruning
 
             MemDb originalStore = new MemDb();
             WitnessCollector witnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
+            using IDisposable tracker = witnessCollector.TrackOnThisThread();
             IKeyValueStoreWithBatching store = originalStore.WitnessedBy(witnessCollector);
             using TrieStore trieStore = new(store, new TestPruningStrategy(false), No.Persistence, _logManager);
             trieStore.CommitNode(0, new NodeCommitInfo(node));
             trieStore.FinishBlockCommit(TrieType.State, 0, node);
 
-            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly(originalStore);
-            readOnlyTrieStore.LoadRlp(node.Keccak);
+            IReadOnlyTrieStore readOnlyTrieStore = trieStore.AsReadOnly();
+            readOnlyTrieStore.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, node.Keccak);
 
             witnessCollector.Collected.Should().BeEmpty();
         }
@@ -616,7 +618,7 @@ namespace Nethermind.Trie.Test.Pruning
 
             if (beThreadSafe)
             {
-                trieStore = trieStore.AsReadOnly(memDb);
+                trieStore = trieStore.AsReadOnly();
             }
 
             void CheckChildren()

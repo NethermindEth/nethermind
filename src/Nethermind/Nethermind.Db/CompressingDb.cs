@@ -103,19 +103,34 @@ namespace Nethermind.Db
 
             private static byte[]? Decompress(byte[]? bytes)
             {
-                if (bytes is null || bytes.Length == 0 || (bytes[PreambleIndex] != PreambleValue))
+                if (ShouldNotDecompress(bytes))
                 {
                     return bytes;
                 }
 
                 // decompress, removing preamble and adding the empty at the end
-                byte[] decompressed = new byte[bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length];
+                byte[] decompressed = new byte[DecompressedLength(bytes)];
                 Span<byte> span = decompressed.AsSpan();
 
-                bytes.Slice(PreambleLength).CopyTo(span);
-                EmptyCodeHashStorageRoot.CopyTo(span.Slice(span.Length - EmptyCodeHashStorageRoot.Length));
+                DecompressSpan(bytes, span);
 
                 return decompressed;
+            }
+
+            private static bool ShouldNotDecompress(ReadOnlySpan<byte> bytes)
+            {
+                return bytes.IsNullOrEmpty() || (bytes[PreambleIndex] != PreambleValue);
+            }
+
+            private static int DecompressedLength(ReadOnlySpan<byte> bytes)
+            {
+                return bytes.Length - PreambleLength + EmptyCodeHashStorageRoot.Length;
+            }
+
+            private static void DecompressSpan(ReadOnlySpan<byte> bytes, Span<byte> span)
+            {
+                bytes.Slice(PreambleLength).CopyTo(span);
+                EmptyCodeHashStorageRoot.CopyTo(span.Slice(span.Length - EmptyCodeHashStorageRoot.Length));
             }
 
             public void Dispose() => _wrapped.Dispose();
@@ -168,6 +183,31 @@ namespace Nethermind.Db
             {
                 if (_wrapped is ITunableDb tunable)
                     tunable.Tune(type);
+            }
+
+            public T ReadDeserialize<T, TDeserializer>(TDeserializer deserializer, ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) where TDeserializer : ISpanDeserializer<T>
+            {
+                return _wrapped.ReadDeserialize<T, SpanDeserializerWrapper<T, TDeserializer>>(
+                    new SpanDeserializerWrapper<T, TDeserializer>(deserializer), key, flags);
+            }
+
+            private readonly struct SpanDeserializerWrapper<T, TWrapped>(TWrapped wrapped) : ISpanDeserializer<T>
+                where TWrapped : ISpanDeserializer<T>
+            {
+                public T Deserialize(ReadOnlySpan<byte> bytes)
+                {
+                    if (ShouldNotDecompress(bytes))
+                    {
+                        return wrapped.Deserialize(bytes);
+                    }
+
+                    // Should be about 522 byte max.
+                    Span<byte> decompressed = stackalloc byte[DecompressedLength(bytes)];
+
+                    DecompressSpan(bytes, decompressed);
+
+                    return wrapped.Deserialize(decompressed);
+                }
             }
         }
     }

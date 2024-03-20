@@ -10,6 +10,7 @@ using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie.Pruning;
@@ -348,7 +349,8 @@ namespace Nethermind.Trie
                         ThrowMissingKeccak();
                     }
 
-                    CappedArray<byte> fullRlp = tree.LoadRlp(keccak, readFlags);
+                    CappedArray<byte> fullRlp = tree.LoadRlp<CappedArray<byte>, CopyToPooledCappedArray>(
+                        new CopyToPooledCappedArray(bufferPool), keccak, readFlags);
 
                     if (fullRlp.IsNull)
                     {
@@ -416,7 +418,7 @@ namespace Nethermind.Trie
                             return false;
                         }
 
-                        var fullRlp = tree.TryLoadRlp(keccak, readFlags);
+                        var fullRlp = tree.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, keccak, readFlags | ReadFlags.DontThrowOnMissingNode);
 
                         if (fullRlp is null)
                         {
@@ -1107,6 +1109,18 @@ namespace Nethermind.Trie
             static void ThrowNotPersisted()
             {
                 throw new InvalidOperationException("Cannot unresolve a child that is not persisted yet.");
+            }
+        }
+
+        public readonly struct CopyToPooledCappedArray(ICappedArrayPool? pool) : ISpanDeserializer<CappedArray<byte>>
+        {
+            public CappedArray<byte> Deserialize(ReadOnlySpan<byte> span)
+            {
+                if (span.IsNull()) return CappedArray<byte>.Null;
+                if (span.IsEmpty) return CappedArray<byte>.Empty;
+                CappedArray<byte> rented = pool.SafeRentBuffer(span.Length);
+                span.CopyTo(rented.AsSpan());
+                return rented;
             }
         }
     }

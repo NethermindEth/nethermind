@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
@@ -23,7 +24,7 @@ public class TrieNodeResolverWithReadFlagsTests
 
         Hash256 theKeccak = TestItem.KeccakA;
         memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
-        resolver.LoadRlp(theKeccak);
+        resolver.LoadRlp<byte[]?, ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, theKeccak);
 
         memDb.KeyWasReadWithFlags(theKeccak.BytesToArray(), theFlags);
     }
@@ -38,7 +39,7 @@ public class TrieNodeResolverWithReadFlagsTests
 
         Hash256 theKeccak = TestItem.KeccakA;
         memDb[theKeccak.Bytes] = TestItem.KeccakA.BytesToArray();
-        resolver.LoadRlp(theKeccak, ReadFlags.HintReadAhead);
+        resolver.LoadRlp<byte[]?, ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, theKeccak, ReadFlags.HintReadAhead);
 
         memDb.KeyWasReadWithFlags(theKeccak.BytesToArray(), theFlags | ReadFlags.HintReadAhead);
     }

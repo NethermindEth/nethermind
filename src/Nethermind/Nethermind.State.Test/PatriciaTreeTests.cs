@@ -5,6 +5,7 @@ using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -88,11 +89,11 @@ namespace Nethermind.Store.Test
 
             if (hasRoot)
             {
-                trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                trieStore.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, stateRoot).Length.Should().BeGreaterThan(0);
             }
             else
             {
-                trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                trieStore.Invoking(ts => ts.LoadRlp<byte[], ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, stateRoot)).Should().Throw<TrieException>();
             }
         }
     }

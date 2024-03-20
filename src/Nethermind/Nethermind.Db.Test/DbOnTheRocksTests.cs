@@ -15,6 +15,7 @@ using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Logging;
@@ -304,6 +305,16 @@ namespace Nethermind.Db.Test
             AllocatedSpan.Should().Be(1);
             _db.DangerousReleaseMemory(readSpan);
             AllocatedSpan.Should().Be(0);
+        }
+
+        [Test]
+        public void Smoke_test_read_deserialize()
+        {
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            _db.PutSpan(key, value);
+            byte[] readValue = _db.ReadDeserialize<byte[]?, ToArraySpanDeserializer>(ToArraySpanDeserializer.Instance, key);
+            Assert.That(readValue, Is.EqualTo(new byte[] { 4, 5, 6 }));
         }
 
         [Test]

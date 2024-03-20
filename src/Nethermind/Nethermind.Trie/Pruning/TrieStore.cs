@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Logging;
 
 namespace Nethermind.Trie.Pruning
@@ -333,32 +334,22 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
+        public virtual T LoadRlp<T, TDeserializer>(TDeserializer deserializer, Hash256 keccak, ReadFlags flags = ReadFlags.None) where TDeserializer : ISpanDeserializer<T>
         {
-            keyValueStore ??= _keyValueStore;
-            byte[]? rlp = keyValueStore.Get(keccak.Bytes, readFlags);
+            bool throwOnMissing = (flags & ReadFlags.DontThrowOnMissingNode) == 0;
+            return _keyValueStore.ReadDeserialize<T, LoadRlpDeserializerLoad<T, TDeserializer>>(new LoadRlpDeserializerLoad<T, TDeserializer>(deserializer, keccak, throwOnMissing), keccak.Bytes, flags);
+        }
 
-            if (rlp is not null)
+        private struct LoadRlpDeserializerLoad<T, TDeserializer>(TDeserializer wrappedDeserializer, Hash256 keccak, bool throwOnMissing): ISpanDeserializer<T>
+            where TDeserializer: ISpanDeserializer<T>
+        {
+            public T Deserialize(ReadOnlySpan<byte> span)
             {
+                if (throwOnMissing && span.IsNullOrEmpty()) throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
                 Metrics.LoadedFromDbNodesCount++;
+                return wrappedDeserializer.Deserialize(span);
             }
-
-            return rlp;
         }
-
-        public byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags readFlags = ReadFlags.None)
-        {
-            byte[]? rlp = TryLoadRlp(keccak, keyValueStore, readFlags);
-            if (rlp is null)
-            {
-                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
-            }
-
-            return rlp;
-        }
-
-        public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
-        public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => TryLoadRlp(keccak, null, readFlags);
 
         public bool IsPersisted(in ValueHash256 keccak)
         {
@@ -374,8 +365,8 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) =>
-            new ReadOnlyTrieStore(this, keyValueStore);
+        public IReadOnlyTrieStore AsReadOnly() =>
+            new ReadOnlyTrieStore(this);
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
@@ -893,7 +884,7 @@ namespace Nethermind.Trie.Pruning
             TrieNode node = FindCachedOrUnknown(stateRoot, true);
             if (node.NodeType == NodeType.Unknown)
             {
-                return TryLoadRlp(node.Keccak, ReadFlags.None) is not null;
+                return !LoadRlp<bool, IsNullOrEmptySpanDeserializer>(IsNullOrEmptySpanDeserializer.Instance, node.Keccak, ReadFlags.DontThrowOnMissingNode);
             }
 
             return true;
