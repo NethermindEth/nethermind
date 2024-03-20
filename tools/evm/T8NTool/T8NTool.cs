@@ -114,20 +114,8 @@ public class T8NTool
         }
 
         ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, Frontier.Instance), ((ForkActivation)envInfo.CurrentNumber, spec));
-        bool isPostMerge = spec != London.Instance &&
-                           spec != Berlin.Instance &&
-                           spec != MuirGlacier.Instance &&
-                           spec != Istanbul.Instance &&
-                           spec != ConstantinopleFix.Instance &&
-                           spec != Constantinople.Instance &&
-                           spec != Byzantium.Instance &&
-                           spec != SpuriousDragon.Instance &&
-                           spec != TangerineWhistle.Instance &&
-                           spec != Dao.Instance &&
-                           spec != Homestead.Instance &&
-                           spec != Frontier.Instance &&
-                           spec != Olympic.Instance;
-        if (isPostMerge)
+
+        if (IsPostMerge(spec))
         {
             specProvider.UpdateMergeTransitionInfo(envInfo.CurrentNumber, 0);
         }
@@ -172,7 +160,7 @@ public class T8NTool
         header.ExcessBlobGas ??= BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
 
         List<Transaction> successfulTxs = [];
-        List<TxReceipt> successfulTxReceipts = [];
+        List<TxReceipt> includedTxReceipts = [];
 
         BlockHeader[] uncles = envInfo.Ommers
             .Select(ommer => Build.A.BlockHeader
@@ -183,23 +171,8 @@ public class T8NTool
 
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
 
-        if (stateReward != null)
-        {
-            var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
-            BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+        CalculateReward(stateReward, block, stateProvider, spec);
 
-            foreach (BlockReward blockReward in rewards)
-            {
-                if (!stateProvider.AccountExists(blockReward.Address))
-                {
-                    stateProvider.CreateAccount(blockReward.Address, blockReward.Value);
-                }
-                else
-                {
-                    stateProvider.AddToBalance(blockReward.Address, blockReward.Value, spec);
-                }
-            }
-        }
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
@@ -224,7 +197,7 @@ public class T8NTool
                     tracer.LastReceipt.PostTransactionState = null;
                     tracer.LastReceipt.BlockHash = null;
                     tracer.LastReceipt.BlockNumber = 0;
-                    successfulTxReceipts.Add(tracer.LastReceipt);
+                    includedTxReceipts.Add(tracer.LastReceipt);
                 } else if (transactionResult.Error != null)
                 {
                     rejectedTxReceipts.Add(new RejectedTx(txIndex, transactionResult.Error));
@@ -244,14 +217,14 @@ public class T8NTool
 
         Hash256 stateRoot = stateProvider.StateRoot;
         Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
-        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, successfulTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
+        Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, includedTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
 
         var postState = new PostState
         {
             StateRoot = stateRoot,
             TxRoot = txRoot,
             ReceiptRoot = receiptsRoot,
-            Receipts = successfulTxReceipts.ToArray(),
+            Receipts = includedTxReceipts.ToArray(),
             Rejected = rejectedTxReceipts.ToArray(),
             Difficulty = envInfo.CurrentDifficulty,
             GasUsed = new UInt256(gasUsed),
@@ -288,5 +261,40 @@ public class T8NTool
         }
     }
 
+    private bool IsPostMerge(IReleaseSpec spec)
+    {
+        return spec != London.Instance &&
+               spec != Berlin.Instance &&
+               spec != MuirGlacier.Instance &&
+               spec != Istanbul.Instance &&
+               spec != ConstantinopleFix.Instance &&
+               spec != Constantinople.Instance &&
+               spec != Byzantium.Instance &&
+               spec != SpuriousDragon.Instance &&
+               spec != TangerineWhistle.Instance &&
+               spec != Dao.Instance &&
+               spec != Homestead.Instance &&
+               spec != Frontier.Instance &&
+               spec != Olympic.Instance;
+    }
 
+    private static void CalculateReward(string? stateReward, Block block, WorldState stateProvider, IReleaseSpec spec)
+    {
+        if (stateReward == null) return;
+
+        var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
+        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+
+        foreach (BlockReward blockReward in rewards)
+        {
+            if (!stateProvider.AccountExists(blockReward.Address))
+            {
+                stateProvider.CreateAccount(blockReward.Address, blockReward.Value);
+            }
+            else
+            {
+                stateProvider.AddToBalance(blockReward.Address, blockReward.Value, spec);
+            }
+        }
+    }
 }
