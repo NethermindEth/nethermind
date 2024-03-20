@@ -101,7 +101,7 @@ public class VerkleExecWitness : IWitness
         long accGas = 0;
         for (byte ch = startChunkId; ch <= endChunkId; ch++)
         {
-            long gas = _witness.AccessCodeChunk(address, ch, false);
+            long gas = _witness.AccessCodeChunk(address, ch, isWrite);
             accGas += gas;
             if (!UpdateGas(gas, ref unspentGas)) return false;
         }
