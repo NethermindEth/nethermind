@@ -6,4 +6,4 @@
 	url = https://github.com/shamatar/bench_precompiles.git
 [submodule "src/dotnet-libp2p"]
 	path = src/dotnet-libp2p
-	url = git@github.com:NethermindEth/dotnet-libp2p.git
+	url = https://github.com/NethermindEth/dotnet-libp2p.git
