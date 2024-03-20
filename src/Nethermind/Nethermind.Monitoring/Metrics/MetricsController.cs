@@ -259,16 +259,16 @@ namespace Nethermind.Monitoring.Metrics
                                 ReplaceValueIfChanged(value, gaugeName, label.Labels);
                                 break;
                             case ITuple keyAsTuple:
-                            {
-                                string[] labels = new string[keyAsTuple.Length];
-                                for (int i = 0; i < keyAsTuple.Length; i++)
                                 {
-                                    labels[i] = keyAsTuple[i].ToString();
-                                }
+                                    string[] labels = new string[keyAsTuple.Length];
+                                    for (int i = 0; i < keyAsTuple.Length; i++)
+                                    {
+                                        labels[i] = keyAsTuple[i].ToString();
+                                    }
 
-                                ReplaceValueIfChanged(value, gaugeName, labels);
-                                break;
-                            }
+                                    ReplaceValueIfChanged(value, gaugeName, labels);
+                                    break;
+                                }
                             default:
                                 ReplaceValueIfChanged(value, gaugeName, key.ToString());
                                 break;

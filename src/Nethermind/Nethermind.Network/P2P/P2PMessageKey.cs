@@ -21,7 +21,7 @@ namespace Nethermind.Network.P2P;
 
 public readonly record struct VersionedProtocol(string Protocol, byte Version);
 
-public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType): IMetricLabels
+public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) : IMetricLabels
 {
     private static readonly FrozenDictionary<(string, int), string> MessageNames =
         FromMessageCodeClass(Contract.P2P.Protocol.P2P, typeof(P2PMessageCode))

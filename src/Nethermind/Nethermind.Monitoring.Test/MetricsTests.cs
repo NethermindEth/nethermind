@@ -47,7 +47,7 @@ public class MetricsTests
         Option2,
     }
 
-    public struct CustomLabelType(int num1, int num2, int num3): IMetricLabels
+    public struct CustomLabelType(int num1, int num2, int num3) : IMetricLabels
     {
         public string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
     }
