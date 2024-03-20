@@ -11,6 +11,7 @@ using System.Runtime.Serialization;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
+using Nethermind.Core.Metric;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Config;
 using Nethermind.Monitoring.Metrics;
@@ -34,6 +35,9 @@ public class MetricsTests
         [KeyIsLabel("somelabel")]
         public static ConcurrentDictionary<SomeEnum, long> WithLabelledDictionary { get; set; } = new();
 
+        [KeyIsLabel("label1", "label2", "label3")]
+        public static ConcurrentDictionary<CustomLabelType, long> WithCustomLabelType { get; set; } = new();
+
         public static IDictionary<string, long> OldDictionaryMetrics { get; set; } = new ConcurrentDictionary<string, long>();
     }
 
@@ -41,6 +45,11 @@ public class MetricsTests
     {
         Option1,
         Option2,
+    }
+
+    public struct CustomLabelType(int num1, int num2, int num3): IMetricLabels
+    {
+        public string[] Labels => [num1.ToString(), num2.ToString(), num3.ToString()];
     }
 
     [Test]
@@ -57,6 +66,7 @@ public class MetricsTests
         TestMetrics.OneTwoThreeSpecial = 1234;
         TestMetrics.WithLabelledDictionary[SomeEnum.Option1] = 2;
         TestMetrics.WithLabelledDictionary[SomeEnum.Option2] = 3;
+        TestMetrics.WithCustomLabelType[new CustomLabelType(1, 11, 111)] = 1111;
         TestMetrics.OldDictionaryMetrics["metrics0"] = 4;
         TestMetrics.OldDictionaryMetrics["metrics1"] = 5;
         metricsController.UpdateMetrics(null);
@@ -65,6 +75,7 @@ public class MetricsTests
         var keyDefault = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThree)}";
         var keySpecial = $"{nameof(TestMetrics)}.{nameof(TestMetrics.OneTwoThreeSpecial)}";
         var keyDictionary = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithLabelledDictionary)}";
+        var keyDictionary2 = $"{nameof(TestMetrics)}.{nameof(TestMetrics.WithCustomLabelType)}";
         var keyOldDictionary0 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics0";
         var keyOldDictionary1 = $"{nameof(TestMetrics.OldDictionaryMetrics)}.metrics1";
 
@@ -81,6 +92,7 @@ public class MetricsTests
         Assert.That(gauges[keySpecial].Value, Is.EqualTo(1234));
         Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option1.ToString()).Value, Is.EqualTo(2));
         Assert.That(gauges[keyDictionary].WithLabels(SomeEnum.Option2.ToString()).Value, Is.EqualTo(3));
+        Assert.That(gauges[keyDictionary2].WithLabels("1", "11", "111").Value, Is.EqualTo(1111));
         Assert.That(gauges[keyOldDictionary0].Value, Is.EqualTo(4));
         Assert.That(gauges[keyOldDictionary1].Value, Is.EqualTo(5));
     }

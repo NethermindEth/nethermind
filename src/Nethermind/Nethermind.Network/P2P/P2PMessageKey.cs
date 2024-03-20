@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using Nethermind.Core.Metric;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
@@ -20,7 +21,7 @@ namespace Nethermind.Network.P2P;
 
 public readonly record struct VersionedProtocol(string Protocol, byte Version);
 
-public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType)
+public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType): IMetricLabels
 {
     private static readonly FrozenDictionary<(string, int), string> MessageNames =
         FromMessageCodeClass(Contract.P2P.Protocol.P2P, typeof(P2PMessageCode))
@@ -45,22 +46,29 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType)
             .Where(field => field.FieldType.IsAssignableTo(typeof(int)))
             .Select(field => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
 
-    private string? _name = null;
+    private string[]? _labels = null;
+    public string[] Labels => _labels ??= CalculateLabel();
 
-    public override string ToString()
+    private string[] CalculateLabel()
     {
-        if (_name is null)
+        return [$"{Protocol.Protocol}{Protocol.Version}", GetMessageType()];
+    }
+
+    private string GetMessageType()
+    {
+        if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out string messageName))
         {
-            if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out _name))
-            {
 #if DEBUG
                 throw new NotImplementedException($"Message name for protocol {Protocol.Protocol} message id {PacketType} not set.");
 #else
-                _name = PacketType.ToString(); // Just use the integer directly then
+            return PacketType.ToString(); // Just use the integer directly then
 #endif
-            }
         }
+        return messageName;
+    }
 
-        return _name!;
+    public override string ToString()
+    {
+        return string.Join(',', Labels);
     }
 }
