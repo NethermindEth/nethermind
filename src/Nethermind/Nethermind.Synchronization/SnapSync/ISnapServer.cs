@@ -35,7 +35,7 @@ public interface ISnapServer
         long byteLimit,
         CancellationToken cancellationToken);
 
-    (IOwnedReadOnlyList<PathWithStorageSlot[]>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
+    (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>?) GetStorageRanges(
         in ValueHash256 rootHash,
         IReadOnlyList<PathWithAccount> accounts,
         in ValueHash256? startingHash,

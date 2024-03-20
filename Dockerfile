@@ -31,7 +31,4 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
-RUN apt-get update && apt-get -y install libsnappy-dev && \
-  rm -rf /var/lib/apt/lists/*
-
 ENTRYPOINT ["./nethermind"]

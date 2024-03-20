@@ -92,4 +92,7 @@ public interface IPruningConfig : IConfig
 
     [ConfigItem(Description = "Whether to enables available disk space check.", DefaultValue = "true")]
     bool AvailableSpaceCheckEnabled { get; set; }
+
+    [ConfigItem(Description = "Past N state before state gets pruned Used to determine how old of a state to keep from the head.", DefaultValue = "64")]
+    int PruningBoundary { get; set; }
 }
