@@ -20,34 +20,21 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         : IFeeHistoryOracle
     {
         private const int MaxBlockCount = 1024;
-        private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? 40;
+        private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount;
         private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(cacheSize ?? MaxBlockCount * 2, "BlockFeeHistoryCache");
+            = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache");
 
-
-        private readonly struct BlockFeeHistorySearchInfo(
-            long blockNumber,
-            UInt256 blockBaseFeePerGas,
-            UInt256 baseFeePerGasEst,
-            UInt256 baseFeePerBlobGas,
-            double gasUsedRatio,
-            double blobGasUsedRatio,
-            Hash256? parentHash,
-            long gasUsed,
-            int blockTransactionsLength,
-            List<(long GasUsed, UInt256 PremiumPerGas)>? rewardsInBlocks)
-        {
-            public long BlockNumber { get; } = blockNumber;
-            public UInt256 BlockBaseFeePerGas { get; } = blockBaseFeePerGas;
-            public UInt256 BaseFeePerGasEst { get; } = baseFeePerGasEst;
-            public UInt256 BaseFeePerBlobGas { get; } = baseFeePerBlobGas;
-            public double GasUsedRatio { get; } = gasUsedRatio;
-            public double BlobGasUsedRatio { get; } = blobGasUsedRatio;
-            public Hash256? ParentHash { get; } = parentHash;
-            public long GasUsed { get; } = gasUsed;
-            public int BlockTransactionsLength { get; } = blockTransactionsLength;
-            public List<(long GasUsed, UInt256 PremiumPerGas)>? RewardsInBlocks { get; } = rewardsInBlocks;
-        }
+        private readonly record struct BlockFeeHistorySearchInfo(
+            long BlockNumber,
+            UInt256 BlockBaseFeePerGas,
+            UInt256 BaseFeePerGasEst,
+            UInt256 BaseFeePerBlobGas,
+            double GasUsedRatio,
+            double BlobGasUsedRatio,
+            Hash256? ParentHash,
+            long GasUsed,
+            int BlockTransactionsLength,
+            List<(long GasUsed, UInt256 PremiumPerGas)>? RewardsInBlocks);
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
@@ -78,7 +65,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
             if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache)
+            {
                 _feeHistoryCache.Set(block.Hash, historyInfo);
+            }
+
             return historyInfo;
         }
 
