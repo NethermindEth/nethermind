@@ -1,0 +1,980 @@
+Run cd posdao-test-setup
+  cd posdao-test-setup
+  npm run all-nethermind-no-watcher
+  shell: /usr/bin/bash -e {0}
+  env:
+    DOTNET_ROOT: /usr/share/dotnet
+
+> posdao-test-setup@0.0.1 all-nethermind-no-watcher /home/runner/work/nethermind/nethermind/posdao-test-setup
+> CLIENT=nethermind npm run before-start && npm run start-test-setup-nethermind && npm run after-start-no-watcher
+
+
+> posdao-test-setup@0.0.1 before-start /home/runner/work/nethermind/nethermind/posdao-test-setup
+> npm i && npm run get-all-submodules && npm run cleanup && npm run compile-posdao-contracts && npm run make-spec
+
+npm WARN read-shrinkwrap This version of npm is compatible with lockfileVersion@1, but package-lock.json was generated for lockfileVersion@2. I'll try to do my best with it!
+
+> bufferutil@4.0.3 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/bufferutil
+> node-gyp-build
+
+
+> keccak@3.0.1 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/ethereum-cryptography/node_modules/keccak
+> node-gyp-build || exit 0
+
+
+> keccak@1.4.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/keccak
+> npm run rebuild || echo "Keccak bindings compilation fail. Pure JS implementation will be used."
+
+
+> keccak@1.4.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/keccak
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/keccak/build'
+  CXX(target) Release/obj.target/keccak/src/addon.o
+In file included from ../src/addon.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Initialize(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:37:46: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   37 |     unsigned int rate = info[0]->IntegerValue();
+      |                         ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc:38:50: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   38 |     unsigned int capacity = info[1]->IntegerValue();
+      |                             ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::AbsorbLastFewBits(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:56:47: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   56 |     unsigned char bits = info[0]->IntegerValue();
+      |                          ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Squeeze(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:64:42: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   64 |     size_t length = info[0]->IntegerValue();
+      |                     ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Copy(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:75:81: error: no matching function for call to ‘v8::Value::ToObject()’
+   75 |     KeccakWrapper* to = Nan::ObjectWrap::Unwrap<KeccakWrapper>(info[0]->ToObject());
+      |                                                                ~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note: candidate: ‘v8::MaybeLocal<v8::Object> v8::Value::ToObject(v8::Local<v8::Context>) const’
+ 2672 |   V8_WARN_UNUSED_RESULT MaybeLocal<Object> ToObject(
+      |                                            ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note:   candidate expects 1 argument, 0 provided
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/v8-internal.h:14,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:27,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note: candidate: ‘v8::Local<v8::Object> v8::Value::ToObject(v8::Isolate*) const’
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note:   candidate expects 1 argument, 0 provided
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+In file included from ../src/addon.cc:1:
+../src/addon.cc: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE, Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:86:1: note: in expansion of macro ‘NODE_MODULE’
+   86 | NODE_MODULE(keccak, Init)
+      | ^~~~~~~~~~~
+make: *** [keccak.target.mk:129: Release/obj.target/keccak/src/addon.o] Error 1
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/keccak/build'
+gyp ERR! build error 
+gyp ERR! stack Error: `make` failed with exit code: 2
+gyp ERR! stack     at ChildProcess.onExit (/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/lib/build.js:194:23)
+gyp ERR! stack     at ChildProcess.emit (events.js:314:20)
+gyp ERR! stack     at Process.ChildProcess._handle.onexit (internal/child_process.js:276:12)
+gyp ERR! System Linux 6.2.0-1019-azure
+gyp ERR! command "/opt/hostedtoolcache/node/12.22.12/x64/bin/node" "/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js" "rebuild"
+gyp ERR! cwd /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/keccak
+gyp ERR! node -v v12.22.12
+gyp ERR! node-gyp -v v5.1.0
+gyp ERR! not ok 
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! keccak@1.4.0 rebuild: `node-gyp rebuild`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the keccak@1.4.0 rebuild script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+npm WARN Local package.json exists, but node_modules missing, did you mean to install?
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_09_09_209Z-debug.log
+Keccak bindings compilation fail. Pure JS implementation will be used.
+
+> secp256k1@4.0.2 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/secp256k1
+> node-gyp-build || exit 0
+
+
+> secp256k1@3.8.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/ethereumjs-util/node_modules/secp256k1
+> npm run rebuild || echo "Secp256k1 bindings compilation fail. Pure JS implementation will be used."
+
+
+> secp256k1@3.8.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/ethereumjs-util/node_modules/secp256k1
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/ethereumjs-util/node_modules/secp256k1/build'
+  CXX(target) Release/obj.target/secp256k1/src/addon.o
+In file included from ../src/addon.cc:2:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/addon.cc:1:
+../src/addon.cc: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:50:1: note: in expansion of macro ‘NODE_MODULE’
+   50 | NODE_MODULE(secp256k1, Init)
+      | ^~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/privatekey.o
+In file included from ../src/privatekey.cc:2:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/privatekey.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE privateKeyNegate(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/privatekey.cc:73:30: warning: ignoring return value of ‘int secp256k1_ec_privkey_negate(const secp256k1_context*, unsigned char*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   73 |   secp256k1_ec_privkey_negate(secp256k1ctx, &private_key[0]);
+      |   ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/publickey.o
+In file included from ../src/publickey.cc:3:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/signature.o
+In file included from ../src/signature.cc:2:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/ecdsa.o
+In file included from ../src/ecdsa.cc:2:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ecdsa.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE sign(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/ecdsa.cc:88:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   88 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("signature").ToLocalChecked(), COPY_BUFFER(&output[0], 64));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+../src/ecdsa.cc:89:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   89 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("recovery").ToLocalChecked(), Nan::New<v8::Number>(recid));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+  CXX(target) Release/obj.target/secp256k1/src/ecdh.o
+In file included from ../src/ecdh.cc:2:
+../../../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/src/secp256k1.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_parsing.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_privatekey_parsing.o
+  SOLINK_MODULE(target) Release/obj.target/secp256k1.node
+  COPY Release/secp256k1.node
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/ethereumjs-util/node_modules/secp256k1/build'
+
+> utf-8-validate@5.0.4 install /home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/utf-8-validate
+> node-gyp-build
+
+added 521 packages from 849 contributors and audited 522 packages in 14.079s
+
+49 packages are looking for funding
+  run `npm fund` for details
+
+found 79 vulnerabilities (1 low, 20 moderate, 45 high, 13 critical)
+  run `npm audit fix` to fix them, or `npm audit` for details
+
+> posdao-test-setup@0.0.1 get-all-submodules /home/runner/work/nethermind/nethermind/posdao-test-setup
+> git submodule update --init --remote
+
+Submodule path 'posdao-contracts': checked out '0315e8ee854cb02d03f4c18965584a74f30796f7'
+
+> posdao-test-setup@0.0.1 cleanup /home/runner/work/nethermind/nethermind/posdao-test-setup
+> bash scripts/stop-test-setup && rm -rf ./accounts ./config ./data && git checkout ./accounts && git checkout ./config && git checkout ./data
+
+Nothing to kill at port 8540
+Nothing to kill at port 8541
+Nothing to kill at port 8542
+Nothing to kill at port 8543
+Nothing to kill at port 8544
+Nothing to kill at port 8545
+Nothing to kill at port 8546
+Updated 10 paths from the index
+Updated 18 paths from the index
+Updated 14 paths from the index
+
+> posdao-test-setup@0.0.1 compile-posdao-contracts /home/runner/work/nethermind/nethermind/posdao-test-setup
+> cd ./posdao-contracts && npm i && npm run compile
+
+npm WARN read-shrinkwrap This version of npm is compatible with lockfileVersion@1, but package-lock.json was generated for lockfileVersion@2. I'll try to do my best with it!
+
+> keccak@1.4.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/keccak
+> npm run rebuild || echo "Keccak bindings compilation fail. Pure JS implementation will be used."
+
+
+> keccak@1.4.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/keccak
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/keccak/build'
+  CXX(target) Release/obj.target/keccak/src/addon.o
+In file included from ../src/addon.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Initialize(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:37:46: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   37 |     unsigned int rate = info[0]->IntegerValue();
+      |                         ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc:38:50: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   38 |     unsigned int capacity = info[1]->IntegerValue();
+      |                             ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::AbsorbLastFewBits(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:56:47: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   56 |     unsigned char bits = info[0]->IntegerValue();
+      |                          ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Squeeze(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:64:42: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   64 |     size_t length = info[0]->IntegerValue();
+      |                     ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Copy(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:75:81: error: no matching function for call to ‘v8::Value::ToObject()’
+   75 |     KeccakWrapper* to = Nan::ObjectWrap::Unwrap<KeccakWrapper>(info[0]->ToObject());
+      |                                                                ~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note: candidate: ‘v8::MaybeLocal<v8::Object> v8::Value::ToObject(v8::Local<v8::Context>) const’
+ 2672 |   V8_WARN_UNUSED_RESULT MaybeLocal<Object> ToObject(
+      |                                            ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note:   candidate expects 1 argument, 0 provided
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/v8-internal.h:14,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:27,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note: candidate: ‘v8::Local<v8::Object> v8::Value::ToObject(v8::Isolate*) const’
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note:   candidate expects 1 argument, 0 provided
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+In file included from ../src/addon.cc:1:
+../src/addon.cc: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE, Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:86:1: note: in expansion of macro ‘NODE_MODULE’
+   86 | NODE_MODULE(keccak, Init)
+      | ^~~~~~~~~~~
+make: *** [keccak.target.mk:132: Release/obj.target/keccak/src/addon.o] Error 1
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/keccak/build'
+gyp ERR! build error 
+gyp ERR! stack Error: `make` failed with exit code: 2
+gyp ERR! stack     at ChildProcess.onExit (/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/lib/build.js:194:23)
+gyp ERR! stack     at ChildProcess.emit (events.js:314:20)
+gyp ERR! stack     at Process.ChildProcess._handle.onexit (internal/child_process.js:276:12)
+gyp ERR! System Linux 6.2.0-1019-azure
+gyp ERR! command "/opt/hostedtoolcache/node/12.22.12/x64/bin/node" "/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js" "rebuild"
+gyp ERR! cwd /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/keccak
+gyp ERR! node -v v12.22.12
+gyp ERR! node-gyp -v v5.1.0
+gyp ERR! not ok 
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! keccak@1.4.0 rebuild: `node-gyp rebuild`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the keccak@1.4.0 rebuild script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+npm WARN Local package.json exists, but node_modules missing, did you mean to install?
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_16_00_137Z-debug.log
+Keccak bindings compilation fail. Pure JS implementation will be used.
+
+> secp256k1@3.7.1 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/secp256k1
+> npm run rebuild || echo "Secp256k1 bindings compilation fail. Pure JS implementation will be used."
+
+
+> secp256k1@3.7.1 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/secp256k1
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/secp256k1/build'
+  CXX(target) Release/obj.target/secp256k1/src/addon.o
+In file included from ../src/addon.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/addon.cc:1:
+../src/addon.cc: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:50:1: note: in expansion of macro ‘NODE_MODULE’
+   50 | NODE_MODULE(secp256k1, Init)
+      | ^~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/privatekey.o
+In file included from ../src/privatekey.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/privatekey.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE privateKeyNegate(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/privatekey.cc:73:30: warning: ignoring return value of ‘int secp256k1_ec_privkey_negate(const secp256k1_context*, unsigned char*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   73 |   secp256k1_ec_privkey_negate(secp256k1ctx, &private_key[0]);
+      |   ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/publickey.o
+In file included from ../src/publickey.cc:3:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/signature.o
+In file included from ../src/signature.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/ecdsa.o
+In file included from ../src/ecdsa.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../src/ecdsa.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE sign(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/ecdsa.cc:88:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   88 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("signature").ToLocalChecked(), COPY_BUFFER(&output[0], 64));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+../src/ecdsa.cc:89:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   89 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("recovery").ToLocalChecked(), Nan::New<v8::Number>(recid));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+  CXX(target) Release/obj.target/secp256k1/src/ecdh.o
+In file included from ../src/ecdh.cc:2:
+../../nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../../nan/nan.h:2298:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2298 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/src/secp256k1.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_parsing.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_privatekey_parsing.o
+  SOLINK_MODULE(target) Release/obj.target/secp256k1.node
+  COPY Release/secp256k1.node
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ethereumjs-testrpc-sc/node_modules/secp256k1/build'
+
+> keccak@3.0.1 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ganache-cli/node_modules/keccak
+> node-gyp-build || exit 0
+
+
+> secp256k1@4.0.2 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/ganache-cli/node_modules/secp256k1
+> node-gyp-build || exit 0
+
+
+> dtrace-provider@0.8.7 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/dtrace-provider
+> node-gyp rebuild || node suppress-error.js
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/dtrace-provider/build'
+  TOUCH Release/obj.target/DTraceProviderStub.stamp
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/dtrace-provider/build'
+
+> bufferutil@4.0.3 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/bufferutil
+> node-gyp-build
+
+
+> keccak@2.1.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/keccak
+> npm run rebuild || echo "Keccak bindings compilation fail. Pure JS implementation will be used."
+
+
+> keccak@2.1.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/keccak
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/keccak/build'
+  CXX(target) Release/obj.target/keccak/src/addon.o
+In file included from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE, Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:109:1: note: in expansion of macro ‘NODE_MODULE’
+  109 | NODE_MODULE(keccak, Init)
+      | ^~~~~~~~~~~
+  CC(target) Release/obj.target/keccak/src/libkeccak-64/KeccakSpongeWidth1600.o
+  CC(target) Release/obj.target/keccak/src/libkeccak-64/KeccakP-1600-opt64.o
+  SOLINK_MODULE(target) Release/obj.target/keccak.node
+  COPY Release/keccak.node
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/keccak/build'
+
+> sha3@1.2.6 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/sha3
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/sha3/build'
+  CXX(target) Release/obj.target/sha3/src/addon.o
+In file included from ../src/addon.cpp:4:
+../node_modules/nan/nan.h: In function ‘void Nan::AsyncQueueWorker(Nan::AsyncWorker*)’:
+../node_modules/nan/nan.h:2232:7: warning: cast between incompatible function types from ‘void (*)(uv_work_t*)’ {aka ‘void (*)(uv_work_s*)’} to ‘uv_after_work_cb’ {aka ‘void (*)(uv_work_s*, int)’} [-Wcast-function-type]
+ 2232 |     , reinterpret_cast<uv_after_work_cb>(AsyncExecuteComplete)
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from ../src/addon.cpp:1:
+../src/addon.cpp: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cpp:175:1: note: in expansion of macro ‘NODE_MODULE’
+  175 | NODE_MODULE(sha3, SHA3Hash::Init)
+      | ^~~~~~~~~~~
+  CXX(target) Release/obj.target/sha3/src/displayIntermediateValues.o
+  CXX(target) Release/obj.target/sha3/src/KeccakF-1600-reference.o
+  CXX(target) Release/obj.target/sha3/src/KeccakNISTInterface.o
+  CXX(target) Release/obj.target/sha3/src/KeccakSponge.o
+  SOLINK_MODULE(target) Release/obj.target/sha3.node
+  COPY Release/sha3.node
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/sha3/build'
+
+> keccak@1.4.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solc/node_modules/keccak
+> npm run rebuild || echo "Keccak bindings compilation fail. Pure JS implementation will be used."
+
+
+> keccak@1.4.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solc/node_modules/keccak
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solc/node_modules/keccak/build'
+  CXX(target) Release/obj.target/keccak/src/addon.o
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Initialize(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:37:46: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   37 |     unsigned int rate = info[0]->IntegerValue();
+      |                         ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc:38:50: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   38 |     unsigned int capacity = info[1]->IntegerValue();
+      |                             ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::AbsorbLastFewBits(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:56:47: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   56 |     unsigned char bits = info[0]->IntegerValue();
+      |                          ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Squeeze(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:64:42: error: no matching function for call to ‘v8::Value::IntegerValue()’
+   64 |     size_t length = info[0]->IntegerValue();
+      |                     ~~~~~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note: candidate: ‘v8::Maybe<long int> v8::Value::IntegerValue(v8::Local<v8::Context>) const’
+ 2705 |   V8_WARN_UNUSED_RESULT Maybe<int64_t> IntegerValue(
+      |                                        ^~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2705:40: note:   candidate expects 1 argument, 0 provided
+../src/addon.cc: In static member function ‘static Nan::NAN_METHOD_RETURN_TYPE KeccakWrapper::Copy(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/addon.cc:75:81: error: no matching function for call to ‘v8::Value::ToObject()’
+   75 |     KeccakWrapper* to = Nan::ObjectWrap::Unwrap<KeccakWrapper>(info[0]->ToObject());
+      |                                                                ~~~~~~~~~~~~~~~~~^~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note: candidate: ‘v8::MaybeLocal<v8::Object> v8::Value::ToObject(v8::Local<v8::Context>) const’
+ 2672 |   V8_WARN_UNUSED_RESULT MaybeLocal<Object> ToObject(
+      |                                            ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2672:44: note:   candidate expects 1 argument, 0 provided
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/v8-internal.h:14,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:27,
+                 from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note: candidate: ‘v8::Local<v8::Object> v8::Value::ToObject(v8::Isolate*) const’
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:2686:31: note:   candidate expects 1 argument, 0 provided
+ 2686 |                 Local<Object> ToObject(Isolate* isolate) const);
+      |                               ^~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8config.h:328:3: note: in definition of macro ‘V8_DEPRECATED’
+  328 |   declarator __attribute__((deprecated(message)))
+      |   ^~~~~~~~~~
+In file included from ../src/addon.cc:1:
+../src/addon.cc: At global scope:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE, Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:86:1: note: in expansion of macro ‘NODE_MODULE’
+   86 | NODE_MODULE(keccak, Init)
+      | ^~~~~~~~~~~
+make: *** [keccak.target.mk:132: Release/obj.target/keccak/src/addon.o] Error 1
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solc/node_modules/keccak/build'
+gyp ERR! build error 
+gyp ERR! stack Error: `make` failed with exit code: 2
+gyp ERR! stack     at ChildProcess.onExit (/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/lib/build.js:194:23)
+gyp ERR! stack     at ChildProcess.emit (events.js:314:20)
+gyp ERR! stack     at Process.ChildProcess._handle.onexit (internal/child_process.js:276:12)
+gyp ERR! System Linux 6.2.0-1019-azure
+gyp ERR! command "/opt/hostedtoolcache/node/12.22.12/x64/bin/node" "/opt/hostedtoolcache/node/12.22.12/x64/lib/node_modules/npm/node_modules/node-gyp/bin/node-gyp.js" "rebuild"
+gyp ERR! cwd /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solc/node_modules/keccak
+gyp ERR! node -v v12.22.12
+gyp ERR! node-gyp -v v5.1.0
+gyp ERR! not ok 
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! keccak@1.4.0 rebuild: `node-gyp rebuild`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the keccak@1.4.0 rebuild script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+npm WARN Local package.json exists, but node_modules missing, did you mean to install?
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_16_11_497Z-debug.log
+Keccak bindings compilation fail. Pure JS implementation will be used.
+
+> utf-8-validate@5.0.5 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/utf-8-validate
+> node-gyp-build
+
+
+> secp256k1@3.8.0 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/secp256k1
+> npm run rebuild || echo "Secp256k1 bindings compilation fail. Pure JS implementation will be used."
+
+
+> secp256k1@3.8.0 rebuild /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/secp256k1
+> node-gyp rebuild
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/secp256k1/build'
+  CXX(target) Release/obj.target/secp256k1/src/addon.o
+In file included from ../src/addon.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:736:7: warning: cast between incompatible function types from ‘void (*)(Nan::ADDON_REGISTER_FUNCTION_ARGS_TYPE)’ {aka ‘void (*)(v8::Local<v8::Object>)’} to ‘node::addon_register_func’ {aka ‘void (*)(v8::Local<v8::Object>, v8::Local<v8::Value>, void*)’} [-Wcast-function-type]
+  736 |       (node::addon_register_func) (regfunc),                          \
+      |       ^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+/home/runner/.cache/node-gyp/12.22.12/include/node/node.h:770:3: note: in expansion of macro ‘NODE_MODULE_X’
+  770 |   NODE_MODULE_X(modname, regfunc, NULL, 0)  // NOLINT (readability/null_usage)
+      |   ^~~~~~~~~~~~~
+../src/addon.cc:50:1: note: in expansion of macro ‘NODE_MODULE’
+   50 | NODE_MODULE(secp256k1, Init)
+      | ^~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/privatekey.o
+../src/privatekey.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE privateKeyNegate(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/privatekey.cc:73:30: warning: ignoring return value of ‘int secp256k1_ec_privkey_negate(const secp256k1_context*, unsigned char*)’ declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   73 |   secp256k1_ec_privkey_negate(secp256k1ctx, &private_key[0]);
+      |   ~~~~~~~~~~~~~~~~~~~~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+  CXX(target) Release/obj.target/secp256k1/src/publickey.o
+  CXX(target) Release/obj.target/secp256k1/src/signature.o
+  CXX(target) Release/obj.target/secp256k1/src/ecdsa.o
+../src/ecdsa.cc: In function ‘Nan::NAN_METHOD_RETURN_TYPE sign(Nan::NAN_METHOD_ARGS_TYPE)’:
+../src/ecdsa.cc:88:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   88 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("signature").ToLocalChecked(), COPY_BUFFER(&output[0], 64));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+../src/ecdsa.cc:89:11: warning: ignoring return value of ‘v8::Maybe<bool> v8::Object::Set(v8::Local<v8::Context>, v8::Local<v8::Value>, v8::Local<v8::Value>)’, declared with attribute ‘warn_unused_result’ [-Wunused-result]
+   89 |   obj->Set(info.GetIsolate()->GetCurrentContext(), Nan::New<v8::String>("recovery").ToLocalChecked(), Nan::New<v8::Number>(recid));
+      |   ~~~~~~~~^~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+In file included from /home/runner/.cache/node-gyp/12.22.12/include/node/node.h:67,
+                 from ../src/ecdsa.cc:1:
+/home/runner/.cache/node-gyp/12.22.12/include/node/v8.h:3504:37: note: declared here
+ 3504 |   V8_WARN_UNUSED_RESULT Maybe<bool> Set(Local<Context> context,
+      |                                     ^~~
+  CXX(target) Release/obj.target/secp256k1/src/ecdh.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/src/secp256k1.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_parsing.o
+  CC(target) Release/obj.target/secp256k1/src/secp256k1-src/contrib/lax_der_privatekey_parsing.o
+  SOLINK_MODULE(target) Release/obj.target/secp256k1.node
+  COPY Release/secp256k1.node
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/secp256k1/build'
+
+> websocket@git+ssh://git@github.com/web3-js/WebSocket-Node.git#ef5ea2f41daf4a2113b80c9223df884b4d56c400 install /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solidity-coverage/node_modules/websocket
+> (node-gyp rebuild 2> builderror.log) || (exit 0)
+
+make: Entering directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solidity-coverage/node_modules/websocket/build'
+  CXX(target) Release/obj.target/bufferutil/src/bufferutil.o
+make: Leaving directory '/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/solidity-coverage/node_modules/websocket/build'
+
+> core-js@2.6.12 postinstall /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/core-js
+> node -e "try{require('./postinstall')}catch(e){}"
+
+
+> truffle@5.0.43 postinstall /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/node_modules/truffle
+> node ./scripts/postinstall.js
+
+- Fetching solc version list from solc-bin. Attempt #1
+- Downloading compiler. Attempt #1
+npm WARN posdao-contracts@0.2.3 No license field.
+npm WARN optional SKIPPING OPTIONAL DEPENDENCY: fsevents@2.1.3 (node_modules/fsevents):
+npm WARN notsup SKIPPING OPTIONAL DEPENDENCY: Unsupported platform for fsevents@2.1.3: wanted {"os":"darwin","arch":"any"} (current: {"os":"linux","arch":"x64"})
+
+added 1226 packages from 1167 contributors and audited 1222 packages in 424.354s
+
+62 packages are looking for funding
+  run `npm fund` for details
+
+found 167 vulnerabilities (2 low, 46 moderate, 96 high, 23 critical)
+  run `npm audit fix` to fix them, or `npm audit` for details
+
+> posdao-contracts@0.2.3 compile /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts
+> truffle compile
+
+
+Compiling your contracts...
+===========================
+- Fetching solc version list from solc-bin. Attempt #1
+- Downloading compiler. Attempt #1
+> Compiling ./contracts/BlockRewardAuRa.sol
+> Compiling ./contracts/Certifier.sol
+> Compiling ./contracts/ERC677BridgeTokenRewardable.sol
+> Compiling ./contracts/Governance.sol
+> Compiling ./contracts/InitializerAuRa.sol
+> Compiling ./contracts/Migrations.sol
+> Compiling ./contracts/RandomAuRa.sol
+> Compiling ./contracts/Registry.sol
+> Compiling ./contracts/StakingAuRa.sol
+> Compiling ./contracts/TokenMinter.sol
+> Compiling ./contracts/TxPermission.sol
+> Compiling ./contracts/TxPriority.sol
+> Compiling ./contracts/ValidatorSetAuRa.sol
+> Compiling ./contracts/base/BanReasons.sol
+> Compiling ./contracts/base/BlockRewardAuRaBase.sol
+> Compiling ./contracts/base/BlockRewardAuRaCoins.sol
+> Compiling ./contracts/base/BlockRewardAuRaTokens.sol
+> Compiling ./contracts/base/StakingAuRaBase.sol
+> Compiling ./contracts/base/StakingAuRaCoins.sol
+> Compiling ./contracts/base/StakingAuRaTokens.sol
+> Compiling ./contracts/base/TxPermissionBase.sol
+> Compiling ./contracts/base/TxPermissionV3.sol
+> Compiling ./contracts/base/TxPermissionV4.sol
+> Compiling ./contracts/interfaces/IBlockRewardAuRa.sol
+> Compiling ./contracts/interfaces/IBlockRewardAuRaCoins.sol
+> Compiling ./contracts/interfaces/IBlockRewardAuRaTokens.sol
+> Compiling ./contracts/interfaces/ICertifier.sol
+> Compiling ./contracts/interfaces/IERC677.sol
+> Compiling ./contracts/interfaces/IGovernance.sol
+> Compiling ./contracts/interfaces/IMetadataRegistry.sol
+> Compiling ./contracts/interfaces/IOwnerRegistry.sol
+> Compiling ./contracts/interfaces/IRandomAuRa.sol
+> Compiling ./contracts/interfaces/IReverseRegistry.sol
+> Compiling ./contracts/interfaces/IStakingAuRa.sol
+> Compiling ./contracts/interfaces/IStakingAuRaTokens.sol
+> Compiling ./contracts/interfaces/ITokenMinter.sol
+> Compiling ./contracts/interfaces/ITxPermission.sol
+> Compiling ./contracts/interfaces/IValidatorSetAuRa.sol
+> Compiling ./contracts/libs/Address.sol
+> Compiling ./contracts/libs/BokkyPooBahsRedBlackTreeLibrary.sol
+> Compiling ./contracts/libs/SafeMath.sol
+> Compiling ./contracts/mock/BlockRewardAuRaBaseMock.sol
+> Compiling ./contracts/mock/BlockRewardAuRaCoinsMock.sol
+> Compiling ./contracts/mock/BlockRewardAuRaTokensMock.sol
+> Compiling ./contracts/mock/ERC677BridgeTokenRewardableMock.sol
+> Compiling ./contracts/mock/EmptyContract.sol
+> Compiling ./contracts/mock/GovernanceMock.sol
+> Compiling ./contracts/mock/RandomAuRaMock.sol
+> Compiling ./contracts/mock/RecipientMock.sol
+> Compiling ./contracts/mock/StakingAuRaBaseMock.sol
+> Compiling ./contracts/mock/StakingAuRaCoinsMock.sol
+> Compiling ./contracts/mock/StakingAuRaTokensMock.sol
+> Compiling ./contracts/mock/TxPriorityMock.sol
+> Compiling ./contracts/mock/ValidatorSetAuRaMock.sol
+> Compiling ./contracts/upgradeability/AdminUpgradeabilityProxy.sol
+> Compiling ./contracts/upgradeability/BaseAdminUpgradeabilityProxy.sol
+> Compiling ./contracts/upgradeability/BaseUpgradeabilityProxy.sol
+> Compiling ./contracts/upgradeability/Proxy.sol
+> Compiling ./contracts/upgradeability/UpgradeabilityAdmin.sol
+> Compiling ./contracts/upgradeability/UpgradeabilityProxy.sol
+> Compiling ./contracts/upgradeability/UpgradeableOwned.sol
+
+    > compilation warnings encountered:
+
+/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/TxPriority.sol:2:1: Warning: Experimental features are turned on. Do not use experimental features on live deployments.
+pragma experimental ABIEncoderV2;
+^-------------------------------^
+,/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/mock/TxPriorityMock.sol:2:1: Warning: Experimental features are turned on. Do not use experimental features on live deployments.
+pragma experimental ABIEncoderV2;
+^-------------------------------^
+,/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/base/TxPermissionBase.sol:253:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint256 _value,
+        ^------------^
+,/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/base/TxPermissionBase.sol:256:9: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+        uint256 _gasLimit,
+        ^---------------^
+,/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/ValidatorSetAuRa.sol:1189:41: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+    function _removeMaliciousValidators(address[] memory _miningAddresses, bytes32 _reason) internal {
+                                        ^-------------------------------^
+,/home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/contracts/ValidatorSetAuRa.sol:1189:76: Warning: Unused function parameter. Remove or comment out the variable name to silence this warning.
+    function _removeMaliciousValidators(address[] memory _miningAddresses, bytes32 _reason) internal {
+                                                                           ^-------------^
+
+> Artifacts written to /home/runner/work/nethermind/nethermind/posdao-test-setup/posdao-contracts/build/contracts
+> Compiled successfully using:
+   - solc: 0.5.10+commit.5a6ea5b1.Emscripten.clang
+
+
+> posdao-test-setup@0.0.1 make-spec /home/runner/work/nethermind/nethermind/posdao-test-setup
+> . ./scripts/network-spec && cd ./posdao-contracts && npm i && node ./scripts/make_spec.js && node ../scripts/copy-spec.js
+
+npm WARN eth-gas-reporter@0.2.22 requires a peer of @codechecks/client@^0.1.0 but none is installed. You must install peer dependencies yourself.
+npm WARN posdao-contracts@0.2.3 No license field.
+npm WARN optional SKIPPING OPTIONAL DEPENDENCY: fsevents@2.1.3 (node_modules/fsevents):
+npm WARN notsup SKIPPING OPTIONAL DEPENDENCY: Unsupported platform for fsevents@2.1.3: wanted {"os":"darwin","arch":"any"} (current: {"os":"linux","arch":"x64"})
+
+audited 1222 packages in 3.776s
+
+62 packages are looking for funding
+  run `npm fund` for details
+
+found 167 vulnerabilities (2 low, 46 moderate, 96 high, 23 critical)
+  run `npm audit fix` to fix them, or `npm audit` for details
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+Compiling AdminUpgradeabilityProxy...
+Compiling BlockRewardAuRa...
+Compiling Certifier...
+Compiling Governance...
+Compiling InitializerAuRa...
+Compiling RandomAuRa...
+Compiling Registry...
+Compiling StakingAuRa...
+Compiling TxPermission...
+Compiling TxPriorityMock...
+Compiling ValidatorSetAuRa...
+Saving spec.json file ...
+Done
+
+
+STEP DURATION WILL BE CHANGED AT  8:19:00 PM
+
+
+
+> posdao-test-setup@0.0.1 start-test-setup-nethermind /home/runner/work/nethermind/nethermind/posdao-test-setup
+> bash scripts/start-test-setup ../nethermind/bin/nethermind
+
++ CLIENT=../nethermind/bin/nethermind
++ [[ ../nethermind/bin/nethermind == *\o\p\e\n\e\t\h\e\r\e\u\m* ]]
++ extension=nethermind.json
+++ seq 0 6
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 0
++ ../nethermind/bin/nethermind --config ./config/node0.nethermind.json
+Registering node 0 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8540 2>/dev/null
+enode URL: enode://5bab23bf85e3bff7a4e8924f2d3d78fed398bc9bff1e4e71c2d9f109f71548adee87ecf1122872921ed65d0bc213ca9f6c5cc3a3932c4375863d328f9e595758@127.0.0.1:30300
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 1
++ ../nethermind/bin/nethermind --config ./config/node1.nethermind.json
+Registering node 1 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8541 2>/dev/null
+enode URL: enode://61da58c422ceaddae46488585901a3daa657fc261536c3c31d1ad6dac639542efee64fa2e9c80d13c5e86059417155d1bec6020bac629802146356a08b1b859d@127.0.0.1:30301
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 2
++ ../nethermind/bin/nethermind --config ./config/node2.nethermind.json
+Registering node 2 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8542 2>/dev/null
+enode URL: enode://138a6f2ee114ae347531f7db651e8e280b45a25730951976d4f0827e04b7c245214df4d9e863c003dbc3af9b7001089986be07647731586a1a808b632061f26b@127.0.0.1:30302
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 3
++ ../nethermind/bin/nethermind --config ./config/node3.nethermind.json
+Registering node 3 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8543 2>/dev/null
+enode URL: enode://cdbdfa9efc0d8c854ace0545c81b1940906743189698a829b8408c88aa4c6f75191a99b4f9903772e501cd31fdfeae8cc770c87f0c60c94235cd9dc5505380bb@127.0.0.1:30303
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 4
++ ../nethermind/bin/nethermind --config ./config/node4.nethermind.json
+Registering node 4 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8544 2>/dev/null
+enode URL: enode://780bae252cfaa54c42d2cf5e8e07d89bf28211eafb9330a6e21e370c0247742251a70f5174e4c2f52a1cc18fa0f8c0741aaa41f85d6b7357bda84779ccb87a72@127.0.0.1:30304
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 5
++ ../nethermind/bin/nethermind --config ./config/node5.nethermind.json
+Registering node 5 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8545 2>/dev/null
+enode URL: enode://ddc3209626afbf5ae8c45bd057a032f7e347fc4a7e82c4a844bbca112b3e670704dd6cd178c52bc44b432adc4d1ae41a3765a689a7c2a094e85294681c7d9451@127.0.0.1:30305
++ for i in $(seq 0 6)
++ node ./scripts/getReservedPeer.js 6
++ ../nethermind/bin/nethermind --config ./config/node6.nethermind.json
+Registering node 6 as bootnode
+> curl --data '{"method":"parity_enode","params":[],"id":1,"jsonrpc":"2.0"}' -H "Content-Type: application/json" -X POST localhost:8546 2>/dev/null
+enode URL: enode://e472db40af265b9465e31bd3e8c1fbac700019039e23b6c40bdddc19c5e0a36947c622cef794d25b03ab86bc46bd5345a97e7510219e5fcc27771f1232bfdf03@127.0.0.1:30306
+
+> posdao-test-setup@0.0.1 after-start-no-watcher /home/runner/work/nethermind/nethermind/posdao-test-setup
+> npm run checkers && npm run test && npm run stop-test-setup
+
+
+> posdao-test-setup@0.0.1 checkers /home/runner/work/nethermind/nethermind/posdao-test-setup
+> (node scripts/watchOrdinaryNode.js &) && node scripts/deploy-staking-token.js && (node scripts/watchRandomSeed &)
+
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-shh package will be deprecated in version 1.3.5 and will no longer be supported.
+web3-bzz package will be deprecated in version 1.3.5 and will no longer be supported.
+**** Check that StakingToken is already deployed in StakingAuRa
+**** Deploying StakingToken. netId = 101
+Error: JSON RPC result is undefined. Response text: {"jsonrpc":"2.0","error":{"code":-32010,"message":"SenderIsContract"},"id":1}
+Error: JSON RPC result is undefined. Response text: {"jsonrpc":"2.0","error":{"code":-32010,"message":"SenderIsContract"},"id":1}
+    at /home/runner/work/nethermind/nethermind/posdao-test-setup/utils/sendRequest.js:17:16
+    at ChildProcess.exithandler (child_process.js:299:7)
+    at ChildProcess.emit (events.js:314:20)
+    at maybeClose (internal/child_process.js:1022:16)
+    at Process.ChildProcess._handle.onexit (internal/child_process.js:287:5)
+    at /home/runner/work/nethermind/nethermind/posdao-test-setup/utils/sendRequest.js:17:16
+    at ChildProcess.exithandler (child_process.js:299:7)
+    at ChildProcess.emit (events.js:314:20)
+    at maybeClose (internal/child_process.js:1022:16)
+    at Process.ChildProcess._handle.onexit (internal/child_process.js:287:5)
+
+/home/runner/work/nethermind/nethermind/posdao-test-setup/node_modules/solc/soljson.js:31
+(Module.asmGlobalArg,Module.asmLibraryArg,buffer);var __GLOBAL__I_000101=Module["__GLOBAL__I_000101"]=asm["__GLOBAL__I_000101"];var __GLOBAL__sub_I_ABIFunctions_cpp=Module["__GLOBAL__sub_I_ABIFunctions_cpp"]=asm["__GLOBAL__sub_I_ABIFunctions_cpp"];var __GLOBAL__sub_I_ABI_cpp=Module["__GLOBAL__sub_I_ABI_cpp"]=asm["__GLOBAL__sub_I_ABI_cpp"];var __GLOBAL__sub_I_ASTJsonConverter_cpp=Module["__GLOBAL__sub_I_ASTJsonConverter_cpp"]=asm["__GLOBAL__sub_I_ASTJsonConverter_cpp"];var __GLOBAL__sub_I_AST_cpp=Module["__GLOBAL__sub_I_AST_cpp"]=asm["__GLOBAL__sub_I_AST_cpp"];var __GLOBAL__sub_I_ArrayUtils_cpp=Module["__GLOBAL__sub_I_ArrayUtils_cpp"]=asm["__GLOBAL__sub_I_ArrayUtils_cpp"];var __GLOBAL__sub_I_AsmAnalysis_cpp=Module["__GLOBAL__sub_I_AsmAnalysis_cpp"]=asm["__GLOBAL__sub_I_AsmAnalysis_cpp"];var __GLOBAL__sub_I_CompilerContext_cpp=Module["__GLOBAL__sub_I_CompilerContext_cpp"]=asm["__GLOBAL__sub_I_CompilerContext_cpp"];var __GLOBAL__sub_I_CompilerStack_cpp=Module["__GLOBAL__sub_I_CompilerStack_cpp"]=asm["__GLOBAL__sub_I_CompilerStack_cpp"];var __GLOBAL__sub_I_CompilerUtils_cpp=Module["__GLOBAL__sub_I_CompilerUtils_cpp"]=asm["__GLOBAL__sub_I_CompilerUtils_cpp"];var __GLOBAL__sub_I_Compiler_cpp=Module["__GLOBAL__sub_I_Compiler_cpp"]=asm["__GLOBAL__sub_I_Compiler_cpp"];var __GLOBAL__sub_I_ConstantEvaluator_cpp=Module["__GLOBAL__sub_I_ConstantEvaluator_cpp"]=asm["__GLOBAL__sub_I_ConstantEvaluator_cpp"];var __GLOBAL__sub_I_ContractCompiler_cpp=Module["__GLOBAL__sub_I_ContractCompiler_cpp"]=asm["__GLOBAL__sub_I_ContractCompiler_cpp"];var __GLOBAL__sub_I_ContractLevelChecker_cpp=Module["__GLOBAL__sub_I_ContractLevelChecker_cpp"]=asm["__GLOBAL__sub_I_ContractLevelChecker_cpp"];var __GLOBAL__sub_I_ControlFlowAnalyzer_cpp=Module["__GLOBAL__sub_I_ControlFlowAnalyzer_cpp"]=asm["__GLOBAL__sub_I_ControlFlowAnalyzer_cpp"];var __GLOBAL__sub_I_ControlFlowBuilder_cpp=Module["__GLOBAL__sub_I_ControlFlowBuilder_cpp"]=asm["__GLOBAL__sub_I_ControlFlowBuilder_cpp"];var __GLOBAL__sub_I_ControlFlowGraph_cpp=Module["__GLOBAL__sub_I_ControlFlowGraph_cpp"]=asm["__GLOBAL__sub_I_ControlFlowGraph_cpp"];var __GLOBAL__sub_I_DeclarationContainer_cpp=Module["__GLOBAL__sub_I_DeclarationContainer_cpp"]=asm["__GLOBAL__sub_I_DeclarationContainer_cpp"];var __GLOBAL__sub_I_DocStringAnalyser_cpp=Module["__GLOBAL__sub_I_DocStringAnalyser_cpp"]=asm["__GLOBAL__sub_I_DocStringAnalyser_cpp"];var __GLOBAL__sub_I_DocStringParser_cpp=Module["__GLOBAL__sub_I_DocStringParser_cpp"]=asm["__GLOBAL__sub_I_DocStringParser_cpp"];var __GLOBAL__sub_I_EncodingContext_cpp=Module["__GLOBAL__sub_I_EncodingContext_cpp"]=asm["__GLOBAL__sub_I_EncodingContext_cpp"];var __GLOBAL__sub_I_ExpressionCompiler_cpp=Module["__GLOBAL__sub_I_ExpressionCompiler_cpp"]=asm["__GLOBAL__sub_I_ExpressionCompiler_cpp"];var __GLOBAL__sub_I_GasEstimator_cpp=Module["__GLOBAL__sub_I_GasEstimator_cpp"]=asm["__GLOBAL__sub_I_GasEstimator_cpp"];var __GLOBAL__sub_I_GlobalContext_cpp=Module["__GLOBAL__sub_I_GlobalContext_cpp"]=asm["__GLOBAL__sub_I_GlobalContext_cpp"];var __GLOBAL__sub_I_IRGenerationContext_cpp=Module["__GLOBAL__sub_I_IRGenerationContext_cpp"]=asm["__GLOBAL__sub_I_IRGenerationContext_cpp"];var __GLOBAL__sub_I_IRGeneratorForStatements_cpp=Module["__GLOBAL__sub_I_IRGeneratorForStatements_cpp"]=asm["__GLOBAL__sub_I_IRGeneratorForStatements_cpp"];var __GLOBAL__sub_I_IRGenerator_cpp=Module["__GLOBAL__sub_I_IRGenerator_cpp"]=asm["__GLOBAL__sub_I_IRGenerator_cpp"];var __GLOBAL__sub_I_IRLValue_cpp=Module["__GLOBAL__sub_I_IRLValue_cpp"]=asm["__GLOBAL__sub_I_IRLValue_cpp"];var __GLOBAL__sub_I_Instruction_cpp=Module["__GLOBAL__sub_I_Instruction_cpp"]=asm["__GLOBAL__sub_I_Instruction_cpp"];var __GLOBAL__sub_I_LValue_cpp=Module["__GLOBAL__sub_I_LValue_cpp"]=asm["__GLOBAL__sub_I_LValue_cpp"];var __GLOBAL__sub_I_NameAndTypeResolver_cpp=Module["__GLOBAL__sub_I_NameAndTypeResolver_cpp"]=asm["__GLOBAL__sub_I_NameAndTypeResolver_cpp"];var __GLOBAL__sub_I_Natspec_cpp=Module["__GLOBAL__sub_I_Natspec_cpp"]=asm["__GLOBAL__sub_I_Natspec_cpp"];var __GLOBAL__sub_I_Parser_cpp=Module["__GLOBAL__sub_I_Parser_cpp"]=asm["__GLOBAL__sub_I_Parser_cpp"];var __GLOBAL__sub_I_PostTypeChecker_cpp=Module["__GLOBAL__sub_I_PostTypeChecker_cpp"]=asm["__GLOBAL__sub_I_PostTypeChecker_cpp"];var __GLOBAL__sub_I_ReferencesResolver_cpp=Module["__GLOBAL__sub_I_ReferencesResolver_cpp"]=asm["__GLOBAL__sub_I_ReferencesResolver_cpp"];var __GLOBAL__sub_I_SMTChecker_cpp=Module["__GLOBAL__sub_I_SMTChecker_cpp"]=asm["__GLOBAL__sub_I_SMTChecker_cpp"];var __GLOBAL__sub_I_StandardCompiler_cpp=Module["__GLOBAL__sub_I_StandardCompiler_cpp"]=asm["__GLOBAL__sub_I_StandardCompiler_cpp"];var __GLOBAL__sub_I_StaticAnalyzer_cpp=Module["__GLOBAL__sub_I_StaticAnalyzer_cpp"]=asm["__GLOBAL__sub_I_StaticAnalyzer_cpp"];var __GLOBAL__sub_I_SymbolicTypes_cpp=Module["__GLOBAL__sub_I_SymbolicTypes_cpp"]=asm["__GLOBAL__sub_I_SymbolicTypes_cpp"];var __GLOBAL__sub_I_SymbolicVariables_cpp=Module["__GLOBAL__sub_I_SymbolicVariables_cpp"]=asm["__GLOBAL__sub_I_SymbolicVariables_cpp"];var __GLOBAL__sub_I_SyntaxChecker_cpp=Module["__GLOBAL__sub_I_SyntaxChecker_cpp"]=asm["__GLOBAL__sub_I_SyntaxChecker_cpp"];var __GLOBAL__sub_I_TypeChecker_cpp=Module["__GLOBAL__sub_I_TypeChecker_cpp"]=asm["__GLOBAL__sub_I_TypeChecker_cpp"];var __GLOBAL__sub_I_TypeProvider_cpp=Module["__GLOBAL__sub_I_TypeProvider_cpp"]=asm["__GLOBAL__sub_I_TypeProvider_cpp"];var __GLOBAL__sub_I_Types_cpp=Module["__GLOBAL__sub_I_Types_cpp"]=asm["__GLOBAL__sub_I_Types_cpp"];var __GLOBAL__sub_I_VariableUsage_cpp=Module["__GLOBAL__sub_I_VariableUsage_cpp"]=asm["__GLOBAL__sub_I_VariableUsage_cpp"];var __GLOBAL__sub_I_Version_cpp=Module["__GLOBAL__sub_I_Version_cpp"]=asm["__GLOBAL__sub_I_Version_cpp"];var __GLOBAL__sub_I_ViewPureChecker_cpp=Module["__GLOBAL__sub_I_ViewPureChecker_cpp"]=asm["__GLOBAL__sub_I_ViewPureChecker_cpp"];var __GLOBAL__sub_I_YulUtilFunctions_cpp=Module["__GLOBAL__sub_I_YulUtilFunctions_cpp"]=asm["__GLOBAL__sub_I_YulUtilFunctions_cpp"];var __GLOBAL__sub_I_iostream_cpp=Module["__GLOBAL__sub_I_iostream_cpp"]=asm["__GLOBAL__sub_I_iostream_cpp"];var __GLOBAL__sub_I_json_value_cpp=Module["__GLOBAL__sub_I_json_value_cpp"]=asm["__GLOBAL__sub_I_json_value_cpp"];var __GLOBAL__sub_I_libsolc_cpp=Module["__GLOBAL__sub_I_libsolc_cpp"]=asm["__GLOBAL__sub_I_libsolc_cpp"];var __GLOBAL__sub_I_regex_cpp=Module["__GLOBAL__sub_I_regex_cpp"]=asm["__GLOBAL__sub_I_regex_cpp"];var __ZSt18uncaught_exceptionv=Module["__ZSt18uncaught_exceptionv"]=asm["__ZSt18uncaught_exceptionv"];var ___cxa_can_catch=Module["___cxa_can_catch"]=asm["___cxa_can_catch"];var ___cxa_is_pointer_type=Module["___cxa_is_pointer_type"]=asm["___cxa_is_pointer_type"];var ___cxx_global_var_init_123=Module["___cxx_global_var_init_123"]=asm["___cxx_global_var_init_123"];var ___cxx_global_var_init_7=Module["___cxx_global_var_init_7"]=asm["___cxx_global_var_init_7"];var ___emscripten_environ_constructor=Module["___emscripten_environ_constructor"]=asm["___emscripten_environ_constructor"];var ___muldi3=Module["___muldi3"]=asm["___muldi3"];var ___udivdi3=Module["___udivdi3"]=asm["___udivdi3"];var ___uremdi3=Module["___uremdi3"]=asm["___uremdi3"];var __get_environ=Module["__get_environ"]=asm["__get_environ"];var _bitshift64Ashr=Module["_bitshift64Ashr"]=asm["_bitshift64Ashr"];var _bitshift64Lshr=Module["_bitshift64Lshr"]=asm["_bitshift64Lshr"];var _bitshift64Shl=Module["_bitshift64Shl"]=asm["_bitshift64Shl"];var _emscripten_replace_memory=Module["_emscripten_replace_memory"]=asm["_emscripten_replace_memory"];var _free=Module["_free"]=asm["_free"];var _i64Add=Module["_i64Add"]=asm["_i64Add"];var _i64Subtract=Module["_i64Subtract"]=asm["_i64Subtract"];var _llvm_bswap_i32=Module["_llvm_bswap_i32"]=asm["_llvm_bswap_i32"];var _llvm_cttz_i32=Module["_llvm_cttz_i32"]=asm["_llvm_cttz_i32"];var _malloc=Module["_malloc"]=asm["_malloc"];var _memcpy=Module["_memcpy"]=asm["_memcpy"];var _memmove=Module["_memmove"]=asm["_memmove"];var _memset=Module["_memset"]=asm["_memset"];var _pthread_cond_broadcast=Module["_pthread_cond_broadcast"]=asm["_pthread_cond_broadcast"];var _pthread_mutex_lock=Module["_pthread_mutex_lock"]=asm["_pthread_mutex_lock"];var _pthread_mutex_unlock=Module["_pthread_mutex_unlock"]=asm["_pthread_mutex_unlock"];var _sbrk=Module["_sbrk"]=asm["_sbrk"];var _solidity_compile=Module["_solidity_compile"]=asm["_solidity_compile"];var _solidity_license=Module["_solidity_license"]=asm["_solidity_license"];var _solidity_version=Module["_solidity_version"]=asm["_solidity_version"];var establishStackSpace=Module["establishStackSpace"]=asm["establishStackSpace"];var setThrew=Module["setThrew"]=asm["setThrew"];var stackAlloc=Module["stackAlloc"]=asm["stackAlloc"];var stackRestore=Module["stackRestore"]=asm["stackRestore"];var stackSave=Module["stackSave"]=asm["stackSave"];var dynCall_diii=Module["dynCall_diii"]=asm["dynCall_diii"];var dynCall_i=Module["dynCall_i"]=asm["dynCall_i"];var dynCall_ii=Module["dynCall_ii"]=asm["dynCall_ii"];var dynCall_iidi=Module["dynCall_iidi"]=asm["dynCall_iidi"];var dynCall_iii=Module["dynCall_iii"]=asm["dynCall_iii"];var dynCall_iiii=Module["dynCall_iiii"]=asm["dynCall_iiii"];var dynCall_iiiii=Module["dynCall_iiiii"]=asm["dynCall_iiiii"];var dynCall_iiiiid=Module["dynCall_iiiiid"]=asm["dynCall_iiiiid"];var dynCall_iiiiii=Module["dynCall_iiiiii"]=asm["dynCall_iiiiii"];var dynCall_iiiiiid=Module["dynCall_iiiiiid"]=asm["dynCall_iiiiiid"];var dynCall_iiiiiii=Module["dynCall_iiiiiii"]=asm["dynCall_iiiiiii"];var dynCall_iiiiiiii=Module["dynCall_iiiiiiii"]=asm["dynCall_iiiiiiii"];var dynCall_iiiiiiiii=Module["dynCall_iiiiiiiii"]=asm["dynCall_iiiiiiiii"];var dynCall_iiiiiiiiiii=Module["dynCall_iiiiiiiiiii"]=asm["dynCall_iiiiiiiiiii"];var dynCall_iiiiiiiiiiii=Module["dynCall_iiiiiiiiiiii"]=asm["dynCall_iiiiiiiiiiii"];var dynCall_iiiiiiiiiiiii=Module["dynCall_iiiiiiiiiiiii"]=asm["dynCall_iiiiiiiiiiiii"];var dynCall_v=Module["dynCall_v"]=asm["dynCall_v"];var dynCall_vi=Module["dynCall_vi"]=asm["dynCall_vi"];var dynCall_vidi=Module["dynCall_vidi"]=asm["dynCall_vidi"];var dynCall_vii=Module["dynCall_vii"]=asm["dynCall_vii"];var dynCall_viii=Module["dynCall_viii"]=asm["dynCall_viii"];var dynCall_viiii=Module["dynCall_viiii"]=asm["dynCall_viiii"];var dynCall_viiiii=Module["dynCall_viiiii"]=asm["dynCall_viiiii"];var dynCall_viiiiii=Module["dynCall_viiiiii"]=asm["dynCall_viiiiii"];var dynCall_viiiiiii=Module["dynCall_viiiiiii"]=asm["dynCall_viiiiiii"];var dynCall_viiiiiiii=Module["dynCall_viiiiiiii"]=asm["dynCall_viiiiiiii"];var dynCall_viiiiiiiii=Module["dynCall_viiiiiiiii"]=asm["dynCall_viiiiiiiii"];var dynCall_viiiiiiiiii=Module["dynCall_viiiiiiiiii"]=asm["dynCall_viiiiiiiiii"];var dynCall_viiiiiiiiiii=Module["dynCall_viiiiiiiiiii"]=asm["dynCall_viiiiiiiiiii"];var dynCall_viiiiiiiiiiii=Module["dynCall_viiiiiiiiiiii"]=asm["dynCall_viiiiiiiiiiii"];var dynCall_viiiiiiiiiiiiiii=Module["dynCall_viiiiiiiiiiiiiii"]=asm["dynCall_viiiiiiiiiiiiiii"];Module["asm"]=asm;Module["cwrap"]=cwrap;Module["setValue"]=setValue;Module["Pointer_stringify"]=Pointer_stringify;Module["stringToUTF8"]=stringToUTF8;Module["lengthBytesUTF8"]=lengthBytesUTF8;Module["addFunction"]=addFunction;Module["removeFunction"]=removeFunction;if(memoryInitializer){if(!isDataURI(memoryInitializer)){memoryInitializer=locateFile(memoryInitializer)}if(ENVIRONMENT_IS_NODE||ENVIRONMENT_IS_SHELL){var data=Module["readBinary"](memoryInitializer);HEAPU8.set(data,GLOBAL_BASE)}else{addRunDependency("memory initializer");var applyMemoryInitializer=(function(data){if(data.byteLength)data=new Uint8Array(data);HEAPU8.set(data,GLOBAL_BASE);if(Module["memoryInitializerRequest"])delete Module["memoryInitializerRequest"].response;removeRunDependency("memory initializer")});function doBrowserLoad(){Module["readAsync"](memoryInitializer,applyMemoryInitializer,(function(){throw"could not load memory initializer "+memoryInitializer}))}var memoryInitializerBytes=tryParseAsDataURI(memoryInitializer);if(memoryInitializerBytes){applyMemoryInitializer(memoryInitializerBytes.buffer)}else if(Module["memoryInitializerRequest"]){function useRequest(){var request=Module["memoryInitializerRequest"];var response=request.response;if(request.status!==200&&request.status!==0){var data=tryParseAsDataURI(Module["memoryInitializerRequestURL"]);if(data){response=data.buffer}else{console.warn("a problem seems to have happened with Module.memoryInitializerRequest, status: "+request.status+", retrying "+memoryInitializer);doBrowserLoad();return}}applyMemoryInitializer(response)}if(Module["memoryInitializerRequest"].response){setTimeout(useRequest,0)}else{Module["memoryInitializerRequest"].addEventListener("load",useRequest)}}else{doBrowserLoad()}}}function ExitStatus(status){this.name="ExitStatus";this.message="Program terminated with exit("+status+")";this.status=status}ExitStatus.prototype=new Error;ExitStatus.prototype.constructor=ExitStatus;dependenciesFulfilled=function runCaller(){if(!Module["calledRun"])run();if(!Module["calledRun"])dependenciesFulfilled=runCaller};function run(args){args=args||Module["arguments"];if(runDependencies>0){return}preRun();if(runDependencies>0)return;if(Module["calledRun"])return;function doRun(){if(Module["calledRun"])return;Module["calledRun"]=true;if(ABORT)return;ensureInitRuntime();preMain();if(Module["onRuntimeInitialized"])Module["onRuntimeInitialized"]();postRun()}if(Module["setStatus"]){Module["setStatus"]("Running...");setTimeout((function(){setTimeout((function(){Module["setStatus"]("")}),1);doRun()}),1)}else{doRun()}}Module["run"]=run;function abort(what){if(Module["onAbort"]){Module["onAbort"](what)}if(what!==undefined){out(what);err(what);what=JSON.stringify(what)}else{what=""}ABORT=true;EXITSTATUS=1;throw"abort("+what+"). Build with -s ASSERTIONS=1 for more info."}Module["abort"]=abort;if(Module["preInit"]){if(typeof Module["preInit"]=="function")Module["preInit"]=[Module["preInit"]];while(Module["preInit"].length>0){Module["preInit"].pop()()}}Module["noExitRuntime"]=true;run()
+                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            
+abort({}). Build with -s ASSERTIONS=1 for more info.
+(Use `node --trace-uncaught ...` to show where the exception was thrown)
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! posdao-test-setup@0.0.1 checkers: `(node scripts/watchOrdinaryNode.js &) && node scripts/deploy-staking-token.js && (node scripts/watchRandomSeed &)`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the posdao-test-setup@0.0.1 checkers script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_18_09_022Z-debug.log
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! posdao-test-setup@0.0.1 after-start-no-watcher: `npm run checkers && npm run test && npm run stop-test-setup`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the posdao-test-setup@0.0.1 after-start-no-watcher script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_18_09_038Z-debug.log
+npm ERR! code ELIFECYCLE
+npm ERR! errno 1
+npm ERR! posdao-test-setup@0.0.1 all-nethermind-no-watcher: `CLIENT=nethermind npm run before-start && npm run start-test-setup-nethermind && npm run after-start-no-watcher`
+npm ERR! Exit status 1
+npm ERR! 
+npm ERR! Failed at the posdao-test-setup@0.0.1 all-nethermind-no-watcher script.
+npm ERR! This is probably not a problem with npm. There is likely additional logging output above.
+
+npm ERR! A complete log of this run can be found in:
+npm ERR!     /home/runner/.npm/_logs/2024-02-01T20_18_09_051Z-debug.log
+Error: Process completed with exit code 1.
+* repair Gitter *
