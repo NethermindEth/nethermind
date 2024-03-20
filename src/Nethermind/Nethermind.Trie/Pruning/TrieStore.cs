@@ -422,7 +422,7 @@ namespace Nethermind.Trie.Pruning
                                 }
 
                                 Metrics.PruningTime = sw.ElapsedMilliseconds;
-                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed}.");
+                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds.");
                             }
                         }
 
