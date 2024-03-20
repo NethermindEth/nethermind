@@ -160,7 +160,7 @@ static class EmitExtensions
         }
     }
 
-    public static void LoadArray(this ILGenerator il, Span<byte> value)
+    public static void LoadArray(this ILGenerator il, ReadOnlySpan<byte> value)
     {
         // declare il data
         il.Emit(OpCodes.Ldc_I4, value.Length);

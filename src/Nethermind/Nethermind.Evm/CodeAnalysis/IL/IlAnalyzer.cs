@@ -53,7 +53,7 @@ internal static class IlAnalyzer
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
     /// </summary>
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(ReadOnlyMemory<byte> machineCode, CodeInfo codeInfo)
+    public static Task StartAnalysis(CodeInfo codeInfo)
     {
         return Task.Run(() =>
         {
@@ -81,7 +81,7 @@ internal static class IlAnalyzer
                     args = machineCode.Slice(i+1, immediatesCount).ToArray();
                     i += immediatesCount;
                 }
-                opcodes[j] = new OpcodeInfo(opcode, args.AsMemory());
+                opcodes[j] = new OpcodeInfo(opcode, args.AsMemory(), OpcodeMetadata.Operations.GetValueOrDefault(opcode));
             }
             return opcodes[..j];
         }
@@ -92,7 +92,7 @@ internal static class IlAnalyzer
             List<OpcodeInfo> segment = [];
             foreach (var opcode in codeData)
             {
-                if(opcode.Instruction.IsStateful())
+                if(opcode.Operation.IsStateful())
                 {
                     if(segment.Count > 0)
                     {
@@ -122,7 +122,7 @@ internal static class IlAnalyzer
                 bool found = true;
                 for (int j = 0; j < pattern.Length && found; j++)
                 {
-                    found = ((byte)strippedBytecode[i + j].Instruction == pattern[j]);
+                    found = ((byte)strippedBytecode[i + j].Operation == pattern[j]);
                 }
 
                 if (found)

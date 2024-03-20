@@ -201,30 +201,11 @@ public class InitializeNetwork : IStep
             }
         });
 
-        bool stateSyncFinished = _api.Synchronizer.SyncProgressResolver.FindBestFullState() != 0;
-
-        if (_syncConfig.SnapSync || stateSyncFinished || !_syncConfig.FastSync)
+        if (_syncConfig.SnapSync && !_syncConfig.SnapServingEnabled)
         {
-            // we can't add eth67 capability as default, because it needs snap protocol for syncing (GetNodeData is
-            // no longer available). Eth67 should be added if snap is enabled OR sync is finished OR in archive nodes (no state sync)
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 67));
-            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Eth, 68));
-        }
-        else if (_logger.IsDebug) _logger.Debug("Skipped enabling eth67 & eth68 capabilities");
-
-        if (_syncConfig.SnapSync)
-        {
-            if (!_syncConfig.SnapServingEnabled)
-            {
-                // TODO: Should we keep snap capability even after finishing sync?
-                SnapCapabilitySwitcher snapCapabilitySwitcher =
-                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
-            else
-            {
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            }
+            SnapCapabilitySwitcher snapCapabilitySwitcher =
+                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -546,6 +527,11 @@ public class InitializeNetwork : IStep
             snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
+
+        if (_syncConfig.SnapServingEnabled)
+        {
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
 
         if (_syncConfig.WitnessProtocolEnabled)
         {

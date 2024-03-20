@@ -17,7 +17,7 @@ using Label = System.Reflection.Emit.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public static Func<long, EvmExceptionType> Build(byte[] code)
+    public static Func<long, EvmExceptionType> Build(OpcodeInfo[] code)
     {
         Dictionary<int, long> gasCost = BuildCostLookup(code);
 
@@ -75,7 +75,7 @@ internal class ILCompiler
 
         for(int pc = 0; pc < code.Length; pc++)
         {
-            OpcodeInfo op = OpcodeInfo.Operations[(Instruction)code[pc]];
+            OpcodeInfo op = code[pc];
 
             // load gasAvailable
             il.Emit(OpCodes.Ldloc, gasAvailable);
@@ -88,7 +88,7 @@ internal class ILCompiler
             il.Emit(OpCodes.Blt, outOfGas);
             il.Store(gasAvailable);
 
-            switch (op.Instruction)
+            switch (op.Operation)
             {
                 case Instruction.JUMPDEST:
                     jumpDestinations[pc] = il.DefineLabel();
@@ -143,14 +143,14 @@ internal class ILCompiler
                 case Instruction.PUSH30:
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
-                    Span<byte> bytes = code.AsSpan(pc + 1, op.AdditionalBytes);
+                    ReadOnlySpan<byte> bytes = op.Arguments.Value.Span;
                     il.LoadArray(bytes);
                     il.LoadValue(0);
                     il.EmitCall(OpCodes.Call, typeof(BitConverter).GetProperty(nameof(BitConverter.IsLittleEndian)).GetMethod, null);
                     il.Emit(OpCodes.Newobj, typeof(UInt256).GetConstructor(new[] { typeof(Span<byte>), typeof(bool) }));
 
                     il.StackPush(current);
-                    pc += op.AdditionalBytes;
+                    pc += op.Metadata?.AdditionalBytes ?? 0;
                     break;
                 case Instruction.ADD:
                     EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!);
@@ -240,7 +240,7 @@ internal class ILCompiler
                 case Instruction.DUP14:
                 case Instruction.DUP15:
                 case Instruction.DUP16:
-                    int count = (int)op.Instruction - (int)Instruction.DUP1 + 1;
+                    int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
                     il.Load(current);
                     il.StackLoadPrevious(current, count);
                     il.Emit(OpCodes.Ldobj, typeof(Word));
@@ -264,7 +264,7 @@ internal class ILCompiler
                 case Instruction.SWAP14:
                 case Instruction.SWAP15:
                 case Instruction.SWAP16:
-                    count = (int)op.Instruction - (int)Instruction.SWAP1 + 1;
+                    count = (int)op.Operation - (int)Instruction.SWAP1 + 1;
 
                     il.LoadAddress(uint256R);
                     il.StackLoadPrevious(current, 1);
@@ -334,7 +334,7 @@ internal class ILCompiler
         il.StackPush(current);
     }
 
-    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<byte> code)
+    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
         Dictionary<int, long> costs = new();
         int costStart = 0;
@@ -342,27 +342,27 @@ internal class ILCompiler
 
         for (int pc = 0; pc < code.Length; pc++)
         {
-            OpcodeInfo op = OpcodeInfo.Operations[(Instruction)code[pc]];
-            switch (op.Instruction)
+            OpcodeInfo op = code[pc];
+            switch (op.Operation)
             {
                 case Instruction.JUMPDEST:
                     costs[costStart] = costCurrent; // remember the current chain of opcodes
                     costStart = pc;
-                    costCurrent = op.GasCost;
+                    costCurrent = op.Metadata?.GasCost ?? 0;
                     break;
                 case Instruction.JUMPI:
                 case Instruction.JUMP:
-                    costCurrent += op.GasCost;
+                    costCurrent += op.Metadata?.GasCost ?? 0;
                     costs[costStart] = costCurrent; // remember the current chain of opcodes
                     costStart = pc + 1;             // start with the next again
                     costCurrent = 0;
                     break;
                 default:
-                    costCurrent += op.GasCost;
+                    costCurrent += op.Metadata?.GasCost ?? 0;
                     break;
             }
 
-            pc += op.AdditionalBytes;
+            pc += op.Metadata?.AdditionalBytes ?? 0;
         }
 
         if (costCurrent > 0)

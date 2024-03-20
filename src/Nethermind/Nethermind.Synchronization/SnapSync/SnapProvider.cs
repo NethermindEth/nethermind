@@ -112,7 +112,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result = AddRangeResult.OK;
 
-            IReadOnlyList<PathWithStorageSlot[]> responses = response.PathsAndSlots;
+            IReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
             if (responses.Count == 0 && response.Proofs.Count == 0)
             {
                 _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
@@ -139,7 +139,7 @@ namespace Nethermind.Synchronization.SnapSync
                     PathWithAccount account = request.Accounts[i];
                     result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
 
-                    slotCount += responses[i].Length;
+                    slotCount += responses[i].Count;
                 }
 
                 if (requestLength > responses.Count)

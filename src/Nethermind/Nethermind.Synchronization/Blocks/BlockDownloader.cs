@@ -168,7 +168,7 @@ namespace Nethermind.Synchronization.Blocks
 
                 if (_logger.IsDebug) _logger.Debug($"Headers request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
                 Stopwatch sw = Stopwatch.StartNew();
-                IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
 
                 Hash256? startHeaderHash = headers[0]?.Hash;
                 BlockHeader? startHeader = (startHeaderHash is null)
@@ -281,7 +281,7 @@ namespace Nethermind.Synchronization.Blocks
                 if (_logger.IsTrace) _logger.Trace($"Full sync request {currentNumber}+{headersToRequest} to peer {bestPeer} with {bestPeer.HeadNumber} blocks. Got {currentNumber} and asking for {headersToRequest} more.");
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
-                IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
+                using IOwnedReadOnlyList<BlockHeader?> headers = await RequestHeaders(bestPeer, cancellation, currentNumber, headersToRequest);
                 if (headers.Count < 2)
                 {
                     // Peer dont have new header
@@ -341,7 +341,7 @@ namespace Nethermind.Synchronization.Blocks
                     }
 
                     // can move this to block tree now?
-                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock))
+                    if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {
                         throw new EthSyncException($"{bestPeer} sent an invalid block {currentBlock.ToString(Block.Format.Short)}.");
                     }
@@ -481,7 +481,7 @@ namespace Nethermind.Synchronization.Blocks
                 Task<IOwnedReadOnlyList<TxReceipt[]>> request = peer.SyncPeer.GetReceipts(hashesToRequest, cancellation);
                 await request.ContinueWith(_ => DownloadFailHandler(request, "receipts"), cancellation);
 
-                IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
+                using IOwnedReadOnlyList<TxReceipt[]> result = request.Result;
 
                 for (int i = 0; i < result.Count; i++)
                 {
