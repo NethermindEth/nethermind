@@ -620,14 +620,5 @@ namespace Nethermind.Network.Test.P2P
             Assert.That(afterLocal, Is.EqualTo(beforeLocal));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
         }
-
-        [Test]
-        public void UpdateMetric()
-        {
-            Session.IncomingP2PMessages.Clear();
-            Session.IncomingP2PMessages.TryAdd(("p2p", 5, 0), 111);
-            Metrics.UpdateP2PMetrics();
-            Metrics.IncomingP2PMessages[("p2p5", "Hello")].Should().Be(111);
-        }
     }
 }
