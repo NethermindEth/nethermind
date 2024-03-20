@@ -13,10 +13,10 @@ using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Evm.Benchmark;
 
@@ -30,6 +30,7 @@ public class MultipleUnsignedOperations
     private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
     private EvmState _evmState;
     private WorldState _stateProvider;
+    private PaprikaStateFactory _stateDb;
 
     private readonly byte[] _bytecode = Prepare.EvmCode
         .PushData(2)
@@ -68,10 +69,10 @@ public class MultipleUnsignedOperations
     [GlobalSetup]
     public void GlobalSetup()
     {
-        TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+        _stateDb = new();
         IKeyValueStore codeDb = new MemDb();
 
-        _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+        _stateProvider = new WorldState(_stateDb, codeDb, new OneLoggerLogManager(NullLogger.Instance));
         _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
         _stateProvider.Commit(_spec);
 
@@ -91,6 +92,12 @@ public class MultipleUnsignedOperations
         );
 
         _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
+    }
+
+    [GlobalCleanup]
+    public void GlobalCleanup()
+    {
+        _stateDb?.DisposeAsync().GetAwaiter().GetResult();
     }
 
     [Benchmark]

@@ -6,6 +6,7 @@ using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Steps;
 
 namespace Nethermind.Optimism;
@@ -31,10 +32,11 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         if (_api.BlockValidator is null) throw new StepDependencyException(nameof(_api.BlockValidator));
         if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
-        if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+        if (_api.StateFactory is null) throw new StepDependencyException(nameof(_api.StateFactory));
 
         _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
-            _api.WorldStateManager,
+            _api.DbProvider.AsReadOnly(false),
+            _api.StateFactory!,
             _api.ChainSpec,
             _api.BlockTree,
             _api.SpecProvider,

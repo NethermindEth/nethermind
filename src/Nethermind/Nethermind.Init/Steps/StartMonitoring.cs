@@ -123,7 +123,6 @@ public class StartMonitoring : IStep
 
                 // Please don't use these anymore. Just use label... I'm just adding it here to not break existing dashboard.
                 // TODO: Remove this... please
-                IDbMeta.DbMetric stateDbMetric = dbProvider.StateDb.GatherMetric(includeSharedCache: true);
                 IDbMeta.DbMetric receiptDbMetric = dbProvider.ReceiptsDb.GatherMetric();
                 IDbMeta.DbMetric headerDbMetric = dbProvider.HeadersDb.GatherMetric();
                 IDbMeta.DbMetric blocksDbMetric = dbProvider.BlocksDb.GatherMetric();
@@ -145,9 +144,11 @@ public class StartMonitoring : IStep
                     // Sometime its not registered.
                 }
 
-                Db.Metrics.StateDbSize = stateDbMetric.Size;
-                Db.Metrics.StateDbReads = stateDbMetric.TotalReads;
-                Db.Metrics.StateDbWrites = stateDbMetric.TotalWrites;
+                // State DB is no longer registered, use Paprika metrics
+                // IDbMeta.DbMetric stateDbMetric = dbProvider.StateDb.GatherMetric(includeSharedCache: true);
+                // Db.Metrics.StateDbSize = stateDbMetric.Size;
+                // Db.Metrics.StateDbReads = stateDbMetric.TotalReads;
+                // Db.Metrics.StateDbWrites = stateDbMetric.TotalWrites;
 
                 Db.Metrics.ReceiptsDbSize = receiptDbMetric.Size;
                 Db.Metrics.ReceiptsDbReads = receiptDbMetric.TotalReads;

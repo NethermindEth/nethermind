@@ -22,6 +22,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.Rlpx;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Stats;
@@ -38,6 +39,7 @@ namespace Nethermind.Network.Benchmarks
         private ZeroPacket _zeroPacket;
         private MessageSerializationService _ser;
         private TransactionsMessage _txMsg;
+        private PaprikaStateFactory _stateDb;
 
         [GlobalSetup]
         public void SetUp()
@@ -53,7 +55,8 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
-            var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            _stateDb = new PaprikaStateFactory();
+            var stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
@@ -86,8 +89,9 @@ namespace Nethermind.Network.Benchmarks
         }
 
         [GlobalCleanup]
-        public void Cleanup()
+        public void GlobalCleanup()
         {
+            _stateDb?.DisposeAsync().GetAwaiter().GetResult();
         }
 
         [Benchmark(Baseline = true)]

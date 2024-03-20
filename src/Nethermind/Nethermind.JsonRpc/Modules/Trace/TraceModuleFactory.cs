@@ -21,7 +21,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
 {
     public class TraceModuleFactory : ModuleFactoryBase<ITraceRpcModule>
     {
-        private readonly IWorldStateManager _worldStateManager;
+        private readonly IReadOnlyDbProvider _dbProvider;
+        private readonly IStateFactory _stateFactory;
         private readonly IReadOnlyBlockTree _blockTree;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private readonly IReceiptStorage _receiptStorage;
@@ -31,8 +32,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
         private readonly IRewardCalculatorSource _rewardCalculatorSource;
         private readonly IPoSSwitcher _poSSwitcher;
 
-        public TraceModuleFactory(
-            IWorldStateManager worldStateManager,
+        public TraceModuleFactory(IReadOnlyDbProvider dbProvider,
+            IStateFactory stateFactory,
             IBlockTree blockTree,
             IJsonRpcConfig jsonRpcConfig,
             IBlockPreprocessorStep recoveryStep,
@@ -42,7 +43,8 @@ namespace Nethermind.JsonRpc.Modules.Trace
             IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
-            _worldStateManager = worldStateManager;
+            _dbProvider = dbProvider;
+            _stateFactory = stateFactory;
             _blockTree = blockTree.AsReadOnly();
             _jsonRpcConfig = jsonRpcConfig ?? throw new ArgumentNullException(nameof(jsonRpcConfig));
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
@@ -57,7 +59,7 @@ namespace Nethermind.JsonRpc.Modules.Trace
         public override ITraceRpcModule Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                new(_worldStateManager, _blockTree, _specProvider, _logManager);
+                new(_dbProvider, _stateFactory, _blockTree, _specProvider, _logManager);
 
             IRewardCalculator rewardCalculator =
                 new MergeRpcRewardCalculator(_rewardCalculatorSource.Get(txProcessingEnv.TransactionProcessor),

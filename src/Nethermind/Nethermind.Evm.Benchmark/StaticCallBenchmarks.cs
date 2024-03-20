@@ -16,7 +16,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Benchmark
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private EvmState _evmState;
         private WorldState _stateProvider;
+        private PaprikaStateFactory _stateDb;
 
         public IEnumerable<byte[]> Bytecodes
         {
@@ -79,10 +80,10 @@ namespace Nethermind.Evm.Benchmark
         [GlobalSetup]
         public void GlobalSetup()
         {
-            TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+            _stateDb = new();
             IKeyValueStore codeDb = new MemDb();
 
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            _stateProvider = new WorldState(_stateDb, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
@@ -102,6 +103,12 @@ namespace Nethermind.Evm.Benchmark
             );
 
             _evmState = new EvmState(100_000_000L, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
+        }
+
+        [GlobalCleanup]
+        public void GlobalCleanup()
+        {
+            _stateDb?.DisposeAsync().GetAwaiter().GetResult();
         }
 
         [Benchmark(Baseline = true)]

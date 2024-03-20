@@ -14,7 +14,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Benchmark
 {
@@ -31,6 +31,7 @@ namespace Nethermind.Evm.Benchmark
         private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private EvmState _evmState;
         private WorldState _stateProvider;
+        private PaprikaStateFactory _stateDb;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -38,10 +39,10 @@ namespace Nethermind.Evm.Benchmark
             ByteCode = Bytes.FromHexString(Environment.GetEnvironmentVariable("NETH.BENCHMARK.BYTECODE") ?? string.Empty);
             Console.WriteLine($"Running benchmark for bytecode {ByteCode?.ToHexString()}");
 
-            TrieStore trieStore = new(new MemDb(), new OneLoggerLogManager(NullLogger.Instance));
+            _stateDb = new();
             IKeyValueStore codeDb = new MemDb();
 
-            _stateProvider = new WorldState(trieStore, codeDb, new OneLoggerLogManager(NullLogger.Instance));
+            _stateProvider = new WorldState(_stateDb, codeDb, new OneLoggerLogManager(NullLogger.Instance));
             _stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             _stateProvider.Commit(_spec);
 
@@ -60,6 +61,12 @@ namespace Nethermind.Evm.Benchmark
             );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
+        }
+
+        [GlobalCleanup]
+        public void GlobalCleanup()
+        {
+            _stateDb?.DisposeAsync().GetAwaiter().GetResult();
         }
 
         [Benchmark]

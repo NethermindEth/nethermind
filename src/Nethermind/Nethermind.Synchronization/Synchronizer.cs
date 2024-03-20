@@ -137,7 +137,7 @@ namespace Nethermind.Synchronization
 
             _progressTracker = new(
                 blockTree,
-                dbProvider.StateDb,
+                new MemDb(), // TODO: replace with proper state
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
             SnapProvider = new SnapProvider(_progressTracker, dbProvider, logManager);
@@ -213,7 +213,6 @@ namespace Nethermind.Synchronization
                 SnapSyncFeed,
                 BodiesSyncFeed,
                 ReceiptsSyncFeed,
-                _dbProvider.StateDb as ITunableDb,
                 _dbProvider.CodeDb as ITunableDb,
                 _dbProvider.BlocksDb as ITunableDb,
                 _dbProvider.ReceiptsDb as ITunableDb);

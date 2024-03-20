@@ -23,6 +23,7 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
@@ -43,6 +44,7 @@ namespace Nethermind.TxPool.Test
         private TxPool _txPool;
         private IWorldState _stateProvider;
         private IBlockTree _blockTree;
+        private PaprikaStateFactory _stateDb = new();
 
         private readonly int _txGasLimit = 1_000_000;
 
@@ -52,9 +54,8 @@ namespace Nethermind.TxPool.Test
             _logManager = LimboLogs.Instance;
             _specProvider = MainnetSpecProvider.Instance;
             _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, _logManager);
-            var trieStore = new TrieStore(new MemDb(), _logManager);
             var codeDb = new MemDb();
-            _stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            _stateProvider = new WorldState(_stateDb, codeDb, _logManager);
             _blockTree = Substitute.For<IBlockTree>();
             Block block = Build.A.Block.WithNumber(0).TestObject;
             _blockTree.Head.Returns(block);
@@ -62,6 +63,9 @@ namespace Nethermind.TxPool.Test
 
             KzgPolynomialCommitments.InitializeAsync().Wait();
         }
+
+        [TearDown]
+        public virtual ValueTask TearDown() => _stateDb.DisposeAsync();
 
         [Test]
         public void should_add_peers()

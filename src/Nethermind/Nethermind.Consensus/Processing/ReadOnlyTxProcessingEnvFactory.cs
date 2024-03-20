@@ -12,31 +12,35 @@ namespace Nethermind.Consensus.Processing;
 
 public class ReadOnlyTxProcessingEnvFactory
 {
-    private readonly IWorldStateManager _worldStateManager;
+    private readonly IReadOnlyDbProvider _readOnlyDbProvider;
+    private readonly IStateFactory _stateFactory;
     private readonly IReadOnlyBlockTree? _readOnlyBlockTree;
     private readonly ISpecProvider? _specProvider;
     private readonly ILogManager? _logManager;
 
     public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateManager worldStateManager,
+        IReadOnlyDbProvider readOnlyDbProvider,
+        IStateFactory stateFactory,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
-        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+        : this(readOnlyDbProvider, stateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
     {
     }
 
     public ReadOnlyTxProcessingEnvFactory(
-        IWorldStateManager worldStateManager,
+        IReadOnlyDbProvider readOnlyDbProvider,
+        IStateFactory stateFactory,
         IReadOnlyBlockTree? readOnlyBlockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager)
     {
-        _worldStateManager = worldStateManager;
+        _readOnlyDbProvider = readOnlyDbProvider;
+        _stateFactory = stateFactory;
         _readOnlyBlockTree = readOnlyBlockTree;
         _specProvider = specProvider;
         _logManager = logManager;
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(_worldStateManager, _readOnlyBlockTree, _specProvider, _logManager);
+    public ReadOnlyTxProcessingEnv Create() => new(_readOnlyDbProvider, _stateFactory, _readOnlyBlockTree, _specProvider, _logManager);
 }

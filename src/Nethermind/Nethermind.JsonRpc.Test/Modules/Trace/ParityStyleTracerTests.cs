@@ -31,6 +31,7 @@ using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
@@ -44,6 +45,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         private IPoSSwitcher? _poSSwitcher;
         private IStateReader _stateReader;
         private readonly IJsonRpcConfig _jsonRpcConfig = new JsonRpcConfig();
+        private PaprikaStateFactory _stateDb = new();
 
         [SetUp]
         public void Setup()
@@ -55,11 +57,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 .WithSpecProvider(specProvider)
                 .TestObject;
 
-            MemDb stateDb = new();
             MemDb codeDb = new();
-            ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
-            _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(_stateDb, codeDb, LimboLogs.Instance);
+            _stateReader = new StateReader(_stateDb, codeDb, LimboLogs.Instance);
 
             BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
@@ -87,7 +87,11 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
         }
 
         [TearDown]
-        public void TearDown() => _processor?.Dispose();
+        public void TearDown()
+        {
+            _stateDb.DisposeAsync().GetAwaiter().GetResult();
+            _processor?.Dispose();
+        }
 
         [Test]
         public void Can_trace_raw_parity_style()

@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using NUnit.Framework;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm.Test
 {
@@ -56,12 +58,12 @@ namespace Nethermind.Evm.Test
                 .Done;
 
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            EvmWord result = TestState.Get(storageCell);
+            Assert.That(result, Is.EqualTo(EvmWord.Zero), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(98777), "no refund");
 
-            byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();
-            Assert.That(returnData, Is.EqualTo(new byte[1]), "address returned");
+            EvmWord returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(returnData, Is.EqualTo(EvmWord.Zero), "address returned");
         }
 
         [Test(Description = "Deposit OutOfGas before EIP-2")]
@@ -95,9 +97,11 @@ namespace Nethermind.Evm.Test
                 .Call(TestItem.AddressC, 32000 + 20003 + 20000 + 5000 + 500 + 0) // not enough
                 .Done;
 
+            EvmWord startData = TestState.Get(new StorageCell(TestItem.AddressC, 0));
+            Assert.That(startData, Is.EqualTo(EvmWord.Zero), "address start");
             TestAllTracerWithOutput receipt = Execute(code);
-            byte[] result = TestState.Get(storageCell).ToArray();
-            Assert.That(result, Is.EqualTo(new byte[] { 0 }), "storage reverted");
+            EvmWord result = TestState.Get(storageCell);
+            Assert.That(result, Is.EqualTo(EvmWord.Zero), "storage reverted");
             Assert.That(receipt.GasSpent, Is.EqualTo(83199), "with refund");
 
             byte[] returnData = TestState.Get(new StorageCell(TestItem.AddressC, 0)).ToArray();

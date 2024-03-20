@@ -145,7 +145,7 @@ public partial class BlockProcessor : IBlockProcessor
         }
         catch (Exception ex) // try to restore at all cost
         {
-            _logger.Trace($"Encountered exception {ex} while processing blocks.");
+            _logger.Warn($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
             throw;
         }
@@ -166,8 +166,7 @@ public partial class BlockProcessor : IBlockProcessor
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-            _stateProvider.Reset();
-            _stateProvider.StateRoot = branchStateRoot;
+            _stateProvider.ResetTo(branchStateRoot);
         }
     }
 
@@ -188,8 +187,7 @@ public partial class BlockProcessor : IBlockProcessor
     private void RestoreBranch(Hash256 branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
-        _stateProvider.StateRoot = branchingPointStateRoot;
+        _stateProvider.ResetTo(branchingPointStateRoot);
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }
 
@@ -254,7 +252,6 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (ShouldComputeStateRoot(block.Header))
         {
-            _stateProvider.RecalculateStateRoot();
             block.Header.StateRoot = _stateProvider.StateRoot;
         }
 

@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -176,5 +177,17 @@ namespace Nethermind.Core
                     Unsafe.As<ValueHash256, Vector256<byte>>(ref Unsafe.AsRef(in _storageRoot))) == default;
             }
         }
+
+        public AccountStruct WithChangedCodeHash(in ValueHash256 codeHash)
+            => new(_nonce, _balance, _storageRoot, codeHash);
+
+        public AccountStruct WithChangedStorageRoot(in ValueHash256 storageRoot)
+            => new(_nonce, _balance, storageRoot, _codeHash);
+
+        public AccountStruct WithChangedNonce(in UInt256 nonce)
+            => new(nonce, _balance, _storageRoot, _codeHash);
+
+        public AccountStruct WithChangedBalance(in UInt256 balance)
+            => new(_nonce, balance, _storageRoot, _codeHash);
     }
 }

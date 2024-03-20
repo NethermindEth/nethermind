@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -14,11 +15,10 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
-
 using FluentAssertions;
 using NUnit.Framework;
 
@@ -68,7 +68,7 @@ namespace Nethermind.Evm.Test
         public void Inspect_should_not_change_evm_memory()
         {
             EvmPooledMemory memory = new();
-            memory.Save(3, TestItem.KeccakA.Bytes);
+            memory.Save(3, (ReadOnlySpan<byte>)TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Inspect(initialSize + 32, 32);
             Assert.That(memory.Size, Is.EqualTo(initialSize));
@@ -96,7 +96,7 @@ namespace Nethermind.Evm.Test
         {
             byte[] expectedResult = new byte[32];
             EvmPooledMemory memory = new();
-            memory.Save(3, TestItem.KeccakA.Bytes);
+            memory.Save(3, (ReadOnlySpan<byte>)TestItem.KeccakA.Bytes);
             ulong initialSize = memory.Size;
             ReadOnlyMemory<byte> result = memory.Load(initialSize + 32, 32);
             Assert.That(memory.Size, Is.Not.EqualTo(initialSize));
@@ -112,7 +112,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void GetTrace_memory_should_not_bleed_between_txs()
+        public async Task GetTrace_memory_should_not_bleed_between_txs()
         {
             var first = new byte[] {
                 0x5b, 0x38, 0x36, 0x59, 0x59, 0x59, 0x59, 0x52, 0x3a, 0x60, 0x05, 0x30,
@@ -121,20 +121,20 @@ namespace Nethermind.Evm.Test
                 0x5b, 0x36, 0x59, 0x3a, 0x34, 0x60, 0x5b, 0x59, 0x05, 0x30, 0xf4, 0x3a,
                 0x56};
 
-            var a = run(second).ToString();
-            run(first);
-            var b = run(second).ToString();
+            var a = RunAsync(second).ToString();
+            await RunAsync(first);
+            var b = RunAsync(second).ToString();
 
             Assert.That(b, Is.EqualTo(a));
         }
 
         [Test]
-        public void GetTrace_memory_should_not_overflow()
+        public async Task GetTrace_memory_should_not_overflow()
         {
             var input = new byte[] {
                 0x5b, 0x59, 0x60, 0x20, 0x59, 0x81, 0x91, 0x52, 0x44, 0x36, 0x5a, 0x3b,
                 0x59, 0xf4, 0x5b, 0x31, 0x56, 0x08};
-            run(input);
+            await RunAsync(input);
         }
 
         private static readonly PrivateKey PrivateKeyD = new("0000000000000000000000000000000000000000000000000000001000000000");
@@ -143,19 +143,14 @@ namespace Nethermind.Evm.Test
         private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
         private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
         private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
-        private static string run(byte[] input)
+        private static async Task<string> RunAsync(byte[] input)
         {
             long blocknr = 12965000;
             long gas = 34218;
             ulong ts = 123456;
-            MemDb stateDb = new();
-            TrieStore trieStore = new(
-                    stateDb,
-                    LimboLogs.Instance);
-            IWorldState stateProvider = new WorldState(
-                    trieStore,
-                    new MemDb(),
-                    LimboLogs.Instance);
+            await using var stateDb = new PaprikaStateFactory();
+            IWorldState stateProvider = new WorldState(stateDb, new MemDb(), LimboLogs.Instance);
+            stateProvider.StateRoot = Keccak.EmptyTreeHash;
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
             VirtualMachine virtualMachine = new(
                     Nethermind.Evm.Test.TestBlockhashProvider.Instance,

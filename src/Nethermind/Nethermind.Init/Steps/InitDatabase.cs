@@ -9,12 +9,14 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.TxPool;
 
 namespace Nethermind.Init.Steps
@@ -39,6 +41,7 @@ namespace Nethermind.Init.Steps
             IInitConfig initConfig = _api.Config<IInitConfig>();
             ITxPoolConfig txPoolConfig = _api.Config<ITxPoolConfig>();
             IReceiptConfig receiptConfig = _api.Config<IReceiptConfig>();
+            IPaprikaConfig paprikaConfig = _api.Config<IPaprikaConfig>();
 
             foreach (PropertyInfo propertyInfo in typeof(IDbConfig).GetProperties())
             {
@@ -49,7 +52,7 @@ namespace Nethermind.Init.Steps
             {
                 bool useReceiptsDb = receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync;
                 bool useBlobsDb = txPoolConfig.BlobsSupport.IsPersistentStorage();
-                InitDbApi(initConfig, dbConfig, receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
+                InitDbApi(initConfig, dbConfig, paprikaConfig, receiptConfig.StoreReceipts || syncConfig.DownloadReceiptsInFastSync);
                 StandardDbInitializer dbInitializer = new(_api.DbProvider, _api.DbFactory, _api.FileSystem);
                 await dbInitializer.InitStandardDbsAsync(useReceiptsDb, useBlobsDb);
                 _api.BlobTxStorage = useBlobsDb
@@ -63,7 +66,7 @@ namespace Nethermind.Init.Steps
             }
         }
 
-        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, bool storeReceipts)
+        private void InitDbApi(IInitConfig initConfig, IDbConfig dbConfig, IPaprikaConfig paprikaConfig, bool storeReceipts)
         {
             switch (initConfig.DiagnosticMode)
             {
@@ -86,6 +89,19 @@ namespace Nethermind.Init.Steps
                 default:
                     _api.DbProvider = new DbProvider();
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
+
+                    PaprikaStateFactory paprika = new(Path.Combine(initConfig.BaseDbPath, "state"), paprikaConfig);
+                    _api.RegisterForBlockFinalized((_, e) =>
+                    {
+                        foreach (BlockHeader finalized in e.FinalizedBlocks)
+                        {
+                            paprika.Finalize(finalized.StateRoot!, finalized.Number!);
+                        }
+                    });
+                    _api.DisposeStack.Push(paprika);
+
+                    _api.StateFactory = paprika;
+
                     break;
             }
         }

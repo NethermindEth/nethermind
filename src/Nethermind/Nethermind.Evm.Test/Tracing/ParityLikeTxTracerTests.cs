@@ -709,10 +709,10 @@ namespace Nethermind.Evm.Test.Tracing
             Assert.True(trace.StateChanges.ContainsKey(Recipient), "recipient");
             Assert.True(trace.StateChanges.ContainsKey(TestItem.AddressC), "address c");
             Assert.That(trace.StateChanges[Recipient].Storage.Count, Is.EqualTo(2), "recipient storage count");
-            Assert.That(trace.StateChanges[Recipient].Storage[2].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[2]");
-            Assert.That(trace.StateChanges[Recipient].Storage[2].After, Is.EqualTo(Bytes.FromHexString(SampleHexData1)), "recipient storage[2] after");
-            Assert.That(trace.StateChanges[Recipient].Storage[3].Before, Is.EqualTo(new byte[] { 0 }), "recipient storage[3]");
-            Assert.That(trace.StateChanges[Recipient].Storage[3].After, Is.EqualTo(Bytes.FromHexString(SampleHexData2)), "recipient storage[3] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].Before.ToEvmWord(), Is.EqualTo(new byte[] { 0 }.ToEvmWord()), "recipient storage[2]");
+            Assert.That(trace.StateChanges[Recipient].Storage[2].After.ToEvmWord(), Is.EqualTo(Bytes.FromHexString(SampleHexData1).ToEvmWord()), "recipient storage[2] after");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].Before.ToEvmWord(), Is.EqualTo(new byte[] { 0 }.ToEvmWord()), "recipient storage[3]");
+            Assert.That(trace.StateChanges[Recipient].Storage[3].After.ToEvmWord(), Is.EqualTo(Bytes.FromHexString(SampleHexData2).ToEvmWord()), "recipient storage[3] after");
         }
 
         [Test]

@@ -2,29 +2,29 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FluentAssertions;
+using System.Collections.Generic;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Int256;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Serialization.Json;
+using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
+using FluentAssertions;
 using NUnit.Framework;
-using Nethermind.Config;
-using System.Collections.Generic;
 
 namespace Nethermind.Evm.Test;
 
@@ -38,6 +38,7 @@ public class TransactionProcessorTests
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
+    private PaprikaStateFactory _stateDb;
     private IWorldState _stateProvider;
 
     public TransactionProcessorTests(bool eip155Enabled)
@@ -51,9 +52,8 @@ public class TransactionProcessorTests
     [SetUp]
     public void Setup()
     {
-        MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+        _stateDb = new PaprikaStateFactory();
+        _stateProvider = new WorldState(_stateDb, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, AccountBalance);
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -62,6 +62,9 @@ public class TransactionProcessorTests
         _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
+
+    [TearDown]
+    public virtual void TearDown() => _stateDb?.DisposeAsync();
 
     [TestCase(true, true)]
     [TestCase(true, false)]
