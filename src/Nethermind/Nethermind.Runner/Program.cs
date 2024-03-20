@@ -112,18 +112,13 @@ public static class Program
     {
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
-        try{
+
             string duplicateArgument = CheckForDuplicateArgs(args); 
             if(!string.IsNullOrEmpty(duplicateArgument)){
-                Environment.ExitCode = ExitCodes.DuplicateArguments; 
-                throw new Exception($"Duplicate arguments passed - {duplicateArgument}.");;
+                _logger.Error($"Failed due to duplicate argument - {duplicateArgument} passed while execution - ", new Exception("Duplicate Arguments"));
+                _appClosed.Wait();
+                return;
             }
-        }
-        catch(Exception e){
-            _logger.Error($"Failed due to duplicate arguments passed while execution - ", e);
-            _appClosed.Wait();
-            throw;
-        }
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -263,27 +258,23 @@ public static class Program
     private static string CheckForDuplicateArgs(string[] args)
     {
         Dictionary<string, string> argPairs = new Dictionary<string, string>();
-        for (int i = 0; i < args.Length; i++)
-        {
-            string arg = args[i];
-
-            if (arg.StartsWith("-"))
+        foreach (var arg in args){
+            var key = "";
+            if (arg.StartsWith("--"))
             {
-                string key = arg.TrimStart('-');
-
-                if (i + 1 < args.Length && !args[i + 1].StartsWith("-"))
-                {
-                    string value = args[i + 1];
-                    if (argPairs.ContainsKey(key)){
-                        return key;
-                    }
-                    argPairs[key] = value;
-                    i++;
+                key = arg.Substring(2);
+                if(argPairs.ContainsKey(key)){
+                    return key;
                 }
-                else
-                {
-                    argPairs[key] = string.Empty;
+                argPairs[key] = ""; 
+            }
+            else if (arg.StartsWith("-"))
+            {
+                key = arg.Substring(1);
+                if(argPairs.ContainsKey(key)){
+                    return key;
                 }
+                argPairs[key] = ""; 
             }
         }
         return string.Empty;
