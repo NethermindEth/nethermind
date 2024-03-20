@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie.Test.Pruning
@@ -8,13 +9,16 @@ namespace Nethermind.Trie.Test.Pruning
     public class TestPruningStrategy : IPruningStrategy
     {
         private readonly bool _pruningEnabled;
-        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false)
+
+        public TestPruningStrategy(bool pruningEnabled, bool shouldPrune = false, int? maxDepth = null)
         {
             _pruningEnabled = pruningEnabled;
             ShouldPruneEnabled = shouldPrune;
+            MaxDepth = maxDepth ?? (int)Reorganization.MaxDepth;
         }
 
         public bool PruningEnabled => _pruningEnabled;
+        public int MaxDepth { get; set; }
         public bool ShouldPruneEnabled { get; set; }
 
         public int? WithMemoryLimit { get; set; }
