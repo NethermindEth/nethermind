@@ -384,76 +384,24 @@ namespace Nethermind.Network
         [DataMember(Name = "nethermind_outgoing_p2p_messages")]
         [Description("Number of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_outgoing_p2p_message_bytes")]
         [Description("Bytes of outgoing p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> OutgoingP2PMessageBytes { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> OutgoingP2PMessageBytes { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_messages")]
         [Description("Number of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessages { get; } = new();
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessages { get; } = new();
 
         [CounterMetric]
         [DataMember(Name = "nethermind_incoming_p2p_message_bytes")]
         [Description("Bytes of incoming p2p packets.")]
         [KeyIsLabel("protocol", "message")]
-        public static NonBlocking.ConcurrentDictionary<(string, string), long> IncomingP2PMessageBytes { get; } = new();
-
-        public static void UpdateP2PMetrics()
-        {
-            TranslateFromMessageNumberToName(Session.OutgoingP2PMessages, OutgoingP2PMessages);
-            TranslateFromMessageNumberToName(Session.OutgoingP2PMessageBytes, OutgoingP2PMessageBytes);
-            TranslateFromMessageNumberToName(Session.IncomingP2PMessages, IncomingP2PMessages);
-            TranslateFromMessageNumberToName(Session.IncomingP2PMessageBytes, IncomingP2PMessageBytes);
-        }
-
-        static void TranslateFromMessageNumberToName(NonBlocking.ConcurrentDictionary<(string, byte, int), long> from, NonBlocking.ConcurrentDictionary<(string, string), long> to)
-        {
-            foreach (KeyValuePair<(string, byte, int), long> kv in from)
-            {
-                if (!MessageNames.TryGetValue((kv.Key.Item1, kv.Key.Item3), out string messageName))
-                {
-#if DEBUG
-                    throw new NotImplementedException($"Message name for protocol {kv.Key.Item1} message id {kv.Key.Item3} not set.");
-#else
-                    messageName = kv.Key.Item3.ToString(); // Just use the integer directly then
-#endif
-
-                }
-
-                to[(kv.Key.Item1 + kv.Key.Item2, messageName)] = kv.Value;
-            }
-        }
-
-        // Should this be in a different place? Maybe. Still not sure.
-        private static FrozenDictionary<(string, int), string> MessageNames =
-            FromMessageCodeClass("p2p", typeof(P2PMessageCode))
-
-                .Concat(FromMessageCodeClass("eth", typeof(Eth62MessageCode)))
-                .Concat(FromMessageCodeClass("eth", typeof(Eth63MessageCode)))
-                .Concat(FromMessageCodeClass("eth", typeof(Eth65MessageCode)))
-                .Concat(FromMessageCodeClass("eth", typeof(Eth66MessageCode)))
-                .Concat(FromMessageCodeClass("eth", typeof(Eth68MessageCode)))
-
-                .Concat(FromMessageCodeClass("nodedata", typeof(NodeDataMessageCode)))
-                .Concat(FromMessageCodeClass("wit", typeof(WitMessageCode)))
-                .Concat(FromMessageCodeClass("les", typeof(LesMessageCode)))
-
-                .Concat(FromMessageCodeClass("snap", typeof(SnapMessageCode)))
-
-                .ToFrozenDictionary();
-
-        static IEnumerable<KeyValuePair<(string, int), string>> FromMessageCodeClass(string protocol, Type classType)
-        {
-            return classType.GetFields(
-                    BindingFlags.Public | BindingFlags.Static)
-                .Where((field) => field.FieldType.IsAssignableTo(typeof(int)))
-                .Select((field) => KeyValuePair.Create((protocol, (int)field.GetValue(null)), field.Name));
-        }
+        public static NonBlocking.ConcurrentDictionary<P2PMessageKey, long> IncomingP2PMessageBytes { get; } = new();
     }
 }
