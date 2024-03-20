@@ -14,15 +14,18 @@ public interface IPaprikaConfig : IConfig
     [ConfigItem(Description = "The total budget of entries to be used per block for state", DefaultValue = "5000")]
     public int CacheStatePerBlock { get; set; }
 
-    [ConfigItem(Description = "The depths of reads that should be cached for Merkle data. If a read takes more than this number blocks to traverse, try to cache it", DefaultValue = "8")]
+    [ConfigItem(Description = "The depths of reads that should be cached for Merkle data. If a read takes more than this number blocks to traverse, try to cache it", DefaultValue = "4")]
     public ushort CacheMerkleBeyond { get; set; }
 
-    [ConfigItem(Description = "The total budget of entries to be used per block", DefaultValue = "5000")]
+    [ConfigItem(Description = "The total budget of entries to be used per block", DefaultValue = "10000")]
     public int CacheMerklePerBlock { get; set; }
+
+    [ConfigItem(Description = "Whether Merkle should use parallelism", DefaultValue = "false")]
+    public bool ParallelMerkle { get; set; }
 }
 
 /// <summary>
-/// Defaults are set to 5000 and 5000. One slot takes ~100 bytes of managed + unmanaged memory.
+/// One slot takes ~100 bytes of managed + unmanaged memory.
 /// This multiplied by 10,000 entries, gives 1MGB per block of total budget to cache things.
 /// </summary>
 public class PaprikaConfig : IPaprikaConfig
@@ -30,6 +33,8 @@ public class PaprikaConfig : IPaprikaConfig
     public ushort CacheStateBeyond { get; set; } = 8;
     public int CacheStatePerBlock { get; set; } = 5000;
 
-    public ushort CacheMerkleBeyond { get; set; } = 8;
-    public int CacheMerklePerBlock { get; set; } = 5000;
+    public ushort CacheMerkleBeyond { get; set; } = 4;
+    public int CacheMerklePerBlock { get; set; } = 10000;
+
+    public bool ParallelMerkle { get; set; } = false;
 }

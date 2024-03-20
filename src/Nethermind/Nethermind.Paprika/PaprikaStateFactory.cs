@@ -48,7 +48,8 @@ public class PaprikaStateFactory : IStateFactory
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
-        ComputeMerkleBehavior merkle = new(1, 1, Memoization.None);
+        var parallelism = config.ParallelMerkle ? ComputeMerkleBehavior.ParallelismUnlimited : ComputeMerkleBehavior.ParallelismNone;
+        ComputeMerkleBehavior merkle = new(1, 1, Memoization.None, parallelism);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
@@ -246,7 +247,7 @@ public class PaprikaStateFactory : IStateFactory
 
     private void Committed(IWorldState block)
     {
-        const int poorManFinality = 64;
+        const int poorManFinality = 16;
 
         lock (_poorManFinalizationQueue)
         {
