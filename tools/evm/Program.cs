@@ -35,7 +35,7 @@ namespace Evm
              var outputResultOpt = new Option<string>("--output.result", description: "Output result", getDefaultValue: () => "result.json");
              var stateChainIdOpt = new Option<int>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
              var stateForkOpt = new Option<string>("--state.fork", description: "State fork", getDefaultValue: () => "GrayGlacier");
-             var stateRewardOpt = new Option<int>("--state.reward", description: "State reward", getDefaultValue: () => 0);
+             var stateRewardOpt = new Option<string>("--state.reward", description: "State reward");
              var traceMemoryOpt = new Option<bool>("--trace.memory", description: "Trace memory", getDefaultValue: () => false);
              var traceNoMemoryOpt = new Option<bool>("--trace.noMemory", description: "Trace no memory", getDefaultValue: () => true);
              var traceNoReturnDataOpt = new Option<bool>("--trace.noReturnData", description: "Trace no return data", getDefaultValue: () => true);

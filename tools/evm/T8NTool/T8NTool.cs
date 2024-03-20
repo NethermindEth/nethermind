@@ -5,7 +5,7 @@ using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
-using Nethermind.Consensus;
+using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -48,7 +48,7 @@ public class T8NTool
         string outputResult,
         int stateChainId,
         string stateFork,
-        int stateReward,
+        string? stateReward,
         bool traceMemory,
         bool traceNoMemory,
         bool traceNoReturnData,
@@ -57,7 +57,7 @@ public class T8NTool
     {
         try
         {
-            T8NExecutionResult t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork);
+            T8NExecutionResult t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
 
             var stdoutObjects = new Dictionary<string, object>();
             OutputObject(outputAlloc, outputBasedir, "alloc", t8NExecutionResult.Alloc, stdoutObjects);
@@ -85,7 +85,8 @@ public class T8NTool
         string inputAlloc,
         string inputEnv,
         string inputTxs,
-        string stateFork)
+        string stateFork,
+        string? stateReward)
     {
         Dictionary<Address, AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
@@ -173,8 +174,32 @@ public class T8NTool
         List<Transaction> successfulTxs = [];
         List<TxReceipt> successfulTxReceipts = [];
 
-        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).TestObject;
+        BlockHeader[] uncles = envInfo.Ommers
+            .Select(ommer => Build.A.BlockHeader
+                .WithNumber(envInfo.CurrentNumber - ommer.Delta)
+                .WithBeneficiary(ommer.Address)
+                .TestObject)
+            .ToArray();
 
+        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
+
+        if (stateReward != null)
+        {
+            var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
+            BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+
+            foreach (BlockReward blockReward in rewards)
+            {
+                if (!stateProvider.AccountExists(blockReward.Address))
+                {
+                    stateProvider.CreateAccount(blockReward.Address, blockReward.Value);
+                }
+                else
+                {
+                    stateProvider.AddToBalance(blockReward.Address, blockReward.Value, spec);
+                }
+            }
+        }
         BlockReceiptsTracer tracer = new();
         tracer.StartNewBlockTrace(block);
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
@@ -235,6 +260,10 @@ public class T8NTool
         };
 
         var accounts = allocJson.Keys.ToDictionary(address => address, address => stateProvider.GetAccount(address));
+        foreach (Ommer ommer in envInfo.Ommers)
+        {
+            accounts.Add(ommer.Address, stateProvider.GetAccount(ommer.Address));
+        }
         if (header.Beneficiary != null)
         {
             accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));

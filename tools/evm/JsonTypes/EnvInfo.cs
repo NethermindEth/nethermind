@@ -32,6 +32,7 @@ namespace Evm.JsonTypes
         public ulong? CurrentExcessBlobGas { get; set; }
         public ulong? ParentBlobGasUsed { get; set; }
         public Dictionary<string, Hash256> BlockHashes { get; set; } = [];
+        public Ommer[] Ommers { get; set; } = [];
 
         public BlockHeader GetBlockHeader()
         {
