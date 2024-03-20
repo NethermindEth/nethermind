@@ -2806,22 +2806,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (instruction == Instruction.EXTDELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.EXTSTATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
 
-        if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
         if (codeSource is null) return EvmExceptionType.StackUnderflow;
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, codeSource, spec)) return EvmExceptionType.OutOfGas;
-
-        ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
-
-        if (instruction is Instruction.EXTDELEGATECALL
-                            && env.CodeInfo.Version != 0
-                            && targetCodeInfo is not EofCodeInfo)
-        {
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return EvmExceptionType.None;
-        }
 
         UInt256 callValue;
         switch (instruction)
@@ -2857,6 +2845,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _logger.Trace($"transfer value {transferValue}");
         }
 
+        ICodeInfo targetCodeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+
+        if (instruction is Instruction.EXTDELEGATECALL
+                            && env.CodeInfo.Version != 0
+                            && targetCodeInfo is not EofCodeInfo)
+        {
+            _returnDataBuffer = Array.Empty<byte>();
+            stack.PushZero();
+            return EvmExceptionType.None;
+        }
+
         long gasExtra = 0L;
 
         if (!transferValue.IsZero)
@@ -2877,7 +2876,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        gasLimit = (UInt256)(gasAvailable - gasAvailable / 64);
+        UInt256 gasLimit = (UInt256)(gasAvailable - gasAvailable / 64);
 
         if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
 
