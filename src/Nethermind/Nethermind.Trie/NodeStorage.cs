@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 
 namespace Nethermind.Trie;
@@ -177,6 +178,13 @@ public class NodeStorage : INodeStorage
     {
         if (keccak == Keccak.EmptyTreeHash)
         {
+            return;
+        }
+
+        if (data.IsNull())
+        {
+            // Only delete half path key. DO NOT delete hash based key.
+            _keyValueStore.Remove(GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak));
             return;
         }
 
