@@ -532,18 +532,14 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        public IReadOnlyTrieStore AsReadOnly(INodeStorage? store)
-        {
-            return new ReadOnlyTrieStore(this, store);
-        }
+        public IReadOnlyTrieStore AsReadOnly(INodeStorage? store) =>
+            new ReadOnlyTrieStore(this, store);
 
         public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => _dirtyNodes.IsNodeCached(new DirtyNodesCache.Key(address, path, hash));
         private bool IsNodeCached(DirtyNodesCache.Key key) => _dirtyNodes.IsNodeCached(key);
 
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash)
-        {
-            return FindCachedOrUnknown(address, path, hash, false);
-        }
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
+            FindCachedOrUnknown(address, path, hash, false);
 
         internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
         {
@@ -697,7 +693,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (persistedHashes == null) return;
 
-            bool CanRemove(Hash256? address, TinyTreePath path, TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            bool CanRemove(Hash256? address, TinyTreePath path, in TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
             {
                 // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
                 if (currentlyPersistingKeccak == null) return false;
@@ -705,7 +701,7 @@ namespace Nethermind.Trie.Pruning
                 // The persisted hash is the same as currently persisting hash. Do nothing.
                 if (currentlyPersistingKeccak == keccak) return false;
 
-                // We have is in cache and it is still needed.
+                // We have it in cache and it is still needed.
                 if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
                     !IsNoLongerNeeded(node)) return false;
 
@@ -716,24 +712,22 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+            using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
-            long removed = 0;
             void DoAct(KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair)
             {
                 (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
-                if (key.path.Length > TinyTreePath.MaxNibbleLength) return;
                 if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
-                        Interlocked.Increment(ref removed);
                         Metrics.RemovedNodeCount++;
                         writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
 
+                // TODO: Double check this. Seems to be done twice.
                 _pastPathHash.Set((key.addr, key.path), keyValuePair.Value);
             }
 
@@ -747,7 +741,6 @@ namespace Nethermind.Trie.Pruning
 
             actionBlock.Complete();
             actionBlock.Completion.Wait();
-            writeBatch.Dispose();
         }
 
         /// <summary>
@@ -786,7 +779,7 @@ namespace Nethermind.Trie.Pruning
                 : null;
 
             long newMemory = 0;
-            ActionBlock<TrieNode>? pruneAndRecalculateAction =
+            ActionBlock<TrieNode> pruneAndRecalculateAction =
                 new ActionBlock<TrieNode>(node =>
                 {
                     node.PrunePersistedRecursively(1);
@@ -805,13 +798,13 @@ namespace Nethermind.Trie.Pruning
                     if (keccak is null)
                     {
                         TreePath path2 = key.Path;
-                        Hash256? newKeccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
-                        if (newKeccak != key.Keccak)
+                        keccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
+                        if (keccak != key.Keccak)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
+                            throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
 
-                        node.Keccak = key.Keccak;
+                        node.Keccak = keccak;
                     }
                     _dirtyNodes.Remove(key);
 
@@ -995,8 +988,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                // TODO: Pass span
-                writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.ToArray(), writeFlags);
+                writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -1185,7 +1177,7 @@ namespace Nethermind.Trie.Pruning
                         DirtyNodesCache.Key key = new DirtyNodesCache.Key(address, path, n.Keccak);
                         if (wasPersisted.TryAdd(key, true))
                         {
-                            _nodeStorage.Set(address, path, n.Keccak, n.FullRlp.ToArray());
+                            _nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
                             n.IsPersisted = true;
                         }
                     }

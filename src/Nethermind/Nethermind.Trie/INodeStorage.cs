@@ -19,7 +19,7 @@ public interface INodeStorage
     public bool RequirePath { get; }
 
     byte[]? Get(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadFlags readFlags = ReadFlags.None);
-    void Set(Hash256? address, in TreePath path, in ValueHash256 hash, byte[] toArray, WriteFlags writeFlags = WriteFlags.None);
+    void Set(Hash256? address, in TreePath path, in ValueHash256 hash, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None);
     WriteBatch StartWriteBatch();
 
     /// <summary>
@@ -43,7 +43,7 @@ public interface INodeStorage
 
     public interface WriteBatch : IDisposable
     {
-        void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, byte[] toArray, WriteFlags writeFlags);
+        void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags);
         void Remove(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak);
     }
 }

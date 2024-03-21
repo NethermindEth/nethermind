@@ -66,7 +66,7 @@ namespace Nethermind.Synchronization.FastSync
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
         private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
-        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new LruKeyCache<StateSyncItem.NodeKey>(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
         private readonly LruKeyCache<Hash256AsKey> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
 
         private BranchProgress _branchProgress;

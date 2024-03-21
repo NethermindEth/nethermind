@@ -33,7 +33,7 @@ public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
         }
     }
 
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, byte[] toArray, WriteFlags writeFlags)
+    public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
     {
         if (_disposing) throw new InvalidOperationException("Trying to set while disposing");
         if (!_batches.TryDequeue(out INodeStorage.WriteBatch? currentBatch))
@@ -41,7 +41,7 @@ public class ConcurrentNodeWriteBatcher : INodeStorage.WriteBatch
             currentBatch = _underlyingDb.StartWriteBatch();
         }
 
-        currentBatch.Set(address, path, currentNodeKeccak, toArray, writeFlags);
+        currentBatch.Set(address, path, currentNodeKeccak, data, writeFlags);
         long val = Interlocked.Increment(ref _counter);
         if (val % 10000 == 0)
         {

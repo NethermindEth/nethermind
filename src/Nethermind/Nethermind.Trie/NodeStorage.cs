@@ -141,11 +141,9 @@ public class NodeStorage : INodeStorage
             return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
                    ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }
-        else
-        {
-            return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-                   ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
-        }
+
+        return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
+               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
     public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 keccak)
@@ -158,14 +156,12 @@ public class NodeStorage : INodeStorage
         Span<byte> storagePathSpan = stackalloc byte[StoragePathLength];
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
-            return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)) != null
-                   || _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak)) != null;
+            return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
+                   || _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
         }
-        else
-        {
-            return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak)) != null
-                   || _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak)) != null;
-        }
+
+        return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
+               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
     }
 
     public INodeStorage.WriteBatch StartWriteBatch()
@@ -177,14 +173,14 @@ public class NodeStorage : INodeStorage
         return new WriteBatch(new InMemoryWriteBatch(_keyValueStore), this);
     }
 
-    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] toArray, WriteFlags writeFlags = WriteFlags.None)
+    public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags = WriteFlags.None)
     {
         if (keccak == Keccak.EmptyTreeHash)
         {
             return;
         }
 
-        _keyValueStore.Set(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), toArray, writeFlags);
+        _keyValueStore.PutSpan(GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
     }
 
     public void Flush()
@@ -211,14 +207,14 @@ public class NodeStorage : INodeStorage
             _writeBatch.Dispose();
         }
 
-        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] toArray, WriteFlags writeFlags)
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, ReadOnlySpan<byte> data, WriteFlags writeFlags)
         {
             if (keccak == Keccak.EmptyTreeHash)
             {
                 return;
             }
 
-            _writeBatch.Set(_nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), toArray, writeFlags);
+            _writeBatch.PutSpan(_nodeStorage.GetExpectedPath(stackalloc byte[StoragePathLength], address, path, keccak), data, writeFlags);
         }
 
         public void Remove(Hash256? address, in TreePath path, in ValueHash256 keccak)
