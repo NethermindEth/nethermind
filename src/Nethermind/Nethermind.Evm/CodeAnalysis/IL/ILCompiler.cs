@@ -9,70 +9,60 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
-using Label = System.Reflection.Emit.Label;
+using Label = Sigil.Label;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public static Func<long, EvmExceptionType> Build(OpcodeInfo[] code)
+    public static Func<long, EvmExceptionType> Build(CodeInfo codeinfo, int segmentId)
     {
-        Dictionary<int, long> gasCost = BuildCostLookup(code);
+        Dictionary<int, long> gasCost = BuildCostLookup(codeinfo.IlInfo.Segments[segmentId]);
 
         // TODO: stack invariants, gasCost application
 
         string name = "ILVM_" + Guid.NewGuid();
 
-        DynamicMethod method = new(name, typeof(EvmExceptionType), new[] { typeof(long) }, typeof(ILCompiler).Assembly.Modules.First(), true)
-        {
-            InitLocals = false
-        };
+        Emit<Action> method = Emit<Action>.NewDynamicMethod($"{codeinfo.GetHashCode()}_{segmentId}", doVerify: true, strictBranchVerification: true);
 
-        ILGenerator il = method.GetILGenerator();
+        Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
+        Local address = method.DeclareLocal(typeof(Address));
+        Local consumeJumpCondition = method.DeclareLocal(typeof(int));
+        Local uint256A = method.DeclareLocal(typeof(UInt256));
+        Local uint256B = method.DeclareLocal(typeof(UInt256));
+        Local uint256C = method.DeclareLocal(typeof(UInt256));
+        Local uint256R = method.DeclareLocal(typeof(UInt256));
+        Local gasAvailable = method.DeclareLocal(typeof(long));
 
-        LocalBuilder jmpDestination = il.DeclareLocal(Word.Int0Field.FieldType);
-        LocalBuilder address = il.DeclareLocal(typeof(Address));
-        LocalBuilder consumeJumpCondition = il.DeclareLocal(typeof(int));
-        LocalBuilder uint256A = il.DeclareLocal(typeof(UInt256));
-        LocalBuilder uint256B = il.DeclareLocal(typeof(UInt256));
-        LocalBuilder uint256C = il.DeclareLocal(typeof(UInt256));
-        LocalBuilder uint256R = il.DeclareLocal(typeof(UInt256));
-        LocalBuilder gasAvailable = il.DeclareLocal(typeof(long));
-
-        LocalBuilder stack = il.DeclareLocal(typeof(Word*));
-        LocalBuilder current = il.DeclareLocal(typeof(Word*));
+        Local stack = method.DeclareLocal(typeof(Word*));
+        Local current = method.DeclareLocal(typeof(Word*));
 
         const int wordToAlignTo = 32;
 
-        il.Emit(OpCodes.Ldc_I4, EvmStack.MaxStackSize * Word.Size + wordToAlignTo);
-        il.Emit(OpCodes.Localloc);
 
-        // align to the boundary, so that the Word can be written using the aligned longs.
-        il.LoadValue(wordToAlignTo);
-        il.Emit(OpCodes.Conv_I);
-        il.Emit(OpCodes.Add);
-        il.Emit(OpCodes.Ldc_I4, ~(wordToAlignTo - 1));
-        il.Emit(OpCodes.Conv_I);
-        il.Emit(OpCodes.And);
+        // allocate stack
+        method.LoadConstant(EvmStack.MaxStackSize * Word.Size + wordToAlignTo);
+        method.LocalAllocate();
 
-        il.Store(stack); // store as start
+        method.StoreLocal(stack);
 
-        il.Load(stack);
-        il.Store(current); // copy to the current
+        method.LoadLocal(stack);
+        method.StoreLocal(current); // copy to the current
 
         // gas
-        il.Emit(OpCodes.Ldarg_0);
-        il.Store(gasAvailable);
-        Label outOfGas = il.DefineLabel();
+        method.LoadArgument(0);
+        method.StoreLocal(gasAvailable);
+        Label outOfGas = method.DefineLabel("OutOfGas");
 
-        Label ret = il.DefineLabel(); // the label just before return
-        Label invalidAddress = il.DefineLabel(); // invalid jump address
-        Label jumpTable = il.DefineLabel(); // jump table
+        Label ret = method.DefineLabel("Return"); // the label just before return
+        Label invalidAddress = method.DefineLabel("InvalidAddress"); // invalid jump address
+        Label jumpTable = method.DefineLabel("Jumptable"); // jump table
 
         Dictionary<int, Label> jumpDestinations = new();
 
+
+        OpcodeInfo[] code = codeinfo.IlInfo.Segments[segmentId];
         for(int pc = 0; pc < code.Length; pc++)
         {
             OpcodeInfo op = code[pc];
