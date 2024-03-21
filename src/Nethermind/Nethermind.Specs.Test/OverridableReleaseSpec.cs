@@ -156,6 +156,7 @@ namespace Nethermind.Specs.Test
         public bool IsEip5656Enabled => _spec.IsEip5656Enabled;
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
+        public bool IsEip7547Enabled => _spec.IsEip7547Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;

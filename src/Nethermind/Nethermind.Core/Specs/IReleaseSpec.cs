@@ -279,6 +279,11 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// Inclusion List
+        /// </summary>
+        bool IsEip7547Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
