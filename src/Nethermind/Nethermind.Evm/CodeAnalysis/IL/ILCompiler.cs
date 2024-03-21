@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
+using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
 using Label = Sigil.Label;
@@ -24,7 +25,7 @@ internal class ILCompiler
 
         string name = "ILVM_" + Guid.NewGuid();
 
-        Emit<Action> method = Emit<Action>.NewDynamicMethod($"{codeinfo.GetHashCode()}_{segmentId}", doVerify: true, strictBranchVerification: true);
+        Emit<Func<long, EvmExceptionType>> method = Emit<Func<long, EvmExceptionType>>.NewDynamicMethod($"{codeinfo.GetHashCode()}_{segmentId}", doVerify: true, strictBranchVerification: true);
 
         Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
         Local address = method.DeclareLocal(typeof(Address));
@@ -68,38 +69,38 @@ internal class ILCompiler
             OpcodeInfo op = code[pc];
 
             // load gasAvailable
-            il.Emit(OpCodes.Ldloc, gasAvailable);
+            method.LoadLocal(gasAvailable);
 
             // get pc gas cost
-            il.LoadValue(gasCost[pc]);
-            il.Emit(OpCodes.Sub);
-            il.Emit(OpCodes.Dup);
-            il.Emit(OpCodes.Ldc_I4_0);
-            il.Emit(OpCodes.Blt, outOfGas);
-            il.Store(gasAvailable);
+            method.LoadConstant(gasCost[pc]);
+            method.Subtract();
+            method.Duplicate();
+            method.LoadConstant(0);
+            method.BranchIfLess(outOfGas);
+            method.StoreLocal(gasAvailable);
 
             switch (op.Operation)
             {
                 case Instruction.JUMPDEST:
-                    jumpDestinations[pc] = il.DefineLabel();
-                    il.MarkLabel(jumpDestinations[pc]);
+                    jumpDestinations[pc] = method.DefineLabel();
+                    method.MarkLabel(jumpDestinations[pc]);
                     break;
                 case Instruction.JUMP:
-                    il.Emit(OpCodes.Br , jumpTable);
+                    method.Branch(jumpTable);
                     break;
                 case Instruction.JUMPI:
-                    Label noJump = il.DefineLabel();
-                    il.StackLoadPrevious(current, 2);
-                    il.EmitCall(OpCodes.Call, Word.GetIsZero, null);
-                    il.Emit(OpCodes.Brtrue, noJump);
+                    Label noJump = method.DefineLabel();
+                    method.StackLoadPrevious(current, 2);
+                    method.Call(Word.GetIsZero, null);
+                    method.BranchIfTrue(noJump);
 
                     // load the jump address
-                    il.LoadValue(1);
-                    il.Store(consumeJumpCondition);
-                    il.Emit(OpCodes.Br, jumpTable);
+                    method.LoadConstant(1);
+                    method.StoreLocal(consumeJumpCondition);
+                    method.Branch(jumpTable);
 
-                    il.MarkLabel(noJump);
-                    il.StackPop(current, 2);    
+                    method.MarkLabel(noJump);
+                    method.StackPop(current, 2);    
                     break;
                 case Instruction.PUSH1:
                 case Instruction.PUSH2:
@@ -135,85 +136,86 @@ internal class ILCompiler
                 case Instruction.PUSH32:
                     int count = (int)op.Operation - (int)Instruction.PUSH0;
                     ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
-                    il.LoadArray(bytes.ToArray());
-                    il.LoadValue(0);
-                    il.LoadValue(0);
-                    il.Emit(OpCodes.Newobj, typeof(UInt256).GetConstructor(new[] { typeof(Span<byte>), typeof(bool) }));
+                    method.LoadArray(bytes.ToArray());
+                    method.LoadConstant(0);
+                    method.NewObject(typeof(UInt256), typeof(Span<byte>), typeof(bool));
 
-                    il.StackPush(current);
-                    pc += op.Metadata?.AdditionalBytes ?? 0;
+                    method.StackPush(current);
                     break;
                 case Instruction.ADD:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!);
                     break;
 
                 case Instruction.SUB:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!);
                     break;
 
                 case Instruction.MUL:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!);
                     break;
 
                 case Instruction.MOD:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
-                        il => {
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
+                        (il, postInstructionLabel) => {
                             Label label = il.DefineLabel();
 
-                            il.Emit(OpCodes.Dup);
-                            il.Emit(OpCodes.Ldc_I4_0);
-                            il.Emit(OpCodes.Ceq);
+                            il.Duplicate();
+                            il.LoadConstant(0);
+                            il.CompareEqual();
 
-                            il.Emit(OpCodes.Brfalse, label);
-
-                            il.Emit(OpCodes.Ldc_I4_0);
+                            il.BranchIfFalse(label);
+                            
+                            il.LoadConstant(0);
+                            il.Branch(postInstructionLabel);
 
                             il.MarkLabel(label);
                         });
                     break;
 
                 case Instruction.DIV:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
-                        il => {
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
+                        (il, postInstructionLabel) => {
                             Label label = il.DefineLabel();
 
-                            il.Emit(OpCodes.Dup);
-                            il.Emit(OpCodes.Ldc_I4_0);
-                            il.Emit(OpCodes.Ceq);
+                            il.Duplicate();
+                            il.LoadConstant(0);
+                            il.CompareEqual();
 
-                            il.Emit(OpCodes.Brfalse, label);
+                            il.BranchIfFalse(label);
 
-                            il.Emit(OpCodes.Ldc_I4_0);
+                            il.LoadConstant(0);
+                            il.Branch(postInstructionLabel);
 
                             il.MarkLabel(label);
                         });
                     break;
 
                 case Instruction.EXP:
-                    EmitBinaryUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
                     break;
                 case Instruction.LT:
-                    EmitComparaisonUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256), typeof(UInt256) }));
+                    EmitComparaisonUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256), typeof(UInt256) }));
                     break;
                 case Instruction.GT:
-                    EmitComparaisonUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256), typeof(UInt256) }));
+                    EmitComparaisonUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256), typeof(UInt256) }));
                     break;
                 case Instruction.EQ:
-                    EmitComparaisonUInt256Method(il, uint256R, current, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256), typeof(UInt256) }));
+                    EmitComparaisonUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256), typeof(UInt256) }));
                     break;
                 case Instruction.ISZERO:
-                    il.StackLoadPrevious(current, 1);
-                    il.EmitCall(OpCodes.Call, Word.GetIsZero, null);
-                    il.StackPush(current);
-                    il.StackPop(current, 1);
+                    method.StackLoadPrevious(current, 1);
+                    method.Call(Word.GetIsZero);
+                    method.StackPush(current);
+                    method.StackPop(current, 1);
                     break;
                 case Instruction.CODESIZE:
-                    il.LoadValue(code.Length);
-                    il.EmitCall(OpCodes.Call, typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }), null);
-                    il.StackPush(current);
+                    method.LoadConstant(code.Length);
+                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
+                    method.StackPush(current);
                     break;
                 case Instruction.POP:
-                    il.StackPop(current);
+                    method.Pop();
+                    method.StackPop(current);
                     break;
                 case Instruction.DUP1:
                 case Instruction.DUP2:
@@ -232,12 +234,11 @@ internal class ILCompiler
                 case Instruction.DUP15:
                 case Instruction.DUP16:
                     count = (int)op.Operation - (int)Instruction.DUP1 + 1;
-                    il.Load(current);
-                    il.StackLoadPrevious(current, count);
-                    il.Emit(OpCodes.Ldobj, typeof(Word));
-                    il.Emit(OpCodes.Stobj, typeof(Word));
-                    il.StackPush(current);
-
+                    method.LoadLocal(current);
+                    method.StackLoadPrevious(current, count);
+                    method.LoadObject(typeof(Word));
+                    method.StoreObject(typeof(Word));
+                    method.StackPush(current);
                     break;
                 case Instruction.SWAP1:
                 case Instruction.SWAP2:
@@ -257,71 +258,71 @@ internal class ILCompiler
                 case Instruction.SWAP16:
                     count = (int)op.Operation - (int)Instruction.SWAP1 + 1;
 
-                    il.LoadAddress(uint256R);
-                    il.StackLoadPrevious(current, 1);
-                    il.Emit(OpCodes.Ldobj, typeof(Word));
-                    il.Emit(OpCodes.Stobj, typeof(Word));
+                    method.LoadLocalAddress(uint256R);
+                    method.StackLoadPrevious(current, 1);
+                    method.LoadObject(typeof(Word));
+                    method.StoreObject(typeof(Word));
 
-                    il.StackLoadPrevious(current, 1);
-                    il.StackLoadPrevious(current, count);
-                    il.Emit(OpCodes.Ldobj, typeof(Word));
-                    il.Emit(OpCodes.Stobj, typeof(Word));
+                    method.StackLoadPrevious(current, 1);
+                    method.StackLoadPrevious(current, count);
+                    method.LoadObject(typeof(Word));
+                    method.StoreObject(typeof(Word));
 
-                    il.StackLoadPrevious(current, count);
-                    il.LoadAddress(uint256R);
-                    il.Emit(OpCodes.Ldobj, typeof(Word));
-                    il.Emit(OpCodes.Stobj, typeof(Word));
+                    method.StackLoadPrevious(current, count);
+                    method.LoadLocalAddress(uint256R);
+                    method.LoadObject(typeof(Word));
+                    method.StoreObject(typeof(Word));
                     break;
-
-
             }
         }
 
-        Func<long, EvmExceptionType> del = method.CreateDelegate<Func<long, EvmExceptionType>>();
+        Func<long, EvmExceptionType> del = method.CreateDelegate();
         return del;
     }
 
-    private static void EmitComparaisonUInt256Method(ILGenerator il, LocalBuilder uint256R, LocalBuilder current, MethodInfo operatin)
+    private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Local current, MethodInfo operatin)
     {
         il.StackLoadPrevious(current, 1);
-        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        il.Call(Word.GetUInt256);
         il.StackLoadPrevious(current, 2);
-        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        il.Call(Word.GetUInt256);
         // invoke op < on the uint256
-        il.EmitCall(OpCodes.Call, operatin, null);
+        il.Call(operatin, null);
         // if true, push 1, else 0
-        il.Emit(OpCodes.Ldc_I4_0);
-        il.Emit(OpCodes.Ceq);
+        il.LoadConstant(0);
+        il.CompareEqual();
 
         // convert to conv_i
-        il.Emit(OpCodes.Conv_I);
-        il.EmitCall(OpCodes.Call, typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }), null);
-        il.Store(uint256R);
+        il.Convert<int>();
+        il.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
+        il.StoreLocal(uint256R);
         il.StackPop(current, 2);
 
-        il.Load(current);
-        il.Load(uint256R); // stack: word*, uint256
-        il.EmitCall(OpCodes.Call, Word.SetUInt256, null);
+        il.LoadLocal(current);
+        il.LoadLocal(uint256R); // stack: word*, uint256
+        il.Call(Word.SetUInt256);
         il.StackPush(current);
     }
 
-    private static void EmitBinaryUInt256Method(ILGenerator il, LocalBuilder uint256R, LocalBuilder current, MethodInfo operation, Action<ILGenerator> customHandling = null)
+    private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Local current, MethodInfo operation, Action<Emit<T>, Label> customHandling = null)
     {
+        Label label = il.DefineLabel();
+
         il.StackLoadPrevious(current, 1);
-        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        il.Call(Word.GetUInt256);
         il.StackLoadPrevious(current, 2);
-        il.EmitCall(OpCodes.Call, Word.GetUInt256, null);
+        il.Call(Word.GetUInt256);
 
-        customHandling.Invoke(il);
+        customHandling.Invoke(il, label);
 
-
-        il.EmitCall(OpCodes.Call, operation, null);
-        il.Store(uint256R);
+        il.Call(operation);
+        il.StoreLocal(uint256R);
         il.StackPop(current, 2);
 
-        il.Load(current);
-        il.Load(uint256R); // stack: word*, uint256
-        il.EmitCall(OpCodes.Call, Word.SetUInt256, null);
+        il.MarkLabel(label);
+        il.LoadLocal(current);
+        il.LoadLocal(uint256R); // stack: word*, uint256
+        il.Call(Word.SetUInt256);
         il.StackPush(current);
     }
 
