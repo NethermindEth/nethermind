@@ -28,6 +28,8 @@ namespace Nethermind.Trie
         internal void AcceptResolvedNode<TNodeContext>(ITreeVisitor<TNodeContext> visitor, in TNodeContext nodeContext, ITrieNodeResolver nodeResolver, SmallTrieVisitContext trieVisitContext, IList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToVisit)
             where TNodeContext : struct, INodeContext<TNodeContext>
         {
+            // Note: The path is not maintained here, its just for a placeholder. This code is only used for BatchedTrieVisitor
+            // which should only be used with hash keys.
             TreePath emptyPath = TreePath.Empty;
             switch (NodeType)
             {

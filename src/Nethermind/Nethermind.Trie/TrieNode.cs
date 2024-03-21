@@ -527,31 +527,6 @@ namespace Nethermind.Trie
             return null;
         }
 
-        /*
-        public bool TryResolveStorageRootHash(ITrieNodeResolver resolver, out Hash256? storageRootHash)
-        {
-            storageRootHash = null;
-
-            if (IsLeaf)
-            {
-                try
-                {
-                    storageRootHash = _accountDecoder.DecodeStorageRootOnly(Value.AsRlpStream());
-                    if (storageRootHash is not null && storageRootHash != Nethermind.Core.Crypto.Keccak.EmptyTreeHash)
-                    {
-                        return true;
-                    }
-                }
-                catch
-                {
-                    return false;
-                }
-            }
-
-            return false;
-        }
-        */
-
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
             CappedArray<byte> rlp = TrieNodeDecoder.Encode(tree, ref path, this, bufferPool);
@@ -1201,7 +1176,6 @@ namespace Nethermind.Trie
             AppendChildPathBranch(ref path, 0);
             for (int i = 0; i < 16; i++)
             {
-                // Allows to load children in parallel
                 int prefix = rlpStream.PeekByte();
 
                 switch (prefix)
