@@ -646,7 +646,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (vmState.IsCold(address) && !address.IsPrecompile(spec))
             {
-                result = UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
+                // after verkle is enabled we dont charge cost cost as it is replace by verkle access costs
+                result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.WarmUp(address);
             }
             else if (chargeForWarm)
@@ -687,7 +688,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (vmState.IsCold(in storageCell))
             {
-                result = UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
+                // after verkle is enabled we dont charge cost cost as it is replace by verkle access costs
+                result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
                 vmState.WarmUp(in storageCell);
             }
             else if (storageAccessType == StorageAccessType.SLOAD)
