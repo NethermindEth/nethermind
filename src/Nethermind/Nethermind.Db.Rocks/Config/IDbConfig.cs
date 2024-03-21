@@ -25,6 +25,7 @@ public interface IDbConfig : IConfig
     bool? UseDirectReads { get; set; }
     bool? UseDirectIoForFlushAndCompactions { get; set; }
     bool? DisableCompression { get; set; }
+    bool? UseLz4 { get; set; }
     ulong? CompactionReadAhead { get; set; }
     IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     ulong? MaxBytesForLevelBase { get; set; }
@@ -50,6 +51,7 @@ public interface IDbConfig : IConfig
     int? BloomFilterBitsPerKey { get; set; }
     int? UseRibbonFilterStartingFromLevel { get; set; }
     ulong BytesPerSync { get; set; }
+    double? DataBlockIndexUtilRatio { get; set; }
 
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
@@ -199,6 +201,7 @@ public interface IDbConfig : IConfig
     bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     ulong? StateDbCompactionReadAhead { get; set; }
     bool? StateDbDisableCompression { get; set; }
+    bool? StateDbUseLz4 { get; set; }
     int StateDbTargetFileSizeMultiplier { get; set; }
     bool StateDbUseTwoLevelIndex { get; set; }
     bool StateDbUseHashIndex { get; set; }
@@ -219,6 +222,7 @@ public interface IDbConfig : IConfig
     bool StateDbAdviseRandomOnOpen { get; set; }
     int? StateDbBloomFilterBitsPerKey { get; set; }
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
+    double? StateDbDataBlockIndexUtilRatio { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>
