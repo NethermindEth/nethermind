@@ -10,15 +10,13 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -109,7 +107,7 @@ namespace Nethermind.Merge.AuRa
                     throw new Exception("Could not load Shutter validator info file: " + e.Message);
                 }
 
-                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, _auraConfig!.ShutterValidatorRegistryContractAddress.ToAddress(), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
+                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterValidatorRegistryContractAddress), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
 
                 // init Shutter transaction source
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, _api.LogFinder!, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
@@ -124,7 +122,10 @@ namespace Nethermind.Merge.AuRa
                 };
                 KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
                 KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
-                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, _api, _auraConfig.ShutterKeyperP2PAddresses, _auraConfig.ShutterP2PPort.ToString());
+
+                IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
+
+                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, readOnlyBlockTree, _auraConfig.ShutterKeyperP2PAddresses, _auraConfig.ShutterP2PPort.ToString());
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);

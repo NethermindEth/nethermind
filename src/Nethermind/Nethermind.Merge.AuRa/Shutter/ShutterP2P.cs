@@ -3,9 +3,11 @@ using Nethermind.Libp2p.Core.Discovery;
 using Nethermind.Libp2p.Protocols.Pubsub;
 using Nethermind.Libp2p.Stack;
 using Nethermind.Libp2p.Protocols;
+using Nethermind.Blockchain;
 using System;
 using System.Threading.Tasks;
 using System.Threading;
+using System.Collections.Concurrent;
 using Microsoft.Extensions.DependencyInjection;
 using System.Linq;
 using System.Collections.Generic;
@@ -24,14 +26,14 @@ public class ShutterP2P
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly Contracts.IKeyBroadcastContract _keyBroadcastContract;
     private readonly Contracts.IKeyperSetManagerContract _keyperSetManagerContract;
-    private readonly INethermindApi _api;
+    private readonly IReadOnlyBlockTree _readOnlyBlockTree;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, INethermindApi api, string[] keyperAddresses, string port)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, IReadOnlyBlockTree readOnlyBlockTree, string[] keyperAddresses, string port)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
         _keyBroadcastContract = keyBroadcastContract;
         _keyperSetManagerContract = keyperSetManagerContract;
-        _api = api;
+        _readOnlyBlockTree = readOnlyBlockTree;
 
         ServiceProvider serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
@@ -48,21 +50,14 @@ public class ShutterP2P
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
         ITopic topic = router.Subscribe("decryptionKeys");
+        ConcurrentQueue<byte[]> msgQueue = new();
+
         topic.OnMessage += (byte[] msg) =>
         {
-            lock (_keyperSetManagerContract)
+            // wait until head is synced???
+            if (BlockTreeIsReady())
             {
-                ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_api.BlockTree!.Head!.Header);
-                Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-                Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
-                if (CheckDecryptionKeys(decryptionKeys, eon, Threshhold))
-                {
-                    _onDecryptionKeysReceived(decryptionKeys);
-                }
-                else
-                {
-                    _api.LogManager.GetClassLogger().Warn("Invalid decryption keys received on P2P network.");
-                }
+                msgQueue.Enqueue(msg);
             }
         };
 
@@ -74,6 +69,31 @@ public class ShutterP2P
         {
             proto.OnAddPeer?.Invoke([addr]);
         }
+
+        Task.Run(() =>
+        {
+            for (; ; )
+            {
+                if (BlockTreeIsReady() && msgQueue.TryDequeue(out var msg))
+                {
+                    Console.WriteLine("processing... " + Convert.ToHexString(msg));
+
+                    ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
+                    Console.WriteLine("eon: " + eon);
+                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+                    Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+                    if (CheckDecryptionKeys(decryptionKeys, 0, Threshhold))
+                    {
+                        _onDecryptionKeysReceived(decryptionKeys);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid decryption keys received on P2P network.");
+                    }
+                }
+                Thread.Yield();
+            }
+        });
     }
 
     internal class MyProto : IDiscoveryProtocol
@@ -89,7 +109,7 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(Dto.DecryptionKeys decryptionKeys, ulong eon, int threshold)
     {
-        Bls.P2 eonKey = new(_keyBroadcastContract.GetEonKey(_api.BlockTree!.Head!.Header, eon));
+        Bls.P2 eonKey = new(_keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon));
         ulong slot = 0;
 
         if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
@@ -125,7 +145,7 @@ public class ShutterP2P
         IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
-            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_api.BlockTree!.Head.Header, signerIndex).Item1;
+            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head.Header, signerIndex).Item1;
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
             {
                 return false;
@@ -133,5 +153,10 @@ public class ShutterP2P
         }
 
         return true;
+    }
+
+    internal bool BlockTreeIsReady()
+    {
+        return _readOnlyBlockTree.Head is not null && !_readOnlyBlockTree.Head.IsGenesis;
     }
 }
