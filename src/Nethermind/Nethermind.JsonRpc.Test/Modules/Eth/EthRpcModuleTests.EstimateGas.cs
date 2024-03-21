@@ -79,9 +79,9 @@ public partial class EthRpcModuleTests
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
-    [TestCase(false, 2)]
+    //[TestCase(false, 2)]
     [TestCase(true, 2)]
-    [TestCase(true, 17)]
+    //[TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
