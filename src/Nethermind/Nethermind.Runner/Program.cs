@@ -251,12 +251,9 @@ public static class Program
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
-        const string macosSnappyPath = "/opt/homebrew/Cellar/snappy";
         var alternativePath = nativeLibraryName switch
         {
             "libdl" => "libdl.so.2",
-            "libsnappy" or "snappy" => Directory.Exists(macosSnappyPath) ?
-                Directory.EnumerateFiles(macosSnappyPath, "libsnappy.dylib", SearchOption.AllDirectories).FirstOrDefault() : "libsnappy.so.1",
             _ => null
         };
 

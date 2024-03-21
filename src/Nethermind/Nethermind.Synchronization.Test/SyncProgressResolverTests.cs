@@ -115,13 +115,13 @@ namespace Nethermind.Synchronization.Test
         }
 
         [Test]
-        public void Is_fast_block_finished_returns_true_when_no_fast_block_sync_is_used()
+        public void Is_fast_block_finished_returns_true_when_no_fast_sync_is_used()
         {
             IBlockTree blockTree = Substitute.For<IBlockTree>();
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = false,
+                FastSync = false,
                 PivotNumber = "1",
             };
 
@@ -138,7 +138,6 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = true,
@@ -159,7 +158,7 @@ namespace Nethermind.Synchronization.Test
             IStateReader stateReader = Substitute.For<IStateReader>();
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
+                FastSync = true,
                 DownloadBodiesInFastSync = true,
                 DownloadReceiptsInFastSync = false,
                 PivotNumber = "1",

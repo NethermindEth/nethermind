@@ -1,6 +1,5 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
-
 using Nethermind.Config;
 using Nethermind.Db;
 
@@ -13,10 +12,9 @@ namespace Nethermind.Blockchain.Synchronization
         private bool _fastSync;
 
         public static ISyncConfig Default { get; } = new SyncConfig();
-        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig { FastSync = false, FastBlocks = false };
+        public static ISyncConfig WithFullSyncOnly { get; } = new SyncConfig { FastSync = false };
         public static ISyncConfig WithFastSync { get; } = new SyncConfig { FastSync = true };
-        public static ISyncConfig WithFastBlocks { get; } = new SyncConfig { FastSync = true, FastBlocks = true };
-        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, FastBlocks = false, BlockGossipEnabled = false };
+        public static ISyncConfig WithEth2Merge { get; } = new SyncConfig { FastSync = false, BlockGossipEnabled = false };
 
         public bool NetworkingEnabled { get; set; } = true;
 
@@ -27,7 +25,7 @@ namespace Nethermind.Blockchain.Synchronization
         }
 
         public long? FastSyncCatchUpHeightDelta { get; set; } = 8192;
-        public bool FastBlocks { get; set; }
+        bool ISyncConfig.FastBlocks { get; set; }
         public bool UseGethLimitsInFastBlocks { get; set; } = true;
         public bool FastSync { get => _fastSync || SnapSync; set => _fastSync = value; }
         public bool DownloadHeadersInFastSync { get; set; } = true;
@@ -66,6 +64,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
+        public bool SnapServingEnabled { get; set; } = false;
         public bool TrieHealing { get; set; } = true;
 
         public override string ToString()

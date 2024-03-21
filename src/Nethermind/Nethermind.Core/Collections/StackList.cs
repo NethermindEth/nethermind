@@ -1,15 +1,18 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Core.Collections
 {
-    public class StackList<T> : List<T>
+    public sealed class StackList<T> : List<T>
+        where T : struct, IComparable<T>
     {
         public T Peek() => this[^1];
 
-        public bool TryPeek(out T? item)
+        public bool TryPeek(out T item)
         {
             if (Count > 0)
             {
@@ -30,7 +33,7 @@ namespace Nethermind.Core.Collections
             return value;
         }
 
-        public bool TryPop(out T? item)
+        public bool TryPop(out T item)
         {
             if (Count > 0)
             {
@@ -47,6 +50,34 @@ namespace Nethermind.Core.Collections
         public void Push(T item)
         {
             Add(item);
+        }
+
+        public bool TryGetSearchedItem(T activation, out T item)
+        {
+            Span<T> span = CollectionsMarshal.AsSpan(this);
+            int index = span.BinarySearch(activation);
+            bool result;
+            if ((uint)index < (uint)span.Length)
+            {
+                item = span[index];
+                result = true;
+            }
+            else
+            {
+                index = ~index - 1;
+                if ((uint)index < (uint)span.Length)
+                {
+                    item = span[index];
+                    result = true;
+                }
+                else
+                {
+                    item = default;
+                    result = false;
+                }
+            }
+
+            return result;
         }
     }
 }

@@ -46,14 +46,15 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
     {
 
         payloadAttributes = await _boostRelay.GetPayloadAttributes(payloadAttributes, cancellationToken);
-        UInt256 balanceBefore = _stateReader.GetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
+        _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out AccountStruct account);
+        UInt256 balanceBefore = account.Balance;
         Block? block = await blockProductionTrigger.BuildBlock(parentHeader, cancellationToken, _feesTracer, payloadAttributes);
         if (block is not null)
         {
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
-            UInt256 balanceAfter = _stateReader.GetAccount(block.StateRoot!, payloadAttributes.SuggestedFeeRecipient)?.Balance ?? UInt256.Zero;
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = balanceAfter - balanceBefore }, cancellationToken);
+            _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
+            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
         return CurrentBestBlock;

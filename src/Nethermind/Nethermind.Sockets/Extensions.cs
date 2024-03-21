@@ -54,7 +54,7 @@ namespace Nethermind.Sockets
                     using ISocketsClient socketsClient =
                         module.CreateClient(webSocket, clientName, context);
                     id = socketsClient.Id;
-                    await socketsClient.ReceiveAsync();
+                    await socketsClient.ReceiveLoopAsync();
                 }
                 catch (WebSocketException ex)
                 {

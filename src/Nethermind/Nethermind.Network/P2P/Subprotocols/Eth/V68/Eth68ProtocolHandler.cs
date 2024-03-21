@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -33,13 +34,14 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
         ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
         ILogManager logManager,
         ITxGossipPolicy? transactionsGossipPolicy = null)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
+        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
         _pooledTxsRequestor = pooledTxsRequestor;
 
@@ -73,8 +75,9 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
     }
 
-    private void Handle(NewPooledTransactionHashesMessage68 message)
+    private void Handle(NewPooledTransactionHashesMessage68 msg)
     {
+        using var message = msg;
         bool isTrace = Logger.IsTrace;
         if (message.Hashes.Count != message.Types.Count || message.Hashes.Count != message.Sizes.Count)
         {
@@ -109,7 +112,11 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         }
         else
         {
-            SendMessage(new[] { (byte)tx.Type }, new int[] { tx.GetLength() }, new Hash256[] { tx.Hash });
+            SendMessage(
+                new ArrayPoolList<byte>((byte)tx.Type),
+                new ArrayPoolList<int>(tx.GetLength()),
+                new ArrayPoolList<Hash256>(1) { tx.Hash }
+            );
         }
     }
 
@@ -121,18 +128,18 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
             return;
         }
 
-        using ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
-        using ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<byte> types = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<int> sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+        ArrayPoolList<Hash256> hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
 
         foreach (Transaction tx in txs)
         {
             if (hashes.Count == NewPooledTransactionHashesMessage68.MaxCount)
             {
                 SendMessage(types, sizes, hashes);
-                types.Clear();
-                sizes.Clear();
-                hashes.Clear();
+                types = new(NewPooledTransactionHashesMessage68.MaxCount);
+                sizes = new(NewPooledTransactionHashesMessage68.MaxCount);
+                hashes = new(NewPooledTransactionHashesMessage68.MaxCount);
             }
 
             if (tx.Hash is not null)
@@ -148,9 +155,15 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         {
             SendMessage(types, sizes, hashes);
         }
+        else
+        {
+            types.Dispose();
+            sizes.Dispose();
+            hashes.Dispose();
+        }
     }
 
-    private void SendMessage(IReadOnlyList<byte> types, IReadOnlyList<int> sizes, IReadOnlyList<Hash256> hashes)
+    private void SendMessage(IOwnedReadOnlyList<byte> types, IOwnedReadOnlyList<int> sizes, IOwnedReadOnlyList<Hash256> hashes)
     {
         NewPooledTransactionHashesMessage68 message = new(types, sizes, hashes);
         Metrics.Eth68NewPooledTransactionHashesSent++;

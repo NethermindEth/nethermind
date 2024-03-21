@@ -29,9 +29,9 @@ namespace Nethermind.Network
         private readonly INetworkConfig _networkConfig;
         private readonly ILogger _logger;
 
-        public ConcurrentDictionary<PublicKey, Peer> ActivePeers { get; } = new();
-        public ConcurrentDictionary<PublicKey, Peer> Peers { get; } = new();
-        private readonly ConcurrentDictionary<PublicKey, Peer> _staticPeers = new();
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> ActivePeers { get; } = new();
+        public ConcurrentDictionary<PublicKeyAsKey, Peer> Peers { get; } = new();
+        private readonly ConcurrentDictionary<PublicKeyAsKey, Peer> _staticPeers = new();
 
         public IEnumerable<Peer> NonStaticPeers => Peers.Values.Where(p => !p.Node.IsStatic);
         public IEnumerable<Peer> StaticPeers => _staticPeers.Values;
@@ -42,8 +42,8 @@ namespace Nethermind.Network
 
         private readonly CancellationTokenSource _cancellationTokenSource = new();
 
-        readonly Func<PublicKey, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNodePeer;
-        readonly Func<PublicKey, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
+        readonly Func<PublicKeyAsKey, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNodePeer;
+        readonly Func<PublicKeyAsKey, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics), Peer> _createNewNetworkNodePeer;
 
         public PeerPool(
             INodeSource nodeSource,
@@ -88,7 +88,7 @@ namespace Nethermind.Network
             return Peers.GetOrAdd(node.NodeId, valueFactory: _createNewNetworkNodePeer, (node, _staticPeers));
         }
 
-        private Peer CreateNew(PublicKey key, (Node Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        private Peer CreateNew(PublicKeyAsKey key, (Node Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
             if (arg.Node.IsBootnode || arg.Node.IsStatic)
             {
@@ -105,7 +105,7 @@ namespace Nethermind.Network
             return peer;
         }
 
-        private Peer CreateNew(PublicKey key, (NetworkNode Node, ConcurrentDictionary<PublicKey, Peer> Statics) arg)
+        private Peer CreateNew(PublicKeyAsKey key, (NetworkNode Node, ConcurrentDictionary<PublicKeyAsKey, Peer> Statics) arg)
         {
             Node node = new(arg.Node);
             Peer peer = new(node, _stats.GetOrAdd(node));
