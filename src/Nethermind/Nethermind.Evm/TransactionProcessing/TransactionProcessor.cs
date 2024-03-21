@@ -559,24 +559,31 @@ namespace Nethermind.Evm.TransactionProcessing
                     // this may lead to inconsistencies (however it is tested extensively in blockchain tests)
                     if (tx.IsContractCreation)
                     {
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
-                        if (unspentGas < codeDepositGasCost && spec.ChargeForTopLevelCreate)
+                        if (spec.IsVerkleTreeEipEnabled)
                         {
-                            throw new OutOfGasException();
+                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true,
+                                   ref unspentGas))
+                            {
+                                throw new OutOfGasException();
+                            }
+                        }
+                        else if(spec.ChargeForTopLevelCreate)
+                        {
+                            long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
+                            if (unspentGas < codeDepositGasCost)
+                            {
+                                throw new OutOfGasException();
+                            }
+                            unspentGas -= codeDepositGasCost;
                         }
 
+                        // does it make a difference to charge gas before or after the exeception
                         if (CodeDepositHandler.CodeIsInvalid(spec, substate.Output))
                         {
                             throw new InvalidCodeException();
                         }
-
-                        if (unspentGas >= codeDepositGasCost)
-                        {
-                            var code = substate.Output.ToArray();
-                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
-
-                            unspentGas -= codeDepositGasCost;
-                        }
+                        var code = substate.Output.ToArray();
+                        VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
 
                         if (!env.Witness.AccessAndChargeForContractCreated(env.ExecutingAccount, ref unspentGas))
                         {

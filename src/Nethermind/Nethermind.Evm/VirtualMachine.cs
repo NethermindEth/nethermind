@@ -315,6 +315,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                 if (currentState.IsTopLevel)
                 {
+                    // TODO: refactor to add verkle costs to tracing
                     if (typeof(TTracingActions) == typeof(IsTracing))
                     {
                         long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
@@ -380,17 +381,35 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                 if (!callResult.ShouldRevert)
                 {
-                    long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
+
                     if (previousState.ExecutionType.IsAnyCreate())
                     {
+                        long gasAvailableForCodeDeposit = previousState.GasAvailable; // TODO: refactor, this is to fix 61363 Ropsten
                         previousCallResult = callCodeOwner.Bytes;
                         previousCallOutputDestination = UInt256.Zero;
                         _returnDataBuffer = Array.Empty<byte>();
                         previousCallOutput = ZeroPaddedSpan.Empty;
 
-                        long codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                        // TODO: find a better way to do this
+                        bool isGasAvailable;
+                        long codeDepositGasCost;
+                        if (spec.IsVerkleTreeEipEnabled)
+                        {
+                            long gasThatCanBeUsed = gasAvailableForCodeDeposit;
+                            isGasAvailable = currentState.Env.Witness.AccessAndChargeForCodeSlice(callCodeOwner,
+                                0, callResult.Output.Length, true,
+                                ref gasThatCanBeUsed);
+                            codeDepositGasCost = gasAvailableForCodeDeposit - gasThatCanBeUsed;
+                        }
+                        else
+                        {
+                            codeDepositGasCost = CodeDepositHandler.CalculateCost(callResult.Output.Length, spec);
+                            isGasAvailable = gasAvailableForCodeDeposit >= codeDepositGasCost;
+                        }
+
                         bool invalidCode = CodeDepositHandler.CodeIsInvalid(spec, callResult.Output);
-                        if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
+
+                        if (isGasAvailable && !invalidCode)
                         {
                             ReadOnlyMemory<byte> code = callResult.Output;
                             InsertCode(code, callCodeOwner, spec);
