@@ -81,7 +81,7 @@ namespace Evm.JsonTypes
             {
                 throw new T8NException("EIP-1559 config but missing 'currentBaseFee' in env section", ExitCodes.ErrorConfig);
             }
-            CurrentBaseFee = BaseFeeCalculator.Calculate(ParentBaseFee.Value, ParentGasUsed, ParentGasLimit, CurrentNumber - 1, spec);
+            CurrentBaseFee = BaseFeeCalculator.Calculate(GetParentBlockHeader(), spec);
         }
 
         private void ApplyShanghaiChecks(IReleaseSpec spec)
