@@ -263,19 +263,11 @@ public class T8NTool
 
     private bool IsPostMerge(IReleaseSpec spec)
     {
-        return spec != London.Instance &&
-               spec != Berlin.Instance &&
-               spec != MuirGlacier.Instance &&
-               spec != Istanbul.Instance &&
-               spec != ConstantinopleFix.Instance &&
-               spec != Constantinople.Instance &&
-               spec != Byzantium.Instance &&
-               spec != SpuriousDragon.Instance &&
-               spec != TangerineWhistle.Instance &&
-               spec != Dao.Instance &&
-               spec != Homestead.Instance &&
-               spec != Frontier.Instance &&
-               spec != Olympic.Instance;
+        return spec == ArrowGlacier.Instance
+               || spec == GrayGlacier.Instance
+               || spec == Paris.Instance
+               || spec == Shanghai.Instance
+               || spec == Cancun.Instance;
     }
 
     private static void CalculateReward(string? stateReward, Block block, WorldState stateProvider, IReleaseSpec spec)
