@@ -726,9 +726,6 @@ namespace Nethermind.Trie.Pruning
                         writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
-
-                // TODO: Double check this. Seems to be done twice.
-                _pastPathHash.Set((key.addr, key.path), keyValuePair.Value);
             }
 
             ActionBlock<KeyValuePair<(Hash256?, TinyTreePath), Hash256>> actionBlock =
