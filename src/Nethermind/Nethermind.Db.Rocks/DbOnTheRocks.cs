@@ -431,21 +431,6 @@ public class DbOnTheRocks : IDb, ITunableDb
         // This reduces disk space utilization, but read of non-existent key will have to go through the database
         // instead of checking a bloom filter.
         options.SetOptimizeFiltersForHits(dbConfig.OptimizeFiltersForHits ? 1 : 0);
-        if (dbConfig.RowCacheSize > 0)
-        {
-            _rowCache = RocksDbSharp.Native.Instance.rocksdb_cache_create_lru(new UIntPtr(dbConfig.RowCacheSize.Value));
-            _rocksDbNative.rocksdb_options_set_row_cache(options.Handle, _rowCache.Value);
-        }
-
-        /*
-         * Multi-Threaded Compactions
-         * Compactions are needed to remove multiple copies of the same key that may occur if an application overwrites an existing key. Compactions also process deletions of keys. Compactions may occur in multiple threads if configured appropriately.
-         * The entire database is stored in a set of sstfiles. When a memtable is full, its content is written out to a file in Level-0 (L0). RocksDB removes duplicate and overwritten keys in the memtable when it is flushed to a file in L0. Some files are periodically read in and merged to form larger files - this is called compaction.
-         * The overall write throughput of an LSM database directly depends on the speed at which compactions can occur, especially when the data is stored in fast storage like SSD or RAM. RocksDB may be configured to issue concurrent compaction requests from multiple threads. It is observed that sustained write rates may increase by as much as a factor of 10 with multi-threaded compaction when the database is on SSDs, as compared to single-threaded compactions.
-         * TKS: Observed 500MB/s compared to ~100MB/s between multithreaded and single thread compactions on my machine (processor count is returning 12 for 6 cores with hyperthreading)
-         * TKS: CPU goes to insane 30% usage on idle - compacting only app
-         */
-        options.SetMaxBackgroundCompactions(Environment.ProcessorCount);
 
         if (dbConfig.DisableCompression == true)
         {
@@ -708,6 +693,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             {
                 using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
                 Iterator iterator = wrapper.Iterator;
+
                 if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
                 {
                     return closeRes;
