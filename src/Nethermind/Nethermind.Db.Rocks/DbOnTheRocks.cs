@@ -706,24 +706,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
             {
-                Iterator iterator = iteratorManager.Rent(flags);
-
-                try
+                using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
+                Iterator iterator = wrapper.Iterator;
+                if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
                 {
-                    if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
-                    {
-                        return closeRes;
-                    }
-
-                    iterator.Seek(key);
-                    if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
-                    {
-                        return iterator.Value();
-                    }
+                    return closeRes;
                 }
-                finally
+
+                iterator.Seek(key);
+                if (iterator.Valid() && Bytes.AreEqual(iterator.GetKeySpan(), key))
                 {
-                    iteratorManager.Return(iterator, flags);
+                    return iterator.Value();
                 }
             }
 
@@ -1599,6 +1592,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     /// <summary>
     /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
+    /// temporary higher disk usage or memory usage.
     ///
     /// This class handles a periodic timer which periodically dispose all iterator.
     /// </summary>
@@ -1639,8 +1633,9 @@ public class DbOnTheRocks : IDb, ITunableDb
             _readaheadIterators3.DisposeAll();
         }
 
-        public Iterator Rent(ReadFlags flags)
+        public RentWrapper Rent(ReadFlags flags)
         {
+
             ManagedIterators iterators = _readaheadIterators;
             if ((flags & ReadFlags.HintReadAhead2) != 0)
             {
@@ -1654,10 +1649,10 @@ public class DbOnTheRocks : IDb, ITunableDb
             IteratorHolder holder = iterators.Value!;
             // If null, we create a new one.
             Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
-            return iterator ?? _rocksDb.NewIterator(_cf, _readOptions);
+            return new RentWrapper(iterator ?? _rocksDb.NewIterator(_cf, _readOptions), flags, this);
         }
 
-        public void Return(Iterator iterator, ReadFlags flags)
+        private void Return(Iterator iterator, ReadFlags flags)
         {
             ManagedIterators iterators = _readaheadIterators;
             if ((flags & ReadFlags.HintReadAhead2) != 0)
@@ -1689,8 +1684,18 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
+        public readonly struct RentWrapper(Iterator iterator, ReadFlags flags, IteratorManager manager) : IDisposable
+        {
+            public Iterator Iterator => iterator;
+
+            public void Dispose()
+            {
+                manager.Return(iterator, flags);
+            }
+        }
+
         // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
-        internal sealed class ManagedIterators : ThreadLocal<IteratorHolder>
+        private sealed class ManagedIterators : ThreadLocal<IteratorHolder>
         {
             private bool _disposed = false;
 
@@ -1724,7 +1729,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             }
         }
 
-        internal class IteratorHolder : IDisposable
+        private class IteratorHolder : IDisposable
         {
             public Iterator? Iterator = null;
             public int Usage = 0;

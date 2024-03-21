@@ -577,6 +577,7 @@ namespace Nethermind.Trie.Pruning
                         {
                             using (_dirtyNodes.AcquireMapLock())
                             {
+                                Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
                                 if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
@@ -598,6 +599,9 @@ namespace Nethermind.Trie.Pruning
 
                                     PruneCache();
                                 }
+
+                                Metrics.PruningTime = sw.ElapsedMilliseconds;
+                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds.");
                             }
                         }
 
@@ -839,7 +843,6 @@ namespace Nethermind.Trie.Pruning
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 

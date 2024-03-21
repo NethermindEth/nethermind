@@ -69,6 +69,12 @@ public class InitializeStateDb : IStep
             pruningConfig.PruningBoundary = 128;
         }
 
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
