@@ -9,7 +9,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
@@ -79,9 +78,9 @@ public partial class EthRpcModuleTests
         ctx.Test.ReadOnlyState.AccountExists(someAccount).Should().BeFalse();
     }
 
-    //[TestCase(false, 2)]
+    [TestCase(false, 2)]
     [TestCase(true, 2)]
-    //[TestCase(true, 17)]
+    [TestCase(true, 17)]
     public async Task Eth_create_access_list_calculates_proper_gas(bool optimize, long loads)
     {
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
@@ -95,12 +94,7 @@ public partial class EthRpcModuleTests
         string serializedCreateAccessList = await test.TestEthRpc("eth_createAccessList",
             test.JsonSerializer.Serialize(transaction), "0x0", optimize.ToString().ToLower());
 
-        if (optimize)
-        {
-            accessList = GetTestAccessList(loads, false).AccessList;
-        }
-
-        transaction.AccessList = accessList;
+        transaction.AccessList = test.JsonSerializer.Deserialize<AccessListItemForRpc[]>(JToken.Parse(serializedCreateAccessList).SelectToken("result.accessList")!.ToString());
         string serializedEstimateGas =
             await test.TestEthRpc("eth_estimateGas", test.JsonSerializer.Serialize(transaction), "0x0");
 
