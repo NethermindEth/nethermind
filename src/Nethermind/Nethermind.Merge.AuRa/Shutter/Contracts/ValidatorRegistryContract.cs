@@ -6,12 +6,10 @@ using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.TxPool;
 using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
@@ -20,19 +18,12 @@ namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
 public class ValidatorRegistryContract : CallableContract, IValidatorRegistryContract
 {
-    private readonly ISigner _signer;
-    private readonly ITxSender _txSender;
-    private readonly ITxSealer _txSealer;
-    private const string update = "update";
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, ISigner signer, ITxSender txSender, ITxSealer txSealer)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
-        _signer = signer;
-        _txSender = txSender;
-        _txSealer = txSealer;
     }
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
@@ -77,10 +68,6 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         }
         return false;
     }
-
-    // internal Message GetUpdateMessage(BlockHeader blockHeader, UInt256 i)
-    // {
-    // }
 
     internal class Message
     {

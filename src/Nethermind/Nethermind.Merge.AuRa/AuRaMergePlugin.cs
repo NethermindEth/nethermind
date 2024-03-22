@@ -17,10 +17,10 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Core;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
-using Nethermind.TxPool;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 
 namespace Nethermind.Merge.AuRa
@@ -107,7 +107,9 @@ namespace Nethermind.Merge.AuRa
                     throw new Exception("Could not load Shutter validator info file: " + e.Message);
                 }
 
-                ValidatorRegistryContract validatorRegistryContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterValidatorRegistryContractAddress), _api.EngineSigner!, _api.TxSender!, new TxSealer(_api.EngineSigner!, _api.Timestamper!));
+                ReadOnlyTransactionProcessor readOnlyTransactionProcessor = new(_api.TransactionProcessor!, _api.WorldState!, _api.WorldState!.StateRoot);
+
+                ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterValidatorRegistryContractAddress));
 
                 // init Shutter transaction source
                 shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, _api.LogFinder!, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
@@ -120,8 +122,9 @@ namespace Nethermind.Merge.AuRa
                         shutterTxSource.DecryptionKeys = decryptionKeys;
                     }
                 };
-                KeyBroadcastContract keyBroadcastContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
-                KeyperSetManagerContract keyperSetManagerContract = new(_api.TransactionProcessor!, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
+
+                KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
+                KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
 

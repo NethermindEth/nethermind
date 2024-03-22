@@ -74,24 +74,30 @@ public class ShutterP2P
         {
             for (; ; )
             {
+                Thread.Yield();
                 if (BlockTreeIsReady() && msgQueue.TryDequeue(out var msg))
                 {
                     Console.WriteLine("processing... " + Convert.ToHexString(msg));
 
-                    ulong eon = _keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
-                    Console.WriteLine("eon: " + eon);
-                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-                    Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
-                    if (CheckDecryptionKeys(decryptionKeys, 0, Threshhold))
+                    lock (_readOnlyBlockTree)
                     {
-                        _onDecryptionKeysReceived(decryptionKeys);
-                    }
-                    else
-                    {
-                        throw new Exception("Invalid decryption keys received on P2P network.");
+                        if (!GetEonInfo(out ulong eon, out Bls.P2 eonKey))
+                        {
+                            continue;
+                        }
+
+                        Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+                        Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+                        if (CheckDecryptionKeys(decryptionKeys, eon, eonKey, Threshhold))
+                        {
+                            _onDecryptionKeysReceived(decryptionKeys);
+                        }
+                        else
+                        {
+                            throw new Exception("Invalid decryption keys received on P2P network.");
+                        }
                     }
                 }
-                Thread.Yield();
             }
         });
     }
@@ -107,9 +113,8 @@ public class ShutterP2P
         }
     }
 
-    internal bool CheckDecryptionKeys(Dto.DecryptionKeys decryptionKeys, ulong eon, int threshold)
+    internal bool CheckDecryptionKeys(Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
-        Bls.P2 eonKey = new(_keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon));
         ulong slot = 0;
 
         if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
@@ -143,9 +148,10 @@ public class ShutterP2P
         }
 
         IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
+
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
-            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head.Header, signerIndex).Item1;
+            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
             {
                 return false;
@@ -158,5 +164,24 @@ public class ShutterP2P
     internal bool BlockTreeIsReady()
     {
         return _readOnlyBlockTree.Head is not null && !_readOnlyBlockTree.Head.IsGenesis;
+    }
+
+    internal bool GetEonInfo(out ulong eon, out Bls.P2 eonKey)
+    {
+        eon = _keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
+        byte[] eonKeyBytes = _keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
+
+        Console.WriteLine("eon: " + eon);
+        Console.WriteLine("eon key: " + Convert.ToHexString(eonKeyBytes));
+
+        if (!eonKeyBytes.Any())
+        {
+            Console.WriteLine("no eon key");
+            eonKey = new();
+            return false;
+        }
+
+        eonKey = new(eonKeyBytes);
+        return true;
     }
 }
