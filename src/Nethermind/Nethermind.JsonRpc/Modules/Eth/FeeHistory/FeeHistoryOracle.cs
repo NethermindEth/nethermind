@@ -21,10 +21,15 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
     {
         private const int MaxBlockCount = 1024;
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount;
-        private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache");
+        // private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
+        //     = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache");
 
-        private readonly record struct BlockFeeHistorySearchInfo(
+        private readonly LruFeeHistoryMultiCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
+            = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache", blockFinder);
+
+        public readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
+
+        public readonly record struct BlockFeeHistorySearchInfo(
             long BlockNumber,
             UInt256 BlockBaseFeePerGas,
             UInt256 BaseFeePerGasEst,
@@ -34,7 +39,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             Hash256? ParentHash,
             long GasUsed,
             int BlockTransactionsLength,
-            List<(long GasUsed, UInt256 PremiumPerGas)>? RewardsInBlocks);
+            List<RewardInfo>? RewardsInBlocks);
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
@@ -53,7 +58,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
         {
-            if (_feeHistoryCache.Contains(blockHash)) return _feeHistoryCache.Get(blockHash);
+            if (_feeHistoryCache.Contains(blockHash, blockNumber)) return _feeHistoryCache.Get(blockHash, blockNumber);
             Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
             return block is null ? null : SaveHistorySearchInfo(block);
         }
@@ -66,7 +71,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache)
             {
-                _feeHistoryCache.Set(block.Hash, historyInfo);
+                _feeHistoryCache.Set(block.Hash, historyInfo, block.Number);
             }
 
             return historyInfo;
@@ -152,22 +157,22 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length).ToList();
             }
 
-            List<(long GasUsed, UInt256 PremiumPerGas)>? rewardsInBlock = blockInfo.RewardsInBlocks;
+            List<RewardInfo>? rewardsInBlock = blockInfo.RewardsInBlocks;
             return rewardsInBlock is null
                 ? null
                 : CalculatePercentileValues(blockInfo, rewardPercentiles, rewardsInBlock);
         }
 
-        private List<(long GasUsed, UInt256 PremiumPerGas)>? GetRewardsInBlock(Block block)
+        private List<RewardInfo>? GetRewardsInBlock(Block block)
         {
             TxReceipt[]? receipts = receiptStorage.Get(block);
             Transaction[] txs = block.Transactions;
-            List<(long GasUsed, UInt256 PremiumPerGas)> valueTuples = new(txs.Length);
+            List<RewardInfo> valueTuples = new(txs.Length);
             for (int i = 0; i < txs.Length; i++)
             {
                 Transaction tx = txs[i];
                 tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                valueTuples.Add((receipts[i].GasUsed, premiumPerGas));
+                valueTuples.Add(new RewardInfo(receipts[i].GasUsed, premiumPerGas));
             }
 
             valueTuples.Sort((i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
@@ -176,15 +181,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
 
         private static List<UInt256> CalculatePercentileValues(BlockFeeHistorySearchInfo blockInfo,
-            double[] rewardPercentiles, IReadOnlyList<(long GasUsed, UInt256 PremiumPerGas)> rewardsInBlock)
+            double[] rewardPercentiles, IReadOnlyList<RewardInfo> rewardsInBlock)
         {
             long sumGasUsed = rewardsInBlock[0].GasUsed;
             int txIndex = 0;
             List<UInt256> percentileValues = new(rewardPercentiles.Length);
 
-            for (int i = 0; i < rewardPercentiles.Length; i++)
+            foreach (var percentile in rewardPercentiles)
             {
-                double percentile = rewardPercentiles[i];
                 double thresholdGasUsed = (ulong)(blockInfo.GasUsed * percentile / 100);
                 while (txIndex < rewardsInBlock.Count && sumGasUsed < thresholdGasUsed)
                 {

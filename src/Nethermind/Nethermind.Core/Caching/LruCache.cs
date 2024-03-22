@@ -15,12 +15,14 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
+        private readonly string _name;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
+            _name = name;
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
@@ -90,21 +92,19 @@ namespace Nethermind.Core.Caching
                 LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return false;
             }
+
+            if (_cacheMap.Count >= _maxCapacity)
+            {
+                Replace(key, val);
+            }
             else
             {
-                if (_cacheMap.Count >= _maxCapacity)
-                {
-                    Replace(key, val);
-                }
-                else
-                {
-                    LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
-                    _cacheMap.Add(key, newNode);
-                }
-
-                return true;
+                LinkedListNode<LruCacheItem> newNode = new(new(key, val));
+                LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                _cacheMap.Add(key, newNode);
             }
+
+            return true;
         }
 
         public bool Delete(TKey key)
@@ -158,6 +158,14 @@ namespace Nethermind.Core.Caching
             }
 
             return array;
+        }
+
+        public int Size
+        {
+            get
+            {
+                return _cacheMap.Count;
+            }
         }
 
         private void Replace(TKey key, TValue value)
