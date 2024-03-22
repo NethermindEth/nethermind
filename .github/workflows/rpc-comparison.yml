@@ -97,7 +97,7 @@ jobs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
     needs: [create_main_node, create_compare_node]
-    if: always() && needs.create_main_node.result == success()
+    if: always() && needs.create_main_node.result == success() && (needs.create_compare_node.result == skipped() || needs.create_compare_node.result == success())
     outputs:
       rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
     steps:
