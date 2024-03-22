@@ -7,7 +7,7 @@ using Nethermind.Int256;
 namespace Nethermind.Core
 {
     /// <summary>Calculate BaseFee based on block parent and release spec.</summary>
-    public static class BaseFeeCalculator 
+    public static class BaseFeeCalculator
     {
         public static UInt256 Calculate(BlockHeader parent, IEip1559Spec specFor1559)
         {
