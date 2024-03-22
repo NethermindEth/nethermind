@@ -196,7 +196,7 @@ public class DbConfig : IDbConfig
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
-    public int? StateDbBlockSize { get; set; } = 16 * 1024;
+    public int? StateDbBlockSize { get; set; } = 32 * 1024;
     public bool? StateDbUseDirectReads { get; set; }
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? StateDbCompactionReadAhead { get; set; }

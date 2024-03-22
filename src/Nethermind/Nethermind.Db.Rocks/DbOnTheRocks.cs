@@ -1441,6 +1441,9 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
                 break;
+            case ITunableDb.TuneType.HashDb:
+                ApplyOptions(GetHashDbOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1479,6 +1482,14 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
+        };
+    }
+
+    private IDictionary<string, string> GetHashDbOptions()
+    {
+        return new Dictionary<string, string>()
+        {
+            { "table_factory.block_size", "4096" },
         };
     }
 
