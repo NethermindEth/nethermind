@@ -22,6 +22,7 @@ using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -107,7 +108,9 @@ namespace Nethermind.Merge.AuRa
                     throw new Exception("Could not load Shutter validator info file: " + e.Message);
                 }
 
-                ReadOnlyTransactionProcessor readOnlyTransactionProcessor = new(_api.TransactionProcessor!, _api.WorldState!, _api.WorldState!.StateRoot);
+                IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
+                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
+                ITransactionProcessor readOnlyTransactionProcessor = readOnlyTxProcessingEnv.Build(_api.WorldState!.StateRoot);
 
                 ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterValidatorRegistryContractAddress));
 
@@ -126,7 +129,6 @@ namespace Nethermind.Merge.AuRa
                 KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
                 KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
 
-                IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
 
                 ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, readOnlyBlockTree, _auraConfig.ShutterKeyperP2PAddresses, _auraConfig.ShutterP2PPort.ToString());
             }

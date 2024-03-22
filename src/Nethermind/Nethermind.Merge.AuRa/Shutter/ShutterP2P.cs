@@ -79,23 +79,20 @@ public class ShutterP2P
                 {
                     Console.WriteLine("processing... " + Convert.ToHexString(msg));
 
-                    lock (_readOnlyBlockTree)
+                    if (!GetEonInfo(out ulong eon, out Bls.P2 eonKey))
                     {
-                        if (!GetEonInfo(out ulong eon, out Bls.P2 eonKey))
-                        {
-                            continue;
-                        }
+                        continue;
+                    }
 
-                        Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-                        Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
-                        if (CheckDecryptionKeys(decryptionKeys, eon, eonKey, Threshhold))
-                        {
-                            _onDecryptionKeysReceived(decryptionKeys);
-                        }
-                        else
-                        {
-                            throw new Exception("Invalid decryption keys received on P2P network.");
-                        }
+                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+                    Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+                    if (CheckDecryptionKeys(decryptionKeys, eon, eonKey, Threshhold))
+                    {
+                        _onDecryptionKeysReceived(decryptionKeys);
+                    }
+                    else
+                    {
+                        throw new Exception("Invalid decryption keys received on P2P network.");
                     }
                 }
             }
