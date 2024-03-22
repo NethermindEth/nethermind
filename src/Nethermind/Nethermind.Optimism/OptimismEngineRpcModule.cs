@@ -2,10 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Core.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
 
@@ -41,6 +41,21 @@ public class OptimismEngineRpcModule : IOptimismEngineRpcModule
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV2(ExecutionPayload executionPayload)
     {
         return _engineRpcModule.engine_newPayloadV2(executionPayload);
+    }
+
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV3(ForkchoiceStateV1 forkchoiceState, OptimismPayloadAttributes? payloadAttributes = null)
+    {
+        return await _engineRpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes);
+    }
+
+    public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV3(byte[] payloadId)
+    {
+        return _engineRpcModule.engine_getPayloadV3(payloadId);
+    }
+
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV3(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
+    {
+        return _engineRpcModule.engine_newPayloadV3(executionPayload, blobVersionedHashes, parentBeaconBlockRoot);
     }
 
     public OptimismEngineRpcModule(IEngineRpcModule engineRpcModule)
