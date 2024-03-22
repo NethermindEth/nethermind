@@ -10,7 +10,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;

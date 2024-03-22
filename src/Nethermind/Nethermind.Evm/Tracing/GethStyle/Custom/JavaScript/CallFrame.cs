@@ -8,7 +8,7 @@ using Microsoft.ClearScript.JavaScript;
 using Nethermind.Core;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 public record CallFrame
 {
