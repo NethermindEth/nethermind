@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus.Producers;
+using Nethermind.Core;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Merge.Plugin.Data;
@@ -29,4 +30,16 @@ public partial interface IEngineRpcModule : IRpcModule
         IsSharable = true,
         IsImplemented = true)]
     public Task<ResultWrapper<GetPayloadV3Result?>> engine_getPayloadV4(byte[] payloadId);
+
+    [JsonRpcMethod(
+        Description = "Validates the inclusion list and returns the status.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<InclusionListStatusV1>> engine_newInclusionListV1(InclusionListSummaryV1 inclusionListSummary, Transaction[] inclusionListTransactions);
+
+    [JsonRpcMethod(
+        Description = "Returns the inclusion list for the given block hash.",
+        IsSharable = true,
+        IsImplemented = true)]
+    public Task<ResultWrapper<GetInclusionListResultV1>> engine_getInclusionListV1();
 }
