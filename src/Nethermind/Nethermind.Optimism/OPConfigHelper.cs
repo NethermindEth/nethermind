@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -14,8 +15,9 @@ public class OPSpecHelper : IOPConfigHelper
 
     public Address L1FeeReceiver { get; init; }
 
-    public OPSpecHelper(OptimismParameters parameters)
+    public OPSpecHelper(OptimismChainSpecEngineParameters parameters)
     {
+        ArgumentNullException.ThrowIfNull(parameters.L1FeeRecipient);
         _regolithTimestamp = parameters.RegolithTimestamp;
         _bedrockBlockNumber = parameters.BedrockBlockNumber;
         _canyonTimestamp = parameters.CanyonTimestamp;

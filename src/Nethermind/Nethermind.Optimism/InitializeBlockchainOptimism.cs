@@ -12,6 +12,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
@@ -19,17 +20,19 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 {
     private readonly OptimismNethermindApi _api;
     private readonly IBlocksConfig _blocksConfig;
+    private readonly OptimismChainSpecEngineParameters _parameters;
 
     public InitializeBlockchainOptimism(OptimismNethermindApi api) : base(api)
     {
         _api = api;
         _blocksConfig = api.Config<IBlocksConfig>();
+        _parameters = api.ChainSpecParametersProvider!.GetChainSpecParameters<OptimismChainSpecEngineParameters>();
     }
 
     protected override Task InitBlockchain()
     {
-        _api.SpecHelper = new(_api.ChainSpec.Optimism);
-        _api.L1CostHelper = new(_api.SpecHelper, _api.ChainSpec.Optimism.L1BlockAddress);
+        _api.SpecHelper = new(_parameters);
+        _api.L1CostHelper = new(_api.SpecHelper, _parameters.L1BlockAddress!);
 
         return base.InitBlockchain();
     }

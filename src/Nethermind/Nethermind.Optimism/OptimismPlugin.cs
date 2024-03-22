@@ -46,7 +46,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
 
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
+    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpecParametersProvider?.SealEngineType == SealEngineType;
 
     #region IConsensusPlugin
 

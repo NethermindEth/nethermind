@@ -16,11 +16,13 @@ namespace Nethermind.Specs.ChainSpecStyle
     public class ChainSpecBasedSpecProvider : SpecProviderBase, ISpecProvider
     {
         private readonly ChainSpec _chainSpec;
+        private readonly IChainSpecParametersProvider _chainSpecParametersProvider;
 
-        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, ILogManager logManager = null)
+        public ChainSpecBasedSpecProvider(ChainSpec chainSpec, IChainSpecParametersProvider chainSpecParametersProvider, ILogManager logManager = null)
             : base(logManager?.GetClassLogger<ChainSpecBasedSpecProvider>() ?? LimboTraceLogger.Instance)
         {
             _chainSpec = chainSpec ?? throw new ArgumentNullException(nameof(chainSpec));
+            _chainSpecParametersProvider = chainSpecParametersProvider;
             BuildTransitions();
         }
 
@@ -44,6 +46,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             AddTransitions(transitionBlockNumbers, _chainSpec.Parameters, n => n.EndsWith("Transition"));
             AddTransitions(transitionBlockNumbers, _chainSpec.Ethash, n => n.EndsWith("Transition"));
             AddTransitions(transitionTimestamps, _chainSpec.Parameters, n => n.EndsWith("TransitionTimestamp"), _chainSpec.Genesis?.Timestamp ?? 0);
+
+            foreach (IChainSpecEngineParameters item in _chainSpecParametersProvider.AllChainSpecParameters)
+            {
+                item.AddTransitions(transitionBlockNumbers, transitionTimestamps);
+            }
+
             TimestampFork = transitionTimestamps.Count > 0 ? transitionTimestamps.Min : ISpecProvider.TimestampForkNever;
 
             static void AddTransitions<T>(
@@ -106,7 +114,7 @@ namespace Nethermind.Specs.ChainSpecStyle
             TerminalTotalDifficulty = _chainSpec.Parameters.TerminalTotalDifficulty;
         }
 
-        private static (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
+        private (ForkActivation, IReleaseSpec Spec)[] CreateTransitions(
             ChainSpec chainSpec,
             SortedSet<long> transitionBlockNumbers,
             SortedSet<ulong> transitionTimestamps)
@@ -118,6 +126,12 @@ namespace Nethermind.Specs.ChainSpecStyle
             foreach (long releaseStartBlock in transitionBlockNumbers)
             {
                 ReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
+
+                foreach (IChainSpecEngineParameters item in _chainSpecParametersProvider.AllChainSpecParameters)
+                {
+                    item.AdjustReleaseSpec(releaseSpec, releaseStartBlock, chainSpec.Genesis?.Timestamp ?? 0);
+                }
+
                 transitions[index++] = ((ForkActivation)releaseStartBlock, releaseSpec);
             }
 
@@ -126,6 +140,12 @@ namespace Nethermind.Specs.ChainSpecStyle
                 long activationBlockNumber = biggestBlockTransition;
                 ForkActivation forkActivation = (activationBlockNumber, releaseStartTimestamp);
                 ReleaseSpec releaseSpec = CreateReleaseSpec(chainSpec, activationBlockNumber, releaseStartTimestamp);
+
+                foreach (IChainSpecEngineParameters item in _chainSpecParametersProvider.AllChainSpecParameters)
+                {
+                    item.AdjustReleaseSpec(releaseSpec, activationBlockNumber, releaseStartTimestamp);
+                }
+
                 transitions[index++] = (forkActivation, releaseSpec);
             }
 
@@ -212,11 +232,6 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.ElasticityMultiplier = chainSpec.Parameters.Eip1559ElasticityMultiplier ?? Eip1559Constants.DefaultElasticityMultiplier;
             releaseSpec.ForkBaseFee = chainSpec.Parameters.Eip1559BaseFeeInitialValue ?? Eip1559Constants.DefaultForkBaseFee;
             releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Parameters.Eip1559BaseFeeMaxChangeDenominator ?? Eip1559Constants.DefaultBaseFeeMaxChangeDenominator;
-
-            if (chainSpec.Optimism?.CanyonTimestamp <= releaseStartTimestamp)
-            {
-                releaseSpec.BaseFeeMaxChangeDenominator = chainSpec.Optimism.CanyonBaseFeeChangeDenominator;
-            }
 
 
             if (chainSpec.Ethash is not null)

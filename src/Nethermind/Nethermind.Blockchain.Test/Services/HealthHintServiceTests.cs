@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Test.Services
             public ulong? ExpectedProducingHint { get => null; }
 
             public override string ToString() =>
-                $"SealEngineType: {ChainSpec.SealEngineType}, ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
+                $"ExpectedProcessingHint: {ExpectedProcessingHint}, ExpectedProducingHint: {ExpectedProducingHint}";
         }
 
         public static IEnumerable<BlockProcessorIntervalHint> BlockProcessorIntervalHintTestCases
@@ -39,20 +39,20 @@ namespace Nethermind.Blockchain.Test.Services
             {
                 yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.NethDev, }
+                    ChainSpec = new ChainSpec { }
                 };
                 yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.Ethash },
+                    ChainSpec = new ChainSpec {  },
                     ExpectedProcessingHint = 180
                 };
                 yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec { SealEngineType = "Interval" }
+                    ChainSpec = new ChainSpec {  }
                 };
                 yield return new BlockProcessorIntervalHint
                 {
-                    ChainSpec = new ChainSpec { SealEngineType = SealEngineType.None }
+                    ChainSpec = new ChainSpec { }
                 };
             }
         }

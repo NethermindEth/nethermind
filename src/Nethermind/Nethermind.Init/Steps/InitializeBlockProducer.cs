@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
             }
             else
             {
-                throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
+                throw new NotSupportedException($"Mining in {_api.ChainSpecParametersProvider?.SealEngineType} mode is not supported");
             }
         }
     }

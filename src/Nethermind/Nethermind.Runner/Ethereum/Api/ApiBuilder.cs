@@ -42,20 +42,21 @@ namespace Nethermind.Runner.Ethereum.Api
         public INethermindApi Create(IEnumerable<IConsensusPlugin> consensusPlugins)
         {
             ChainSpec chainSpec = LoadChainSpec(_jsonSerializer);
+            ChainSpecParametersProvider chainSpecParametersProvider = new(chainSpec, _jsonSerializer);
             bool wasCreated = Interlocked.CompareExchange(ref _apiCreated, 1, 0) == 1;
             if (wasCreated)
             {
                 throw new NotSupportedException("Creation of multiple APIs not supported.");
             }
 
-            string engine = chainSpec.SealEngineType;
+            string engine = chainSpecParametersProvider.SealEngineType;
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
             INethermindApi nethermindApi =
                 enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
                 new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
-            nethermindApi.SealEngineType = engine;
-            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
+            nethermindApi.ChainSpecParametersProvider = chainSpecParametersProvider;
+            nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, chainSpecParametersProvider, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
 
             SetLoggerVariables(chainSpec);
@@ -90,7 +91,7 @@ namespace Nethermind.Runner.Ethereum.Api
         {
             _logManager.SetGlobalVariable("chain", chainSpec.Name);
             _logManager.SetGlobalVariable("chainId", chainSpec.ChainId);
-            _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
+            // _logManager.SetGlobalVariable("engine", chainSpec.SealEngineType);
         }
     }
 }

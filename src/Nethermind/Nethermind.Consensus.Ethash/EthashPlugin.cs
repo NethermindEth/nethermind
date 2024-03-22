@@ -7,6 +7,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -25,7 +26,8 @@ namespace Nethermind.Consensus.Ethash
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi;
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
+            IChainSpecParametersProvider? _parameters = _nethermindApi.ChainSpecParametersProvider;
+            if (_parameters?.SealEngineType != Nethermind.Core.SealEngineType.Ethash)
             {
                 return Task.CompletedTask;
             }
