@@ -143,6 +143,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockHeader blockHeader = Build.A.BlockHeader.WithGasLimit(gasLimit).WithGasUsed(gasUsed).TestObject;
             Block headBlock = Build.A.Block.Genesis.WithHeader(blockHeader).TestObject;
             BlockParameter newestBlock = new((long)0);
+            blockFinder.Head.Returns(headBlock);
             blockFinder.FindBlock(newestBlock).Returns(headBlock);
             ISpecProvider specProvider = GetSpecProviderWithEip1559EnabledAs(true);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, specProvider: specProvider);
@@ -209,7 +210,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             Block headBlock = Build.A.Block.WithNumber(10).TestObject;
             Block blockToSetParentOf = headBlock;
-
+            blockFinder.Head.Returns(headBlock);
             blockFinder.FindBlock(lastBlockNumber).Returns(headBlock);
             Block parentBlock;
             for (int i = 1; i < blockCount && newestBlockNumber - i >= 0; i++)
@@ -388,6 +389,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                     .WithTransactions(txSecondBlock).TestObject;
                 IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
                 blockFinder.FindBlock(blockParameter).Returns(secondBlock);
+                blockFinder.Head.Returns(secondBlock);
                 blockFinder.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
 
                 IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
@@ -397,6 +399,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                     GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
                 return feeHistoryOracle1;
             }
+        }
+
+        private static FeeHistoryOracle GetSubstitutedFeeHistoryOracleWithBlockFinder()
+        {
+            Block headBlock = Build.A.Block.WithNumber(0).TestObject;
+            IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+            blockFinder.Head.Returns(headBlock);
+
+            return GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder);
         }
 
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
