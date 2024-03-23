@@ -25,6 +25,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
@@ -260,7 +261,9 @@ public static class Program
     private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
     {
         static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
-        return args.GroupBy(GetArgumentName).Where(g => g.Count() > 1).Select(g => g.Key);
+        return args.GroupBy(GetArgumentName, new MemoryContentsComparer<char>())
+            .Where(g => g.Key.Length > 0 && g.Count() > 1)
+            .Select(g => g.Key);
     }
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
