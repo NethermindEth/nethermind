@@ -139,8 +139,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
-
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
