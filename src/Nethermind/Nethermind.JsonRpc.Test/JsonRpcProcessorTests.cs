@@ -10,6 +10,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.JsonRpc.Modules;
@@ -67,6 +68,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":12345678901234567890,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(decimal.Parse("12345678901234567890")));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -75,6 +77,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":\"0xa1aa12434\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo("0xa1aa12434"));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -83,6 +86,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":67,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(67));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -99,6 +103,7 @@ public class JsonRpcProcessorTests
         {
             result[0].Response.Should().BeOfType<JsonRpcSuccessResponse>();
         }
+        await result.TryDisposeAsync();
     }
 
 
@@ -108,6 +113,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":9223372036854775807,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(long.MaxValue));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -116,6 +122,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":\";\\\\\\\"\",\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(";\\\""));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -124,6 +131,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("{\"id\":null,\"jsonrpc\":\"2.0\",\"method\":\"eth_getTransactionCount\",\"params\":[\"0x7f01d9b227593e033bf8d6fc86e634d27aa85568\",\"0x668c24\"]}");
         result.Should().HaveCount(1);
         Assert.That(result[0].Response!.Id, Is.EqualTo(null));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -140,6 +148,7 @@ public class JsonRpcProcessorTests
         {
             (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
         }
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -156,6 +165,7 @@ public class JsonRpcProcessorTests
         {
             (await result[0].BatchedResponses!.Select(r => r.Response).ToListAsync()).Should().AllBeOfType<JsonRpcSuccessResponse>();
         }
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -165,6 +175,7 @@ public class JsonRpcProcessorTests
         result.Should().HaveCount(1);
         result[0].Response.Should().NotBeNull();
         result[0].Response.Should().BeOfType<JsonRpcErrorResponse>();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -177,6 +188,7 @@ public class JsonRpcProcessorTests
         var resultList = await result[0].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -186,6 +198,7 @@ public class JsonRpcProcessorTests
         result.Should().HaveCount(1);
         result[0].BatchedResponses.Should().NotBeNull();
         result[0].Response.Should().BeNull();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -195,6 +208,7 @@ public class JsonRpcProcessorTests
         result.Should().HaveCount(1);
         result[0].BatchedResponses.Should().NotBeNull();
         result[0].Response.Should().BeNull();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -208,6 +222,7 @@ public class JsonRpcProcessorTests
         result[1].Response.Should().NotBeNull();
         result[1].BatchedResponses.Should().BeNull();
         result[1].Response.Should().NotBeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -223,6 +238,7 @@ public class JsonRpcProcessorTests
         List<JsonRpcResult.Entry> resultList = await result[1].BatchedResponses!.ToListAsync();
         resultList.Should().HaveCount(2);
         Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -236,6 +252,7 @@ public class JsonRpcProcessorTests
         result[1].Response.Should().NotBeNull();
         result[1].BatchedResponses.Should().BeNull();
         result[1].Response.Should().BeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -247,6 +264,7 @@ public class JsonRpcProcessorTests
         result[0].BatchedResponses.Should().BeNull();
         result[1].Response.Should().BeSameAs(_errorResponse);
         result[1].BatchedResponses.Should().BeNull();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -266,6 +284,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync(request.ToString());
         result.Should().HaveCount(1);
         result[0].Response.Should().BeAssignableTo<JsonRpcErrorResponse>();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -291,6 +310,7 @@ public class JsonRpcProcessorTests
         batchedResults.Should().AllSatisfy(rpcResult =>
             rpcResult.Response.Should().BeOfType(_returnErrors ? typeof(JsonRpcErrorResponse) : typeof(JsonRpcSuccessResponse))
         );
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -322,6 +342,7 @@ public class JsonRpcProcessorTests
         }
 
         (await enumerator.MoveNextAsync()).Should().BeFalse();
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -330,6 +351,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult> result = await ProcessAsync("invalid");
         result.Should().HaveCount(1);
         result[0].Response.Should().BeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -340,6 +362,7 @@ public class JsonRpcProcessorTests
         result[0].Response.Should().BeNull();
         result[0].BatchedResponses.Should().NotBeNull();
         Assert.IsTrue((await result[0].BatchedResponses!.ToListAsync()).All(r => r.Response != _errorResponse));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -350,6 +373,7 @@ public class JsonRpcProcessorTests
         result[0].Response.Should().NotBeNull();
         result[0].BatchedResponses.Should().BeNull();
         result[0].Response.Should().NotBeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -362,6 +386,7 @@ public class JsonRpcProcessorTests
         IList<JsonRpcResult.Entry> resultList = (await result[0].BatchedResponses!.ToListAsync());
         resultList.Should().HaveCount(3);
         Assert.IsTrue(resultList.All(r => r.Response != _errorResponse));
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -372,6 +397,7 @@ public class JsonRpcProcessorTests
         result[0].Response.Should().NotBeNull();
         result[0].BatchedResponses.Should().BeNull();
         result[0].Response.Should().BeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
@@ -382,6 +408,7 @@ public class JsonRpcProcessorTests
         result[0].Response.Should().NotBeNull();
         result[0].BatchedResponses.Should().BeNull();
         result[0].Response.Should().BeSameAs(_errorResponse);
+        await result.TryDisposeAsync();
     }
 
     [Test]
