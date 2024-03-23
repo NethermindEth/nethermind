@@ -114,7 +114,7 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-        string duplicateArgumentsList = string.Join(',', GetDuplicateArguments(args));
+        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
         if(!string.IsNullOrEmpty(duplicateArgumentsList))
         {
             _logger.Error($"Failed due to duplicate arguments - [{duplicateArgumentsList}] passed while execution - ");
