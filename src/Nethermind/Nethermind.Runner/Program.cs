@@ -113,12 +113,14 @@ public static class Program
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
 
-            string duplicateArgument = CheckForDuplicateArgs(args); 
-            if(!string.IsNullOrEmpty(duplicateArgument)){
-                _logger.Error($"Failed due to duplicate argument - {duplicateArgument} passed while execution - ", new Exception("Duplicate Arguments"));
-                _appClosed.Wait();
-                return;
-            }
+        string duplicateArgumentsList = string.Join(',', GetDuplicateArguments(args));
+        if(!string.IsNullOrEmpty(duplicateArgumentsList))
+        {
+            _logger.Error($"Failed due to duplicate arguments - [{duplicateArgumentsList}] passed while execution - ");
+            Environment.ExitCode = ExitCodes.DuplicatedArguments;
+            return;
+        }
+
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
 
@@ -255,30 +257,12 @@ public static class Program
         }
     }
 
-    private static string CheckForDuplicateArgs(string[] args)
+    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
     {
-        Dictionary<string, string> argPairs = new Dictionary<string, string>();
-        foreach (var arg in args){
-            var key = "";
-            if (arg.StartsWith("--"))
-            {
-                key = arg.Substring(2);
-                if(argPairs.ContainsKey(key)){
-                    return key;
-                }
-                argPairs[key] = ""; 
-            }
-            else if (arg.StartsWith("-"))
-            {
-                key = arg.Substring(1);
-                if(argPairs.ContainsKey(key)){
-                    return key;
-                }
-                argPairs[key] = ""; 
-            }
-        }
-        return string.Empty;
+        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+        return args.GroupBy(GetArgumentName).Where(g => g.Count() > 1).Select(g => g.Key);
     }
+
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
     {
         var alternativePath = nativeLibraryName switch
