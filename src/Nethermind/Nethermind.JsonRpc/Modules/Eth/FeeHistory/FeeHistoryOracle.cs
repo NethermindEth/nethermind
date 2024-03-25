@@ -191,14 +191,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             TxReceipt[]? receipts = receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
             List<RewardInfo> valueTuples = new(txs.Length);
-            long gasUsedTotalBeforeReceipt = 0;
+            long previousGasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
                 Transaction tx = txs[i];
                 tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
                 long gasUsedTotal = receipts[i].GasUsedTotal;
-                valueTuples.Add(new RewardInfo(gasUsedTotal - gasUsedTotalBeforeReceipt, premiumPerGas));
-                gasUsedTotalBeforeReceipt += gasUsedTotal;
+                valueTuples.Add(new RewardInfo(gasUsedTotal - previousGasUsedTotal, premiumPerGas));
+                previousGasUsedTotal = gasUsedTotal;
             }
 
             valueTuples.Sort((i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
