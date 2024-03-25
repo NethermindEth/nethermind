@@ -34,14 +34,10 @@ namespace Nethermind.Evm.Tracing
             _blocksConfig = blocksConfig;
         }
 
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, CancellationToken token = new())
+        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin = DefaultErrorMargin, CancellationToken token = new())
         {
-            return Estimate(tx, header, gasTracer, DefaultErrorMargin, token);
-        }
-        public long Estimate(Transaction tx, BlockHeader header, EstimateGasTracer gasTracer, int errorMargin, CancellationToken token = new())
-        {
-            if (errorMargin < 0) throw new ArgumentException("Cannot be negative.", nameof(errorMargin));
-            if (errorMargin >= 10000) throw new ArgumentException("Expression cannot exceed 100% in basis points.", nameof(errorMargin));
+            ArgumentOutOfRangeException.ThrowIfNegative(errorMargin, nameof(errorMargin));
+            ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(errorMargin, 10000, nameof(errorMargin));
             IReleaseSpec releaseSpec = _specProvider.GetSpec(header.Number + 1, header.Timestamp + _blocksConfig.SecondsPerSlot);
 
             tx.SenderAddress ??= Address.Zero; // If sender is not specified, use zero address.
