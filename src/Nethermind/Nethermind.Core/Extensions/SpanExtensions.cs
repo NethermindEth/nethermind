@@ -6,7 +6,7 @@ using System.Buffers;
 using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Core.Extensions
@@ -152,5 +152,12 @@ namespace Nethermind.Core.Extensions
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in ReadOnlySpan<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
+
+        public static ArrayPoolList<T> ToPooledList<T>(this in ReadOnlySpan<T> span)
+        {
+            ArrayPoolList<T> newList = new ArrayPoolList<T>(span.Length);
+            newList.AddRange(span);
+            return newList;
+        }
     }
 }

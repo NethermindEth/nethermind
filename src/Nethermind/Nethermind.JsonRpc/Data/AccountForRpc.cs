@@ -16,7 +16,7 @@ public readonly struct AccountForRpc
         _account = account;
     }
 
-    public AccountForRpc(in AccountStruct? account)
+    public AccountForRpc(in AccountStruct account)
     {
         _accountStruct = account;
     }

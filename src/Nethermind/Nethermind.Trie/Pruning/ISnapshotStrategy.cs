@@ -6,6 +6,7 @@ namespace Nethermind.Trie.Pruning
     public interface IPruningStrategy
     {
         bool PruningEnabled { get; }
+        int MaxDepth { get; }
         bool ShouldPrune(in long currentMemory);
     }
 }

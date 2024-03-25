@@ -167,7 +167,7 @@ namespace Nethermind.Facade.Test
             _transactionProcessor.Received().CallAndRestore(
                 tx,
                 Arg.Is<BlockExecutionContext>(blkCtx =>
-                blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
+                    blkCtx.Header.IsPostMerge && blkCtx.Header.Random == TestItem.KeccakA),
                 Arg.Any<ITxTracer>());
         }
 

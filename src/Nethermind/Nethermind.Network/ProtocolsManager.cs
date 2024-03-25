@@ -325,7 +325,7 @@ namespace Nethermind.Network
                 _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
                 {
                     ClientId = typedArgs.ClientId,
-                    Capabilities = typedArgs.Capabilities.ToArray(),
+                    Capabilities = typedArgs.Capabilities,
                     P2PVersion = typedArgs.P2PVersion,
                     ListenPort = typedArgs.ListenPort
                 });
@@ -442,17 +442,14 @@ namespace Nethermind.Network
             AddCapabilityMessage message = new(capability);
             foreach ((Guid _, ISession session) in _sessions)
             {
-                if (session.HasAgreedCapability(capability))
+                if (!session.HasAgreedCapability(capability) && session.HasAvailableCapability(capability))
                 {
-                    continue;
+                    session.DeliverMessage(message);
                 }
-
-                if (!session.HasAvailableCapability(capability))
+                else
                 {
-                    continue;
+                    message.Dispose();
                 }
-
-                session.DeliverMessage(message);
             }
         }
     }

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
@@ -32,11 +33,11 @@ namespace Nethermind.Blockchain.Synchronization
         string ProtocolCode { get; }
         void Disconnect(DisconnectReason reason, string details);
         Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
-        Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token);
         Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token);
         void NotifyOfNewBlock(Block block, SendBlockMode mode);
-        Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
-        Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
+        Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token);
+        Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token);
     }
 }

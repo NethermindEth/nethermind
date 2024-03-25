@@ -30,7 +30,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 using Nethermind.Synchronization.ParallelSync;
-using Nethermind.Trie;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Block = Nethermind.Core.Block;
@@ -119,6 +118,20 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<UInt256?>.Success(_gasPriceOracle.GetGasPriceEstimate());
     }
 
+    public ResultWrapper<UInt256?> eth_blobBaseFee()
+    {
+        if (_blockFinder.Head?.Header?.ExcessBlobGas is null)
+        {
+            return ResultWrapper<UInt256?>.Success(UInt256.Zero);
+        }
+        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
+            out UInt256 blobGasPricePerUnit))
+        {
+            return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
+        }
+        return ResultWrapper<UInt256?>.Success(blobGasPricePerUnit);
+    }
+
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()
     {
         UInt256 gasPriceWithBaseFee = _gasPriceOracle.GetMaxPriorityGasFeeEstimate();
@@ -164,8 +177,8 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
 
-        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
-        return Task.FromResult(ResultWrapper<UInt256?>.Success(account?.Balance ?? UInt256.Zero));
+        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        return Task.FromResult(ResultWrapper<UInt256?>.Success(account.Balance));
     }
 
     public ResultWrapper<byte[]> eth_getStorageAt(Address address, UInt256 positionIndex,
@@ -202,10 +215,8 @@ public partial class EthRpcModule : IEthRpcModule
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
 
-        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
-        UInt256 nonce = account?.Nonce ?? 0;
-
-        return Task.FromResult(ResultWrapper<UInt256>.Success(nonce));
+        _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account);
+        return Task.FromResult(ResultWrapper<UInt256>.Success(account.Nonce));
     }
 
     public ResultWrapper<UInt256?> eth_getBlockTransactionCountByHash(Hash256 blockHash)
@@ -254,13 +265,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
-        {
-            return GetStateFailureResult<byte[]>(header);
-        }
-
-        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, address);
-        return ResultWrapper<byte[]>.Success(account is null ? Array.Empty<byte>() : _stateReader.GetCode(account.Value.CodeHash));
+        return !HasStateForBlock(_blockchainBridge, header!)
+            ? GetStateFailureResult<byte[]>(header)
+            : ResultWrapper<byte[]>.Success(
+                _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
+                    ? _stateReader.GetCode(account.CodeHash)
+                    : Array.Empty<byte>());
     }
 
     public ResultWrapper<byte[]> eth_sign(Address addressData, byte[] message)
@@ -711,13 +721,12 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!_blockchainBridge.HasStateForBlock(header!))
-        {
-            return GetStateFailureResult<AccountForRpc?>(header);
-        }
-
-        AccountStruct? account = _stateReader.GetAccount(header!.StateRoot!, accountAddress);
-        return ResultWrapper<AccountForRpc?>.Success(account is null ? null : new AccountForRpc(account.Value));
+        return !HasStateForBlock(_blockchainBridge, header!)
+            ? GetStateFailureResult<AccountForRpc?>(header)
+            : ResultWrapper<AccountForRpc?>.Success(
+                _stateReader.TryGetAccount(header!.StateRoot!, accountAddress, out AccountStruct account)
+                    ? new AccountForRpc(account)
+                    : null);
     }
 
     private static ResultWrapper<TResult> GetFailureResult<TResult, TSearch>(SearchResult<TSearch> searchResult, bool isTemporary) where TSearch : class =>

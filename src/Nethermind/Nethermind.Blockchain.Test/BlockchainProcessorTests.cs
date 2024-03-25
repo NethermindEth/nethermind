@@ -78,7 +78,7 @@ namespace Nethermind.Blockchain.Test
                     if (blockTracer != NullBlockTracer.Instance)
                     {
                         // this is for block reruns on failure for diag tracing
-                        throw new InvalidBlockException(suggestedBlocks[0]);
+                        throw new InvalidBlockException(suggestedBlocks[0], "wrong tracer");
                     }
 
                     _logger.Info($"Processing {suggestedBlocks.Last().ToString(Block.Format.Short)}");
@@ -96,7 +96,7 @@ namespace Nethermind.Blockchain.Test
                                 {
                                     _allowedToFail.Remove(hash);
                                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(suggestedBlocks.Last(), Array.Empty<TxReceipt>()));
-                                    throw new InvalidBlockException(suggestedBlock);
+                                    throw new InvalidBlockException(suggestedBlock, "allowed to fail");
                                 }
 
                                 notYet = true;

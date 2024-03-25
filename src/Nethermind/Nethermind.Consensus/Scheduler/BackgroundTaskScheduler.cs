@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.Scheduler;
 /// - Task will not run if block processing is happening and it still have some time left.
 ///   It is up to the task to determine what happen if cancelled, maybe it will reschedule for later, or resume later, but
 ///   preferably, stop execution immediately. Don't hang BTW. Other background task need to cancel too.
+/// - A failure at this level is considered unexpected and loud. Exception should be handled at handler level.
 ///
 /// Note: Yes, I know there is a built in TaskScheduler that can do some magical stuff that stop execution on async
 /// and stuff, but that is complicated and I don't wanna explain why you need `async Task.Yield()` in the middle of a loop,
@@ -86,7 +87,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
                     // from its deadline, we re-queue it. We do this in case there are some task in the queue that already
                     // reached deadline during block processing in which case, it will need to execute in order to handle
                     // its cancellation.
-                    if (DateTimeOffset.Now < activity.Deadline)
+                    if (DateTimeOffset.UtcNow < activity.Deadline)
                     {
                         await _taskQueue.Writer.WriteAsync(activity, _mainCancellationTokenSource.Token);
                         // Throttle deque to prevent infinite loop.
@@ -106,7 +107,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
             }
             catch (Exception e)
             {
-                if (_logger.IsDebug) _logger.Debug($"Error processing background task {e}.");
+                if (_logger.IsError) _logger.Error($"Error processing background task {e}.");
             }
         }
     }
@@ -114,9 +115,9 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
     public void ScheduleTask<TReq>(TReq request, Func<TReq, CancellationToken, Task> fulfillFunc, TimeSpan? timeout = null)
     {
         timeout ??= DefaultTimeout;
-        DateTimeOffset deadline = DateTimeOffset.Now + timeout.Value;
+        DateTimeOffset deadline = DateTimeOffset.UtcNow + timeout.Value;
 
-        IActivity activity = new Activity<TReq>()
+        IActivity activity = new Activity<TReq>
         {
             Deadline = deadline,
             Request = request,
@@ -125,6 +126,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
 
         if (!_taskQueue.Writer.TryWrite(activity))
         {
+            request.TryDispose();
             // This should never happen unless something goes very wrong.
             throw new InvalidOperationException("Unable to write to background task queue.");
         }
@@ -149,7 +151,7 @@ public class BackgroundTaskScheduler : IBackgroundTaskScheduler, IAsyncDisposabl
         public async Task Do(CancellationToken cancellationToken)
         {
             using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-            DateTimeOffset now = DateTimeOffset.Now;
+            DateTimeOffset now = DateTimeOffset.UtcNow;
             TimeSpan timeToComplete = Deadline - now;
             if (timeToComplete <= TimeSpan.Zero)
             {

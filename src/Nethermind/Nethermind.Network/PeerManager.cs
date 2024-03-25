@@ -372,9 +372,9 @@ namespace Nethermind.Network
             // Once the connection was established, the active peer count will increase, but it might
             // not pass the handshake and the status check. So we wait for a bit to see if we can get
             // the active peer count to go down within this time window.
-            DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.Now < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();

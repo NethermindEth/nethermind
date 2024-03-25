@@ -57,6 +57,18 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
+        if (syncConfig.SnapServingEnabled && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
@@ -92,7 +104,9 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            pruningStrategy = Prune
+                .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
         {
@@ -150,9 +164,8 @@ public class InitializeStateDb : IStep
                 try
                 {
                     _logger!.Info("Collecting trie stats and verifying that no nodes are missing...");
-                    IWorldState diagStateProvider = stateManager.GlobalWorldState;
-                    diagStateProvider.StateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
-                    TrieStats stats = diagStateProvider.CollectStats(getApi.DbProvider.CodeDb, _api.LogManager);
+                    Hash256 stateRoot = getApi.BlockTree!.Head?.StateRoot ?? Keccak.EmptyTreeHash;
+                    TrieStats stats = stateManager.GlobalStateReader.CollectStats(stateRoot, getApi.DbProvider.CodeDb, _api.LogManager);
                     _logger.Info($"Starting from {getApi.BlockTree.Head?.Number} {getApi.BlockTree.Head?.StateRoot}{Environment.NewLine}" + stats);
                 }
                 catch (Exception ex)

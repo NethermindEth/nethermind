@@ -14,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -26,7 +25,6 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 

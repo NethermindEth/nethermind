@@ -19,15 +19,14 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -39,6 +38,7 @@ public class SnapServer : ISnapServer
     private readonly IReadOnlyTrieStore _store;
     private readonly TrieStoreWithReadFlags _storeWithReadFlag;
     private readonly IReadOnlyKeyValueStore _codeDb;
+    private readonly ILastNStateRootTracker _stateRootTracker;
     private readonly ILogManager _logManager;
     private readonly ILogger _logger;
 
@@ -47,55 +47,34 @@ public class SnapServer : ISnapServer
     // On hashdb, this causes each IOP to be significantly larger, so it make it a lot slower than it already is.
     private readonly ReadFlags _optimizedReadFlags = ReadFlags.HintCacheMiss;
 
-    // Some cache to make sure we don't accidentally serve blocks with missing trie node.
-    // We don't know for sure if a tree was pruned with just the root hash.
-    private readonly LruCache<ValueHash256, DateTimeOffset> _rootWithMissingNode = new LruCache<ValueHash256, DateTimeOffset>(256, "");
-
     private readonly AccountDecoder _decoder = new AccountDecoder();
 
     private const long HardResponseByteLimit = 2000000;
     private const int HardResponseNodeLimit = 100000;
 
-    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILogManager logManager)
+    public SnapServer(IReadOnlyTrieStore trieStore, IReadOnlyKeyValueStore codeDb, ILastNStateRootTracker stateRootTracker, ILogManager logManager)
     {
         _store = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
         _storeWithReadFlag = new TrieStoreWithReadFlags(_store, _optimizedReadFlags);
         _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        _stateRootTracker = stateRootTracker;
         _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
         _logger = logManager.GetClassLogger();
     }
 
-    private bool IsRootMissing(in ValueHash256 rootHash)
+    private bool IsRootMissing(in ValueHash256 stateRoot)
     {
-        // TODO: Before checking missing node cache, actually check StateReader.
-        if (_rootWithMissingNode.TryGet(rootHash, out DateTimeOffset missingTime))
-        {
-            if (DateTimeOffset.Now - missingTime < TimeSpan.FromSeconds(10))
-            {
-                return true;
-            }
-
-            // So, problem is, it could be that the missing root was just not processed, so we can't just not retry
-            // forever. `DateTimeOffset.Now` is probably heavy though.
-            _rootWithMissingNode.Delete(rootHash);
-        }
-
-        return false;
+        return !_stateRootTracker.HasStateRoot(stateRoot.ToCommitment());
     }
 
-    private void TrackTrieNodeException(in ValueHash256 rootHash)
+    public IOwnedReadOnlyList<byte[]>? GetTrieNodes(IReadOnlyList<PathGroup> pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
     {
-        _rootWithMissingNode.Set(rootHash, DateTimeOffset.Now);
-    }
+        if (IsRootMissing(rootHash)) return ArrayPoolList<byte[]>.Empty();
 
-    public byte[][]? GetTrieNodes(PathGroup[] pathSet, in ValueHash256 rootHash, CancellationToken cancellationToken)
-    {
-        if (IsRootMissing(rootHash)) return Array.Empty<byte[]>();
-
-        if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Length}");
+        if (_logger.IsDebug) _logger.Debug($"Get trie nodes {pathSet.Count}");
         // TODO: use cache to reduce node retrieval from disk
-        int pathLength = pathSet.Length;
-        using ArrayPoolList<byte[]> response = new(pathLength);
+        int pathLength = pathSet.Count;
+        ArrayPoolList<byte[]> response = new(pathLength);
         StateTree tree = new(_store, _logManager);
         bool abort = false;
 
@@ -114,7 +93,6 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
@@ -139,19 +117,20 @@ public class SnapServer : ISnapServer
                     }
                     catch (MissingTrieNodeException)
                     {
-                        TrackTrieNodeException(rootHash);
                         abort = true;
                     }
                     break;
             }
         }
-        return response.ToArray();
+
+        if (response.Count == 0) return ArrayPoolList<byte[]>.Empty();
+        return response;
     }
 
-    public byte[][] GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
+    public IOwnedReadOnlyList<byte[]> GetByteCodes(IReadOnlyList<ValueHash256> requestedHashes, long byteLimit, CancellationToken cancellationToken)
     {
         long currentByteCount = 0;
-        using ArrayPoolList<byte[]> response = new(requestedHashes.Count);
+        ArrayPoolList<byte[]> response = new(requestedHashes.Count);
 
         if (byteLimit > HardResponseByteLimit)
         {
@@ -167,10 +146,11 @@ public class SnapServer : ISnapServer
                 break;
             }
 
-            // TODO: handle empty code in the DB itself?
             if (codeHash.Bytes.SequenceEqual(Keccak.OfAnEmptyString.Bytes))
             {
                 response.Add(Array.Empty<byte>());
+                currentByteCount += 1;
+                continue;
             }
 
             byte[]? code = _codeDb[codeHash.Bytes];
@@ -181,30 +161,33 @@ public class SnapServer : ISnapServer
             }
         }
 
-        return response.ToArray();
+        return response;
     }
 
-    public (PathWithAccount[], byte[][]) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<PathWithAccount>, IOwnedReadOnlyList<byte[]>) GetAccountRanges(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (Array.Empty<PathWithAccount>(), Array.Empty<byte[]>());
+        if (IsRootMissing(rootHash)) return (ArrayPoolList<PathWithAccount>.Empty(), ArrayPoolList<byte[]>.Empty());
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
-        (IDictionary<ValueHash256, byte[]>? requiredNodes, long _, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(rootHash, startingHash,
-            limitHash?.ToCommitment() ?? Keccak.MaxValue, byteLimit, HardResponseByteLimit, null, null, cancellationToken);
+        AccountCollector accounts = new AccountCollector();
+        (long _, IOwnedReadOnlyList<byte[]> proofs, _) = GetNodesFromTrieVisitor(
+            rootHash,
+            startingHash,
+            limitHash?.ToCommitment() ?? Keccak.MaxValue,
+            byteLimit,
+            null,
+            null,
+            accounts,
+            cancellationToken);
 
-        PathWithAccount[] nodes = new PathWithAccount[requiredNodes.Count];
-        int index = 0;
-        foreach (PathWithAccount? result in requiredNodes.Select(res => new PathWithAccount(res.Key, _decoder.Decode(new RlpStream(res.Value)))))
-        {
-            nodes[index] = result;
-            index += 1;
-        }
-
-        return nodes.Length == 0 ? (nodes, Array.Empty<byte[]>()) : (nodes, proofs);
+        ArrayPoolList<PathWithAccount> nodes = accounts.Accounts;
+        return (nodes, proofs);
     }
 
-    public (PathWithStorageSlot[][], byte[][]?) GetStorageRanges(in ValueHash256 rootHash, PathWithAccount[] accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
+    public (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>, IOwnedReadOnlyList<byte[]>) GetStorageRanges(in ValueHash256 rootHash, IReadOnlyList<PathWithAccount> accounts, in ValueHash256? startingHash, in ValueHash256? limitHash, long byteLimit, CancellationToken cancellationToken)
     {
-        if (IsRootMissing(rootHash)) return (Array.Empty<PathWithStorageSlot[]>(), Array.Empty<byte[]>());
+        if (IsRootMissing(rootHash)) return (ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(), ArrayPoolList<byte[]>.Empty());
+        byteLimit = Math.Max(Math.Min(byteLimit, HardResponseByteLimit), 1);
 
         long responseSize = 0;
         StateTree tree = new(_storeWithReadFlag, _logManager);
@@ -216,8 +199,8 @@ public class SnapServer : ISnapServer
             limitHash1 = ValueKeccak.MaxValue;
         }
 
-        using ArrayPoolList<PathWithStorageSlot[]> responseNodes = new(accounts.Length);
-        for (int i = 0; i < accounts.Length; i++)
+        ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>> responseNodes = new(accounts.Count);
+        for (int i = 0; i < accounts.Count; i++)
         {
             if (responseSize > byteLimit || cancellationToken.IsCancellationRequested)
             {
@@ -226,63 +209,63 @@ public class SnapServer : ISnapServer
 
             if (responseSize > 1 && (Math.Min(byteLimit, HardResponseByteLimit) - responseSize) < 10000)
             {
-                return (responseNodes.ToArray(), Array.Empty<byte[]>());
+                break;
             }
 
             Account accountNeth = GetAccountByPath(tree, rootHash, accounts[i].Path.Bytes.ToArray());
             if (accountNeth is null)
             {
-                return (responseNodes.ToArray(), Array.Empty<byte[]>());
+                break;
             }
 
             Hash256? storagePath = accounts[i].Path.ToCommitment();
 
-            (IDictionary<ValueHash256, byte[]>? requiredNodes, long innerResponseSize, byte[][] proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
+            PathWithStorageCollector pathWithStorageCollector = new PathWithStorageCollector();
+            (long innerResponseSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) = GetNodesFromTrieVisitor(
                 rootHash,
                 startingHash1,
                 limitHash1,
                 byteLimit - responseSize,
-                HardResponseByteLimit - responseSize,
                 storagePath,
                 accountNeth.StorageRoot,
+                pathWithStorageCollector,
                 cancellationToken);
 
-            if (requiredNodes.Count == 0)
+            if (pathWithStorageCollector.Slots.Count == 0)
             {
-                return (responseNodes.ToArray(), Array.Empty<byte[]>());
+                break;
             }
 
-            PathWithStorageSlot[] nodes = new PathWithStorageSlot[requiredNodes.Count];
-            int index = 0;
-            foreach (PathWithStorageSlot? result in requiredNodes.Select(res => new PathWithStorageSlot(res.Key, res.Value)))
-            {
-                nodes[index] = result.Value;
-                index += 1;
-            }
-            responseNodes.Add(nodes);
+            responseNodes.Add(pathWithStorageCollector.Slots);
             if (stoppedEarly || startingHash1 != Keccak.Zero)
             {
-                return (responseNodes.ToArray(), proofs);
+                return (responseNodes, proofs);
             }
+
+            proofs.Dispose();
             responseSize += innerResponseSize;
         }
-        return (responseNodes.ToArray(), Array.Empty<byte[]>());
+
+        return (responseNodes, ArrayPoolList<byte[]>.Empty());
     }
 
-    private (IDictionary<ValueHash256, byte[]>?, long, byte[][], bool) GetNodesFromTrieVisitor(in ValueHash256 rootHash, in ValueHash256 startingHash, in ValueHash256 limitHash,
-        long byteLimit, long hardByteLimit, in ValueHash256? storage, in ValueHash256? storageRoot, CancellationToken cancellationToken)
+    private (long bytesSize, IOwnedReadOnlyList<byte[]> proofs, bool stoppedEarly) GetNodesFromTrieVisitor(
+        in ValueHash256 rootHash,
+        in ValueHash256 startingHash,
+        in ValueHash256 limitHash,
+        long byteLimit,
+        in ValueHash256? storage,
+        in ValueHash256? storageRoot,
+        RangeQueryVisitor.ILeafValueCollector valueCollector,
+        CancellationToken cancellationToken)
     {
-        bool isStorage = storage is not null;
         PatriciaTree tree = new(_store, _logManager);
-        using RangeQueryVisitor visitor = new(startingHash, limitHash, !isStorage, byteLimit, hardByteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
+        using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };
         tree.Accept(visitor, rootHash.ToCommitment(), opt, storageAddr: storage?.ToCommitment(), storageRoot: storageRoot?.ToCommitment());
 
-        (IDictionary<ValueHash256, byte[]>? requiredNodes, long responseSize) = visitor.GetNodesAndSize();
-        byte[][] proofs = Array.Empty<byte[]>();
-        if (startingHash != Keccak.Zero || visitor.StoppedEarly) proofs = visitor.GetProofs();
-
-        return (requiredNodes, responseSize, proofs, visitor.StoppedEarly);
+        ArrayPoolList<byte[]> proofs = startingHash != Keccak.Zero || visitor.StoppedEarly ? visitor.GetProofs() : ArrayPoolList<byte[]>.Empty();
+        return (visitor.GetBytesSize(), proofs, visitor.StoppedEarly);
     }
 
     private Account? GetAccountByPath(StateTree tree, in ValueHash256 rootHash, byte[] accountPath)
@@ -295,7 +278,6 @@ public class SnapServer : ISnapServer
         }
         catch (MissingTrieNodeException)
         {
-            TrackTrieNodeException(rootHash);
             return null;
         }
     }

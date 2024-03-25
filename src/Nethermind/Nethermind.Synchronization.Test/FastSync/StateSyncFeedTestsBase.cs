@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -17,12 +19,16 @@ using Nethermind.Core.Timers;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.State;
+using Nethermind.State.Snap;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -214,37 +220,48 @@ namespace Nethermind.Synchronization.Test.FastSync
             }
         }
 
-        protected class SyncPeerMock : ISyncPeer
+        protected class SyncPeerMock : ISyncPeer, ISnapSyncPeer
         {
             public string Name => "Mock";
 
             private readonly IDb _codeDb;
-            private readonly IDb _stateDb;
+            private readonly IReadOnlyKeyValueStore _stateDb;
+            private readonly ISnapServer _snapServer;
 
             private Hash256[]? _filter;
-            private readonly Func<IReadOnlyList<Hash256>, Task<byte[][]>>? _executorResultFunction;
+            private readonly Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? _executorResultFunction;
             private readonly long _maxRandomizedLatencyMs;
 
             public SyncPeerMock(
                 IDb stateDb,
                 IDb codeDb,
-                Func<IReadOnlyList<Hash256>, Task<byte[][]>>? executorResultFunction = null,
+                Func<IReadOnlyList<Hash256>, Task<IOwnedReadOnlyList<byte[]>>>? executorResultFunction = null,
                 long? maxRandomizedLatencyMs = null,
                 Node? node = null
             )
             {
-                _stateDb = stateDb;
                 _codeDb = codeDb;
                 _executorResultFunction = executorResultFunction;
 
-                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth66" };
+                Node = node ?? new Node(TestItem.PublicKeyA, "127.0.0.1", 30302, true) { EthDetails = "eth67" };
                 _maxRandomizedLatencyMs = maxRandomizedLatencyMs ?? 0;
+
+                ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
+                alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
+                IReadOnlyTrieStore trieStore = new TrieStore(stateDb, Nethermind.Trie.Pruning.No.Pruning,
+                    Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
+                _stateDb = trieStore.TrieNodeRlpStore;
+                _snapServer = new SnapServer(
+                    trieStore,
+                    codeDb,
+                    alwaysAvailableRootTracker,
+                    LimboLogs.Instance);
             }
 
             public int MaxResponseLength { get; set; } = int.MaxValue;
             public Hash256 HeadHash { get; set; } = null!;
             public string ProtocolCode { get; } = null!;
-            public byte ProtocolVersion { get; } = default;
+            public byte ProtocolVersion { get; } = 67;
             public string ClientId => "executorMock";
             public Node Node { get; }
             public long HeadNumber { get; set; }
@@ -254,7 +271,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public PublicKey Id => Node.Id;
 
-            public async Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 if (_maxRandomizedLatencyMs != 0)
                 {
@@ -263,7 +280,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 if (_executorResultFunction is not null) return await _executorResultFunction(hashes);
 
-                byte[][] responses = new byte[hashes.Count][];
+                ArrayPoolList<byte[]> responses = new(hashes.Count, hashes.Count);
 
                 int i = 0;
                 foreach (Hash256 item in hashes)
@@ -285,6 +302,11 @@ namespace Nethermind.Synchronization.Test.FastSync
 
             public bool TryGetSatelliteProtocol<T>(string protocol, out T protocolHandler) where T : class
             {
+                if (protocol == Protocol.Snap)
+                {
+                    protocolHandler = (this as T)!;
+                    return true;
+                }
                 protocolHandler = null!;
                 return false;
             }
@@ -304,12 +326,12 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -329,11 +351,41 @@ namespace Nethermind.Synchronization.Test.FastSync
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
+            public Task<AccountsAndProofs> GetAccountRange(AccountRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<SlotsAndProofs> GetStorageRange(StorageRange range, CancellationToken token)
+            {
+                throw new NotImplementedException();
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetByteCodes(IReadOnlyList<ValueHash256> codeHashes, CancellationToken token)
+            {
+                return Task.FromResult(_snapServer.GetByteCodes(codeHashes, long.MaxValue, token));
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(AccountsToRefreshRequest request, CancellationToken token)
+            {
+                IOwnedReadOnlyList<PathGroup> groups = SnapProtocolHandler.GetPathGroups(request);
+                return GetTrieNodes(new GetTrieNodesRequest()
+                {
+                    RootHash = request.RootHash,
+                    AccountAndStoragePaths = groups,
+                }, token);
+            }
+
+            public Task<IOwnedReadOnlyList<byte[]>> GetTrieNodes(GetTrieNodesRequest request, CancellationToken token)
+            {
+                var nodes = _snapServer.GetTrieNodes(request.AccountAndStoragePaths, request.RootHash, token);
+                return Task.FromResult(nodes!);
+            }
         }
     }
 }
