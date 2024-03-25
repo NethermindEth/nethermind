@@ -530,7 +530,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             _alreadySavedCode.Set(syncItem.Hash);
                         }
-                        if (syncItem.NodeDataType != NodeDataType.Code)
+                        else
                         {
                             _alreadySavedNode.Set(syncItem.Key);
                         }
