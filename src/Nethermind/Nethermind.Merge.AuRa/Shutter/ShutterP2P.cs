@@ -171,7 +171,16 @@ public class ShutterP2P
 
     internal bool BlockTreeIsReady()
     {
-        return _readOnlyBlockTree.Head is not null && !_readOnlyBlockTree.Head.IsGenesis;
+        try
+        {
+            var _ = _readOnlyBlockTree.Head!.StateRoot!;
+        }
+        catch (Exception)
+        {
+            return false;
+        }
+
+        return true;
     }
 
     internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey)
