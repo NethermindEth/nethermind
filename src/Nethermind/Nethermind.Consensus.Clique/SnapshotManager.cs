@@ -31,6 +31,7 @@ namespace Nethermind.Consensus.Clique
         private readonly IDb _blocksDb;
         private ulong _lastSignersCount = 0;
         private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private static readonly HeaderDecoder _headerDecoder = new HeaderDecoder();
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {

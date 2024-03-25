@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.TxPool;
+using System;
 
 namespace Nethermind.Consensus
 {
@@ -14,6 +15,8 @@ namespace Nethermind.Consensus
         PrivateKey? Key { get; }
         Address Address { get; }
         Signature Sign(Hash256 message);
+        Signature Sign(BlockHeader header);
         bool CanSign { get; }
+        bool CanSignHeader { get; }
     }
 }

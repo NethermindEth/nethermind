@@ -7,8 +7,11 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
+using Nethermind.JsonRpc;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -27,7 +30,6 @@ namespace Nethermind.Consensus.Clique
             _snapshotManager = snapshotManager ?? throw new ArgumentNullException(nameof(snapshotManager));
             _config = config ?? throw new ArgumentNullException(nameof(config));
             _signer = signer ?? throw new ArgumentNullException(nameof(signer));
-
             if (config.Epoch == 0) config.Epoch = Clique.DefaultEpochLength;
         }
 
@@ -64,7 +66,20 @@ namespace Nethermind.Consensus.Clique
 
             // Sign all the things!
             Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
-            Signature signature = _signer.Sign(headerHash);
+            Signature signature;
+            if (_signer.CanSignHeader)
+            {
+                BlockHeader clone = header.Clone();
+                int extraSeal = 65;
+                clone.ExtraData = clone.ExtraData.Slice(0, clone.ExtraData.Length - extraSeal);
+                clone.Hash = headerHash;
+                signature = _signer.Sign(clone);
+            }
+            else
+            {
+                signature = _signer.Sign(headerHash);
+            }
+
             // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
