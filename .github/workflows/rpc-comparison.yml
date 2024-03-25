@@ -323,25 +323,28 @@ jobs:
             
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
+                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 100 1000 10000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
                 flood "$TEST" ${compare_to_other_branch_params} --rates 100 1000 10000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
+            echo "flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt"
             flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
           fi
       
       - name: Compare to INFURA Endpoint
         if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
+          echo "flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt"
           flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
         if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
+          echo "flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt"
           flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt
 
       - name: Generate report
         run: |
-          ls
           if [ "${{ inputs.is_performance_check }}" == "true" ]; then
             echo "Processing performance check repositories:"
             for repo in $(ls -d *_perf_result); do
@@ -359,7 +362,6 @@ jobs:
               flood report equality_result_archive
             fi
           fi
-          ls
 
       - name: Upload results as files
         uses: actions/upload-artifact@v3
