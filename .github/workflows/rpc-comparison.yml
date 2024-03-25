@@ -9,10 +9,16 @@ on:
         default: ''
         required: false
       network:
-        type: string
         description: "Network on which test should be started"
         default: "mainnet"
-        required: true
+        type: choice
+        options:
+          - mainnet
+          - gnosis
+          - sepolia
+          - goerli
+          - chiado
+          - holesky
       branch_to_compare:
         type: string
         description: "A branch to compare with. Example: \"release/1.25.1\""
