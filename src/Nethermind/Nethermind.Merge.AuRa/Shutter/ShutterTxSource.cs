@@ -15,6 +15,8 @@ using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using System.Runtime.CompilerServices;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Consensus.AuRa.Config;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -25,9 +27,11 @@ using G1 = Bls.P1;
 public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys DecryptionKeys = new();
-    private ILogFinder? _logFinder;
-    private LogFilter? _logFilter;
-    private Contracts.IValidatorRegistryContract? _validatorRegistryContract;
+    private readonly ILogFinder? _logFinder;
+    private readonly LogFilter? _logFilter;
+    private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
+    private readonly IAbiEncoder _abiEncoder;
+    private readonly Address _validatorRegistryContractAddress;
     private IEnumerable<(ulong, byte[])> _validatorsInfo;
     private static readonly UInt256 EncryptedGasLimit = 300;
     internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
@@ -41,21 +45,26 @@ public class ShutterTxSource : ITxSource
         ]
     );
 
-    public ShutterTxSource(string sequencerAddress, ILogFinder logFinder, IFilterStore filterStore, Contracts.IValidatorRegistryContract validatorRegistryContract, IEnumerable<(ulong, byte[])> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
         IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
         _logFinder = logFinder;
-        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, sequencerAddress, topics);
-        _validatorRegistryContract = validatorRegistryContract;
+        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, auraConfig.ShutterSequencerContractAddress, topics);
+        _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
+        _abiEncoder = abiEncoder;
+        _validatorRegistryContractAddress = new(auraConfig.ShutterValidatorRegistryContractAddress);
         _validatorsInfo = validatorsInfo;
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        ITransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
+        Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress);
+
         foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo)
         {
-            if (!_validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
+            if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
             {
                 throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator");
             }

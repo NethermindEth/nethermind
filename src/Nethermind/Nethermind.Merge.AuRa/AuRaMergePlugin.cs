@@ -110,12 +110,9 @@ namespace Nethermind.Merge.AuRa
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
-                ITransactionProcessor readOnlyTransactionProcessor = readOnlyTxProcessingEnv.Build(_api.WorldState!.StateRoot);
-
-                ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterValidatorRegistryContractAddress));
 
                 // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_auraConfig.ShutterSequencerContractAddress, _api.LogFinder!, _api.FilterStore!, validatorRegistryContract, validatorsInfo);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnv, _api.AbiEncoder, _auraConfig, validatorsInfo);
 
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
@@ -126,11 +123,7 @@ namespace Nethermind.Merge.AuRa
                     }
                 };
 
-                KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyBroadcastContractAddress));
-                KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _api.AbiEncoder, new(_auraConfig!.ShutterKeyperSetManagerContractAddress));
-
-
-                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, keyBroadcastContract, keyperSetManagerContract, readOnlyBlockTree, _auraConfig.ShutterKeyperP2PAddresses, _auraConfig.ShutterP2PPort.ToString());
+                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, readOnlyBlockTree, readOnlyTxProcessingEnv, _api.AbiEncoder!, _auraConfig);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);

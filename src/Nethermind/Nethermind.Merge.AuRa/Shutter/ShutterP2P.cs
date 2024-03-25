@@ -16,6 +16,10 @@ using Multiformats.Address;
 using Nethermind.Core;
 using Nethermind.Api;
 using Google.Protobuf;
+using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Abi;
+using Nethermind.Merge.AuRa.Shutter.Contracts;
+using Nethermind.Consensus.AuRa.Config;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -24,16 +28,20 @@ public class ShutterP2P
     public static readonly ulong InstanceID = 0;
     public static readonly int Threshhold = 0;
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
-    private readonly Contracts.IKeyBroadcastContract _keyBroadcastContract;
-    private readonly Contracts.IKeyperSetManagerContract _keyperSetManagerContract;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
+    private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
+    private readonly IAbiEncoder _abiEncoder;
+    private readonly Address _keyBroadcastContractAddress;
+    private readonly Address _keyperSetManagerContractAddress;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, Contracts.IKeyBroadcastContract keyBroadcastContract, Contracts.IKeyperSetManagerContract keyperSetManagerContract, IReadOnlyBlockTree readOnlyBlockTree, string[] keyperAddresses, string port)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
-        _keyBroadcastContract = keyBroadcastContract;
-        _keyperSetManagerContract = keyperSetManagerContract;
         _readOnlyBlockTree = readOnlyBlockTree;
+        _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
+        _abiEncoder = abiEncoder;
+        _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
+        _keyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
 
         ServiceProvider serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
@@ -45,7 +53,7 @@ public class ShutterP2P
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
-        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + port);
+        ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
         Console.WriteLine(peer.Address);
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
@@ -54,7 +62,6 @@ public class ShutterP2P
 
         topic.OnMessage += (byte[] msg) =>
         {
-            // wait until head is synced???
             if (BlockTreeIsReady())
             {
                 msgQueue.Enqueue(msg);
@@ -65,7 +72,7 @@ public class ShutterP2P
         CancellationTokenSource ts = new();
         _ = router.RunAsync(peer, proto, token: ts.Token);
 
-        foreach (string addr in keyperAddresses)
+        foreach (string addr in auraConfig.ShutterKeyperP2PAddresses)
         {
             proto.OnAddPeer?.Invoke([addr]);
         }
@@ -79,14 +86,18 @@ public class ShutterP2P
                 {
                     Console.WriteLine("processing... " + Convert.ToHexString(msg));
 
-                    if (!GetEonInfo(out ulong eon, out Bls.P2 eonKey))
+                    IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
+                    KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
+                    KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
+
+                    if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
                     {
                         continue;
                     }
 
                     Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
                     Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
-                    if (CheckDecryptionKeys(decryptionKeys, eon, eonKey, Threshhold))
+                    if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
                     {
                         _onDecryptionKeysReceived(decryptionKeys);
                     }
@@ -110,7 +121,7 @@ public class ShutterP2P
         }
     }
 
-    internal bool CheckDecryptionKeys(Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
+    internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
         ulong slot = 0;
 
@@ -148,7 +159,7 @@ public class ShutterP2P
 
         foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         {
-            Address keyperAddress = _keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
+            Address keyperAddress = keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
             if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
             {
                 return false;
@@ -163,10 +174,10 @@ public class ShutterP2P
         return _readOnlyBlockTree.Head is not null && !_readOnlyBlockTree.Head.IsGenesis;
     }
 
-    internal bool GetEonInfo(out ulong eon, out Bls.P2 eonKey)
+    internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey)
     {
-        eon = _keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
-        byte[] eonKeyBytes = _keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
+        eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
+        byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
 
         Console.WriteLine("eon: " + eon);
         Console.WriteLine("eon key: " + Convert.ToHexString(eonKeyBytes));
