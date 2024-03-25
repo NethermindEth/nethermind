@@ -218,15 +218,16 @@ jobs:
 
           check_sync_stage() {
             rpc_url=$1
-            # Loop until the "debug_getSyncStage" response contains "SnapSync"
             while true; do
               response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}' "$rpc_url")
-              # Check if the response contains "SnapSync"
-              if echo "$response" | jq -e '.result | contains("SnapSync")'; then
-                echo "SnapSync found in the response at RPC: $rpc_url. Node is syncing."
+              
+              # Check if the currentStage contains "SnapSync" or "StateNodes"
+              if echo "$response" | jq -e '.result.currentStage | test("SnapSync|StateNodes")'; then
+                echo "SnapSync or StateNodes stage reached at RPC: $rpc_url. Node is syncing."
                 break
               else
-                echo "Still waiting for SnapSync to be started at RPC: $rpc_url."
+                current_stage=$(echo "$response" | jq -r '.result.currentStage')
+                echo "Current stage at RPC: $rpc_url is not SnapSync or StateNodes. Current stage: $current_stage"
                 sleep 60
               fi
             done
