@@ -264,7 +264,7 @@ namespace Nethermind.Evm.Test.Tracing
         [TestCase(-1)]
         [TestCase(10000)]
         [TestCase(10001)]
-        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentException(int errorMargin)
+        public void Estimate_UseErrorMarginOutsideBounds_ThrowArgumentOutOfRangeException(int errorMargin)
         {
             Transaction tx = Build.A.Transaction.TestObject;
             Block block = Build.A.Block.WithTransactions(tx).TestObject;
@@ -278,7 +278,7 @@ namespace Nethermind.Evm.Test.Tracing
                 MainnetSpecProvider.Instance,
                 new BlocksConfig());
 
-            Assert.That(() => sut.Estimate(tx, block.Header, tracer, errorMargin), Throws.TypeOf<ArgumentException>());
+            Assert.That(() => sut.Estimate(tx, block.Header, tracer, errorMargin), Throws.TypeOf<ArgumentOutOfRangeException>());
         }
 
 
