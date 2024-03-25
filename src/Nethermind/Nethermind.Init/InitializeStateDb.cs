@@ -65,7 +65,7 @@ public class InitializeStateDb : IStep
             || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
         {
             // Special case in case its using hashdb, use a slightly different database configuration.
-            if (_api.DbProvider is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
+            if (_api.DbProvider?.StateDb is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
         }
 
         if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)

@@ -1492,6 +1492,10 @@ public class DbOnTheRocks : IDb, ITunableDb
             // Some database config is slightly faster on hash db database. These are applied when hash db is detected
             // to prevent unexpected regression.
             { "table_factory.block_size", "4096" },
+            { "table_factory.block_restart_interval", "16" },
+            { "compression", "kSnappyCompression" },
+            { "max_bytes_for_level_multiplier", "10" },
+            { "max_bytes_for_level_base", "256000000" },
         };
     }
 
