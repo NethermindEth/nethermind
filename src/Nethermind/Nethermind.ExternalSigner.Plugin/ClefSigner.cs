@@ -1,45 +1,41 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using DotNetty.Buffers;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.JsonRpc.Client;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Rlp;
-using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Text;
-using System.Threading.Tasks;
 
 namespace Nethermind.JsonRpc;
 public class ClefSigner : ISigner, ISignerStore
 {
     private readonly IJsonRpcClient rpcClient;
-    private readonly ulong _chainId;
+    private HeaderDecoder _headerDecoder;
 
-    private ClefSigner(IJsonRpcClient rpcClient, ulong chainId)
+    private ClefSigner(IJsonRpcClient rpcClient, Address author)
     {
         this.rpcClient = rpcClient;
-        this._chainId = chainId;
-        CanSign = true;
+        Address = author;
+        _headerDecoder = new HeaderDecoder();
     }
 
-    public static async Task<ClefSigner> Create(IJsonRpcClient jsonRpcClient, ulong chainId, Address? blockAuthorAccount = null)
+    public static async Task<ClefSigner> Create(IJsonRpcClient jsonRpcClient, Address? blockAuthorAccount = null)
     {
-        ClefSigner signer = new(jsonRpcClient, chainId);
-        await signer.SetSignerAddress(blockAuthorAccount);
+        ClefSigner signer = new(jsonRpcClient, await GetSignerAddress(jsonRpcClient, blockAuthorAccount));
         return signer;
     }
 
     public Address Address { get; private set; }
 
-    public bool CanSign { get; }
+    public bool CanSign => true;
+
+    public bool CanSignHeader => true;
 
     public PrivateKey? Key => throw new InvalidOperationException("Cannot get private keys from remote signer.");
 
@@ -68,45 +64,57 @@ public class ClefSigner : ISigner, ISignerStore
     /// </summary>
     /// <param name="rlpHeader">Full Rlp of the clique header.</param>
     /// <returns><see cref="Signature"/> of the hash of the clique header.</returns>
-    public Signature SignCliqueHeader(byte[] rlpHeader)
+    public Signature Sign(BlockHeader header)
     {
-        var signed = rpcClient.Post<string>(
-            "account_signData",
-            "application/x-clique-header",
-            Address.ToString(),
-            rlpHeader.ToHexString(true)).GetAwaiter().GetResult();
-        if (signed == null)
-            ThrowInvalidOperationSignFailed();
-        var bytes = Bytes.FromHexString(signed);
+        if (header is null) throw new ArgumentNullException(nameof(header));
+        int contentLength = _headerDecoder.GetLength(header,  RlpBehaviors.None);
+        IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
+        try
+        {
+            RlpStream rlpStream = new NettyRlpStream(buffer);
+            rlpStream.Encode(header);            
+            string? signed = rpcClient.Post<string>(
+                "account_signData",
+                "application/x-clique-header",
+                Address.ToString(),
+                buffer.AsSpan().ToHexString(true)).GetAwaiter().GetResult();
+            if (signed == null)
+                ThrowInvalidOperationSignFailed();
+            byte[] bytes = Bytes.FromHexString(signed);
 
-        //Clef will set recid to 0/1, but we expect it to be 27/28
-        if (bytes.Length == 65 && bytes[64] == 0 || bytes[64] == 1)
-            //We expect V to be 27/28
-            bytes[64] += 27;
+            //Clef will set recid to 0/1, but we expect it to be 27/28
+            if (bytes.Length == 65 && bytes[64] == 0 || bytes[64] == 1)
+                //We expect V to be 27/28
+                bytes[64] += 27;
 
-        return new Signature(bytes);
+            return new Signature(bytes);
+        }
+        finally
+        {
+            buffer.Release();
+        }
     }
 
     public ValueTask Sign(Transaction tx) =>
         throw new NotImplementedException("Remote signing of transactions is not supported.");
 
-    private async Task SetSignerAddress(Address? blockAuthorAccount)
+    private async static Task<Address> GetSignerAddress(IJsonRpcClient rpcClient, Address? blockAuthorAccount)
     {
         var accounts = await rpcClient.Post<string[]>("account_list");
+        if (accounts is null)
+            throw new InvalidOperationException("Remote signer 'account_list' response is invalid.");
         if (!accounts.Any())
-        {
             throw new InvalidOperationException("Remote signer has not been configured with any signers.");
-        }
         if (blockAuthorAccount != null)
         {
             if (accounts.Any(a => new Address(a).Bytes.SequenceEqual(blockAuthorAccount.Bytes)))
-                Address = blockAuthorAccount;
+                return blockAuthorAccount;
             else
                 throw new InvalidOperationException($"Remote signer cannot sign for {blockAuthorAccount}.");
         }
         else
         {
-            Address = new Address(accounts[0]);
+            return new Address(accounts[0]);
         }
     }
 
@@ -129,13 +137,6 @@ public class ClefSigner : ISigner, ISignerStore
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private static void ThrowInvalidOperationSetSigner() =>
         throw new InvalidOperationException("Cannot set a signer when using a remote signer.");
-
-
-    private class RemoteTxSignResponse
-    {
-        public string Raw { get; set; }
-        public TransactionForRpc Tx { get; set; }
-    }
 }
 
 

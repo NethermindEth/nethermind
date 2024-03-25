@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.IO;
-using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -17,10 +15,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using Nethermind.JsonRpc;
-using Nethermind.JsonRpc.Client;
-using Nethermind.KeyStore.Config;
-using Nethermind.Network;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 
@@ -37,7 +31,7 @@ namespace Nethermind.Init.Steps
             (_get, _set) = api.ForInit;
         }
 
-        public async Task Execute(CancellationToken cancellationToken)
+        public Task Execute(CancellationToken cancellationToken)
         {
             IInitConfig initConfig = _get.Config<IInitConfig>();
             IBloomConfig bloomConfig = _get.Config<IBloomConfig>();
@@ -74,22 +68,11 @@ namespace Nethermind.Init.Steps
 
             ISigner signer = NullSigner.Instance;
             ISignerStore signerStore = NullSigner.Instance;
-            IMiningConfig miningConfig = _get.Config<IMiningConfig>();
-            if (miningConfig.Enabled)
+            if (_get.Config<IMiningConfig>().Enabled)
             {
-                if (!string.IsNullOrEmpty(miningConfig.Signer))
-                {
-                    ClefSigner signerAndStore =
-                        await SetupExternalSigner(miningConfig.Signer, _get.SpecProvider!.ChainId, _get.Config<IKeyStoreConfig>().BlockAuthorAccount);
-                    signer = signerAndStore;
-                    signerStore = signerAndStore;
-                }
-                else
-                {
-                    Signer signerAndStore = new Signer(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
-                    signer = signerAndStore;
-                    signerStore = signerAndStore;
-                }
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
+                signer = signerAndStore;
+                signerStore = signerAndStore;
             }
 
             _set.EngineSigner = signer;
@@ -126,21 +109,7 @@ namespace Nethermind.Init.Steps
                 new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
             }
 
-        }
-
-        private async Task<ClefSigner> SetupExternalSigner(string urlSigner, ulong chainId, string blockAuthorAccount)
-        {
-            try
-            {
-                Address? address = string.IsNullOrEmpty(blockAuthorAccount) ? null : new Address(blockAuthorAccount);
-                BasicJsonRpcClient rpcClient = new(new Uri(urlSigner), _get.EthereumJsonSerializer, _get.LogManager, TimeSpan.FromSeconds(10));
-                _get.DisposeStack.Push(rpcClient);
-                return await ClefSigner.Create(rpcClient, chainId, address);
-            }
-            catch (HttpRequestException e)
-            {
-                throw new NetworkingException($"Remote signer at {urlSigner} did not respond.", NetworkExceptionType.TargetUnreachable, e);
-            }
+            return Task.CompletedTask;
         }
     }
 }

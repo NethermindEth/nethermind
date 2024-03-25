@@ -24,6 +24,10 @@ namespace Nethermind.Mev.Test
 
         public Signature Sign(Hash256 message) => null!;
 
+        public Signature Sign(BlockHeader header) => null!;
+
         public bool CanSign => true;
+
+        public bool CanSignHeader => true;
     }
 }

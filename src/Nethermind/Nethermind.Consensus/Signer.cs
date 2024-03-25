@@ -21,6 +21,8 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key is not null;
 
+        public bool CanSignHeader => false;
+
         public Signer(ulong chainId, PrivateKey? key, ILogManager logManager)
         {
             _chainId = chainId;
@@ -40,6 +42,11 @@ namespace Nethermind.Consensus
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
             byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
+        }
+
+        public Signature Sign(BlockHeader header)
+        {
+            return Sign(header.Hash);
         }
 
         public ValueTask Sign(Transaction tx)
@@ -68,6 +75,6 @@ namespace Nethermind.Consensus
             }
 
             SetSigner(pk);
-        }
+        }   
     }
 }

@@ -86,18 +86,6 @@ namespace Nethermind.Consensus.Clique
             return sigHash;
         }
 
-        public static byte[] CalculateCliqueRlp(BlockHeader header)
-        {
-            int extraSeal = 65;
-            int shortExtraLength = header.ExtraData.Length - extraSeal;
-            byte[] fullExtraData = header.ExtraData;
-            byte[] shortExtraData = header.ExtraData.Slice(0, shortExtraLength);
-            header.ExtraData = shortExtraData;
-            byte[] rlp = _headerDecoder.Encode(header).Bytes;
-            header.ExtraData = fullExtraData;
-            return rlp;
-        }
-
         private readonly object _snapshotCreationLock = new();
 
         public ulong GetLastSignersCount() => _lastSignersCount;
