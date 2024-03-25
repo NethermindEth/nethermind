@@ -2613,7 +2613,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (initCodeLength > spec.MaxInitCodeSize) return (EvmExceptionType.OutOfGas, null);
         }
 
-        long gasCost = GasCostOf.Create +
+        var createGasCost = spec.IsVerkleTreeEipEnabled ? GasCostOf.CreatePostVerkle : GasCostOf.Create;
+        long gasCost = createGasCost +
                        (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                        (instruction == Instruction.CREATE2
                            ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength)
