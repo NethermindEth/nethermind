@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -31,6 +32,8 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Core;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -116,10 +119,10 @@ namespace Nethermind.JsonRpc.Test.Modules
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
-            await base.Build(specProvider, initialValues);
+            await base.Build(specProvider, initialValues, addBlockOnStart, genesisAllocation);
             IFilterStore filterStore = new FilterStore();
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 

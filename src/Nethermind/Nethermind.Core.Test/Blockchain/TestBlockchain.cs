@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -30,6 +31,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
@@ -115,7 +117,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
@@ -131,17 +133,61 @@ public class TestBlockchain : IDisposable
             State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
         }
 
-        State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
-
         InitialStateMutator?.Invoke(State);
 
-        byte[] code = Bytes.FromHexString("0xabcd");
-        Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
 
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        if (genesisAllocation is null)
+        {
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+
+            InitialStateMutator?.Invoke(State);
+
+            byte[] code = Bytes.FromHexString("0xabcd");
+            State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+            State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+        }
+        else
+        {
+            foreach ((Address address, ChainSpecAllocation allocation) in genesisAllocation)
+            {
+                State.CreateAccount(address, allocation.Balance, allocation.Nonce);
+
+                if (allocation.Code is not null)
+                {
+                    State.InsertCode(address, allocation.Code, SpecProvider.GenesisSpec, true);
+                }
+
+                if (allocation.Storage is not null)
+                {
+                    foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
+                    {
+                        State.Set(new StorageCell(address, storage.Key),
+                            storage.Value.WithoutLeadingZeros().ToArray());
+                    }
+                }
+
+                // if (allocation.Constructor is not null)
+                // {
+                //     Transaction constructorTransaction = new SystemTransaction()
+                //     {
+                //         SenderAddress = address,
+                //         Data = allocation.Constructor,
+                //         GasLimit = genesis.GasLimit
+                //     };
+                //
+                //     CallOutputTracer outputTracer = new();
+                //     _transactionProcessor.Execute(constructorTransaction, new BlockExecutionContext(genesis.Header), outputTracer);
+                //
+                //     if (outputTracer.StatusCode != StatusCode.Success)
+                //     {
+                //         throw new InvalidOperationException(
+                //             $"Failed to initialize constructor for address {address}. Error: {outputTracer.Error}");
+                //     }
+                // }
+            }
+        }
 
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);

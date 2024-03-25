@@ -32,6 +32,7 @@ using Nethermind.Mev.Execution;
 using Nethermind.Mev.Source;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
@@ -221,7 +222,7 @@ namespace Nethermind.Mev.Test
             }
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
-                UInt256? initialValues = null, bool addBlockOnStart = true)
+                UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),
