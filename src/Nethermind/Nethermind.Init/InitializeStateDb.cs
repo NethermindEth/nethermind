@@ -57,13 +57,9 @@ public class InitializeStateDb : IStep
 
         _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
 
-        if (syncConfig.SnapServingEnabled == null
+        syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
             && _api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
-            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash)
-        {
-            // Enable snap serving on halfpath
-            syncConfig.SnapServingEnabled = true;
-        }
+            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
 
         if (_api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.Hash
             || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
