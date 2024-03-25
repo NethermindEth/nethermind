@@ -21,6 +21,7 @@ echo "ℹ️ Reference: $REF"
 echo "ℹ️ Maximum wait time: ${max_wait_minutes} minutes"
 echo "ℹ️ Timeout for the workflow to complete: ${timeout} minutes"
 echo "ℹ️ Interval between checks: ${interval} seconds"
+echo "ℹ️ Name filter applied: ${name_filter}"
 
 # If RUN_ID is not empty, use it directly
 if [ -n "${RUN_ID}" ]; then
