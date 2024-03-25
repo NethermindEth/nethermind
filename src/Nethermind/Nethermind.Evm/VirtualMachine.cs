@@ -1549,7 +1549,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 endNotIncluded = startIncluded + codeSizeToUse;
                                 if (endNotIncluded > actualCodeLength) endNotIncluded = actualCodeLength;
                             }
-                            env.Witness.AccessAndChargeForCodeSlice(vmState.To, startIncluded, endNotIncluded, false, ref gasAvailable);
+                            env.Witness.AccessAndChargeForCodeSlice(address, startIncluded, endNotIncluded, false, ref gasAvailable);
                         }
 
                         break;
