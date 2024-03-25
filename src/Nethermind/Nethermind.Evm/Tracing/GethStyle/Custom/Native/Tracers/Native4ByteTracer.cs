@@ -69,7 +69,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         if (input.Length >= 4)
         {
-            Store4ByteIds(input, input.Length-4);
+            Store4ByteIds(input, input.Length - 4);
         }
     }
 
@@ -81,7 +81,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
             return;
         if (to is null || isPrecompileCall)
             return;
-        Store4ByteIds(input, input.Length-4);
+        Store4ByteIds(input, input.Length - 4);
     }
 
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
