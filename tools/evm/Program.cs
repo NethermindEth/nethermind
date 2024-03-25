@@ -1,4 +1,5 @@
 using System.CommandLine;
+using Evm.JsonTypes;
 using Evm.T8NTool;
 using Nethermind.Core.Exceptions;
 
@@ -29,10 +30,10 @@ namespace Evm
              var inputAllocOpt = new Option<string>("--input.alloc", description: "Input allocations", getDefaultValue: () => "alloc.json");
              var inputEnvOpt = new Option<string>("--input.env", description: "Input environment", getDefaultValue: () => "env.json");
              var inputTxsOpt = new Option<string>("--input.txs", description: "Input transactions", getDefaultValue: () => "txs.json");
-             var outputAllocOpt = new Option<string>("--output.alloc", description: "Output allocations", getDefaultValue: () => "alloc.json");
+             var outputAllocOpt = new Option<string>("--output.alloc", description: "Output allocations");
              var outputBaseDirOpt = new Option<string>("--output.basedir", description: "Output base directory");
              var outputBodyOpt = new Option<string>("--output.body", description: "Output body");
-             var outputResultOpt = new Option<string>("--output.result", description: "Output result", getDefaultValue: () => "result.json");
+             var outputResultOpt = new Option<string>("--output.result", description: "Output result");
              var stateChainIdOpt = new Option<int>("--state.chainId", description: "State chain id", getDefaultValue: () => 1);
              var stateForkOpt = new Option<string>("--state.fork", description: "State fork", getDefaultValue: () => "GrayGlacier");
              var stateRewardOpt = new Option<string>("--state.reward", description: "State reward");
@@ -82,31 +83,24 @@ namespace Evm
 
                     await Task.Run(() =>
                     {
-                        try
-                        {
-                            Environment.ExitCode = t8NTool.Execute(
-                                context.ParseResult.GetValueForOption(inputAllocOpt),
-                                context.ParseResult.GetValueForOption(inputEnvOpt),
-                                context.ParseResult.GetValueForOption(inputTxsOpt),
-                                context.ParseResult.GetValueForOption(outputAllocOpt),
-                                context.ParseResult.GetValueForOption(outputBaseDirOpt),
-                                context.ParseResult.GetValueForOption(outputBodyOpt),
-                                context.ParseResult.GetValueForOption(outputResultOpt),
-                                context.ParseResult.GetValueForOption(stateChainIdOpt),
-                                context.ParseResult.GetValueForOption(stateForkOpt),
-                                context.ParseResult.GetValueForOption(stateRewardOpt),
-                                traceOpts.Memory,
-                                traceOpts.NoMemory,
-                                traceOpts.NoReturnData,
-                                traceOpts.NoStack,
-                                traceOpts.ReturnData
-                            );
-                        }
-                        catch (T8NException e)
-                        {
-                            Environment.ExitCode = e.ExitCode;
-                            Console.WriteLine(e.Message);
-                        }
+                        var output = t8NTool.Execute(
+                            context.ParseResult.GetValueForOption(inputAllocOpt),
+                            context.ParseResult.GetValueForOption(inputEnvOpt),
+                            context.ParseResult.GetValueForOption(inputTxsOpt),
+                            context.ParseResult.GetValueForOption(outputBaseDirOpt),
+                            context.ParseResult.GetValueForOption(outputAllocOpt),
+                            context.ParseResult.GetValueForOption(outputBodyOpt),
+                            context.ParseResult.GetValueForOption(outputResultOpt),
+                            context.ParseResult.GetValueForOption(stateChainIdOpt),
+                            context.ParseResult.GetValueForOption(stateForkOpt),
+                            context.ParseResult.GetValueForOption(stateRewardOpt),
+                            traceOpts.Memory,
+                            traceOpts.NoMemory,
+                            traceOpts.NoReturnData,
+                            traceOpts.NoStack,
+                            traceOpts.ReturnData
+                        );
+                        Environment.ExitCode = output.ExitCode;
                     });
                 });
         }

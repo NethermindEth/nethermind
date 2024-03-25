@@ -38,14 +38,14 @@ public class T8NTool
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly LimboLogs _logManager = LimboLogs.Instance;
 
-    public int Execute(
+    public T8NOutput Execute(
         string inputAlloc,
         string inputEnv,
         string inputTxs,
-        string outputAlloc,
         string? outputBasedir,
+        string? outputAlloc,
         string? outputBody,
-        string outputResult,
+        string? outputResult,
         int stateChainId,
         string stateFork,
         string? stateReward,
@@ -55,30 +55,49 @@ public class T8NTool
         bool traceNoStack,
         bool traceReturnData)
     {
+        T8NOutput t8NOutput = new();
         try
         {
-            T8NExecutionResult t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
+            var t8NExecutionResult = Execute(inputAlloc, inputEnv, inputTxs, stateFork, stateReward);
 
-            var stdoutObjects = new Dictionary<string, object>();
-            OutputObject(outputAlloc, outputBasedir, "alloc", t8NExecutionResult.Alloc, stdoutObjects);
-            OutputObject(outputResult, outputBasedir, "result", t8NExecutionResult.PostState, stdoutObjects);
-            OutputObject(outputBody, outputBasedir, "body", t8NExecutionResult.Body, stdoutObjects);
+            if (outputAlloc == "stdout") t8NOutput.Alloc = t8NExecutionResult.Alloc;
+            else if (outputAlloc != null) WriteToFile(outputAlloc, outputBasedir, t8NExecutionResult.Alloc);
 
-            if (!stdoutObjects.IsNullOrEmpty())
+            if (outputResult == "stdout") t8NOutput.Result = t8NExecutionResult.PostState;
+            else if (outputResult != null) WriteToFile(outputResult, outputBasedir, t8NExecutionResult.PostState);
+            
+            if (outputBody == "stdout") t8NOutput.Body = t8NExecutionResult.Body;
+            else if (outputBody != null) WriteToFile(outputBody, outputBasedir, t8NExecutionResult.Body);
+
+            if (t8NOutput.Body != null || t8NOutput.Alloc != null || t8NOutput.Result != null)
             {
-                Console.WriteLine(_ethereumJsonSerializer.Serialize(stdoutObjects, true));
+                Console.WriteLine(_ethereumJsonSerializer.Serialize(t8NOutput, true));
             }
-
-            return 0;
+        }
+        catch (T8NException e)
+        {
+            t8NOutput = new T8NOutput(e.Message, e.ExitCode);
         }
         catch (IOException e)
         {
-            throw new T8NException(e, ExitCodes.ErrorIO);
+            t8NOutput = new T8NOutput(e.Message, ExitCodes.ErrorIO);
         }
         catch (JsonException e)
         {
-            throw new T8NException(e, ExitCodes.ErrorJson);
+            t8NOutput = new T8NOutput(e.Message, ExitCodes.ErrorJson);
         }
+        catch (Exception e)
+        {
+            t8NOutput = new T8NOutput(e.Message, ExitCodes.ErrorEVM);
+        }
+        finally
+        {
+            if (t8NOutput.ErrorMessage != null)
+            {
+                Console.WriteLine(t8NOutput.ErrorMessage);
+            }
+        }
+        return t8NOutput;
     }
 
     private T8NExecutionResult Execute(
@@ -246,19 +265,12 @@ public class T8NTool
         return new T8NExecutionResult(postState, accounts, body);
     }
 
-    private void OutputObject(string? filename, string? basedir, string key, object outputObject, IDictionary<string, object> stdoutObjects)
+    private void WriteToFile(string filename, string? basedir, object outputObject)
     {
-        if (filename == "stdout")
-        {
-            stdoutObjects.Add(key, outputObject);
-        }
-        else if (filename != null)
-        {
-            FileInfo fileInfo = new(basedir + filename);
-            Directory.CreateDirectory(fileInfo.DirectoryName!);
-            using StreamWriter writer = new(fileInfo.FullName);
-            writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
-        }
+        FileInfo fileInfo = new(basedir + filename);
+        Directory.CreateDirectory(fileInfo.DirectoryName!);
+        using StreamWriter writer = new(fileInfo.FullName);
+        writer.Write(_ethereumJsonSerializer.Serialize(outputObject, true));
     }
 
     private bool IsPostMerge(IReleaseSpec spec)
