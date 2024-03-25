@@ -175,6 +175,7 @@ jobs:
           sudo mkdir -p /etc/wireguard
           envsubst < scripts/wireguard.conf.template > wg0.conf
           sudo wg-quick up ./wg0.conf
+          sudo wg show
         env:
           WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
           WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
@@ -237,6 +238,7 @@ jobs:
           sudo mkdir -p /etc/wireguard
           envsubst < scripts/wireguard.conf.template > wg0.conf
           sudo wg-quick up ./wg0.conf
+          sudo wg show
         env:
           WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
           WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
