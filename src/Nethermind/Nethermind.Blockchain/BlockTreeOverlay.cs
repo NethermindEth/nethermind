@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Blockchain;
@@ -102,10 +103,10 @@ public class BlockTreeOverlay : IBlockTree
 
     public Hash256 FindHash(long blockNumber) => _overlayTree.FindHash(blockNumber) ?? _baseTree.FindHash(blockNumber);
 
-    public BlockHeader[] FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
+    public IOwnedReadOnlyList<BlockHeader> FindHeaders(Hash256 hash, int numberOfBlocks, int skip, bool reverse)
     {
-        BlockHeader[] overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
-        return overlayHeaders.Length > 0 ? overlayHeaders : _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        IOwnedReadOnlyList<BlockHeader> overlayHeaders = _overlayTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
+        return overlayHeaders.Count > 0 ? overlayHeaders : _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
     }
 
     public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) =>

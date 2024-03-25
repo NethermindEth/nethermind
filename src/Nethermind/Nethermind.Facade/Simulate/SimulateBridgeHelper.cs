@@ -215,21 +215,14 @@ public class SimulateBridgeHelper(
         {
             if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
             {
-                //try
-                //{
-                env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
-                var test = env.StateProvider.GetAccount(transaction.SenderAddress);
-                cachedNonce = test.Nonce;
-                //} catch ()
-
-                //if (env.StateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
-                //{
-                //    cachedNonce = test.Nonce;
-                //}
-                //else
-                //{
-                //    cachedNonce = 0; // Todo think if we shall create account here
-                //}
+                if (env.StateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
+                {
+                    cachedNonce = test.Nonce;
+                }
+                else
+                {
+                    cachedNonce = 0; // Todo think if we shall create account here
+                }
 
                 nonceCache[transaction.SenderAddress] = cachedNonce;
             }

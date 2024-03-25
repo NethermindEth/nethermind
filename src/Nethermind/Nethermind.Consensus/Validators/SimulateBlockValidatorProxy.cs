@@ -19,8 +19,24 @@ public class SimulateBlockValidatorProxy(IBlockValidator baseBlockValidator) : I
     public bool ValidateOrphanedBlock(Block block, out string? error) =>
         baseBlockValidator.ValidateOrphanedBlock(block, out error);
 
-    public bool ValidateSuggestedBlock(Block block) =>
-        baseBlockValidator.ValidateSuggestedBlock(block);
+    public bool ValidateSuggestedBlock(Block block, out string? error)
+    {
+        return baseBlockValidator.ValidateSuggestedBlock(block, out error);
+    }
 
-    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock) => true;
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    {
+        error = "";
+        return true;
+    }
+
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        return baseBlockValidator.Validate(header, parent, isUncle, out error);
+    }
+
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        return baseBlockValidator.Validate(header, isUncle, out error);
+    }
 }

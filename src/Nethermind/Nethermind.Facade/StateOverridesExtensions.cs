@@ -48,20 +48,6 @@ public static class StateOverridesExtensions
         state.RecalculateStateRoot();
     }
 
-    private static bool TryGetAccount(this IWorldState stateProvider, Address address, out AccountStruct account)
-    {
-        try
-        {
-            account = stateProvider.GetAccount(address);
-        }
-        catch (TrieException)
-        {
-            account = new AccountStruct();
-        }
-
-        return !account.IsTotallyEmpty;
-    }
-
     private static void UpdateState(this IWorldState stateProvider, AccountOverride accountOverride, Address address)
     {
         void ApplyState(Dictionary<UInt256, Hash256> diff)

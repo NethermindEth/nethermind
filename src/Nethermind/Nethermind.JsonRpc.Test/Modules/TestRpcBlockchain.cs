@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Facade.Simulate;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
