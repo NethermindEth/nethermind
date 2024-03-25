@@ -159,10 +159,13 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
             }
             else
             {
-                int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
-                responseSize += await _stream.WriteEndOfMessageAsync();
+                using (result.Response)
+                {
+                    int responseSize = (int)await _jsonSerializer.SerializeAsync(_stream, result.Response, indented: false);
+                    responseSize += await _stream.WriteEndOfMessageAsync();
 
-                return responseSize;
+                    return responseSize;
+                }
             }
         }
         finally
