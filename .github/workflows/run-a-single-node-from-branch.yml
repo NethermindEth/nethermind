@@ -148,7 +148,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref || github.ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -239,7 +239,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
