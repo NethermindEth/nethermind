@@ -5,8 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
-using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
 
@@ -25,12 +23,13 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
 //   }
 public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 {
+    public const string _4byteTracer = "4byteTracer";
+
     private readonly Dictionary<string, int> _4ByteIds = new();
     private Instruction _op;
 
     public Native4ByteTracer(
-        IReleaseSpec spec,
-        GethTraceOptions options) : base(spec, options)
+        GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
         IsTracingMemory = true;
@@ -57,7 +56,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
         else
         {
-            CaptureEnter(_op, input, to);
+            CaptureEnter(_op, input, to, isPrecompileCall);
         }
     }
 
@@ -68,19 +67,19 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 
     private void CaptureStart(ReadOnlyMemory<byte> input)
     {
-        if (input.Length > 4)
+        if (input.Length >= 4)
         {
             Store4ByteIds(input, input.Length-4);
         }
     }
 
-    private void CaptureEnter(Instruction op, ReadOnlyMemory<byte> input, Address? to)
+    private void CaptureEnter(Instruction op, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
     {
         if (input.Length < 4)
             return;
         if (op is not (Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE))
             return;
-        if (to is null || to.IsPrecompile(_spec))
+        if (to is null || isPrecompileCall)
             return;
         Store4ByteIds(input, input.Length-4);
     }

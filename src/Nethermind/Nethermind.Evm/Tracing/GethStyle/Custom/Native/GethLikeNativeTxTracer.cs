@@ -3,20 +3,16 @@
 
 using System;
 using Nethermind.Core;
-using Nethermind.Core.Specs;
 using Nethermind.Int256;
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
 public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
 {
-    protected readonly IReleaseSpec _spec;
     protected int _depth;
 
     protected GethLikeNativeTxTracer(
-        IReleaseSpec spec,
         GethTraceOptions options) : base(options)
     {
-        _spec = spec;
         _depth = -1;
     }
 

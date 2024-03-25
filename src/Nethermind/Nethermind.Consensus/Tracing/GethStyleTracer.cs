@@ -18,7 +18,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -178,7 +177,7 @@ public class GethStyleTracer : IGethStyleTracer
             return new GethLikeBlockMemoryTracer(options);
 
         if (GethLikeNativeTracerFactory.IsNativeTracer(tracer))
-            return new GethLikeBlockNativeTracer(_specProvider.GetSpec(block), options);
+            return new GethLikeBlockNativeTracer(options);
 
         return new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options);
     }
