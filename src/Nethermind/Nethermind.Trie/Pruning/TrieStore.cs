@@ -6,6 +6,8 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -207,9 +209,10 @@ namespace Nethermind.Trie.Pruning
                     Keccak = keccak;
                 }
 
+                [SkipLocalsInit]
                 public override int GetHashCode()
                 {
-                    return HashCode.Combine(Keccak.GetHashCode(), Address?.GetHashCode() ?? 0, Path.GetHashCode());
+                    return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Keccak.GetHashCode()) + (Address?.GetHashCode() ?? 0);
                 }
 
                 public bool Equals(Key other)
