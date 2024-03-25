@@ -46,9 +46,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
     public bool IsRegistered(BlockHeader blockHeader, ulong validatorIndex, byte[] validatorPubKey)
     {
         UInt256 updates = GetNumUpdates(blockHeader);
-        for (UInt256 i = updates - 1; i >= 0; i -= 1)
+        for (UInt256 i = 0; i < updates; i++)
         {
-            Update update = GetUpdate(blockHeader, i);
+            Update update = GetUpdate(blockHeader, updates - i - 1);
             Message msg = new(update.Message.AsSpan()[..46]);
             BlsSigner.PublicKey pk = new()
             {
