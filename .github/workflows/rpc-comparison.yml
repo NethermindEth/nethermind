@@ -65,7 +65,7 @@ jobs:
       additional_options: >-
         {
           "timeout": "12",
-          "default_dockerfile": "Dockerfile.diag",
+          "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
@@ -87,7 +87,7 @@ jobs:
       additional_options: >-
         {
           "timeout": "12",
-          "default_dockerfile": "Dockerfile.diag",
+          "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
