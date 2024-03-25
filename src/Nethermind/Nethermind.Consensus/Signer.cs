@@ -75,6 +75,6 @@ namespace Nethermind.Consensus
             }
 
             SetSigner(pk);
-        }   
+        }
     }
 }

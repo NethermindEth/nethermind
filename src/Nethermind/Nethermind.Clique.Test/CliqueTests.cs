@@ -95,7 +95,7 @@ namespace Nethermind.Clique.Test
         [TestCase(Block4Rlp)]
         public async Task SealBlock_SignerCanSignHeader_FullHeaderIsUsedToSign(string blockRlp)
         {
-            ISigner  signer = Substitute.For<ISigner>();
+            ISigner signer = Substitute.For<ISigner>();
             signer.CanSignHeader.Returns(true);
             signer.CanSign.Returns(true);
             signer.Address.Returns(new Address("0x7ffc57839b00206d1ad20c69a1981b489f772031"));

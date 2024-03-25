@@ -67,12 +67,12 @@ public class ClefSigner : ISigner, ISignerStore
     public Signature Sign(BlockHeader header)
     {
         if (header is null) throw new ArgumentNullException(nameof(header));
-        int contentLength = _headerDecoder.GetLength(header,  RlpBehaviors.None);
+        int contentLength = _headerDecoder.GetLength(header, RlpBehaviors.None);
         IByteBuffer buffer = PooledByteBufferAllocator.Default.Buffer(contentLength);
         try
         {
             RlpStream rlpStream = new NettyRlpStream(buffer);
-            rlpStream.Encode(header);            
+            rlpStream.Encode(header);
             string? signed = rpcClient.Post<string>(
                 "account_signData",
                 "application/x-clique-header",
