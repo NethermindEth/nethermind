@@ -7,5 +7,8 @@ namespace Nethermind.Trie.Pruning
     {
         public static IPruningStrategy WhenCacheReaches(long sizeInBytes)
             => new MemoryLimit(sizeInBytes);
+
+        public static IPruningStrategy KeepingLastNState(this IPruningStrategy baseStrategy, int n)
+            => new KeepLastNPruningStrategy(baseStrategy, n);
     }
 }
