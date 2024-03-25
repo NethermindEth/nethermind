@@ -198,18 +198,38 @@ jobs:
           for url_entry in "${rpc_urls_array[@]}"; do
             processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
             processed_rpc_urls+=("$processed_url")
-          done
+          done          
           
-          sync_complete_flag=0
-          
-          check_sync() {
+          check_eth_syncing() {
             rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
-              echo "Still waiting for node to be synced at RPC: $rpc_url."
-              sleep 60
+            # Loop until the "eth_syncing" response is "false"
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url")
+              # Check if the response contains "false"
+              if echo "$response" | jq -e '.result | contains("false")'; then
+                echo "Node at $rpc_url synced."
+                break
+              else
+                echo "Still waiting for node to be synced at RPC: $rpc_url."
+                sleep 60
+              fi
             done
-            echo "Node at $rpc_url synced."
-            sync_complete_flag=$((sync_complete_flag+1))
+          }
+
+          check_sync_stage() {
+            rpc_url=$1
+            # Loop until the "debug_getSyncStage" response contains "SnapSync"
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}' "$rpc_url")
+              # Check if the response contains "SnapSync"
+              if echo "$response" | jq -e '.result | contains("SnapSync")'; then
+                echo "SnapSync found in the response at RPC: $rpc_url. Node is syncing."
+                break
+              else
+                echo "Still waiting for SnapSync to be started at RPC: $rpc_url."
+                sleep 60
+              fi
+            done
           }
 
           # Just an RPC warmup - to make sure no faulty info reached a check
@@ -217,7 +237,8 @@ jobs:
 
           # Iterate over the processed array of URLs
           for url in "${processed_rpc_urls[@]}"; do
-            check_sync "$url"
+            check_sync_stage "$url"
+            check_eth_syncing "$url"
           done
   
   
