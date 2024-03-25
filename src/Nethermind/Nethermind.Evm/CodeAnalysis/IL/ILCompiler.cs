@@ -6,6 +6,7 @@ using Nethermind.Evm.IL;
 using Nethermind.Int256;
 using Sigil;
 using System;
+using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
@@ -275,6 +276,71 @@ internal class ILCompiler
                     break;
             }
         }
+
+        method.LoadConstant((int)EvmExceptionType.None);
+        method.Branch(ret);
+
+        method.MarkLabel(jumpTable);
+        method.StackPop(current);
+
+        // emit the jump table
+        // if (jumpDest > uint.MaxValue)
+        // ULong3 | Ulong2 | Ulong1 | Uint1 | Ushort1
+        method.LoadLocal(current);
+        method.LoadConstant(uint.MaxValue);
+        method.Call(Word.GetUInt256);
+        method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256), typeof(UInt256) }));
+
+        method.BranchIfTrue(invalidAddress);
+
+        const int jumpFanOutLog = 7; // 128
+        const int bitMask = (1 << jumpFanOutLog) - 1;
+        Label[] jumps = new Label[jumpFanOutLog];
+        for (int i = 0; i < jumpFanOutLog; i++)
+        {
+            jumps[i] = method.DefineLabel();
+        }
+
+        method.Load(current, Word.Int0Field);
+        method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
+        method.StoreLocal(jmpDestination);
+
+        method.LoadLocal(jmpDestination);
+        method.LoadConstant(bitMask);
+        method.And();
+
+        method.Switch(jumps);
+        int[] destinations = jumpDestinations.Keys.ToArray();
+
+        for (int i = 0; i < jumpFanOutLog; i++)
+        {
+            method.MarkLabel(jumps[i]);
+
+            // for each destination matching the bit mask emit check for the equality
+            foreach (int dest in destinations.Where(dest => (dest & bitMask) == i))
+            {
+                method.LoadLocal(jmpDestination);
+                method.LoadConstant(dest);
+                method.BranchIfEqual(jumpDestinations[dest]);
+            }
+
+            // each bucket ends with a jump to invalid access to do not fall through to another one
+            method.Branch(invalidAddress);
+        }
+
+        // out of gas
+        method.MarkLabel(outOfGas);
+        method.LoadConstant((int)EvmExceptionType.OutOfGas);
+        method.Branch(ret);
+
+        // invalid address return
+        method.MarkLabel(invalidAddress);
+        method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
+        method.Branch(ret);
+
+        // return
+        method.MarkLabel(ret);
+        method.Return();
 
         Func<long, EvmExceptionType> del = method.CreateDelegate();
         return del;
