@@ -21,5 +21,10 @@ public class SimulateBlockResult
     public UInt256 BaseFeePerGas { get; set; }
     public List<SimulateCallResult> Calls { get; set; } = new();
     public byte[]? PrevRandao { get; set; }
+    public Withdrawal[] Withdrawals { get; set; }
+
+    public ulong BlobGasUsed { get; set; }
+    public UInt256 ExcessBlobGas { get; set; }
+    public UInt256 BlobBaseFee { get; set; }
 
 }

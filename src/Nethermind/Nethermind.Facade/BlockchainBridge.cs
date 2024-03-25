@@ -155,10 +155,12 @@ namespace Nethermind.Facade
         public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
             SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
+            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            tracer.SetOtherTracer(simulateOutputTracer);
             SimulateOutput result = new();
             try
             {
-                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, simulateOutputTracer.WithCancellation(cancellationToken));
+                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, tracer.WithCancellation(cancellationToken));
                 if (!success)
                 {
                     result.Error = error;

@@ -16,10 +16,12 @@ namespace Nethermind.Consensus.Processing
         public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
             protected readonly ISpecProvider _specProvider;
+            private readonly bool _ignoreEip3607;
 
-            public BlockProductionTransactionPicker(ISpecProvider specProvider)
+            public BlockProductionTransactionPicker(ISpecProvider specProvider, bool ignoreEip3607 = false)
             {
                 _specProvider = specProvider;
+                _ignoreEip3607 = ignoreEip3607;
             }
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
@@ -63,7 +65,7 @@ namespace Nethermind.Consensus.Processing
                     return args.Set(TxAction.Skip, $"EIP-3860 - transaction size over max init code size");
                 }
 
-                if (stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
+                if (!_ignoreEip3607 && stateProvider.IsInvalidContractSender(spec, currentTx.SenderAddress))
                 {
                     return args.Set(TxAction.Skip, $"Sender is contract");
                 }

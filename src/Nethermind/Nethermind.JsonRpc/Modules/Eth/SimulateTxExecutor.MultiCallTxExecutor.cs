@@ -78,7 +78,7 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
     {
         if (call.BlockStateCalls!.Length > _rpcConfig.MaxSimulateBlocksCap)
         {
-            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidRequest);
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
         }
         SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
 
@@ -104,17 +104,14 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Too many blocks provided, node is configured to simulate up to {blocksLimit} while {call.BlockStateCalls?.Length} were given", ErrorCodes.InvalidParams);
         }
 
-
         if (call.BlockStateCalls != null)
         {
             long lastBlockNumber = -1;
-            foreach (var blockToSimulate in call.BlockStateCalls!)
-            {
-                var givenNumber = blockToSimulate.BlockOverrides?.Number;
-                if (givenNumber == null)
+            ulong lastBlockTime = 0;
+
+            foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls!)
                 {
-                    givenNumber = lastBlockNumber == -1 ? (ulong)header.Number : (ulong)lastBlockNumber + 1;
-                }
+                var givenNumber = blockToSimulate.BlockOverrides?.Number ?? (lastBlockNumber == -1 ? (ulong)header.Number : (ulong)lastBlockNumber + 1);
 
                 if (givenNumber > long.MaxValue)
                 {
@@ -128,12 +125,25 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
                 }
                 else
                 {
-                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block number out of order {givenNumber}!", ErrorCodes.InvalidParams);
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block number out of order {givenNumber}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
+                }
+
+                var givenTime = blockToSimulate.BlockOverrides?.Time ?? (lastBlockTime == 0 ? header.Timestamp : lastBlockTime + 1);
+
+                if (givenTime > lastBlockTime)
+                {
+                    lastBlockTime = givenTime;
+            }
+                else
+                {
+                    return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block timestamp out of order {givenTime}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
                 }
             }
+
+
         }
 
-        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout * 100);
+        using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout); //TODO remove!
         SimulatePayload<TransactionWithSourceDetails>? toProcess = Prepare(call);
         return Execute(header.Clone(), toProcess, cancellationTokenSource.Token);
     }

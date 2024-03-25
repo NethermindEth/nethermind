@@ -98,9 +98,9 @@ public class EthSimulateTestsBlocksAndTransactions
 
         UInt256 nonceA = chain.State.GetNonce(TestItem.AddressA);
         Transaction txMainnetAtoB = GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
-        Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+        Transaction txAtoB1 = GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB2 = GetTransferTxData(nonceA + 2, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
-        Transaction txAtoB3 = GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+        Transaction txAtoB3 = GetTransferTxData(nonceA + 3, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         Transaction txAtoB4 = GetTransferTxData(nonceA + 4, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
         SimulatePayload<TransactionForRpc> payload = new()
@@ -112,7 +112,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = 2,
+                            Number = (ulong)chain.BlockFinder.Head!.Number+2,
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -175,7 +175,7 @@ public class EthSimulateTestsBlocksAndTransactions
             GetTransferTxData(nonceA, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
         //shall be Ok
         Transaction txAtoB1 =
-            GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyC, TestItem.AddressB, 1);
+            GetTransferTxData(nonceA + 1, chain.EthereumEcdsa, TestItem.PrivateKeyA, TestItem.AddressB, 1);
 
         //shall fail
         Transaction txAtoB2 =
@@ -232,6 +232,6 @@ public class EthSimulateTestsBlocksAndTransactions
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result =
             executor.Execute(payload, BlockParameter.Latest);
-        Assert.IsTrue(result.Data[1].Calls.First().Error?.Message.StartsWith("insufficient"));
+        Assert.IsTrue(result.Result!.Error!.Contains("higher than sender balance"));
     }
 }

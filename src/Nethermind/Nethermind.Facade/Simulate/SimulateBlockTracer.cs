@@ -1,10 +1,12 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
@@ -50,6 +52,10 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
             FeeRecipient = _currentBlock.Beneficiary!,
             BaseFeePerGas = _currentBlock.BaseFeePerGas,
             PrevRandao = _currentBlock.Header!.Random?.BytesToArray(),
+            BlobGasUsed = _currentBlock.BlobGasUsed ?? 0,
+            ExcessBlobGas = _currentBlock.ExcessBlobGas ?? 0,
+            BlobBaseFee = new BlockExecutionContext(_currentBlock.Header).BlobBaseFee ?? 0,
+            Withdrawals = _currentBlock.Withdrawals ?? Array.Empty<Withdrawal>()
         };
 
         result.Calls.ForEach(callResult =>

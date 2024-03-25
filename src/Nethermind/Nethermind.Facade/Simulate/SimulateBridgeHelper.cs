@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -54,7 +55,7 @@ public class SimulateBridgeHelper(
 
         IWorldState state = env.StateProvider;
         state.Commit(currentSpec);
-        state.CommitTree(blockHeader.Number);
+        state.CommitTree(blockHeader.Number - 1);
         state.RecalculateStateRoot();
 
         blockHeader.StateRoot = env.StateProvider.StateRoot;
@@ -74,8 +75,6 @@ public class SimulateBridgeHelper(
             parent = latestBlock?.Header ?? env.BlockTree.Head!.Header;
         }
 
-        IWorldState stateProvider = env.StateProvider;
-        stateProvider.StateRoot = parent.StateRoot!;
 
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
@@ -86,10 +85,10 @@ public class SimulateBridgeHelper(
             if (searchResult is not null)
             {
                 parent = searchResult.Header;
-                stateProvider.StateRoot = parent.StateRoot!;
             }
         }
-
+        IWorldState stateProvider = env.StateProvider;
+        stateProvider.StateRoot = parent.StateRoot!;
         if (payload.BlockStateCalls is not null)
         {
             Dictionary<Address, UInt256> nonceCache = new();
@@ -97,10 +96,14 @@ public class SimulateBridgeHelper(
 
             foreach (BlockStateCall<TransactionWithSourceDetails> callInputBlock in payload.BlockStateCalls)
             {
+                stateProvider.StateRoot = parent.StateRoot!;
+
+
                 BlockHeader callHeader = GetCallHeader(callInputBlock, parent);
                 UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
+                callHeader.StateRoot = stateProvider.StateRoot!;
 
-                using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(env.StateProvider.StateRoot!);
+                using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(stateProvider.StateRoot!);
 
                 IReleaseSpec spec = specProvider.GetSpec(parent);
 
@@ -117,11 +120,40 @@ public class SimulateBridgeHelper(
                     }
                 }
 
-                IEnumerable<Transaction> transactions = callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, env, nonceCache, payload.Validation))
+                Transaction[] transactions = callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, env, nonceCache, payload.Validation)).ToArray()
                                                         ?? Array.Empty<Transaction>();
 
-                Block currentBlock = new Block(callHeader, transactions, Array.Empty<BlockHeader>());
+                nonceCache.Clear();
+
+
+
+                Block currentBlock = new Block(callHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
                 currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
+
+                var shoot = stateProvider.TakeSnapshot();
+                var testedTxs = new HashSet<Transaction>();
+                for (var index = 0; index < transactions.Length; index++)
+                {
+                    Transaction transaction = transactions[index];
+                    BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction,
+                        testedTxs,
+                        stateProvider);
+                    stateProvider.IncrementNonce(transaction.SenderAddress);
+                    if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip)
+                    {
+                        return (false, $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}");
+                    }
+
+
+                    testedTxs.Add(transaction);
+                }
+
+                stateProvider.Restore(shoot);
+                stateProvider.RecalculateStateRoot();
+
+                currentBlock =
+                    currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
+
 
                 ProcessingOptions processingFlags = _simulateProcessingOptions;
 
@@ -133,12 +165,13 @@ public class SimulateBridgeHelper(
                 suggestedBlocks.Clear();
                 suggestedBlocks.Add(currentBlock);
 
-                stateProvider.RecalculateStateRoot();
+
                 Block[] currentBlocks;
                 //try
                 {
                     IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!);
                     currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer);
+                    
                 }
                 //catch (Exception)
                 //{
@@ -146,11 +179,19 @@ public class SimulateBridgeHelper(
                 //}
 
                 Block processedBlock = currentBlocks[0];
-                parent = processedBlock.Header;
+                
                 if (processedBlock is not null)
                 {
-                    //env.BlockTree.UpdateMainChain(new[] { currentBlock }, true, true);
-                    env.BlockTree.UpdateHeadBlock(currentBlock.Hash!);
+                    //var res = env.BlockTree.SuggestBlock(processedBlock,  BlockTreeSuggestOptions.ForceSetAsMain);
+                    //env.BlockTree.UpdateMainChain(new[] { processedBlock }, true, true);
+                    //env.
+                    ////env.BlockTree.UpdateHeadBlock(processedBlock.Hash!);
+                    parent = processedBlock.Header;
+                    stateProvider.StateRoot = processedBlock.StateRoot;
+                    env.StateProvider.StateRoot = processedBlock.StateRoot;
+                    //env.StateProvider.Commit(currentSpec);
+                    //env.StateProvider.RecalculateStateRoot();
+                    //env.StateProvider.CommitTree(currentBlock.Number);
                 }
             }
         }
@@ -174,7 +215,22 @@ public class SimulateBridgeHelper(
         {
             if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
             {
-                cachedNonce = env.StateProvider.GetAccount(transaction.SenderAddress).Nonce;
+                //try
+                //{
+                    env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
+                    var test = env.StateProvider.GetAccount(transaction.SenderAddress);
+                    cachedNonce = test.Nonce;
+                //} catch ()
+
+                //if (env.StateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
+                //{
+                //    cachedNonce = test.Nonce;
+                //}
+                //else
+                //{
+                //    cachedNonce = 0; // Todo think if we shall create account here
+                //}
+
                 nonceCache[transaction.SenderAddress] = cachedNonce;
             }
             else
@@ -210,7 +266,7 @@ public class SimulateBridgeHelper(
 
     private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent) =>
         block.BlockOverrides is not null
-            ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig)
+            ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig, specProvider.GetSpec(parent))
             : new BlockHeader(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,

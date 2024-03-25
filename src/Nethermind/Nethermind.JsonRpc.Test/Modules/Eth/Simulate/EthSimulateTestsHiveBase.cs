@@ -40,22 +40,21 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateAddMoreNonDefinedBlockStateCallsThanFit");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error!.Contains("number out of order"));
     }
 
     [Test]
     public async Task TestsimulateBasefeeTooLowWithValidation38012()
     {
         EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"baseFeePerGas\":\"0xa\"},\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"balance\":\"0x7d0\"}},\"calls\":[{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"maxFeePerGas\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\"}]}],\"validation\":true}";
+        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"baseFeePerGas\":\"0xa\"},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"balance\":\"0x7d0\"}},\"calls\":[{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"maxFeePerGas\":\"0x0\",\"maxPriorityFeePerGas\":\"0x0\"}]}],\"validation\":true}";
         var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBasefeeTooLowWithValidation38012");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.That(result.Data.First().PrevRandao, Is.EqualTo(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000").BytesToArray()));
-
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error!.Contains("Transaction cost (40000000) is higher than sender balance (2000)"));
 
         Assert.IsNotNull(result.Data);
     }
@@ -82,8 +81,8 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockNumOrder38020");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error!.Contains("Block number out of order"));
     }
 
     [Test]
@@ -121,8 +120,8 @@ public class EthSimulateTestsHiveBase
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateBlockTimestampAutoIncrement");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
+        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
+        Assert.That(result.Result.Error!.Contains("Block timestamp out of order"));
     }
 
     [Test]

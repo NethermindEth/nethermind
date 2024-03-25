@@ -6,6 +6,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Int256;
 
 namespace Nethermind.Facade.Proxy.Models.Simulate;
@@ -19,7 +20,7 @@ public class BlockOverride
     public Address? FeeRecipient { get; set; }
     public UInt256? BaseFeePerGas { get; set; }
 
-    public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg)
+    public BlockHeader GetBlockHeader(BlockHeader parent, IBlocksConfig cfg, IReleaseSpec spec)
     {
         ulong newTime = Time ?? checked(parent.Timestamp + cfg.SecondsPerSlot);
 
@@ -49,7 +50,7 @@ public class BlockOverride
             newTime,
             Array.Empty<byte>())
         {
-            BaseFeePerGas = BaseFeePerGas ?? parent.BaseFeePerGas,
+            BaseFeePerGas = BaseFeePerGas ?? BaseFeeCalculator.Calculate(parent, spec),
             MixHash = PrevRandao,
             IsPostMerge = parent.Difficulty == 0,
             TotalDifficulty = parent.TotalDifficulty + newDifficulty,

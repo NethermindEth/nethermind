@@ -14,6 +14,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
+using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -28,6 +29,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
     public IReadOnlyDbProvider DbProvider { get; }
     public IReadOnlyBlockTree ReadOnlyBlockTree { get; set; }
     public OverridableCodeInfoRepository CodeInfoRepository { get; }
+    public BlockProductionTransactionPicker BlockTransactionPicker { get; }
 
     public SimulateReadOnlyBlocksProcessingEnv(
         bool traceTransfers,
@@ -54,6 +56,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
         _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, !doValidation);
         _blockValidator = CreateValidator();
+        BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
+
     }
 
     private SimulateBlockValidatorProxy CreateValidator()
@@ -79,7 +83,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         return new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new BlockProcessor.BlockValidationTransactionsExecutor(Build(stateRoot), StateProvider),
+            new BlockProcessor.BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
             StateProvider,
             NullReceiptStorage.Instance,
             NullWitnessCollector.Instance,
