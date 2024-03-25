@@ -236,12 +236,15 @@ jobs:
           # Just an RPC warmup - to make sure no faulty info reached a check
           sleep 60
 
-          # Iterate over the processed array of URLs
+          # Check if nodes progressed to SnapSync
           for url in "${processed_rpc_urls[@]}"; do
             check_sync_stage "$url"
-            check_eth_syncing "$url"
           done
-  
+
+          # Check if nodes are synced
+          for url in "${processed_rpc_urls[@]}"; do
+            check_eth_syncing "$url"
+          done  
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
