@@ -110,7 +110,7 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
             ulong lastBlockTime = 0;
 
             foreach (BlockStateCall<TransactionForRpc>? blockToSimulate in call.BlockStateCalls!)
-                {
+            {
                 var givenNumber = blockToSimulate.BlockOverrides?.Number ?? (lastBlockNumber == -1 ? (ulong)header.Number : (ulong)lastBlockNumber + 1);
 
                 if (givenNumber > long.MaxValue)
@@ -133,7 +133,7 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
                 if (givenTime > lastBlockTime)
                 {
                     lastBlockTime = givenTime;
-            }
+                }
                 else
                 {
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block timestamp out of order {givenTime}!", ErrorCodes.InvalidInputBlocksOutOfOrder);

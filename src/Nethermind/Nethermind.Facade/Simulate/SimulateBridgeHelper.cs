@@ -171,7 +171,7 @@ public class SimulateBridgeHelper(
                 {
                     IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!);
                     currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer);
-                    
+
                 }
                 //catch (Exception)
                 //{
@@ -179,7 +179,7 @@ public class SimulateBridgeHelper(
                 //}
 
                 Block processedBlock = currentBlocks[0];
-                
+
                 if (processedBlock is not null)
                 {
                     //var res = env.BlockTree.SuggestBlock(processedBlock,  BlockTreeSuggestOptions.ForceSetAsMain);
@@ -217,9 +217,9 @@ public class SimulateBridgeHelper(
             {
                 //try
                 //{
-                    env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
-                    var test = env.StateProvider.GetAccount(transaction.SenderAddress);
-                    cachedNonce = test.Nonce;
+                env.StateProvider.CreateAccountIfNotExists(transaction.SenderAddress, 0, 0);
+                var test = env.StateProvider.GetAccount(transaction.SenderAddress);
+                cachedNonce = test.Nonce;
                 //} catch ()
 
                 //if (env.StateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))

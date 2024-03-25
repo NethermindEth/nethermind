@@ -36,7 +36,7 @@ public class EthSimulateTestsBlocksAndTransactions
             GasPrice = 20.GWei()
         };
 
-        ethereumEcdsa.Sign(TestItem.PrivateKeyB, tx);
+        ethereumEcdsa.Sign(from, tx);
         tx.Hash = tx.CalculateHash();
         return tx;
     }
