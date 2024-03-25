@@ -276,14 +276,14 @@ public partial class EngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
         {
-            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues);
+            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart: addBlockOnStart, genesisAllocation: genesisAllocation);
             return chain;
         }
 
-        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
-            (MergeTestBlockchain)await Build(specProvider, null);
+        public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null) =>
+            (MergeTestBlockchain)await Build(specProvider, null, addBlockOnStart, genesisAllocation: genesisAllocation);
     }
 
     public class MergeTestStatelessBlockchain(
@@ -311,14 +311,14 @@ public partial class EngineModuleTests
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
 
-        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        protected override async Task<TestVerkleBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
         {
-            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues);
+            TestVerkleBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, genesisAllocation);
             return chain;
         }
 
-        public new async Task<MergeTestStatelessBlockchain> Build(ISpecProvider? specProvider = null) =>
-            (MergeTestStatelessBlockchain)await Build(specProvider, null);
+        public new async Task<MergeTestStatelessBlockchain> Build(ISpecProvider? specProvider = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null) =>
+            (MergeTestStatelessBlockchain)await Build(specProvider, null, addBlockOnStart, genesisAllocation: genesisAllocation);
     }
 }
 
