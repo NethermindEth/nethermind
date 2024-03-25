@@ -297,6 +297,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
+        NAME_FILTER: ${{ env.BASE_TAG }}
         REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
