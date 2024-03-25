@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using NUnit.Framework;
@@ -13,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     {
         private static void Test(Hash256[] keys)
         {
-            GetPooledTransactionsMessage message = new(keys);
+            using GetPooledTransactionsMessage message = new(keys.ToPooledList());
             GetPooledTransactionsMessageSerializer serializer = new();
 
             SerializerTester.TestZero(serializer, message);
@@ -36,7 +37,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void Empty_to_string()
         {
-            GetPooledTransactionsMessage message = new(new Hash256[] { });
+            using GetPooledTransactionsMessage message = new(new Hash256[] { }.ToPooledList());
             _ = message.ToString();
         }
     }

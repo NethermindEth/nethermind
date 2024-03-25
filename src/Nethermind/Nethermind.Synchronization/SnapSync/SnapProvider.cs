@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -40,13 +41,13 @@ namespace Nethermind.Synchronization.SnapSync
 
         public bool CanSync() => _progressTracker.CanSync();
 
-        public (SnapSyncBatch request, bool finished) GetNextRequest() => _progressTracker.GetNextRequest();
+        public bool IsFinished(out SnapSyncBatch? nextBatch) => _progressTracker.IsFinished(out nextBatch);
 
         public AddRangeResult AddAccountRange(AccountRange request, AccountsAndProofs response)
         {
             AddRangeResult result;
 
-            if (response.PathAndAccounts.Length == 0 && response.Proofs.Length == 0)
+            if (response.PathAndAccounts.Count == 0 && response.Proofs.Count == 0)
             {
                 _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
@@ -58,16 +59,17 @@ namespace Nethermind.Synchronization.SnapSync
 
                 if (result == AddRangeResult.OK)
                 {
-                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Length);
+                    Interlocked.Add(ref Metrics.SnapSyncedAccounts, response.PathAndAccounts.Count);
                 }
             }
 
             _progressTracker.ReportAccountRangePartitionFinished(request.LimitHash.Value);
+            response.Dispose();
 
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, PathWithAccount[] accounts, byte[][] proofs = null, in ValueHash256? hashLimit = null!)
+        public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, IReadOnlyList<PathWithAccount> accounts, IReadOnlyList<byte[]> proofs = null, in ValueHash256? hashLimit = null!)
         {
             ITrieStore store = _trieStorePool.Get();
             try
@@ -110,12 +112,12 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result = AddRangeResult.OK;
 
-            PathWithStorageSlot[][] responses = response.PathsAndSlots;
-            if (responses.Length == 0 && response.Proofs.Length == 0)
+            IReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> responses = response.PathsAndSlots;
+            if (responses.Count == 0 && response.Proofs.Count == 0)
             {
-                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Length}), {request.StartingHash}");
+                _logger.Trace($"SNAP - GetStorageRange - expired BlockNumber:{request.BlockNumber}, RootHash:{request.RootHash}, (Accounts:{request.Accounts.Count}), {request.StartingHash}");
 
-                _progressTracker.ReportStorageRangeRequestFinished(request);
+                _progressTracker.ReportStorageRangeRequestFinished(request.Copy());
 
                 return AddRangeResult.ExpiredRootHash;
             }
@@ -123,13 +125,13 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 int slotCount = 0;
 
-                int requestLength = request.Accounts.Length;
+                int requestLength = request.Accounts.Count;
 
-                for (int i = 0; i < responses.Length; i++)
+                for (int i = 0; i < responses.Count; i++)
                 {
                     // only the last can have proofs
-                    byte[][] proofs = null;
-                    if (i == responses.Length - 1)
+                    IReadOnlyList<byte[]> proofs = null;
+                    if (i == responses.Count - 1)
                     {
                         proofs = response.Proofs;
                     }
@@ -137,12 +139,12 @@ namespace Nethermind.Synchronization.SnapSync
                     PathWithAccount account = request.Accounts[i];
                     result = AddStorageRange(request.BlockNumber.Value, account, account.Account.StorageRoot, request.StartingHash, responses[i], proofs);
 
-                    slotCount += responses[i].Length;
+                    slotCount += responses[i].Count;
                 }
 
-                if (requestLength > responses.Length)
+                if (requestLength > responses.Count)
                 {
-                    _progressTracker.ReportFullStorageRequestFinished(request.Accounts.AsSpan(responses.Length, requestLength - responses.Length));
+                    _progressTracker.ReportFullStorageRequestFinished(request.Accounts.Skip(responses.Count));
                 }
                 else
                 {
@@ -155,10 +157,11 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
+            response.Dispose();
             return result;
         }
 
-        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, PathWithStorageSlot[] slots, byte[][]? proofs = null)
+        public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
             StorageTree tree = new(store, _logManager);
@@ -172,7 +175,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         StorageRange range = new()
                         {
-                            Accounts = new[] { pathWithAccount },
+                            Accounts = new ArrayPoolList<PathWithAccount>(1) { pathWithAccount },
                             StartingHash = slots[^1].Path
                         };
 
@@ -200,13 +203,13 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
-        public void RefreshAccounts(AccountsToRefreshRequest request, byte[][] response)
+        public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
         {
-            int respLength = response.Length;
+            int respLength = response.Count;
             ITrieStore store = _trieStorePool.Get();
             try
             {
-                for (int reqi = 0; reqi < request.Paths.Length; reqi++)
+                for (int reqi = 0; reqi < request.Paths.Count; reqi++)
                 {
                     var requestedPath = request.Paths[reqi];
 
@@ -233,7 +236,7 @@ namespace Nethermind.Synchronization.SnapSync
                             {
                                 StorageRange range = new()
                                 {
-                                    Accounts = new[] { requestedPath.PathAndAccount },
+                                    Accounts = new ArrayPoolList<PathWithAccount>(1) { requestedPath.PathAndAccount },
                                     StartingHash = requestedPath.StorageStartingHash
                                 };
 
@@ -260,6 +263,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
+                response.Dispose();
                 _trieStorePool.Return(store);
             }
         }
@@ -269,13 +273,13 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.EnqueueAccountRefresh(requestedPath.PathAndAccount, requestedPath.StorageStartingHash);
         }
 
-        public void AddCodes(ValueHash256[] requestedHashes, byte[][] codes)
+        public void AddCodes(IReadOnlyList<ValueHash256> requestedHashes, IOwnedReadOnlyList<byte[]> codes)
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
             using (IWriteBatch writeBatch = _dbProvider.CodeDb.StartWriteBatch())
             {
-                for (int i = 0; i < codes.Length; i++)
+                for (int i = 0; i < codes.Count; i++)
                 {
                     byte[] code = codes[i];
                     ValueHash256 codeHash = ValueKeccak.Compute(code);
@@ -288,8 +292,8 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
 
-            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Length);
-
+            Interlocked.Add(ref Metrics.SnapSyncedCodes, codes.Count);
+            codes.Dispose();
             _progressTracker.ReportCodeRequestFinished(set.ToArray());
         }
 
@@ -301,11 +305,11 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else if (batch.StorageRangeRequest is not null)
             {
-                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest);
+                _progressTracker.ReportStorageRangeRequestFinished(batch.StorageRangeRequest.Copy());
             }
             else if (batch.CodesRequest is not null)
             {
-                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest);
+                _progressTracker.ReportCodeRequestFinished(batch.CodesRequest.AsSpan());
             }
             else if (batch.AccountsToRefreshRequest is not null)
             {

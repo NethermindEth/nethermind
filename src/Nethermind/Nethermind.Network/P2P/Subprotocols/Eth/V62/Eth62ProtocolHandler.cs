@@ -33,7 +33,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         protected readonly ITxPool _txPool;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ITxGossipPolicy _txGossipPolicy;
-        private readonly LruKeyCache<Hash256> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
+        private readonly LruKeyCache<Hash256AsKey> _lastBlockNotificationCache = new(10, "LastBlockNotificationCache");
 
         public Eth62ProtocolHandler(ISession session,
             IMessageSerializationService serializer,
@@ -139,21 +139,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 throw new SubprotocolException($"No {nameof(StatusMessage)} received prior to communication with {Node:c}.");
             }
 
-            if (Logger.IsTrace) Logger.Trace($"{Counter:D5} {Eth62MessageCode.GetDescription(packetType)} from {Node:c}");
-
             switch (packetType)
             {
                 case Eth62MessageCode.Status:
-                    StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
-                    ReportIn(statusMsg, size);
-                    Handle(statusMsg);
-                    break;
+                    {
+                        using StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                        ReportIn(statusMsg, size);
+                        Handle(statusMsg);
+                        break;
+                    }
                 case Eth62MessageCode.NewBlockHashes:
                     Metrics.Eth62NewBlockHashesReceived++;
                     if (CanAcceptBlockGossip())
                     {
-                        NewBlockHashesMessage newBlockHashesMessage =
-                            Deserialize<NewBlockHashesMessage>(message.Content);
+                        using NewBlockHashesMessage newBlockHashesMessage = Deserialize<NewBlockHashesMessage>(message.Content);
                         ReportIn(newBlockHashesMessage, size);
                         Handle(newBlockHashesMessage);
                     }
@@ -182,10 +181,9 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
                     break;
                 case Eth62MessageCode.GetBlockHeaders:
-                    GetBlockHeadersMessage getBlockHeadersMessage
-                        = Deserialize<GetBlockHeadersMessage>(message.Content);
+                    GetBlockHeadersMessage getBlockHeadersMessage = Deserialize<GetBlockHeadersMessage>(message.Content);
                     ReportIn(getBlockHeadersMessage, size);
-                    ScheduleSyncServe(getBlockHeadersMessage, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBlockHeadersMessage, Handle);
                     break;
                 case Eth62MessageCode.BlockHeaders:
                     BlockHeadersMessage headersMsg = Deserialize<BlockHeadersMessage>(message.Content);
@@ -195,7 +193,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 case Eth62MessageCode.GetBlockBodies:
                     GetBlockBodiesMessage getBodiesMsg = Deserialize<GetBlockBodiesMessage>(message.Content);
                     ReportIn(getBodiesMsg, size);
-                    ScheduleSyncServe(getBodiesMsg, Handle);
+                    BackgroundTaskScheduler.ScheduleSyncServe(getBodiesMsg, Handle);
                     break;
                 case Eth62MessageCode.BlockBodies:
                     BlockBodiesMessage bodiesMsg = Deserialize<BlockBodiesMessage>(message.Content);
@@ -206,7 +204,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                     Metrics.Eth62NewBlockReceived++;
                     if (CanAcceptBlockGossip())
                     {
-                        NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
+                        using NewBlockMessage newBlockMsg = Deserialize<NewBlockMessage>(message.Content);
                         ReportIn(newBlockMsg, size);
                         Handle(newBlockMsg);
                     }
@@ -259,30 +257,41 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
 
         protected void Handle(TransactionsMessage msg)
         {
-            IList<Transaction> iList = msg.Transactions;
+            IOwnedReadOnlyList<Transaction> iList = msg.Transactions;
 
-            BackgroundTaskScheduler.ScheduleTask((iList, 0), HandleSlow);
+            BackgroundTaskScheduler.ScheduleBackgroundTask((iList, 0), HandleSlow);
         }
 
-        private Task HandleSlow((IList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
+        private ValueTask HandleSlow((IOwnedReadOnlyList<Transaction> txs, int startIndex) request, CancellationToken cancellationToken)
         {
-            IList<Transaction> transactions = request.txs;
-            int startIdx = request.startIndex;
-
-            bool isTrace = Logger.IsTrace;
-            int count = transactions.Count;
-            for (int i = startIdx; i < count; i++)
+            IOwnedReadOnlyList<Transaction> transactions = request.txs;
+            try
             {
-                if (cancellationToken.IsCancellationRequested)
+                int startIdx = request.startIndex;
+                bool isTrace = Logger.IsTrace;
+                int count = transactions.Count;
+                for (int i = startIdx; i < count; i++)
                 {
-                    // Reschedule and with different start index
-                    BackgroundTaskScheduler.ScheduleTask((transactions, i), HandleSlow);
-                    return Task.CompletedTask;
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        // Reschedule and with different start index
+                        BackgroundTaskScheduler.ScheduleBackgroundTask((transactions, i), HandleSlow);
+                        return ValueTask.CompletedTask;
+                    }
+
+                    PrepareAndSubmitTransaction(transactions[i], isTrace);
                 }
 
-                PrepareAndSubmitTransaction(transactions[i], isTrace);
+                transactions.Dispose();
             }
-            return Task.CompletedTask;
+            catch
+            {
+                transactions.Dispose();
+                throw;
+            }
+
+
+            return ValueTask.CompletedTask;
         }
 
         private void PrepareAndSubmitTransaction(Transaction tx, bool isTrace)

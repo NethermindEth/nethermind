@@ -21,5 +21,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Les.Messages
             EthMessage = ethMessage;
             RequestId = requestId;
         }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            EthMessage?.Dispose();
+        }
     }
 }

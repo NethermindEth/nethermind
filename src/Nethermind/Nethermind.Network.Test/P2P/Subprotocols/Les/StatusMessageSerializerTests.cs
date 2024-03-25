@@ -14,7 +14,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Les
         [Test]
         public void RoundTripWithAllData()
         {
-            StatusMessage statusMessage = new();
+            using StatusMessage statusMessage = new();
             statusMessage.ProtocolVersion = 3;
             statusMessage.NetworkId = 1;
             statusMessage.TotalDifficulty = 131200;

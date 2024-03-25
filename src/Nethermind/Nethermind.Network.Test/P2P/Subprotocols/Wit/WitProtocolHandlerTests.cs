@@ -90,7 +90,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
             Context context = new();
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
+            using GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
             GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
@@ -107,7 +107,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
 
             context.WitProtocolHandler.Init();
 
-            GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
+            using GetBlockWitnessHashesMessage msg = new(5, Keccak.Zero);
             GetBlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 
@@ -120,7 +120,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Wit
         public async Task Can_request_non_empty_witness()
         {
             Context context = new();
-            BlockWitnessHashesMessage msg = new(5, new[] { TestItem.KeccakA, TestItem.KeccakB });
+            using BlockWitnessHashesMessage msg = new(5, new[] { TestItem.KeccakA, TestItem.KeccakB });
             BlockWitnessHashesMessageSerializer serializer = new();
             var serialized = serializer.Serialize(msg);
 

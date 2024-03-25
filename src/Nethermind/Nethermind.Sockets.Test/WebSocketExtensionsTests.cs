@@ -50,17 +50,10 @@ namespace Nethermind.Sockets.Test
                 throw new NotImplementedException();
             }
 
-            private byte byteIndex = 0;
-
             public override Task<WebSocketReceiveResult> ReceiveAsync(ArraySegment<byte> buffer, CancellationToken cancellationToken)
             {
-                for (int i = 0; i < buffer.Count; i++)
-                {
-                    unchecked
-                    {
-                        buffer[i] = byteIndex++;
-                    }
-                }
+                // Had to use Array.Fill as it is more performant
+                Array.Fill(buffer.Array, (byte)0, buffer.Offset, buffer.Count);
 
                 if (_receiveResults.Count == 0 && ReturnTaskWithFaultOnEmptyQueue)
                 {
@@ -202,9 +195,9 @@ namespace Nethermind.Sockets.Test
         public async Task Throws_on_too_long_message()
         {
             Queue<WebSocketReceiveResult> receiveResult = new Queue<WebSocketReceiveResult>();
-            for (int i = 0; i < 1024; i++)
+            for (int i = 0; i < 128 * 1024; i++)
             {
-                receiveResult.Enqueue(new WebSocketReceiveResult(5 * 1024, WebSocketMessageType.Text, false));
+                receiveResult.Enqueue(new WebSocketReceiveResult(1024, WebSocketMessageType.Text, false));
             }
 
             receiveResult.Enqueue(new WebSocketReceiveResult(1, WebSocketMessageType.Text, true));

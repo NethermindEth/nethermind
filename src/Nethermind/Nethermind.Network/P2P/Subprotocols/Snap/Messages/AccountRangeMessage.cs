@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Collections;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -12,11 +13,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         /// <summary>
         /// List of consecutive accounts from the trie
         /// </summary>
-        public PathWithAccount[] PathsWithAccounts { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> PathsWithAccounts { get; set; }
 
         /// <summary>
         /// List of trie nodes proving the account range
         /// </summary>
-        public byte[][] Proofs { get; set; }
+        public IOwnedReadOnlyList<byte[]> Proofs { get; set; }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            PathsWithAccounts.Dispose();
+            Proofs.Dispose();
+        }
     }
 }
