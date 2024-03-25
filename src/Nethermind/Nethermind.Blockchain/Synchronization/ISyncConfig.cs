@@ -139,4 +139,10 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
+
+    [ConfigItem(Description = "[EXPERIMENTAL] Enables Verkle Sync protocol.", DefaultValue = "false")]
+    public bool VerkleSync { get; set; }
+
+    [ConfigItem(Description = "Number of account range partition to create. Increase verkle sync request concurrency. Value must be between 1 to 256 (inclusive).", DefaultValue = "8")]
+    public int VerkleSyncAccountRangePartitionCount { get; set; }
 }

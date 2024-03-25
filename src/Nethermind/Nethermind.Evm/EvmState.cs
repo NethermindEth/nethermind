@@ -235,6 +235,8 @@ namespace Nethermind.Evm
         public readonly ExecutionEnvironment Env;
 
         internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public bool IsContractDeployment =>
+            ExecutionType is ExecutionType.CREATE or ExecutionType.CREATE2;
         public bool IsTopLevel { get; } // TODO: move to CallEnv
         internal long OutputDestination { get; } // TODO: move to CallEnv
         internal long OutputLength { get; } // TODO: move to CallEnv

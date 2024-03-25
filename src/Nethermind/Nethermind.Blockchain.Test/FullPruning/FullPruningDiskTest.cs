@@ -23,6 +23,7 @@ using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
@@ -48,9 +49,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 TempDirectory = TempPath.GetTempDirectory();
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+            protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, Dictionary<Address, ChainSpecAllocation>? genesisAllocation = null)
             {
-                TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
+                TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart, genesisAllocation);
                 PruningDb = (IFullPruningDb)DbProvider.StateDb;
                 DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
                 _chainEstimations.StateSize.Returns((long?)null);

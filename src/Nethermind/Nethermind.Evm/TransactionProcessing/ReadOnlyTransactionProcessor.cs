@@ -38,6 +38,8 @@ namespace Nethermind.Evm.TransactionProcessing
 
         public bool IsContractDeployed(Address address) => _stateProvider.IsContract(address);
 
+        public ITransactionProcessor WithNewStateProvider(IWorldState worldState) => _transactionProcessor.WithNewStateProvider(worldState);
+
         public void Dispose()
         {
             _stateProvider.StateRoot = _stateBefore;

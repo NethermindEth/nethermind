@@ -55,6 +55,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingFees => InnerTracer.IsTracingFees;
 
+    public bool IsTracingAccessWitness => InnerTracer.IsTracingAccessWitness;
+
     public bool IsTracingState => InnerTracer.IsTracingState;
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
@@ -277,6 +279,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void ReportStorageRead(in StorageCell storageCell)
         => InnerTracer.ReportStorageRead(storageCell);
+
+    public void ReportAccessWitness(IReadOnlyList<byte[]> verkleWitnessKeys) =>
+        InnerTracer.ReportAccessWitness(verkleWitnessKeys);
 
     public void Dispose()
     {

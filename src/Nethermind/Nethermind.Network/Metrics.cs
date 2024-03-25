@@ -337,6 +337,38 @@ namespace Nethermind.Network
         public static long NodeDataReceived { get; set; }
 
         [CounterMetric]
+        [Description("Number of Verkle GetSubTreeRange messages received")]
+        public static long VerkleGetSubTreeRangeReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle GetSubTreeRange messages sent")]
+        public static long VerkleGetSubTreeRangeSent { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle SubTreeRange messages received")]
+        public static long VerkleSubTreeRangeReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle SubTreeRange messages sent")]
+        public static long VerkleSubTreeRangeSent { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle GetLeafNodes messages received")]
+        public static long VerkleGetLeafNodesReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle GetLeafNodes messages sent")]
+        public static long VerkleGetLeafNodesSent { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle LeafNodes messages received")]
+        public static long VerkleLeafNodesReceived { get; set; }
+
+        [CounterMetric]
+        [Description("Number of Verkle LeafNodes messages sent")]
+        public static long VerkleLeafNodesSent { get; set; }
+
+        [CounterMetric]
         [Description("Number of bytes sent through P2P (TCP).")]
         public static long P2PBytesSent;
 

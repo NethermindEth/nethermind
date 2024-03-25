@@ -28,7 +28,7 @@ namespace Nethermind.State
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly ITrieStore _trieStore;
-
+        public StateType StateType => StateType.Merkle;
         public Hash256 StateRoot
         {
             get => _stateProvider.StateRoot;
@@ -257,5 +257,7 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
+
+        public byte[] GetCodeChunk(Address codeOwner, UInt256 chunkId) => throw new NotImplementedException();
     }
 }

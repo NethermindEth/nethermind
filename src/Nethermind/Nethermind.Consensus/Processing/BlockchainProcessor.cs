@@ -369,7 +369,8 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
         bool shouldProcess =
             suggestedBlock.IsGenesis
             || _blockTree.IsBetterThanHead(suggestedBlock.Header)
-            || options.ContainsFlag(ProcessingOptions.ForceProcessing);
+            || options.ContainsFlag(ProcessingOptions.ForceProcessing)
+            || options.ContainsFlag(ProcessingOptions.StatelessProcessing);
 
         if (!shouldProcess)
         {
@@ -572,7 +573,12 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
                 if (!_stateReader.HasStateForBlock(parentOfFirstBlock))
                 {
-                    throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
+                    bool canThisBlockBeProcessedStateless = _blockProcessor.CanProcessStatelessBlock &&
+                                                            (blocksToProcess[0].ExecutionWitness is not null);
+                    // here we assume that if a block has execution witness - then all the following block will
+                    // also have execution witness
+                    if (!canThisBlockBeProcessedStateless)
+                        throw new InvalidOperationException($"Attempted to process a blockchain with missing state root {parentOfFirstBlock.StateRoot}");
                 }
             }
         }
@@ -614,6 +620,8 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
 
             branchingPoint = _blockTree.FindParentHeader(toBeProcessed.Header,
                 BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            // TODO: we only need this for stateless processing
+            toBeProcessed.Header.MaybeParent = new WeakReference<BlockHeader>(branchingPoint);
             if (branchingPoint is null)
             {
                 // genesis block
@@ -645,6 +653,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
                 break;
             }
 
+            // TODO: check if we have a separate condition that we need to account for in Stateless Processing
             if (isFastSyncTransition)
             {
                 // If we hit this condition, it means that something is wrong in MultiSyncModeSelector.
@@ -722,6 +731,7 @@ public class BlockchainProcessor : IBlockchainProcessor, IBlockProcessingQueue
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"Skipping processing block {suggestedBlock.ToString(Block.Format.FullHashAndNumber)} without total difficulty");
+            // suggestedBlock.Header.TotalDifficulty = 1;
             throw new InvalidOperationException(
                 "Block without total difficulty calculated was suggested for processing");
         }

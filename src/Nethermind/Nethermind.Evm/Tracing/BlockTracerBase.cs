@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Int256;
+using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Evm.Tracing;
 
@@ -30,10 +31,13 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
     protected abstract TTrace OnEnd(TTracer txTracer);
 
     public virtual bool IsTracingRewards => false;
+    public bool IsTracingAccessWitness => false;
 
     public virtual void ReportReward(Address author, string rewardType, UInt256 rewardValue)
     {
     }
+
+    public void ReportAccessWitness(VerkleWitness witness) { }
 
     public virtual void StartNewBlockTrace(Block block)
     {

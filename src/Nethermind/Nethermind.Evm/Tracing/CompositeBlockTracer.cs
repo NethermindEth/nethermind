@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Int256;
+using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Evm.Tracing
 {
@@ -12,10 +13,12 @@ namespace Nethermind.Evm.Tracing
     {
         private readonly List<IBlockTracer> _childTracers = new();
         public bool IsTracingRewards { get; private set; }
+        public bool IsTracingAccessWitness { get; private set; }
 
         public CompositeBlockTracer()
         {
             IsTracingRewards = _childTracers.Any(childTracer => childTracer.IsTracingRewards);
+            IsTracingAccessWitness = _childTracers.Any(childTracer => childTracer.IsTracingAccessWitness);
         }
 
         public void EndTxTrace()
@@ -34,6 +37,18 @@ namespace Nethermind.Evm.Tracing
                 if (childTracer.IsTracingRewards)
                 {
                     childTracer.ReportReward(author, rewardType, rewardValue);
+                }
+            }
+        }
+
+        public void ReportAccessWitness(VerkleWitness witness)
+        {
+            for (int index = 0; index < _childTracers.Count; index++)
+            {
+                IBlockTracer childTracer = _childTracers[index];
+                if (childTracer.IsTracingRewards)
+                {
+                    childTracer.ReportAccessWitness(witness);
                 }
             }
         }

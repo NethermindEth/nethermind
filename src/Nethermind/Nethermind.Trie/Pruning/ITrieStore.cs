@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieStore : ITrieNodeResolver, IDisposable
+    public interface ITrieStore : ITrieNodeResolver, IStoreWithReorgBoundary, IDisposable
     {
         void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
@@ -19,14 +19,17 @@ namespace Nethermind.Trie.Pruning
 
         IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
 
-        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
-
         // Used for serving via hash
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
         // Used by healing
         void Set(in ValueHash256 hash, byte[] rlp);
         bool HasRoot(Hash256 stateRoot);
+    }
+
+    public interface IStoreWithReorgBoundary
+    {
+        event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
     }
 
     public interface IPruningTrieStore
