@@ -73,21 +73,14 @@ public class NodeStorage : INodeStorage
         // can be slower but as long as they are in the same data block, it should not make a difference.
         // On mainnet, the out of order key is around 0.03% for address and 0.07% for storage.
 
-        if (address == null)
+        if (address is null)
         {
             // Separate the top level tree into its own section. This marginally improve cache hit rate, but not much.
             // 70% of duplicated keys is in this section, making them pretty bad, so we isolate them here to not expand
             // the space of other things, hopefully we can cache them by key somehow. Separating by the path length 4
             // does improve cache hit and processing time a little bit, until a few hundreds prune persist where it grew
             // beyond block cache size.
-            if (path.Length <= TopStateBoundary)
-            {
-                pathSpan[0] = 0;
-            }
-            else
-            {
-                pathSpan[0] = 1;
-            }
+            pathSpan[0] = path.Length <= TopStateBoundary ? (byte)0 : (byte)1;
 
             // Keep key small
             path.Path.BytesAsSpan[..8].CopyTo(pathSpan[1..]);

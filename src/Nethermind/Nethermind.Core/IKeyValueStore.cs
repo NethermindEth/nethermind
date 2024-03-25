@@ -72,6 +72,10 @@ namespace Nethermind.Core
         HintReadAhead = 2,
 
         // Shameful hack to use different pool of readahead iterator.
+        // Its for snap serving performance. Halfpath state db is split into three section (top state, state, storage).
+        // If they use the same iterator, then during the tree traversal, when it go back up to a certain level where
+        // the section differ the iterator will need to seek back (section is physically before another section),
+        // which is a lot slower.
         HintReadAhead2 = 4,
         HintReadAhead3 = 8,
 

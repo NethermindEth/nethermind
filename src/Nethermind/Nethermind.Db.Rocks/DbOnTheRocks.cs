@@ -1489,6 +1489,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     {
         return new Dictionary<string, string>()
         {
+            // Some database config is slightly faster on hash db database. These are applied when hash db is detected
+            // to prevent unexpected regression.
             { "table_factory.block_size", "4096" },
         };
     }

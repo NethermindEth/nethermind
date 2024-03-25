@@ -260,18 +260,9 @@ namespace Nethermind.Blockchain.FullPruning
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
-                if (targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
-                {
-                    CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
-                    visitor = copyTreeVisitor;
-                    _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
-                }
-                else
-                {
-                    CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
-                    visitor = copyTreeVisitor;
-                    _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
-                }
+                visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
+                    ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
+                    : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
@@ -300,6 +291,19 @@ namespace Nethermind.Blockchain.FullPruning
             {
                 visitor?.Dispose();
             }
+        }
+
+        private ICopyTreeVisitor CopyTree<TContext>(
+            Hash256 stateRoot,
+            INodeStorage targetNodeStorage,
+            WriteFlags writeFlags,
+            VisitingOptions visitingOptions,
+            CancellationToken cancellationToken
+        ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
+        {
+            CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+            _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            return copyTreeVisitor;
         }
 
         public void Dispose()
