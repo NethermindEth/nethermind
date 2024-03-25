@@ -3,33 +3,33 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
+using NonBlocking;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    public class FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider, int? cacheSize = null, int? maxDistanceFromHead = null)
+    public class FeeHistoryOracle(IBlockFinder blockFinder, IReceiptStorage receiptStorage, ISpecProvider specProvider, int? maxDistanceFromHead = null)
         : IFeeHistoryOracle
     {
         private const int MaxBlockCount = 1024;
-        private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount;
-        // private readonly LruCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-        //     = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache");
+        private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 16;
+        private long _lastHeadBlockNumber = 0;
+        private Task? _cleanupTask = null;
+        private readonly ConcurrentDictionary<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
 
-        private readonly LruFeeHistoryMultiCache<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache
-            = new(cacheSize ?? MaxBlockCount + 16, "BlockFeeHistoryCache", blockFinder);
+        private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
 
-        public readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
-
-        public readonly record struct BlockFeeHistorySearchInfo(
+        private readonly record struct BlockFeeHistorySearchInfo(
             long BlockNumber,
             UInt256 BlockBaseFeePerGas,
             UInt256 BaseFeePerGasEst,
@@ -50,15 +50,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 return block is null ? null : BlockFeeHistorySearchInfoFromBlock(block);
             }
 
-            if (_feeHistoryCache.Contains(blockParameter.BlockHash)) return _feeHistoryCache.Get(blockParameter.BlockHash);
-
+            if (_feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo info)) return info;
             block = blockFinder.FindBlock(blockParameter);
-
             return block is null ? null : SaveHistorySearchInfo(block);
+
         }
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
         {
-            if (_feeHistoryCache.Contains(blockHash, blockNumber)) return _feeHistoryCache.Get(blockHash, blockNumber);
+            if (_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info)) return info;
             Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
             return block is null ? null : SaveHistorySearchInfo(block);
         }
@@ -71,7 +70,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             if (blockFinder.Head is null || block.Number >= blockFinder.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache)
             {
-                _feeHistoryCache.Set(block.Hash, historyInfo, block.Number);
+                _feeHistoryCache[block.Hash!] = historyInfo;
             }
 
             return historyInfo;
@@ -145,8 +144,32 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
+            long headNumber = blockFinder.Head?.Number ?? 0;
+            if (_lastHeadBlockNumber != headNumber && _cleanupTask is null)
+            {
+                Task newTask = new(CleanupCache);
+                if (Interlocked.CompareExchange(ref _cleanupTask, newTask, null) is null)
+                {
+                    _lastHeadBlockNumber = headNumber;
+                    newTask.Start();
+                }
+            }
+
             return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas.ToArray(),
                 gasUsedRatio.ToArray(), baseFeePerBlobGas.ToArray(), blobGasUsedRatio.ToArray(), rewards?.ToArray()));
+        }
+
+        private void CleanupCache()
+        {
+            foreach (KeyValuePair<ValueHash256,BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
+            {
+                if (historyInfo.Value.BlockNumber < _lastHeadBlockNumber - _oldestBlockDistanceFromHeadAllowedInCache)
+                {
+                    _feeHistoryCache.TryRemove(historyInfo);
+                }
+            }
+
+            _cleanupTask = null;
         }
 
         private List<UInt256>? CalculateRewardsPercentiles(BlockFeeHistorySearchInfo blockInfo,

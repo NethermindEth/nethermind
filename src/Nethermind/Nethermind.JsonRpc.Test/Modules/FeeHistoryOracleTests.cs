@@ -421,7 +421,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 blockFinder ?? Substitute.For<IBlockFinder>(),
                 receiptStorage ?? Substitute.For<IReceiptStorage>(),
                 specProvider ?? Substitute.For<ISpecProvider>(),
-                cacheSize,
                 maxDistFromHead);
         }
     }
