@@ -20,6 +20,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Abi;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Logging;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -31,15 +32,17 @@ public class ShutterP2P
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
+    private readonly ILogger _logger;
     private readonly Address _keyBroadcastContractAddress;
     private readonly Address _keyperSetManagerContractAddress;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
         _readOnlyBlockTree = readOnlyBlockTree;
         _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
         _abiEncoder = abiEncoder;
+        _logger = logManager.GetClassLogger();
         _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
         _keyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
 
@@ -60,8 +63,16 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         ConcurrentQueue<byte[]> msgQueue = new();
 
+        Int64 msgCount = 0;
         topic.OnMessage += (byte[] msg) =>
         {
+            Interlocked.Increment(ref msgCount);
+
+            if (msgCount % 10 == 0)
+            {
+                _logger.Info("Receiving Shutter decryption keys...");
+            }
+
             if (BlockTreeIsReady())
             {
                 msgQueue.Enqueue(msg);
@@ -84,7 +95,7 @@ public class ShutterP2P
                 Thread.Yield();
                 if (BlockTreeIsReady() && msgQueue.TryDequeue(out var msg))
                 {
-                    Console.WriteLine("processing... " + Convert.ToHexString(msg));
+                    _logger.Info("Processing Shutter decryption keys...");
 
                     IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
                     KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);

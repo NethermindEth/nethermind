@@ -50,7 +50,7 @@ public class ShutterTxSource : ITxSource
         ]
     );
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogger logger, IEnumerable<(ulong, byte[])> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
         IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
@@ -60,7 +60,7 @@ public class ShutterTxSource : ITxSource
         _abiEncoder = abiEncoder;
         _auraConfig = auraConfig;
         _specProvider = specProvider;
-        _logger = logger;
+        _logger = logManager.GetClassLogger();
         _validatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
         _validatorsInfo = validatorsInfo;
     }
