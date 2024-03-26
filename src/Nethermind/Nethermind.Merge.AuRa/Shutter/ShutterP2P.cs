@@ -110,6 +110,7 @@ public class ShutterP2P
                     Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
                     if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
                     {
+                        _logger.Info("Validated decryption key for slot " + decryptionKeys.Gnosis.Slot);
                         _onDecryptionKeysReceived(decryptionKeys);
                     }
                     else
@@ -205,10 +206,10 @@ public class ShutterP2P
             eonKeyBytes = Convert.FromHexString("2fdfb787563ac3aa9be365a581eae6684334cbb9ce11e95c486ea31820e0469a07a5e6e49caddee2b1891900848e7ed03749aac68d4d31d4f98f4a537b9050621a791a11c6c154ae972659a5a4ed7c55d2bf8772f1a4c05542436df59d0a2edc05ea7e70b72f27b4eb8a4fb5ed675cb35d67934a1ed75043ed3802ac6a8ed68c");
         }
 
-        Console.WriteLine("eon: " + eon);
-        Console.WriteLine("eon key: " + Convert.ToHexString(eonKeyBytes));
-
         eonKey = new(eonKeyBytes);
+
+        _logger.Info("Shutter eon: " + eon + " key: " + Convert.ToHexString(eonKeyBytes));
+
         return true;
     }
 }
