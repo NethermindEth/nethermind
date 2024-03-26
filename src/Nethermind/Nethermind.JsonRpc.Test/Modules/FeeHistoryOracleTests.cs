@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -280,7 +279,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
             BlockParameter newestBlockParameter = new((long)0);
             blockFinder.FindBlock(newestBlockParameter).Returns(headBlock);
-            IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, new long[] { 10, 20, 30, 40 });
+            IReceiptStorage? receiptStorage = GetTestReceiptStorageForBlockWithGasUsed(headBlock, [10, 20, 30, 40]);
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentiles);
@@ -340,13 +339,16 @@ namespace Nethermind.JsonRpc.Test.Modules
         private static IReceiptStorage GetTestReceiptStorageForBlockWithGasUsed(Block block, long[] gasUsedArray)
         {
             IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
-            var txReceipts = new List<TxReceipt>();
-            foreach (long txGasUsed in gasUsedArray)
-            {
-                txReceipts.Add(new() { GasUsed = txGasUsed });
-            }
 
-            receiptStorage.Get(block).Returns(txReceipts.ToArray());
+            var txReceiptsArray = new TxReceipt[gasUsedArray.Length];
+            txReceiptsArray[0] = new TxReceipt() { GasUsedTotal = gasUsedArray[0] };
+            for (var i = 1; i < gasUsedArray.Length; i++)
+            {
+                txReceiptsArray[i] = new TxReceipt()
+                { GasUsedTotal = txReceiptsArray[i - 1].GasUsedTotal + gasUsedArray[i] };
+            }
+            receiptStorage.Get(block).Returns(txReceiptsArray);
+            receiptStorage.Get(block, false).Returns(txReceiptsArray);
             return receiptStorage;
         }
 
@@ -394,7 +396,9 @@ namespace Nethermind.JsonRpc.Test.Modules
 
                 IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
                 receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
+                receiptStorage.Get(firstBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
                 receiptStorage.Get(secondBlock).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
+                receiptStorage.Get(secondBlock, false).Returns(new TxReceipt[] { new() { GasUsed = 2 } });
                 FeeHistoryOracle feeHistoryOracle1 =
                     GetSubstitutedFeeHistoryOracle(blockFinder: blockFinder, receiptStorage: receiptStorage);
                 return feeHistoryOracle1;

@@ -161,7 +161,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private void CleanupCache()
         {
-            foreach (KeyValuePair<ValueHash256,BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
+            foreach (KeyValuePair<ValueHash256, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
             {
                 if (historyInfo.Value.BlockNumber < _lastHeadBlockNumber - _oldestBlockDistanceFromHeadAllowedInCache)
                 {
