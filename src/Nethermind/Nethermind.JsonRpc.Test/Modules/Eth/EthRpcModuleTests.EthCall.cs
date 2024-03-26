@@ -242,7 +242,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_with_base_fee_opcode()
+    public async Task Eth_call_with_base_fee_opcode_should_return_0()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
