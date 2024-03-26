@@ -38,6 +38,7 @@ public class ShutterTxSource : ITxSource
     private readonly ILogger _logger;
     private readonly Address _validatorRegistryContractAddress;
     private IEnumerable<(ulong, byte[])> _validatorsInfo;
+    private bool _validatorsRegistered = false;
     private static readonly UInt256 EncryptedGasLimit = 300;
     internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
@@ -70,11 +71,15 @@ public class ShutterTxSource : ITxSource
         ITransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
         Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
-        foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo)
+        if (!_validatorsRegistered)
         {
-            if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
+            foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo)
             {
-                throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator.");
+                if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
+                {
+                    throw new Exception("Validator " + validatorIndex + " not registered as Shutter validator.");
+                }
+                _validatorsRegistered = true;
             }
         }
 
