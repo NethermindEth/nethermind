@@ -112,7 +112,7 @@ namespace Nethermind.Merge.AuRa
                 ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
                 // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnv, _api.AbiEncoder, _auraConfig, validatorsInfo);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnv, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager.GetClassLogger(), validatorsInfo);
 
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>

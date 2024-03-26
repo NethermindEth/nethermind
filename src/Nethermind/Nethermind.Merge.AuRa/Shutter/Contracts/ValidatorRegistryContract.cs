@@ -7,9 +7,12 @@ using System.Runtime.CompilerServices;
 using Nethermind.Abi;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.Consensus.AuRa.Config;
+using Nethermind.Logging;
 using static Nethermind.Merge.AuRa.Shutter.Contracts.IValidatorRegistryContract;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
@@ -20,10 +23,16 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
 {
     private const string getNumUpdates = "getNumUpdates";
     private const string getUpdate = "getUpdate";
+    private readonly IAuraConfig _auraConfig;
+    private readonly ISpecProvider _specProvider;
+    private readonly ILogger _logger;
 
-    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
+    public ValidatorRegistryContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress, IAuraConfig auraConfig, ISpecProvider specProvider, ILogger logger)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
+        _auraConfig = auraConfig;
+        _specProvider = specProvider;
+        _logger = logger;
     }
 
     public UInt256 GetNumUpdates(BlockHeader blockHeader)
@@ -50,6 +59,11 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
         {
             Update update = GetUpdate(blockHeader, updates - i - 1);
             Message msg = new(update.Message.AsSpan()[..46]);
+            if (msg.ValidatorIndex != validatorIndex)
+            {
+                continue;
+            }
+
             BlsSigner.PublicKey pk = new()
             {
                 Bytes = validatorPubKey
@@ -59,12 +73,34 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 Bytes = update.Signature
             };
 
-            // todo: check if nonce is correct, load version and chainid from config
+            // todo: check if nonce is correct
 
-            if (msg.Version == 0 && msg.ChainId == 10200 && msg.ContractAddress == ContractAddress && msg.ValidatorIndex == validatorIndex && msg.IsRegistration && BlsSigner.Verify(pk, sig, update.Message))
+            if (!msg.IsRegistration)
             {
-                return true;
+                return false;
             }
+            else if (msg.Version != _auraConfig.ShutterVersion)
+            {
+                if (_logger.IsWarn) _logger.Warn("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterVersion);
+                continue;
+            }
+            else if (msg.ChainId != _specProvider.ChainId)
+            {
+                if (_logger.IsWarn) _logger.Warn("Registration message has incorrect chain ID (" + msg.ChainId + ") should be " + _specProvider.ChainId);
+                continue;
+            }
+            else if (msg.ContractAddress != ContractAddress)
+            {
+                if (_logger.IsWarn) _logger.Warn("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
+                continue;
+            }
+            else if (!BlsSigner.Verify(pk, sig, update.Message))
+            {
+                if (_logger.IsWarn) _logger.Warn("Registration message has invalid signature.");
+                continue;
+            }
+
+            return true;
         }
         return false;
     }

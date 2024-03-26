@@ -55,4 +55,9 @@ public interface IAuraConfig : IConfig
     [ConfigItem(Description = "The filepath of the validator info json file.",
         DefaultValue = "null")]
     string ShutterValidatorInfoFile { get; set; }
+
+    [ConfigItem(Description = "The Shutter protocol version.",
+        DefaultValue = "0")]
+    ulong ShutterVersion { get; set; }
+
 }
