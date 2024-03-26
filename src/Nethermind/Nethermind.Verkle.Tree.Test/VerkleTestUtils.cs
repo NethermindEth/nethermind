@@ -127,9 +127,10 @@ public static class VerkleTestUtils
         return Path.Combine(tempDir, dbname);
     }
 
-    public static IVerkleTreeStore GetVerkleStoreForTest<TCache>(DbMode dbMode)
+    public static IVerkleTreeStore GetVerkleStoreForTest<TCache>(DbMode dbMode, ILogManager? logManager = null)
     where TCache : struct, IPersistenceStrategy
     {
+        logManager ??= LimboLogs.Instance;
         IDbProvider provider;
         switch (dbMode)
         {
@@ -144,7 +145,7 @@ public static class VerkleTestUtils
                 throw new ArgumentOutOfRangeException(nameof(dbMode), dbMode, null);
         }
 
-        return new VerkleTreeStore<TCache>(provider, LimboLogs.Instance);
+        return new VerkleTreeStore<TCache>(provider, logManager);
     }
 
     public static VerkleTree GetVerkleTreeForTest<TCache>(DbMode dbMode, string? path = null)
