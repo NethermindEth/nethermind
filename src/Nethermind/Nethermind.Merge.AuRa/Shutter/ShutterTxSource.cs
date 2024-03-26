@@ -28,7 +28,7 @@ using G1 = Bls.P1;
 
 public class ShutterTxSource : ITxSource
 {
-    public Dto.DecryptionKeys DecryptionKeys = new();
+    public Dto.DecryptionKeys? DecryptionKeys;
     private readonly ILogFinder? _logFinder;
     private readonly LogFilter? _logFilter;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
@@ -79,10 +79,10 @@ public class ShutterTxSource : ITxSource
         }
 
         // todo: cache? check changes in header?
-        if (DecryptionKeys.Gnosis.Slot != (ulong)parent.Number)
+        if (DecryptionKeys is null || DecryptionKeys!.Gnosis.Slot != (ulong)parent.Number)
         {
             // todo: store a dictionary?
-            throw new Exception("Wrong decryption keys stored for block.");
+            throw new Exception("Decryption keys not received for slot " + parent.Number);
         }
 
         IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.Gnosis.TxPointer);
