@@ -71,74 +71,78 @@ internal static class IlAnalyzer
         {
             OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
             int j = 0;
-            for (int i = 0; i < machineCode.Length; i++, j++)
+            for (ushort i = 0; i < machineCode.Length; i++, j++)
             {
                 Instruction opcode = (Instruction)machineCode[i];
                 byte[] args = null;
+                ushort pc = i;
                 if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
                 {
-                    int immediatesCount = opcode - Instruction.PUSH0;
-                    args = machineCode.Slice(i+1, immediatesCount).ToArray();
+                    ushort immediatesCount = opcode - Instruction.PUSH0;
+                    args = machineCode.Slice(i + 1, immediatesCount).ToArray();
                     i += immediatesCount;
                 }
-                opcodes[j] = new OpcodeInfo(opcode, args.AsMemory(), OpcodeMetadata.Operations.GetValueOrDefault(opcode));
+                opcodes[j] = new OpcodeInfo(pc, opcode, args.AsMemory(), OpcodeMetadata.Operations.GetValueOrDefault(opcode));
             }
             return opcodes[..j];
         }
 
-        OpcodeInfo[][] SegmentCode(OpcodeInfo[] codeData)
+        FrozenDictionary<ushort, Func<long, EvmExceptionType>> SegmentCode(OpcodeInfo[] codeData)
         {
-            List<OpcodeInfo[]> opcodeInfos = [];
+            Dictionary<ushort, Func<long, EvmExceptionType>> opcodeInfos = [];
+
             List<OpcodeInfo> segment = [];
             foreach (var opcode in codeData)
             {
-                if(opcode.Operation.IsStateful())
+                if (opcode.Operation.IsStateful())
                 {
-                    if(segment.Count > 0)
+                    if (segment.Count > 0)
                     {
-                        opcodeInfos.Add([.. segment]);
+                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray()));
                         segment.Clear();
                     }
-                } else
+                }
+                else
                 {
                     segment.Add(opcode);
-                }   
+                }
             }
-            if(segment.Count > 0)
+            if (segment.Count > 0)
             {
-                opcodeInfos.Add([.. segment]);
+                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray()));
             }
-            return [.. opcodeInfos];
+            return opcodeInfos.ToFrozenDictionary();
         }
 
-
-        OpcodeInfo[] strippedBytecode = StripByteCode(machineCode.Span);
-        Dictionary<ushort, InstructionChunk> patternFound = new Dictionary<ushort, InstructionChunk>();
-
-        foreach (var (pattern, mapping) in Patterns)
+        FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, out OpcodeInfo[] strippedBytecode)
         {
-            for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
+            strippedBytecode = StripByteCode(machineCode.Span);
+            var patternFound = new Dictionary<ushort, InstructionChunk>();
+            foreach (var (pattern, mapping) in Patterns)
             {
-                bool found = true;
-                for (int j = 0; j < pattern.Length && found; j++)
+                for (int i = 0; i < strippedBytecode.Length - pattern.Length + 1; i++)
                 {
-                    found = ((byte)strippedBytecode[i + j].Operation == pattern[j]);
-                }
+                    bool found = true;
+                    for (int j = 0; j < pattern.Length && found; j++)
+                    {
+                        found = ((byte)strippedBytecode[i + j].Operation == pattern[j]);
+                    }
 
-                if (found)
-                {
-                    patternFound.Add((ushort)i, mapping);
-                    i += pattern.Length - 1;
+                    if (found)
+                    {
+                        patternFound.Add((ushort)i, mapping);
+                        i += pattern.Length - 1;
+                    }
                 }
             }
+            return patternFound.ToFrozenDictionary();
         }
-
-        // TODO: implement actual analysis.
-        return new IlInfo(patternFound.ToFrozenDictionary(), SegmentCode(strippedBytecode));
+        return new IlInfo(CheckPatterns(machineCode, out OpcodeInfo[] strippedBytecode), SegmentCode(strippedBytecode));
     }
 
     /// <summary>
     /// How many execution a <see cref="CodeInfo"/> should perform before trying to get its opcodes optimized.
     /// </summary>
     public const int IlAnalyzerThreshold = 23;
+    public const int IlCompilerThreshold = 57;
 }

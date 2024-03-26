@@ -217,10 +217,11 @@ namespace Nethermind.Evm
                 [Instruction.SWAP1   ] = new(GasCostOf.VeryLow, 0, 2, 2)
             }.ToFrozenDictionary();
     }
-    public struct OpcodeInfo(Instruction instruction, ReadOnlyMemory<byte>? arguments, OpcodeMetadata? metadata)
+    public struct OpcodeInfo(ushort pc, Instruction instruction, ReadOnlyMemory<byte>? arguments, OpcodeMetadata? metadata)
     {
         public OpcodeMetadata? Metadata { get; } = metadata;
         public Instruction Operation { get; set; } = instruction;
+        public ushort ProgramCounter { get; set; } = pc;
         public ReadOnlyMemory<byte>? Arguments { get; set; } = arguments;
     }
 

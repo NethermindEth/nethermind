@@ -18,27 +18,21 @@ using Label = Sigil.Label;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public static Func<long, EvmExceptionType> Build(CodeInfo codeinfo, int segmentId)
+    public static Func<long, EvmExceptionType> CompileSegment(string segmentName, OpcodeInfo[] code)
     {
-        Dictionary<int, long> gasCost = BuildCostLookup(codeinfo.IlInfo.Segments[segmentId]);
+        Emit<Func<long, EvmExceptionType>> method = Emit<Func<long, EvmExceptionType>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
-        // TODO: stack invariants, gasCost application
+        using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
+        using Local address = method.DeclareLocal(typeof(Address));
+        using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
+        using Local uint256A = method.DeclareLocal(typeof(UInt256));
+        using Local uint256B = method.DeclareLocal(typeof(UInt256));
+        using Local uint256C = method.DeclareLocal(typeof(UInt256));
+        using Local uint256R = method.DeclareLocal(typeof(UInt256));
+        using Local gasAvailable = method.DeclareLocal(typeof(long));
 
-        string name = "ILVM_" + Guid.NewGuid();
-
-        Emit<Func<long, EvmExceptionType>> method = Emit<Func<long, EvmExceptionType>>.NewDynamicMethod($"{codeinfo.GetHashCode()}_{segmentId}", doVerify: true, strictBranchVerification: true);
-
-        Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
-        Local address = method.DeclareLocal(typeof(Address));
-        Local consumeJumpCondition = method.DeclareLocal(typeof(int));
-        Local uint256A = method.DeclareLocal(typeof(UInt256));
-        Local uint256B = method.DeclareLocal(typeof(UInt256));
-        Local uint256C = method.DeclareLocal(typeof(UInt256));
-        Local uint256R = method.DeclareLocal(typeof(UInt256));
-        Local gasAvailable = method.DeclareLocal(typeof(long));
-
-        Local stack = method.DeclareLocal(typeof(Word*));
-        Local current = method.DeclareLocal(typeof(Word*));
+        using Local stack = method.DeclareLocal(typeof(Word*));
+        using Local current = method.DeclareLocal(typeof(Word*));
 
         const int wordToAlignTo = 32;
 
@@ -64,8 +58,8 @@ internal class ILCompiler
         Dictionary<int, Label> jumpDestinations = new();
 
 
-        OpcodeInfo[] code = codeinfo.IlInfo.Segments[segmentId];
-        for(int pc = 0; pc < code.Length; pc++)
+        Dictionary<int, long> gasCost = BuildCostLookup(code);
+        for (int pc = 0; pc < code.Length; pc++)
         {
             OpcodeInfo op = code[pc];
 
@@ -101,7 +95,7 @@ internal class ILCompiler
                     method.Branch(jumpTable);
 
                     method.MarkLabel(noJump);
-                    method.StackPop(current, 2);    
+                    method.StackPop(current, 2);
                     break;
                 case Instruction.PUSH1:
                 case Instruction.PUSH2:
@@ -157,7 +151,8 @@ internal class ILCompiler
 
                 case Instruction.MOD:
                     EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel) => {
+                        (il, postInstructionLabel) =>
+                        {
                             Label label = il.DefineLabel();
 
                             il.Duplicate();
@@ -165,7 +160,7 @@ internal class ILCompiler
                             il.CompareEqual();
 
                             il.BranchIfFalse(label);
-                            
+
                             il.LoadConstant(0);
                             il.Branch(postInstructionLabel);
 
@@ -175,7 +170,8 @@ internal class ILCompiler
 
                 case Instruction.DIV:
                     EmitBinaryUInt256Method(method, uint256R, current, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel) => {
+                        (il, postInstructionLabel) =>
+                        {
                             Label label = il.DefineLabel();
 
                             il.Duplicate();
