@@ -206,7 +206,7 @@ jobs:
             while true; do
               response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url")
               # Check if the response contains "false"
-              if echo "$response" | jq -e '.result | contains("false")'; then
+              if echo "$response" | jq -e '.result == false'; then
                 echo "Node at $rpc_url synced."
                 break
               else
