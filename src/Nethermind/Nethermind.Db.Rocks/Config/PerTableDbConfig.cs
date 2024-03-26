@@ -47,6 +47,7 @@ public class PerTableDbConfig
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public bool? DisableCompression => ReadConfig<bool?>(nameof(DisableCompression));
+    public bool? UseLz4 => ReadConfig<bool?>(nameof(UseLz4));
     public ulong? CompactionReadAhead => ReadConfig<ulong?>(nameof(CompactionReadAhead));
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
     public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
@@ -71,6 +72,7 @@ public class PerTableDbConfig
     public int? BloomFilterBitsPerKey => ReadConfig<int?>(nameof(BloomFilterBitsPerKey));
     public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
+    public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
 
     private T? ReadConfig<T>(string propertyName)
     {

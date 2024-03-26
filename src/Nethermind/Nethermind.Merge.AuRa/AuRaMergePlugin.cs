@@ -62,8 +62,6 @@ namespace Nethermind.Merge.AuRa
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
                 _auraApi!,
-                _auraConfig!,
-                _api.DisposeStack,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,

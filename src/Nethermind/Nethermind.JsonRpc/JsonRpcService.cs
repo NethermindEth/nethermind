@@ -68,11 +68,6 @@ public class JsonRpcService : IJsonRpcService
                 if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
                 return GetErrorResponse(rpcRequest.Method, ErrorCodes.ModuleTimeout, "Timeout", ex.ToString(), rpcRequest.Id);
             }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.ToString(), rpcRequest.Id);
-            }
         }
         catch (Exception ex)
         {
@@ -202,6 +197,11 @@ public class JsonRpcService : IJsonRpcService
         catch (Exception e) when (e.InnerException is InsufficientBalanceException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
         }
         finally
         {
