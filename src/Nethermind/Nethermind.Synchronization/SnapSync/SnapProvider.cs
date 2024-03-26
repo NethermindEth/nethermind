@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -28,6 +29,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ILogger _logger;
 
         private readonly ProgressTracker _progressTracker;
+        private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024*16, "");
 
         public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
@@ -88,7 +90,18 @@ namespace Nethermind.Synchronization.SnapSync
                         _progressTracker.EnqueueAccountStorage(item);
                     }
 
-                    _progressTracker.EnqueueCodeHashes(CollectionsMarshal.AsSpan(codeHashes));
+
+                    using ArrayPoolList<ValueHash256> filteredCodeHashes = codeHashes.AsParallel().Where((code) =>
+                    {
+                        if (_codeExistKeyCache.Get(code)) return false;
+
+                        bool exist = _dbProvider.CodeDb.KeyExists(code.Bytes);
+                        if (exist) _codeExistKeyCache.Set(code);
+                        return !exist;
+                    }).ToPooledList(codeHashes.Count);
+
+                    _progressTracker.EnqueueCodeHashes(filteredCodeHashes.AsSpan());
+
                     _progressTracker.UpdateAccountRangePartitionProgress(effectiveHashLimit, accounts[^1].Path, moreChildrenToRight);
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
