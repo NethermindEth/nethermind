@@ -50,17 +50,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 BlockHeader clonedHeader = header.Clone();
-                bool noBaseFee = transactionCall.GasPrice is null && transactionCall.MaxFeePerGas is null;
-                if (noBaseFee)
-                {
-                    clonedHeader.BaseFeePerGas = 0;
-                }
-                bool noBlobGasFee = transactionCall.MaxFeePerBlobGas is null;
-                if (noBlobGasFee)
-                {
-                    clonedHeader.BlobGasUsed = 0;
-                }
 
+                //Execute without a base fee 
+                clonedHeader.BaseFeePerGas = 0;
+              
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
