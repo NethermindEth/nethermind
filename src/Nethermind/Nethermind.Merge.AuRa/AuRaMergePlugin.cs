@@ -115,7 +115,7 @@ namespace Nethermind.Merge.AuRa
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
                 {
-                    if (decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys.Gnosis.Slot)
+                    if (shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys!.Gnosis.Slot)
                     {
                         shutterTxSource.DecryptionKeys = decryptionKeys;
                     }
