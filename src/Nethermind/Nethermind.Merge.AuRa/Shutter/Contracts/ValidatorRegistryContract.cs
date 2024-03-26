@@ -94,11 +94,12 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
                 if (_logger.IsWarn) _logger.Warn("Registration message contains an invalid contract address (" + msg.ContractAddress + ") should be " + ContractAddress);
                 continue;
             }
-            else if (!BlsSigner.Verify(pk, sig, update.Message))
-            {
-                if (_logger.IsWarn) _logger.Warn("Registration message has invalid signature.");
-                continue;
-            }
+            // todo: check signature
+            // else if (!BlsSigner.Verify(pk, sig, update.Message))
+            // {
+            //     if (_logger.IsWarn) _logger.Warn("Registration message has invalid signature.");
+            //     continue;
+            // }
 
             return true;
         }
