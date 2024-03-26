@@ -8,13 +8,14 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
 using NUnit.Framework;
+
 namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
 public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
 {
     [Test]
-    public void Trace_call_input()
+    public void Trace_call()
     {
         byte[] callInput = Prepare.EvmCode
             .PushData(SampleHexData2)
@@ -41,7 +42,53 @@ public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
     }
 
     [Test]
-    public void Trace_call_input_ignore_data_less_than_4_bytes()
+    [TestCase(Instruction.DELEGATECALL)]
+    [TestCase(Instruction.STATICCALL)]
+    public void Trace_dynamic_call(Instruction callType)
+    {
+        byte[] callInput = Prepare.EvmCode
+            .PushData(SampleHexData2)
+            .STOP()
+            .Done;
+
+        byte[] code = Prepare.EvmCode
+            .DynamicCallWithInput(callType, TestItem.AddressC, 50000, callInput)
+            .STOP()
+            .Done;
+
+        Dictionary<string, int> expected4ByteIds = new()
+        {
+            { "62b15678-1",  1 }
+        };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(Native4ByteTracer._4byteTracer, code, callInput, 0);
+        trace.CustomTracerResult?.Value.Should().BeEquivalentTo(expected4ByteIds);
+    }
+
+    [Test]
+    public void Trace_call_code()
+    {
+        byte[] callInput = Prepare.EvmCode
+            .PushData(SampleHexData2)
+            .STOP()
+            .Done;
+
+        byte[] code = Prepare.EvmCode
+            .CallCode(TestItem.AddressC, 50000)
+            .STOP()
+            .Done;
+
+        Dictionary<string, int> expected4ByteIds = new()
+        {
+            { "62b15678-1",  1 }
+        };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(Native4ByteTracer._4byteTracer, code, callInput, 0);
+        trace.CustomTracerResult?.Value.Should().BeEquivalentTo(expected4ByteIds);
+    }
+
+    [Test]
+    public void Trace_call_Ignore_data_less_than_4_bytes()
     {
         byte[] callInput = Prepare.EvmCode
             .STOP()
@@ -62,7 +109,7 @@ public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
     }
 
     [Test]
-    public void Trace_call_input_ignore_precompile()
+    public void Trace_call_Ignore_precompile()
     {
         byte[] callInput = Prepare.EvmCode
             .PushData(SampleHexData2)
