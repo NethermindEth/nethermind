@@ -51,9 +51,9 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
                 BlockHeader clonedHeader = header.Clone();
 
-                //Execute without a base fee 
+                //Simulate execution without a base fee 
                 clonedHeader.BaseFeePerGas = 0;
-              
+
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
 
                 using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout);
