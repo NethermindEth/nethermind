@@ -50,7 +50,7 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 }
 
                 BlockHeader clonedHeader = header.Clone();
-                var noBaseFee = ShouldNotSetBaseFee(transactionCall);
+                var noBaseFee = !ShouldSetBaseFee(transactionCall);
                 if (noBaseFee)
                 {
                     clonedHeader.BaseFeePerGas = 0;
@@ -69,11 +69,10 @@ namespace Nethermind.JsonRpc.Modules.Eth
                 return ExecuteTx(clonedHeader, tx, cancellationTokenSource.Token);
             }
 
-            private static bool ShouldNotSetBaseFee(TransactionForRpc t)
+            private static bool ShouldSetBaseFee(TransactionForRpc t)
             {
                 return
-                    (t.GasPrice is null || t.GasPrice == 0) && (t.MaxFeePerGas is null || t.MaxFeePerGas == 0)
-                    && (t.MaxPriorityFeePerGas is null || t.MaxPriorityFeePerGas == 0);
+                    t.GasPrice > 0 || t.MaxFeePerGas > 0 || t.MaxPriorityFeePerGas > 0;
             }
 
             protected abstract ResultWrapper<TResult> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token);
