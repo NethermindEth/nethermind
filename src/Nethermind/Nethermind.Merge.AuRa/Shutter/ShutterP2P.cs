@@ -58,7 +58,7 @@ public class ShutterP2P
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
         ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
-        _logger.Info($"Started Shutter P2P: {peer.Address}");
+        if (_logger.IsInfo) _logger.Info($"Started Shutter P2P: {peer.Address}");
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
         ITopic topic = router.Subscribe("decryptionKeys");
@@ -71,7 +71,7 @@ public class ShutterP2P
 
             if (msgCount % 10 == 1)
             {
-                _logger.Info("Receiving Shutter decryption keys...");
+                if (_logger.IsInfo) _logger.Info("Receiving Shutter decryption keys...");
             }
 
             if (BlockTreeIsReady())
@@ -96,7 +96,7 @@ public class ShutterP2P
                 Thread.Yield();
                 if (BlockTreeIsReady() && msgQueue.TryDequeue(out var msg))
                 {
-                    _logger.Info("Processing Shutter decryption keys...");
+                    if (_logger.IsInfo) _logger.Info("Processing Shutter decryption keys...");
 
                     IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
                     KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
@@ -105,24 +105,24 @@ public class ShutterP2P
                     Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
                     if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
                     {
-                        _logger.Warn("Could not parse Shutter decryption keys...");
+                        if (_logger.IsWarn) _logger.Warn("Could not parse Shutter decryption keys...");
                         continue;
                     }
 
                     if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
                     {
-                        _logger.Warn("Could not get Shutter eon info...");
+                        if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
                         continue;
                     }
 
                     if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
                     {
-                        _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
+                        if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
                         _onDecryptionKeysReceived(decryptionKeys);
                     }
                     else
                     {
-                        _logger.Warn("Invalid decryption keys received on P2P network.");
+                        if (_logger.IsWarn) _logger.Warn("Invalid decryption keys received on P2P network.");
                     }
                 }
             }
@@ -142,7 +142,7 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
-        _logger.Info($"Checking decryption keys instanceId: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()}");
+        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceId: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()}");
 
         if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
         {
@@ -218,7 +218,7 @@ public class ShutterP2P
         // eonKey = new(eonKeyBytes);
         eonKey = new();
 
-        _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
+        if (_logger.IsInfo) _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
 
         return true;
     }

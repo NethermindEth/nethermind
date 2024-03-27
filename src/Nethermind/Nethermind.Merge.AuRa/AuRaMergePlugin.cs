@@ -119,7 +119,7 @@ namespace Nethermind.Merge.AuRa
                 {
                     if (shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys!.Gnosis.Slot)
                     {
-                        logger.Info("Updated Shutter decryption keys...");
+                        if (logger.IsInfo) logger.Info("Updated Shutter decryption keys...");
                         shutterTxSource.DecryptionKeys = decryptionKeys;
                     }
                 };

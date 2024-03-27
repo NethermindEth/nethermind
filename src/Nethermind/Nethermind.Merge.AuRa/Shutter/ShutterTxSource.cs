@@ -87,11 +87,17 @@ public class ShutterTxSource : ITxSource
         if (DecryptionKeys is null || DecryptionKeys!.Gnosis.Slot != (ulong)parent.Number)
         {
             // todo: store a dictionary?
-            throw new Exception("Decryption keys not received for slot " + parent.Number);
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {parent.Number}, cannot include Shutter transactions");
+            return [];
         }
 
         IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.Gnosis.TxPointer);
-        return sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
+        if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
+
+        IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
+        if (_logger.IsInfo) _logger.Info("Decrypted Shutter transactions...");
+
+        return transactions;
     }
 
     internal IEnumerable<TransactionSubmittedEvent> GetEvents()
