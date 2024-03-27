@@ -3,7 +3,6 @@
 
 using Nethermind.Core;
 using System.Diagnostics.CodeAnalysis;
-using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Validators;
 

@@ -110,8 +110,7 @@ public partial class EngineModuleTests
             },
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
-            withdrawals
-        );
+            withdrawals);
         GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV2", expectedPayloadId);

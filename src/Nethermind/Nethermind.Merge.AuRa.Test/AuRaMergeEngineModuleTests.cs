@@ -156,8 +156,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                 _api!,
-                new AuRaConfig(),
-                new DisposableStack(),
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,

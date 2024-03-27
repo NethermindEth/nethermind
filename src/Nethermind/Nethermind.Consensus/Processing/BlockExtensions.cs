@@ -19,7 +19,7 @@ namespace Nethermind.Consensus.Processing
         public static Block CreateCopy(this Block block, BlockHeader header) =>
             block is BlockToProduce blockToProduce
                 ? new BlockToProduce(header, blockToProduce.Transactions, blockToProduce.Uncles, blockToProduce.Withdrawals)
-                : new Block(header, block.Transactions, block.Uncles, block.Withdrawals);
+                : new Block(header, block.Transactions, block.Uncles, block.Withdrawals, block.Deposits);
 
         public static IEnumerable<Transaction> GetTransactions(this Block block) =>
             block is BlockToProduce blockToProduce

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -71,6 +72,11 @@ namespace Nethermind.Merge.Plugin
 
             throw new InvalidOperationException(
                 $"{nameof(GetFinalizationLevel)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
+        }
+
+        public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+        {
+            _auRaBlockFinalizationManager!.SetMainBlockProcessor(blockProcessor);
         }
 
         public void Dispose()

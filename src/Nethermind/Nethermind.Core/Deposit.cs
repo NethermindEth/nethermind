@@ -1,10 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Text;
-using System.Text.Json.Serialization;
 using Nethermind.Core.Extensions;
-using Nethermind.Int256;
+using System.Text;
 
 namespace Nethermind.Core;
 
@@ -13,7 +11,7 @@ namespace Nethermind.Core;
 /// </summary>
 public class Deposit
 {
-    public byte[]? PublicKey { get; set; }
+    public byte[]? PubKey { get; set; }
     public byte[]? WithdrawalCredentials { get; set; }
     public ulong Amount { get; set; }
     public byte[]? Signature { get; set; }
@@ -24,6 +22,7 @@ public class Deposit
         .Append($"{nameof(Index)}: {Index}, ")
         .Append($"{nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, ")
         .Append($"{nameof(Amount)}: {Amount}, ")
-        .Append($"{nameof(PublicKey)}: {PublicKey?.ToHexString()}}}")
+        .Append($"{nameof(Signature)}: {Signature?.ToHexString()}, ")
+        .Append($"{nameof(PubKey)}: {PubKey?.ToHexString()}}}")
         .ToString();
 }

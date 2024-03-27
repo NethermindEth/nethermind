@@ -13,7 +13,7 @@ public class Prague : Cancun
 
     protected Prague()
     {
-        Name = "Cancun";
+        Name = "Prague";
         IsEip6110Enabled = true;
     }
 
