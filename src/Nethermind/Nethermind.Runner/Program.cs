@@ -117,7 +117,7 @@ public static class Program
         string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
         if (!string.IsNullOrEmpty(duplicateArgumentsList))
         {
-            _logger.Error($"Failed due to duplicate arguments - [{duplicateArgumentsList}] passed while execution");
+            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
             Environment.ExitCode = ExitCodes.DuplicatedArguments;
             return;
         }
