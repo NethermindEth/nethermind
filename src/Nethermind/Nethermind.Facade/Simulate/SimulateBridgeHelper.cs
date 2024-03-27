@@ -10,6 +10,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -44,19 +45,18 @@ public class SimulateBridgeHelper(
         IEnumerable<Address?> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
         IEnumerable<Address?> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
         var all = senders.Union(targets)
-            .Where(address => address is null)
+            .Where(address => address is not null && !env.StateProvider.AccountExists(address))
             .Distinct()
             .ToList();
 
         foreach (Address address in all)
         {
-            env.StateProvider.CreateAccountIfNotExists(address, 0, 0);
+            env.StateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
 
-        IWorldState state = env.StateProvider;
-        state.Commit(currentSpec);
-        state.CommitTree(blockHeader.Number - 1);
-        state.RecalculateStateRoot();
+        env.StateProvider.Commit(currentSpec);
+        env.StateProvider.CommitTree(blockHeader.Number - 1);
+        env.StateProvider.RecalculateStateRoot();
 
         blockHeader.StateRoot = env.StateProvider.StateRoot;
     }
@@ -101,7 +101,7 @@ public class SimulateBridgeHelper(
 
                 BlockHeader callHeader = GetCallHeader(callInputBlock, parent);
                 UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
-                callHeader.StateRoot = stateProvider.StateRoot!;
+                stateProvider.StateRoot = env.StateProvider.StateRoot;
 
                 using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(stateProvider.StateRoot!);
 
@@ -138,12 +138,12 @@ public class SimulateBridgeHelper(
                     BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction,
                         testedTxs,
                         stateProvider);
-                    stateProvider.IncrementNonce(transaction.SenderAddress);
+
                     if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip)
                     {
                         return (false, $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}");
                     }
-
+                    stateProvider.IncrementNonce(transaction.SenderAddress);
 
                     testedTxs.Add(transaction);
                 }

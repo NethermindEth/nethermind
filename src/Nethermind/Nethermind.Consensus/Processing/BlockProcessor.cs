@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
@@ -88,7 +89,9 @@ public partial class BlockProcessor : IBlockProcessor
     {
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
-        TxHashCalculator.CalculateInBackground(suggestedBlocks);
+        using CancellationTokenSource cancellationTokenSource = new CancellationTokenSource();
+        TxHashCalculator.CalculateInBackground(suggestedBlocks, cancellationTokenSource.Token);
+
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -148,6 +151,10 @@ public partial class BlockProcessor : IBlockProcessor
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
             throw;
+        }
+        finally
+        {
+            cancellationTokenSource.Cancel();
         }
     }
 
@@ -375,17 +382,21 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
-    private class TxHashCalculator(IReadOnlyList<Block> suggestedBlocks) : IThreadPoolWorkItem
+    private class TxHashCalculator(IReadOnlyList<Block> suggestedBlocks, CancellationToken cancellationToken) : IThreadPoolWorkItem
     {
-        public static void CalculateInBackground(IReadOnlyList<Block> suggestedBlocks)
+        public static void CalculateInBackground(IReadOnlyList<Block> suggestedBlocks, CancellationToken cancellationToken)
         {
             // Memory has been reserved on the transactions to delay calculate the hashes
             // We calculate the hashes in the background to release that memory
-            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks), preferLocal: false);
+            ThreadPool.UnsafeQueueUserWorkItem(new TxHashCalculator(suggestedBlocks, cancellationToken), preferLocal: false);
         }
 
         void IThreadPoolWorkItem.Execute()
         {
+            if (cancellationToken.IsCancellationRequested)
+            {
+                return;
+            }
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
@@ -393,6 +404,10 @@ public partial class BlockProcessor : IBlockProcessor
             {
                 foreach (Transaction tx in block.Transactions)
                 {
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
                     // Calculate the hashes to release the memory from the transactionSequence
                     tx.CalculateHashInternal();
                 }
