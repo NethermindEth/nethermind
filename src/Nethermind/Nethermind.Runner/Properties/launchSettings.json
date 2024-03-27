@@ -88,8 +88,7 @@
       "commandName": "Project",
       "commandLineArgs": "-c holesky -dd .data",
       "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development",
-        "NETHERMIND_HIVE_ENABLED": "true"
+        "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
     "Holesky (archive)": {
