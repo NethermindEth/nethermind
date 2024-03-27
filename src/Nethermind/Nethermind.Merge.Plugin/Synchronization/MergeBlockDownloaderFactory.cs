@@ -9,6 +9,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -27,7 +28,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IBetterPeerStrategy _betterPeerStrategy;
         private readonly ILogManager _logManager;
-        private readonly IFullStateFinder _fullStateFinder;
+        private readonly IStateReader _stateReader;
         private readonly ISyncConfig _syncConfig;
 
         public MergeBlockDownloaderFactory(
@@ -38,7 +39,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISealValidator sealValidator,
             ISyncConfig syncConfig,
             IBetterPeerStrategy betterPeerStrategy,
-            IFullStateFinder fullStateFinder,
+            IStateReader stateReader,
             ILogManager logManager)
         {
             _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
@@ -48,7 +49,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _sealValidator = sealValidator ?? throw new ArgumentNullException(nameof(sealValidator));
             _betterPeerStrategy = betterPeerStrategy ?? throw new ArgumentNullException(nameof(betterPeerStrategy));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder)); ;
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader)); ;
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig)); ;
         }
 
@@ -69,7 +70,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 _specProvider,
                 _betterPeerStrategy,
                 chainLevelHelper,
-                _fullStateFinder,
+                _stateReader,
                 _logManager);
         }
 
