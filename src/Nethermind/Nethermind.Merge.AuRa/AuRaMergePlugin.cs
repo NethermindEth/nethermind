@@ -90,6 +90,8 @@ namespace Nethermind.Merge.AuRa
             Debug.Assert(_api?.BlockProducerEnvFactory is not null,
                 $"{nameof(_api.BlockProducerEnvFactory)} has not been initialized.");
 
+            Logging.ILogger logger = _api.LogManager.GetClassLogger();
+
             ShutterTxSource? shutterTxSource = null;
 
             if (_auraConfig!.UseShutter)
@@ -117,6 +119,7 @@ namespace Nethermind.Merge.AuRa
                 {
                     if (shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys!.Gnosis.Slot)
                     {
+                        logger.Info("Updated Shutter decryption keys...");
                         shutterTxSource.DecryptionKeys = decryptionKeys;
                     }
                 };

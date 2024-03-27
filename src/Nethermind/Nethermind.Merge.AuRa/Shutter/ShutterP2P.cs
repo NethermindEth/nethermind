@@ -142,7 +142,7 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
-        _logger.Info($"Checking decryption keys instanceId={decryptionKeys.InstanceID} eon={decryptionKeys.Eon} #keys={decryptionKeys.Keys.Count()} + #sig={decryptionKeys.Gnosis.Signatures.Count()}");
+        _logger.Info($"Checking decryption keys instanceId: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()}");
 
         if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
         {
@@ -218,7 +218,7 @@ public class ShutterP2P
         // eonKey = new(eonKeyBytes);
         eonKey = new();
 
-        _logger.Info($"Shutter eon={eon} key={Convert.ToHexString(eonKeyBytes)}");
+        _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
 
         return true;
     }
