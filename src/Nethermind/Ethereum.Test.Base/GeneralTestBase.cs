@@ -151,15 +151,20 @@ namespace Ethereum.Test.Base
         {
             foreach (KeyValuePair<Address, AccountState> accountState in pre)
             {
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                if (accountState.Value.Storage != null)
                 {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                    foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                    {
+                        stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                            storageItem.Value.WithoutLeadingZeros().ToArray());
+                    }
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
+                if (accountState.Value.Code != null)
+                {
+                    stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

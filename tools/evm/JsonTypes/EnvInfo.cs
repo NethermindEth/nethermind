@@ -60,6 +60,7 @@ namespace Evm.JsonTypes
             blockHeaderBuilder.WithBlobGasUsed(ParentBlobGasUsed);
             blockHeaderBuilder.WithGasUsed(ParentGasUsed);
             blockHeaderBuilder.WithTimestamp(ParentTimestamp);
+
             if (ParentUncleHash != null) blockHeaderBuilder.WithUnclesHash(ParentUncleHash);
             return blockHeaderBuilder.TestObject;
         }

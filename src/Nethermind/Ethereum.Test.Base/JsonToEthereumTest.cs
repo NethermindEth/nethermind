@@ -27,8 +27,8 @@ namespace Ethereum.Test.Base
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "GrayGlacier");
-            network = network.Replace("Merge", "GrayGlacier");
+            network = network.Replace("Merged", "Paris");
+            network = network.Replace("Merge", "Paris");
             network = network.Replace("London+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3860", "Shanghai");
@@ -57,6 +57,7 @@ namespace Ethereum.Test.Base
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
+                "Paris" => Paris.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
                 "ArrowGlacier" => ArrowGlacier.Instance,

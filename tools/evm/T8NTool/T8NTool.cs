@@ -5,6 +5,7 @@ using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -19,7 +20,6 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -35,8 +35,15 @@ namespace Evm.T8NTool;
 public class T8NTool
 {
     private readonly TxDecoder _txDecoder = new();
-    private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
+    private readonly EthereumJsonSerializer _ethereumJsonSerializer;
     private readonly LimboLogs _logManager = LimboLogs.Instance;
+
+    public T8NTool()
+    {
+        _ethereumJsonSerializer = new EthereumJsonSerializer();
+        // EthereumJsonSerializer.AddConverter(new AccountJsonConverter());
+        EthereumJsonSerializer.AddConverter(new ReceiptJsonConverter());
+    }
 
     public T8NOutput Execute(
         string inputAlloc,
@@ -109,6 +116,7 @@ public class T8NTool
     {
         Dictionary<Address, AccountState> allocJson = _ethereumJsonSerializer.Deserialize<Dictionary<Address, AccountState>>(File.ReadAllText(inputAlloc));
         EnvInfo envInfo = _ethereumJsonSerializer.Deserialize<EnvInfo>(File.ReadAllText(inputEnv));
+
         Transaction[] transactions;
         if (inputTxs.EndsWith(".json")) {
             TransactionInfo[] txInfoList = _ethereumJsonSerializer.Deserialize<TransactionInfo[]>(File.ReadAllText(inputTxs));
@@ -116,7 +124,7 @@ public class T8NTool
         } else {
             string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
-            transactions = _txDecoder.DecodeArray(rlp).ToArray();
+            transactions = _txDecoder.DecodeArray(rlp);
         }
 
         IDb stateDb = new MemDb();
@@ -189,6 +197,8 @@ public class T8NTool
             .ToArray();
 
         Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
+        new BeaconBlockRootHandler().ApplyContractStateChanges(block, spec, stateProvider);
+        
 
         CalculateReward(stateReward, block, stateProvider, spec);
 
@@ -201,14 +211,17 @@ public class T8NTool
 
         List<RejectedTx> rejectedTxReceipts = [];
         int txIndex = 0;
+        List<Transaction> includedTx = [];
         foreach (Transaction tx in transactions)
         {
-            bool isValid = txValidator.IsWellFormed(tx, spec);
+            string? error;
+            bool isValid = txValidator.IsWellFormed(tx, spec, out error);
             if (isValid)
             {
                 tracer.StartNewTxTrace(tx);
                 TransactionResult transactionResult = transactionProcessor.Execute(tx, new BlockExecutionContext(header), tracer);
                 tracer.EndTxTrace();
+                includedTx.Add(tx);
 
                 if (transactionResult.Success)
                 {
@@ -219,13 +232,20 @@ public class T8NTool
                     includedTxReceipts.Add(tracer.LastReceipt);
                 } else if (transactionResult.Error != null)
                 {
-                    rejectedTxReceipts.Add(new RejectedTx(txIndex, transactionResult.Error));
+                    rejectedTxReceipts.Add(new RejectedTx(txIndex,  GethErrorMappings.GetErrorMapping(transactionResult.Error, tx.SenderAddress.ToString(true), tx.Nonce, stateProvider.GetNonce(tx.SenderAddress))));
                     stateProvider.Reset();
                 }
                 stateProvider.RecalculateStateRoot();
+                txIndex++;
             }
-
-            txIndex++;
+            else if (error != null)
+            {
+                rejectedTxReceipts.Add(new RejectedTx(txIndex, GethErrorMappings.GetErrorMapping(error)));
+            }
+        }
+        if (spec.IsEip4844Enabled)
+        {
+            block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(includedTx.ToArray());
         }
 
         ulong gasUsed = 0;
@@ -238,28 +258,36 @@ public class T8NTool
         Hash256 txRoot = TxTrie.CalculateRoot(successfulTxs.ToArray());
         Hash256 receiptsRoot = ReceiptTrie<TxReceipt>.CalculateRoot(receiptSpec, includedTxReceipts.ToArray(), ReceiptMessageDecoder.Instance);
 
+        var logEntries = includedTxReceipts.SelectMany(receipt => receipt.Logs ?? Enumerable.Empty<LogEntry>()).ToArray();
+        var bloom = new Bloom(logEntries);
         var postState = new PostState
         {
             StateRoot = stateRoot,
             TxRoot = txRoot,
-            ReceiptRoot = receiptsRoot,
+            ReceiptsRoot = receiptsRoot,
+            LogsBloom = bloom,
+            LogsHash = Keccak.Compute(Rlp.OfEmptySequence.Bytes),
             Receipts = includedTxReceipts.ToArray(),
-            Rejected = rejectedTxReceipts.ToArray(),
-            Difficulty = envInfo.CurrentDifficulty,
+            Rejected = rejectedTxReceipts.IsNullOrEmpty() ? null : rejectedTxReceipts.ToArray(),
+            CurrentDifficulty = envInfo.CurrentDifficulty,
             GasUsed = new UInt256(gasUsed),
             CurrentBaseFee = envInfo.CurrentBaseFee,
-            WithdrawalsRoot = block.WithdrawalsRoot
+            WithdrawalsRoot = block.WithdrawalsRoot,
+            CurrentExcessBlobGas = header.ExcessBlobGas,
+            BlobGasUsed = header.BlobGasUsed
         };
-
-        var accounts = allocJson.Keys.ToDictionary(address => address, address => stateProvider.GetAccount(address));
+        
+        var accounts = allocJson.Keys.ToDictionary(address => address, address => AccountState.GetFromAccount(address, stateProvider));
         foreach (Ommer ommer in envInfo.Ommers)
         {
-            accounts.Add(ommer.Address, stateProvider.GetAccount(ommer.Address));
+            accounts.Add(ommer.Address, AccountState.GetFromAccount(ommer.Address, stateProvider));
         }
         if (header.Beneficiary != null)
         {
-            accounts.Add(header.Beneficiary, stateProvider.GetAccount(header.Beneficiary));
+            accounts.Add(header.Beneficiary, AccountState.GetFromAccount(header.Beneficiary, stateProvider));
         }
+
+        accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
         var body = Rlp.Encode(successfulTxs.ToArray()).Bytes;
 
         return new T8NExecutionResult(postState, accounts, body);
@@ -275,9 +303,7 @@ public class T8NTool
 
     private bool IsPostMerge(IReleaseSpec spec)
     {
-        return spec == ArrowGlacier.Instance
-               || spec == GrayGlacier.Instance
-               || spec == Paris.Instance
+        return spec == Paris.Instance
                || spec == Shanghai.Instance
                || spec == Cancun.Instance;
     }

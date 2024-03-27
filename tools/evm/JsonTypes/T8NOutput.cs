@@ -1,12 +1,13 @@
 ﻿using System.Text.Json.Serialization;
+using Ethereum.Test.Base;
 using Nethermind.Core;
 
 namespace Evm.JsonTypes;
 
 public class T8NOutput
 {
+    public Dictionary<Address, AccountState>? Alloc { get; set; }
     public PostState? Result { get; set; }
-    public Dictionary<Address, Account>? Alloc { get; set; }
     public byte[]? Body { get; set; }
     public string? ErrorMessage { get; set; }
     [JsonIgnore]

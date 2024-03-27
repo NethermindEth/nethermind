@@ -23,6 +23,9 @@
     <Reference Include="Evm">
       <HintPath>..\Evm\bin\Debug\net8.0\Evm.dll</HintPath>
     </Reference>
+    <Reference Include="Nethermind.Serialization.Json">
+      <HintPath>..\Evm\bin\Debug\net8.0\Nethermind.Serialization.Json.dll</HintPath>
+    </Reference>
   </ItemGroup>
 
   <ItemGroup>
