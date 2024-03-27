@@ -31,7 +31,7 @@ namespace Nethermind.Synchronization.SnapSync
         private readonly ProgressTracker _progressTracker;
 
         // This is actually close to 97% effective.
-        private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024*16, "");
+        private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16, "");
 
         public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
