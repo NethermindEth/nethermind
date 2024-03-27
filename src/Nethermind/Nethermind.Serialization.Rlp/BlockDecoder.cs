@@ -140,7 +140,7 @@ namespace Nethermind.Serialization.Rlp
             int? depositsLength = null;
             if (item.Deposits is not null)
             {
-                depositsLength = GetWithdrawalsLength(item, rlpBehaviors);
+                depositsLength = GetDepositsLength(item, rlpBehaviors);
 
                 if (depositsLength.HasValue)
                     contentLength += Rlp.LengthOfSequence(depositsLength.Value);
@@ -188,12 +188,12 @@ namespace Nethermind.Serialization.Rlp
 
         private int? GetDepositsLength(Block item, RlpBehaviors rlpBehaviors)
         {
-            if (item.Withdrawals is null)
+            if (item.Deposits is null)
                 return null;
 
             var depositsLength = 0;
 
-            for (int i = 0, count = item.Withdrawals.Length; i < count; i++)
+            for (int i = 0, count = item.Deposits.Length; i < count; i++)
             {
                 depositsLength += _depositDecoder.GetLength(item.Deposits[i], rlpBehaviors);
             }
