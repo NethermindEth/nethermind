@@ -275,9 +275,7 @@ public class T8NTool
 
     private bool IsPostMerge(IReleaseSpec spec)
     {
-        return spec == ArrowGlacier.Instance
-               || spec == GrayGlacier.Instance
-               || spec == Paris.Instance
+        return spec == Paris.Instance
                || spec == Shanghai.Instance
                || spec == Cancun.Instance;
     }
