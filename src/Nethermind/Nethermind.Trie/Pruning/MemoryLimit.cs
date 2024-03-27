@@ -23,5 +23,7 @@ namespace Nethermind.Trie.Pruning
         {
             return PruningEnabled && currentMemory >= _memoryLimit;
         }
+
+        public int TrackedPastKeyCount => 0;
     }
 }

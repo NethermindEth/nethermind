@@ -14,6 +14,7 @@ public interface ITunableDb : IDb
         HeavyWrite,
         AggressiveHeavyWrite,
         DisableCompaction,
-        EnableBlobFiles
+        EnableBlobFiles,
+        HashDb
     }
 }

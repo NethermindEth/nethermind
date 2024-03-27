@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -138,7 +139,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
             SafeContext ctx = PrepareDownloader(dbContext);
-            await ActivateAndWait(ctx, dbContext, 9);
+            await ActivateAndWait(ctx, dbContext, 9, timeout: 10000);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 

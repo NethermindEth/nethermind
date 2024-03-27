@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,10 +24,11 @@ namespace Nethermind.Store.Test
         [Test]
         public void Can_collect_stats([Values(false, true)] bool parallel)
         {
-            MemDb memDb = new();
-            IDb stateDb = memDb;
-            TrieStore trieStore = new(stateDb, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
-            WorldState stateProvider = new(trieStore, stateDb, LimboLogs.Instance);
+            MemDb codeDb = new();
+            MemDb stateDb = new MemDb();
+            NodeStorage nodeStorage = new NodeStorage(stateDb);
+            TrieStore trieStore = new(nodeStorage, new MemoryLimit(0.MB()), Persist.EveryBlock, LimboLogs.Instance);
+            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
 
             stateProvider.CreateAccount(TestItem.AddressA, 1);
             stateProvider.InsertCode(TestItem.AddressA, new byte[] { 1, 2, 3 }, Istanbul.Instance);
@@ -45,12 +47,17 @@ namespace Nethermind.Store.Test
             stateProvider.CommitTree(0);
             stateProvider.CommitTree(1);
 
-            memDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
+            codeDb.Delete(Keccak.Compute(new byte[] { 1, 2, 3, 4 })); // missing code
+
+            // delete some storage
+            Hash256 address = new("0x55227dead52ea912e013e7641ccd6b3b174498e55066b0c174a09c8c3cc4bf5e");
+            TreePath path = new TreePath(new ValueHash256("0x1800000000000000000000000000000000000000000000000000000000000000"), 2);
             Hash256 storageKey = new("0x345e54154080bfa9e8f20c99d7a0139773926479bc59e5b4f830ad94b6425332");
-            memDb.Delete(storageKey); // deletes some storage
+            nodeStorage.Set(address, path, storageKey, null);
+
             trieStore.ClearCache();
 
-            TrieStatsCollector statsCollector = new(stateDb, LimboLogs.Instance);
+            TrieStatsCollector statsCollector = new(codeDb, LimboLogs.Instance);
             VisitingOptions visitingOptions = new VisitingOptions()
             {
                 MaxDegreeOfParallelism = parallel ? 0 : 1
