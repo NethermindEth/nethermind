@@ -154,7 +154,6 @@ namespace Nethermind.Core.Extensions
             span = span[length..];
             return s;
         }
-
         public static bool IsNullOrEmpty<T>(this in Span<T> span) => span.Length == 0;
         public static bool IsNull<T>(this in Span<T> span) => Unsafe.IsNullRef(ref MemoryMarshal.GetReference(span));
         public static bool IsNullOrEmpty<T>(this in ReadOnlySpan<T> span) => span.Length == 0;

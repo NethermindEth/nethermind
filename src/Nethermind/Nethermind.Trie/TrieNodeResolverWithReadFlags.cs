@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -18,28 +19,21 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         _defaultFlags = defaultFlags;
     }
 
-    public TrieNode FindCachedOrUnknown(Hash256 hash)
-    {
-        return _baseResolver.FindCachedOrUnknown(hash);
-    }
+    public TrieNode FindCachedOrUnknown(Hash256 hash) =>
+        _baseResolver.FindCachedOrUnknown(hash);
 
-    public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        if (flags != ReadFlags.None)
-        {
-            return _baseResolver.TryLoadRlp(hash, flags | _defaultFlags);
-        }
+    public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        flags != ReadFlags.None
+            ? _baseResolver.TryLoadRlp(hash, flags | _defaultFlags)
+            : _baseResolver.TryLoadRlp(hash, _defaultFlags);
 
-        return _baseResolver.TryLoadRlp(hash, _defaultFlags);
-    }
+    public byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) =>
+        flags != ReadFlags.None
+            ? _baseResolver.GetByHash(key, flags | _defaultFlags)
+            : _baseResolver.GetByHash(key, _defaultFlags);
 
-    public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None)
-    {
-        if (flags != ReadFlags.None)
-        {
-            return _baseResolver.LoadRlp(hash, flags | _defaultFlags);
-        }
-
-        return _baseResolver.LoadRlp(hash, _defaultFlags);
-    }
+    public byte[]? LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) =>
+        flags != ReadFlags.None
+            ? _baseResolver.LoadRlp(hash, flags | _defaultFlags)
+            : _baseResolver.LoadRlp(hash, _defaultFlags);
 }

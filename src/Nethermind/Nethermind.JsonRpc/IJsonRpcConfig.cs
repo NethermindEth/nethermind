@@ -154,4 +154,8 @@ public interface IJsonRpcConfig : IConfig
 
     [ConfigItem(Description = "The max batch size limit for batched JSON-RPC calls.", DefaultValue = "33554432")]
     long? MaxBatchResponseBodySize { get; set; }
+
+    [ConfigItem(Description = "The max blocks count limit for eth_simulate JSON-RPC calls.", DefaultValue = "256")]
+
+    long? MaxSimulateBlocksCap { get; set; }
 }

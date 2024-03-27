@@ -9,8 +9,11 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Simulate;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.Trie;
+using static Nethermind.Facade.BlockchainBridge;
 using Block = Nethermind.Core.Block;
 
 namespace Nethermind.Facade
@@ -24,11 +27,11 @@ namespace Nethermind.Facade
         TxReceipt GetReceipt(Hash256 txHash);
         (TxReceipt? Receipt, TxGasInfo? GasInfo, int LogIndexStart) GetReceiptAndGasInfo(Hash256 txHash);
         (TxReceipt? Receipt, Transaction Transaction, UInt256? baseFee) GetTransaction(Hash256 txHash, bool checkTxnPool = true);
-        BlockchainBridge.CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
-        BlockchainBridge.CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
+        CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken);
+        CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken);
+        CallOutput CreateAccessList(BlockHeader header, Transaction tx, CancellationToken cancellationToken, bool optimize);
         ulong GetChainId();
-
         int NewBlockFilter();
         int NewPendingTransactionFilter();
         int NewFilter(BlockParameter? fromBlock, BlockParameter? toBlock, object? address = null, IEnumerable<object>? topics = null);
@@ -37,14 +40,11 @@ namespace Nethermind.Facade
         Hash256[] GetBlockFilterChanges(int filterId);
         Hash256[] GetPendingTransactionFilterChanges(int filterId);
         FilterLog[] GetLogFilterChanges(int filterId);
-
         FilterType GetFilterType(int filterId);
         FilterLog[] GetFilterLogs(int filterId);
-
         LogFilter GetFilter(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null);
         IEnumerable<FilterLog> GetLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default);
         IEnumerable<FilterLog> GetLogs(BlockParameter fromBlock, BlockParameter toBlock, object? address = null, IEnumerable<object>? topics = null, CancellationToken cancellationToken = default);
-
         bool TryGetLogs(int filterId, out IEnumerable<FilterLog> filterLogs, CancellationToken cancellationToken = default);
         void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 stateRoot);
         bool HasStateForRoot(Hash256 stateRoot);

@@ -10,7 +10,6 @@ namespace Nethermind.State;
 
 public class WorldStateManager : ReadOnlyWorldStateManager
 {
-    private readonly IWorldState _worldState;
     private readonly ITrieStore _trieStore;
 
     public WorldStateManager(
@@ -20,11 +19,11 @@ public class WorldStateManager : ReadOnlyWorldStateManager
         ILogManager logManager
     ) : base(dbProvider, trieStore.AsReadOnly(), logManager)
     {
-        _worldState = worldState;
+        GlobalWorldState = worldState;
         _trieStore = trieStore;
     }
 
-    public override IWorldState GlobalWorldState => _worldState;
+    public override IWorldState GlobalWorldState { get; }
 
     public override event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

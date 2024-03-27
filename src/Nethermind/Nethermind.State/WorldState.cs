@@ -136,13 +136,22 @@ namespace Nethermind.State
         {
             _stateProvider.UpdateStorageRoot(address, storageRoot);
         }
+        public void IncrementNonce(Address address, UInt256 delta)
+        {
+            _stateProvider.IncrementNonce(address, delta);
+        }
+        public void DecrementNonce(Address address, UInt256 delta)
+        {
+            _stateProvider.DecrementNonce(address, delta);
+        }
+
         public void IncrementNonce(Address address)
         {
-            _stateProvider.IncrementNonce(address);
+            _stateProvider.IncrementNonce(address, 1);
         }
         public void DecrementNonce(Address address)
         {
-            _stateProvider.DecrementNonce(address);
+            _stateProvider.DecrementNonce(address, 1);
         }
 
         public void CommitTree(long blockNumber)

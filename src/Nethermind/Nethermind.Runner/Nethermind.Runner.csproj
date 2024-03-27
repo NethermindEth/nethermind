@@ -19,6 +19,10 @@
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
 
+  <PropertyGroup>
+    <NoWarn>$(NoWarn);AD0001</NoWarn>
+  </PropertyGroup>
+  
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />

@@ -419,3 +419,22 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <remarks>Depends on <see cref="IsTracingFees"/></remarks>
     void ReportFees(UInt256 fees, UInt256 burntFees);
 }
+
+public interface ILogsTxTracer
+{
+    bool IsTracingLogs { get; }
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="gas"></param>
+    /// <param name="value"></param>
+    /// <param name="from"></param>
+    /// <param name="to"></param>
+    /// <param name="input"></param>
+    /// <param name="callType"></param>
+    /// <param name="isPrecompileCall"></param>
+    /// <returns>Created logs to be added, only when <see cref="isPrecompileCall"/> is true</returns>
+    /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
+    IEnumerable<LogEntry> ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+}

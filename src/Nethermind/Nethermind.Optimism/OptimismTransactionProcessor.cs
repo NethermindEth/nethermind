@@ -23,7 +23,9 @@ public class OptimismTransactionProcessor : TransactionProcessor
         IVirtualMachine? virtualMachine,
         ILogManager? logManager,
         IL1CostHelper l1CostHelper,
-        IOPConfigHelper opConfigHelper) : base(specProvider, worldState, virtualMachine, logManager)
+        IOPConfigHelper opConfigHelper,
+        ICodeInfoRepository? codeInfoRepository
+        ) : base(specProvider, worldState, virtualMachine, codeInfoRepository, logManager)
     {
         _l1CostHelper = l1CostHelper;
         _opConfigHelper = opConfigHelper;

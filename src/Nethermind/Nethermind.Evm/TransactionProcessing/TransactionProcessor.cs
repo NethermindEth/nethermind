@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
+using System.Reflection;
 using System.Runtime.CompilerServices;
 using System.Threading;
 
@@ -33,6 +34,7 @@ namespace Nethermind.Evm.TransactionProcessing
         protected ISpecProvider SpecProvider { get; private init; }
         protected IWorldState WorldState { get; private init; }
         protected IVirtualMachine VirtualMachine { get; private init; }
+        private readonly ICodeInfoRepository _codeInfoRepository;
 
         [Flags]
         protected enum ExecutionOptions
@@ -62,23 +64,34 @@ namespace Nethermind.Evm.TransactionProcessing
             /// </summary>
             CommitAndRestore = Commit | Restore | NoValidation
         }
+        private readonly ExecutionOptions _executeOptions;
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
-            ILogManager? logManager)
+            ICodeInfoRepository? codeInfoRepository,
+            ILogManager? logManager,
+            bool forceNoValidationOnExecute = false)
         {
             ArgumentNullException.ThrowIfNull(logManager, nameof(logManager));
             ArgumentNullException.ThrowIfNull(specProvider, nameof(specProvider));
             ArgumentNullException.ThrowIfNull(worldState, nameof(worldState));
             ArgumentNullException.ThrowIfNull(virtualMachine, nameof(virtualMachine));
+            ArgumentNullException.ThrowIfNull(codeInfoRepository, nameof(codeInfoRepository));
 
             Logger = logManager.GetClassLogger();
             SpecProvider = specProvider;
             WorldState = worldState;
             VirtualMachine = virtualMachine;
+            _codeInfoRepository = codeInfoRepository;
+
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
+            _executeOptions = ExecutionOptions.Commit;
+            if (forceNoValidationOnExecute)
+            {
+                _executeOptions |= ExecutionOptions.NoValidation;
+            }
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
@@ -93,7 +106,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
+            Execute(transaction, in blCtx, txTracer, _executeOptions);
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             Execute(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
@@ -409,7 +422,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : _codeInfoRepository.GetCachedCodeInfo(WorldState, recipient, spec);
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
@@ -519,7 +532,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         if (unspentGas >= codeDepositGasCost)
                         {
                             var code = substate.Output.ToArray();
-                            VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
+                            _codeInfoRepository.InsertCode(WorldState, code, env.ExecutingAccount, spec);
 
                             unspentGas -= codeDepositGasCost;
                         }
@@ -577,7 +590,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

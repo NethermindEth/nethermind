@@ -19,6 +19,7 @@ using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
@@ -55,6 +56,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IEthSyncingInfo _ethSyncingInfo;
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
+
     private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
     {
         return blockchainBridge.HasStateForRoot(header.StateRoot!);
@@ -170,7 +172,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return Task.FromResult(GetStateFailureResult<UInt256?>(header));
         }
@@ -208,7 +210,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return Task.FromResult(GetStateFailureResult<UInt256>(header));
         }
@@ -342,6 +344,11 @@ public partial class EthRpcModule : IEthRpcModule
     public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null) =>
         new CallTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
             .ExecuteTx(transactionCall, blockParameter);
+
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
+        new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+            .Execute(payload, blockParameter);
+
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter blockParameter) =>
         new EstimateGasTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
@@ -666,7 +673,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader header = searchResult.Object;
 
-        if (!HasStateForBlock(_blockchainBridge, header!))
+        if (!_blockchainBridge.HasStateForBlock(header!))
         {
             return GetStateFailureResult<AccountProof>(header);
         }

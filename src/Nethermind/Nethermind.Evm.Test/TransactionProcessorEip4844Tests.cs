@@ -23,10 +23,10 @@ namespace Nethermind.Evm.Test;
 [TestFixture]
 internal class TransactionProcessorEip4844Tests
 {
-    private ISpecProvider _specProvider;
-    private IEthereumEcdsa _ethereumEcdsa;
-    private TransactionProcessor _transactionProcessor;
-    private IWorldState _stateProvider;
+    private ISpecProvider _specProvider = null!;
+    private IEthereumEcdsa _ethereumEcdsa = null!;
+    private TransactionProcessor _transactionProcessor = null!;
+    private IWorldState _stateProvider = null!;
 
     [SetUp]
     public void Setup()
@@ -35,8 +35,9 @@ internal class TransactionProcessorEip4844Tests
         _specProvider = new TestSpecProvider(Cancun.Instance);
         TrieStore trieStore = new(stateDb, LimboLogs.Instance);
         _stateProvider = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
-        VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, LimboLogs.Instance);
-        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, LimboLogs.Instance);
+        CodeInfoRepository codeInfoRepository = new();
+        VirtualMachine virtualMachine = new(TestBlockhashProvider.Instance, _specProvider, codeInfoRepository, LimboLogs.Instance);
+        _transactionProcessor = new TransactionProcessor(_specProvider, _stateProvider, virtualMachine, codeInfoRepository, LimboLogs.Instance);
         _ethereumEcdsa = new EthereumEcdsa(_specProvider.ChainId, LimboLogs.Instance);
     }
 

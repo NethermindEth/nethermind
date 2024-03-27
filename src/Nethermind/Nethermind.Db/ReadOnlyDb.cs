@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Db
@@ -25,7 +26,7 @@ namespace Nethermind.Db
             _memDb.Dispose();
         }
 
-        public string Name { get; } = "ReadOnlyDb";
+        public string Name { get => _wrappedDb.Name; }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
@@ -61,17 +62,21 @@ namespace Nethermind.Db
             }
         }
 
-        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll();
+        public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => _memDb.GetAll().Union(_wrappedDb.GetAll());
 
-        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys();
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => _memDb.GetAllKeys().Union(_wrappedDb.GetAllKeys());
 
-        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues();
+        public IEnumerable<byte[]> GetAllValues(bool ordered = false) => _memDb.GetAllValues().Union(_wrappedDb.GetAllValues());
 
         public IWriteBatch StartWriteBatch()
         {
             return this.LikeABatch();
         }
 
+        //public long GetSize() => _memDb.GetSize() + _wrappedDb.GetSize();
+        //public long GetCacheSize() => _memDb.GetCacheSize() + _wrappedDb.GetCacheSize();
+        //public long GetIndexSize() => _memDb.GetIndexSize() + _wrappedDb.GetIndexSize();
+        //public long GetMemtableSize() => _memDb.GetMemtableSize() + _wrappedDb.GetMemtableSize();
         public IDbMeta.DbMetric GatherMetric(bool includeSharedCache = false) => _wrappedDb.GatherMetric(includeSharedCache);
 
         public void Remove(ReadOnlySpan<byte> key) { }
@@ -94,7 +99,7 @@ namespace Nethermind.Db
             _memDb.Clear();
         }
 
-        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => _memDb.Get(key).AsSpan();
+        public Span<byte> GetSpan(ReadOnlySpan<byte> key) => Get(key).AsSpan();
         public void PutSpan(ReadOnlySpan<byte> keyBytes, ReadOnlySpan<byte> value, WriteFlags writeFlags = WriteFlags.None)
         {
             if (!_createInMemWriteStore)

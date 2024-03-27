@@ -23,12 +23,12 @@ namespace Nethermind.Evm.Benchmark
     [MemoryDiagnoser]
     public class StaticCallBenchmarks
     {
-        private IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
-        private ITxTracer _txTracer = NullTxTracer.Instance;
+        private readonly IReleaseSpec _spec = MainnetSpecProvider.Instance.GetSpec((ForkActivation)MainnetSpecProvider.IstanbulBlockNumber);
+        private readonly ITxTracer _txTracer = NullTxTracer.Instance;
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
-        private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-        private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
+        private readonly BlockHeader _header = new(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.MuirGlacierBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
+        private readonly IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
         private EvmState _evmState;
         private WorldState _stateProvider;
 
@@ -87,7 +87,8 @@ namespace Nethermind.Evm.Benchmark
             _stateProvider.Commit(_spec);
 
             Console.WriteLine(MuirGlacier.Instance);
-            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, new OneLoggerLogManager(NullLogger.Instance));
+            CodeInfoRepository codeInfoRepository = new();
+            _virtualMachine = new VirtualMachine(_blockhashProvider, MainnetSpecProvider.Instance, codeInfoRepository, new OneLoggerLogManager(NullLogger.Instance));
 
             _environment = new ExecutionEnvironment
             (

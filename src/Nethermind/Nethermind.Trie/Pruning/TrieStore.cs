@@ -40,7 +40,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public TrieNode FindCachedOrUnknown(Hash256 hash)
+            public virtual TrieNode FindCachedOrUnknown(Hash256 hash)
             {
                 if (_objectsCache.TryGetValue(hash, out TrieNode trieNode))
                 {
@@ -360,7 +360,7 @@ namespace Nethermind.Trie.Pruning
         public virtual byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => LoadRlp(keccak, null, readFlags);
         public virtual byte[]? TryLoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None) => TryLoadRlp(keccak, null, readFlags);
 
-        public bool IsPersisted(in ValueHash256 keccak)
+        public virtual bool IsPersisted(in ValueHash256 keccak)
         {
             byte[]? rlp = _keyValueStore[keccak.Bytes];
 
@@ -379,7 +379,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsNodeCached(Hash256 hash) => _dirtyNodes.IsNodeCached(hash);
 
-        public TrieNode FindCachedOrUnknown(Hash256? hash) =>
+        public virtual TrieNode FindCachedOrUnknown(Hash256? hash) =>
             FindCachedOrUnknown(hash, false);
 
         internal TrieNode FindCachedOrUnknown(Hash256? hash, bool isReadOnly)
@@ -865,7 +865,7 @@ namespace Nethermind.Trie.Pruning
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
         }
 
-        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public virtual byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             return _pruningStrategy.PruningEnabled
                    && _dirtyNodes.AllNodes.TryGetValue(new Hash256(key), out TrieNode? trieNode)

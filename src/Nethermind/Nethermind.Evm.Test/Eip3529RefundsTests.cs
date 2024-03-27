@@ -73,7 +73,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(Recipient, 1.Ether());
             TestState.Set(new StorageCell(Recipient, 0), new[] { originalValue });
             TestState.Commit(eip3529Enabled ? London.Instance : Berlin.Instance);
-            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, LimboLogs.Instance);
+            _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, LimboLogs.Instance);
             long blockNumber = eip3529Enabled ? MainnetSpecProvider.LondonBlockNumber : MainnetSpecProvider.LondonBlockNumber - 1;
             (Block block, Transaction transaction) = PrepareTx(blockNumber, 100000, Bytes.FromHexString(codeHex));
 

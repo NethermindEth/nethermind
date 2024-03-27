@@ -162,28 +162,33 @@ namespace Nethermind.Init.Steps
         {
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            VirtualMachine virtualMachine = CreateVirtualMachine();
+            CodeInfoRepository codeInfoRepository = new();
+            VirtualMachine virtualMachine = CreateVirtualMachine(codeInfoRepository);
 
-            return new TransactionProcessor(
+            TransactionProcessor transactionProcessor = new(
                 _api.SpecProvider,
                 _api.WorldState,
                 virtualMachine,
+                codeInfoRepository,
                 _api.LogManager);
+
+            return transactionProcessor;
         }
 
-        protected virtual VirtualMachine CreateVirtualMachine()
+        protected VirtualMachine CreateVirtualMachine(CodeInfoRepository codeInfoRepository)
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
-            // blockchain processing
-            BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.LogManager);
+            BlockhashProvider blockhashProvider = new(_api.BlockTree, _api.LogManager);
 
-            return new VirtualMachine(
+            VirtualMachine virtualMachine = new(
                 blockhashProvider,
                 _api.SpecProvider,
+                codeInfoRepository,
                 _api.LogManager);
+
+            return virtualMachine;
         }
 
         protected virtual IHealthHintService CreateHealthHintService() =>

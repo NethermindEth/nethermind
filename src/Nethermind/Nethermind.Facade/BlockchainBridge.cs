@@ -19,13 +19,18 @@ using Nethermind.TxPool;
 using Block = Nethermind.Core.Block;
 using System.Threading;
 using Nethermind.Consensus.Processing;
-using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Filters;
 using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
+using Nethermind.Facade.Proxy.Models.Simulate;
+using System.Transactions;
+using Microsoft.CSharp.RuntimeBinder;
+using Nethermind.Facade.Simulate;
+using Transaction = Nethermind.Core.Transaction;
+using Nethermind.Specs;
 
 namespace Nethermind.Facade
 {
@@ -47,8 +52,10 @@ namespace Nethermind.Facade
         private readonly ILogFinder _logFinder;
         private readonly ISpecProvider _specProvider;
         private readonly IBlocksConfig _blocksConfig;
+        private readonly SimulateBridgeHelper _simulateBridgeHelper;
 
         public BlockchainBridge(ReadOnlyTxProcessingEnv processingEnv,
+            SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
             ITxPool? txPool,
             IReceiptFinder? receiptStorage,
             IFilterStore? filterStore,
@@ -61,7 +68,7 @@ namespace Nethermind.Facade
             bool isMining)
         {
             _processingEnv = processingEnv ?? throw new ArgumentNullException(nameof(processingEnv));
-            _txPool = txPool ?? throw new ArgumentNullException(nameof(_txPool));
+            _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _receiptFinder = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _filterStore = filterStore ?? throw new ArgumentNullException(nameof(filterStore));
             _filterManager = filterManager ?? throw new ArgumentNullException(nameof(filterManager));
@@ -71,6 +78,10 @@ namespace Nethermind.Facade
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blocksConfig = blocksConfig;
             IsMining = isMining;
+            _simulateBridgeHelper = new SimulateBridgeHelper(
+                simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
+                _specProvider,
+                _blocksConfig);
         }
 
         public Block? HeadBlock
@@ -127,31 +138,6 @@ namespace Nethermind.Facade
             return blockHash is not null ? _receiptFinder.Get(blockHash).ForTransaction(txHash) : null;
         }
 
-        public class CallOutput
-        {
-            public CallOutput()
-            {
-            }
-
-            public CallOutput(byte[] outputData, long gasSpent, string error, bool inputError = false)
-            {
-                Error = error;
-                OutputData = outputData;
-                GasSpent = gasSpent;
-                InputError = inputError;
-            }
-
-            public string? Error { get; set; }
-
-            public byte[] OutputData { get; set; }
-
-            public long GasSpent { get; set; }
-
-            public bool InputError { get; set; }
-
-            public AccessList? AccessList { get; set; }
-        }
-
         public CallOutput Call(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
         {
             CallOutputTracer callOutputTracer = new();
@@ -164,6 +150,29 @@ namespace Nethermind.Facade
                 OutputData = callOutputTracer.ReturnValue,
                 InputError = !tryCallResult.Success
             };
+        }
+
+        public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
+        {
+            SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
+            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            tracer.SetOtherTracer(simulateOutputTracer);
+            SimulateOutput result = new();
+            try
+            {
+                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, tracer.WithCancellation(cancellationToken));
+                if (!success)
+                {
+                    result.Error = error;
+                }
+            }
+            catch (Exception ex)
+            {
+                result.Error = ex.ToString();
+            }
+
+            result.Items = simulateOutputTracer.Results;
+            return result;
         }
 
         public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
@@ -239,7 +248,11 @@ namespace Nethermind.Facade
 
             if (transaction.Nonce == 0)
             {
-                transaction.Nonce = GetNonce(stateRoot, transaction.SenderAddress);
+                try
+                {
+                    transaction.Nonce = _processingEnv.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
+                }
+                catch (TrieException) { }
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock
@@ -279,6 +292,7 @@ namespace Nethermind.Facade
             transaction.Hash = transaction.CalculateHash();
             return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
+
 
         public ulong GetChainId()
         {

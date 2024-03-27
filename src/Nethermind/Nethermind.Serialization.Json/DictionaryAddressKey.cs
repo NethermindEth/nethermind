@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
 
 #nullable enable
 
@@ -11,8 +12,6 @@ namespace Nethermind.Serialization.Json
     using System.Reflection;
     using System.Text.Json;
     using System.Text.Json.Serialization;
-
-    using Nethermind.Core;
 
     public class DictionaryAddressKeyConverter : JsonConverterFactory
     {
