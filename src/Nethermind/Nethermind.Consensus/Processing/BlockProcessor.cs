@@ -8,6 +8,7 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -22,6 +23,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
+using Nethermind.State.Proofs;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -39,6 +41,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
+    private readonly IValidatorExitEipHandler _validatorExitEipHandler;
 
     private const int MaxUncommittedBlocks = 64;
 
@@ -71,6 +74,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _validatorExitEipHandler = new ValidatorExitEipHandler();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -248,6 +252,9 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+
+        ProcessValidatorExits(block, spec);
+
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
@@ -261,6 +268,19 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
+    }
+
+    private void ProcessValidatorExits(Block block, IReleaseSpec spec)
+    {
+        if (!spec.IsEip7002Enabled)
+        {
+            return;
+        }
+
+        ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
+        Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
+        block.Body.ValidatorExits = validatorExits;
+        block.Header.ValidatorExitsRoot = root;
     }
 
     // TODO: block processor pipeline
@@ -301,6 +321,7 @@ public partial class BlockProcessor : IBlockProcessor
             WithdrawalsRoot = bh.WithdrawalsRoot,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
+            ValidatorExitsRoot = bh.ValidatorExitsRoot
         };
 
         if (!ShouldComputeStateRoot(bh))

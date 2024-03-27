@@ -27,7 +27,8 @@ public class BlockHeader
         byte[] extraData,
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
-        Hash256? parentBeaconBlockRoot = null)
+        Hash256? parentBeaconBlockRoot = null,
+        Hash256? validatorExitsRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -38,6 +39,7 @@ public class BlockHeader
         Timestamp = timestamp;
         ExtraData = extraData;
         ParentBeaconBlockRoot = parentBeaconBlockRoot;
+        ValidatorExitsRoot = validatorExitsRoot;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
     }
@@ -69,6 +71,7 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
+    public Hash256? ValidatorExitsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
