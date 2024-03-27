@@ -58,6 +58,8 @@ public class Block
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
 
+    public InclusionListSummary? InclusionListSummary => Body.InclusionListSummary;
+
     public Hash256? Hash => Header.Hash; // do not add setter here
 
     public Hash256? ParentHash => Header.ParentHash; // do not add setter here
@@ -107,6 +109,7 @@ public class Block
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
 
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
+    public Hash256? InclusionListSummaryRoot => Header.InclusionListSummaryRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public override string ToString() => ToString(Format.Short);
