@@ -8,8 +8,8 @@ namespace Nethermind.Blockchain.Filters
 {
     public interface IFilterManager
     {
-        FilterLog[] GetLogs(int filterId);
-        FilterLog[] PollLogs(int filterId);
+        IFilterLog[] GetLogs(int filterId);
+        IFilterLog[] PollLogs(int filterId);
         Hash256[] GetBlocksHashes(int filterId);
         Hash256[] PollBlockHashes(int filterId);
         Hash256[] PollPendingTransactionHashes(int filterId);

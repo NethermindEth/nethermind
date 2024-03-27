@@ -14,5 +14,15 @@ namespace Nethermind.Consensus.AuRa.Config
         public string TxPriorityContractAddress { get; set; }
 
         public string TxPriorityConfigFilePath { get; set; }
+
+        public bool UseShutter { get; set; }
+        public string ShutterValidatorRegistryContractAddress { get; set; }
+        public string ShutterSequencerContractAddress { get; set; }
+        public string ShutterKeyBroadcastContractAddress { get; set; }
+        public string ShutterKeyperSetManagerContractAddress { get; set; }
+        public string[] ShutterKeyperP2PAddresses { get; set; }
+        public int ShutterP2PPort { get; set; }
+        public string ShutterValidatorInfoFile { get; set; }
+        public ulong ShutterVersion { get; set; }
     }
 }

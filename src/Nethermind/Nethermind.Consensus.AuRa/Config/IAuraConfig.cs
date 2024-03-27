@@ -18,10 +18,46 @@ public interface IAuraConfig : IConfig
 
     [ConfigItem(Description = "The address of the transaction priority contract to use when selecting transactions from the transaction pool.",
         DefaultValue = "null")]
-
     string TxPriorityContractAddress { get; set; }
 
     [ConfigItem(Description = "The path to the transaction priority rules file to use when selecting transactions from the transaction pool.",
         DefaultValue = "null")]
     string TxPriorityConfigFilePath { get; set; }
+
+    [ConfigItem(Description = "Whether to enable shuttering.", DefaultValue = "false")]
+    bool UseShutter { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter sequencer contract.",
+        DefaultValue = "null")]
+    string ShutterSequencerContractAddress { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter validator registry contract.",
+        DefaultValue = "null")]
+    string ShutterValidatorRegistryContractAddress { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter key broadcast contract.",
+        DefaultValue = "null")]
+    string ShutterKeyBroadcastContractAddress { get; set; }
+
+    [ConfigItem(Description = "The address of the Shutter keyper set manager contract.",
+        DefaultValue = "null")]
+    string ShutterKeyperSetManagerContractAddress { get; set; }
+
+    [ConfigItem(Description = "The p2p addresses of the Shutter keypers.",
+        DefaultValue = "[]")]
+    string[] ShutterKeyperP2PAddresses { get; set; }
+
+    [ConfigItem(Description = "The port to connect to Shutter P2P network with.",
+        DefaultValue = "23001")]
+    int ShutterP2PPort { get; set; }
+
+
+    [ConfigItem(Description = "The filepath of the validator info json file.",
+        DefaultValue = "null")]
+    string ShutterValidatorInfoFile { get; set; }
+
+    [ConfigItem(Description = "The Shutter protocol version.",
+        DefaultValue = "0")]
+    ulong ShutterVersion { get; set; }
+
 }

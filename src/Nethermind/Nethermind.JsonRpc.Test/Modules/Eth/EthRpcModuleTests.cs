@@ -437,7 +437,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(1, out Arg.Any<IEnumerable<IFilterLog>>(), Arg.Any<CancellationToken>())
             .Returns(x =>
             {
                 x[1] = new[] { new FilterLog(1, 0, 1, TestItem.KeccakA, 1, TestItem.KeccakB, TestItem.AddressA, new byte[] { 1, 2, 3 }, new[] { TestItem.KeccakC, TestItem.KeccakD }) };
@@ -455,7 +455,7 @@ public partial class EthRpcModuleTests
     {
         using Context ctx = await Context.Create();
         IBlockchainBridge bridge = Substitute.For<IBlockchainBridge>();
-        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<FilterLog>>(), Arg.Any<CancellationToken>())
+        bridge.TryGetLogs(5, out Arg.Any<IEnumerable<IFilterLog>>(), Arg.Any<CancellationToken>())
                 .Returns(x => { x[1] = null; return false; });
 
         ctx.Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(bridge).Build();
@@ -546,7 +546,7 @@ public partial class EthRpcModuleTests
                 return GetLogs(c.ArgAt<CancellationToken>(3));
 
                 [DoesNotReturn]
-                IEnumerable<FilterLog> GetLogs(CancellationToken ct)
+                IEnumerable<IFilterLog> GetLogs(CancellationToken ct)
                 {
                     while (true)
                     {

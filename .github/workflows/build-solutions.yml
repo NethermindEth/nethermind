@@ -15,10 +15,24 @@ jobs:
         config: [release, debug]
         solution: [Nethermind, EthereumTests, Benchmarks]
     steps:
+      - name: Free Disk Space (Ubuntu)
+        uses: jlumbroso/free-disk-space@main
+        with:
+          # this might remove tools that are actually needed,
+          # if set to "true" but frees about 6 GB
+          tool-cache: false
+          # all of these default to true, but feel free to set to
+          # "false" if necessary for your workflow
+          android: true
+          dotnet: false
+          haskell: true
+          large-packages: true
+          docker-images: true
+          swap-storage: true
       - name: Check out repository
         uses: actions/checkout@v4
         with:
-          submodules: ${{ matrix.solution == 'EthereumTests' }}
+          submodules: recursive
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
       - name: Build ${{ matrix.solution }}.sln

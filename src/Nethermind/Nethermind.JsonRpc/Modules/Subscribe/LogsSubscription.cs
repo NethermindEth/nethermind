@@ -91,7 +91,7 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             }
         }
 
-        private IEnumerable<FilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
+        private IEnumerable<IFilterLog> GetFilterLogs(BlockHeader blockHeader, TxReceipt[] receipts, bool removed)
         {
             if (_filter.Matches(blockHeader.Bloom!))
             {
