@@ -275,7 +275,7 @@ namespace Nethermind.Core.Specs
 
 
         /// <summary>
-        /// Parent Beacon Block precompile
+        /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
         Address Eip6110ContractAddress { get; }
@@ -295,7 +295,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
