@@ -21,7 +21,8 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        //TODO: Refactor this to some other class
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
@@ -58,6 +59,7 @@ namespace Ethereum.Test.Base
                 "GrayGlacier" => GrayGlacier.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
+                "ArrowGlacier" => ArrowGlacier.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -158,7 +160,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -170,7 +172,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        public static Transaction Convert(LegacyTransactionJson transactionJson)
+        private static Transaction Convert(LegacyTransactionJson transactionJson)
         {
             Transaction transaction = new();
             transaction.Value = transactionJson.Value;
@@ -184,7 +186,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static AccountState Convert(AccountStateJson accountStateJson)
+        public static AccountState Convert(AccountStateJson accountStateJson)
         {
             AccountState state = new();
             state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;

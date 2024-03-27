@@ -78,7 +78,7 @@ namespace Ethereum.Test.Base
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, specProvider);
+            InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -147,9 +147,9 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider, ISpecProvider specProvider)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            foreach (KeyValuePair<Address, AccountState> accountState in pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
