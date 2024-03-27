@@ -484,7 +484,7 @@ public class BlockValidator : IBlockValidator
 
         depositsRoot = new DepositTrie(body.Deposits).RootHash;
 
-        return header.WithdrawalsRoot == depositsRoot;
+        return header.DepositsRoot == depositsRoot;
     }
 
     private static string Invalid(Block block) =>
