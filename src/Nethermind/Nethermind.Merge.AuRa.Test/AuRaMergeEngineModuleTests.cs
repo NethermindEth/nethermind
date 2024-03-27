@@ -51,7 +51,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int errorCode
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
