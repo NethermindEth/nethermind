@@ -29,14 +29,14 @@ public static class BlobGasCalculator
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobGasPrice(BlockHeader header, Transaction transaction, out UInt256 blobGasPrice)
+    public static bool TryCalculateBlobGasFee(BlockHeader header, Transaction transaction, out UInt256 blobGasFee)
     {
         if (!TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out UInt256 blobGasPricePerUnit))
         {
-            blobGasPrice = UInt256.MaxValue;
+            blobGasFee = UInt256.MaxValue;
             return false;
         }
-        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasPrice);
+        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasFee);
     }
 
     public static bool TryCalculateBlobGasPricePerUnit(BlockHeader header, out UInt256 blobGasPricePerUnit)

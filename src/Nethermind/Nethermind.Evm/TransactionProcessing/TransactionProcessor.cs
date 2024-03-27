@@ -363,7 +363,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 overflows = UInt256.MultiplyOverflow((UInt256)tx.GasLimit, effectiveGasPrice, out senderReservedGasPayment);
                 if (!overflows && tx.SupportsBlobs)
                 {
-                    overflows = !BlobGasCalculator.TryCalculateBlobGasPrice(header, tx, out UInt256 blobGasFee);
+                    overflows = !BlobGasCalculator.TryCalculateBlobGasFee(header, tx, out UInt256 blobGasFee);
                     if (!overflows)
                     {
                         overflows = UInt256.AddOverflow(senderReservedGasPayment, blobGasFee, out senderReservedGasPayment);
@@ -561,6 +561,12 @@ namespace Nethermind.Evm.TransactionProcessing
                 {
                     UInt256 fees = (UInt256)spentGas * premiumPerGas;
                     UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
+
+                    if (tx.SupportsBlobs)
+                    {
+                        BlobGasCalculator.TryCalculateBlobGasFee(header, tx, out UInt256 blobGasFee);
+                        burntFees += blobGasFee;
+                    }
 
                     WorldState.AddToBalanceAndCreateIfNotExists(header.GasBeneficiary, fees, spec);
 

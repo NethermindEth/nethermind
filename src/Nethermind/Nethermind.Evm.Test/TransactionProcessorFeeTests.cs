@@ -106,6 +106,32 @@ public class TransactionProcessorFeeTests
         tracer.BurntFees.Should().Be(84000);
     }
 
+    [TestCase(false)]
+    [TestCase(true)]
+    public void Check_paid_fees_with_blob(bool withFeeCollector)
+    {
+        if (withFeeCollector)
+        {
+            _spec.Eip1559FeeCollector = TestItem.AddressC;
+        }
+
+        BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).TestObject;
+
+        Transaction tx = Build.A.Transaction
+            .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).WithType(TxType.Blob)
+            .WithBlobVersionedHashes(1).WithMaxFeePerBlobGas(1).TestObject;
+
+        Block block = Build.A.Block.WithNumber(0).WithBaseFeePerGas(1)
+            .WithBeneficiary(TestItem.AddressB).WithTransactions(tx).WithGasLimit(21000).WithHeader(header).TestObject;
+
+        FeesTracer tracer = new();
+        ExecuteAndTrace(block, tracer);
+
+        tracer.Fees.Should().Be(0);
+
+        block.GasUsed.Should().Be(21000);
+        tracer.BurntFees.Should().Be(131072);
+    }
 
     [Test]
     public void Check_paid_fees_with_byte_code()
