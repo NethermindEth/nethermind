@@ -14,7 +14,7 @@ namespace Nethermind.Core;
 public class Deposit
 {
     public byte[]? PublicKey { get; set; }
-    public byte[]? WithdrawalCredential { get; set; }
+    public byte[]? WithdrawalCredentials { get; set; }
     public ulong Amount { get; set; }
     public byte[]? Signature { get; set; }
     public ulong Index { get; set; }
@@ -22,7 +22,7 @@ public class Deposit
 
     public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(Deposit)} {{")
         .Append($"{nameof(Index)}: {Index}, ")
-        .Append($"{nameof(WithdrawalCredential)}: {WithdrawalCredential?.ToHexString()}, ")
+        .Append($"{nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, ")
         .Append($"{nameof(Amount)}: {Amount}, ")
         .Append($"{nameof(PublicKey)}: {PublicKey?.ToHexString()}}}")
         .ToString();
