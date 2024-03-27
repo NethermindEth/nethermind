@@ -14,19 +14,20 @@ using System.Collections.Generic;
 using Nethermind.Crypto;
 using Multiformats.Address;
 using Nethermind.Core;
-using Nethermind.Api;
 using Google.Protobuf;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Abi;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
+using Google.Protobuf.WellKnownTypes;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
-    public static readonly ulong InstanceID = 0;
+    public static readonly ulong InstanceID = 60;
+    // todo: get Threshold from contract
     public static readonly int Threshhold = 0;
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
@@ -57,7 +58,7 @@ public class ShutterP2P
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
         ILocalPeer peer = peerFactory.Create(new Identity(), "/ip4/0.0.0.0/tcp/" + auraConfig.ShutterP2PPort);
-        Console.WriteLine(peer.Address);
+        _logger.Info($"Started Shutter P2P: {peer.Address}");
         PubsubRouter router = serviceProvider.GetService<PubsubRouter>()!;
 
         ITopic topic = router.Subscribe("decryptionKeys");
@@ -68,7 +69,7 @@ public class ShutterP2P
         {
             Interlocked.Increment(ref msgCount);
 
-            if (msgCount % 10 == 0)
+            if (msgCount % 10 == 1)
             {
                 _logger.Info("Receiving Shutter decryption keys...");
             }
@@ -101,21 +102,27 @@ public class ShutterP2P
                     KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
                     KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
 
-                    if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
+                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+                    if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
                     {
+                        _logger.Warn("Could not parse Shutter decryption keys...");
                         continue;
                     }
 
-                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-                    Dto.DecryptionKeys decryptionKeys = Dto.DecryptionKeys.Parser.ParseFrom(envelope.Message.ToByteString());
+                    if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
+                    {
+                        _logger.Warn("Could not get Shutter eon info...");
+                        continue;
+                    }
+
                     if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
                     {
-                        _logger.Info("Validated decryption key for slot " + decryptionKeys.Gnosis.Slot);
+                        _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
                         _onDecryptionKeysReceived(decryptionKeys);
                     }
                     else
                     {
-                        throw new Exception("Invalid decryption keys received on P2P network.");
+                        _logger.Warn("Invalid decryption keys received on P2P network.");
                     }
                 }
             }
@@ -135,20 +142,21 @@ public class ShutterP2P
 
     internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
-        ulong slot = 0;
+        _logger.Info($"Checking decryption keys instanceId={decryptionKeys.InstanceID} eon={decryptionKeys.Eon} #keys={decryptionKeys.Keys.Count()} + #sig={decryptionKeys.Gnosis.Signatures.Count()}");
 
         if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
         {
             return false;
         }
 
-        foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable())
-        {
-            if (!ShutterCrypto.CheckDecryptionKey(new(key.Key_.ToArray()), eonKey, new(key.Identity.ToArray())))
-            {
-                return false;
-            }
-        }
+        // todo: enable when Shutter uses BLS
+        // foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable())
+        // {
+        //    if (!ShutterCrypto.CheckDecryptionKey(new(key.Key_.ToArray()), eonKey, new(key.Identity.ToArray())))
+        //     {
+        //         return false;
+        //     }
+        // }
 
         int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count();
 
@@ -167,16 +175,16 @@ public class ShutterP2P
             return false;
         }
 
-        IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
+        // IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
 
-        foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
-        {
-            Address keyperAddress = keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
-            if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
-            {
-                return false;
-            }
-        }
+        // foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
+        // {
+        //     Address keyperAddress = keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
+        //     if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
+        //     {
+        //         return false;
+        //     }
+        // }
 
         return true;
     }
@@ -197,7 +205,7 @@ public class ShutterP2P
 
     internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey)
     {
-        eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header);
+        eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header) - 1;
         byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
 
         // todo: remove once shutter fixes
@@ -206,9 +214,11 @@ public class ShutterP2P
             eonKeyBytes = Convert.FromHexString("2fdfb787563ac3aa9be365a581eae6684334cbb9ce11e95c486ea31820e0469a07a5e6e49caddee2b1891900848e7ed03749aac68d4d31d4f98f4a537b9050621a791a11c6c154ae972659a5a4ed7c55d2bf8772f1a4c05542436df59d0a2edc05ea7e70b72f27b4eb8a4fb5ed675cb35d67934a1ed75043ed3802ac6a8ed68c");
         }
 
-        eonKey = new(eonKeyBytes);
+        // todo: use key bytes when Shutter swaps to BLS
+        // eonKey = new(eonKeyBytes);
+        eonKey = new();
 
-        _logger.Info("Shutter eon: " + eon + " key: " + Convert.ToHexString(eonKeyBytes));
+        _logger.Info($"Shutter eon={eon} key={Convert.ToHexString(eonKeyBytes)}");
 
         return true;
     }
