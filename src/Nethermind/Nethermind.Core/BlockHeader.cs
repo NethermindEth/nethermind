@@ -69,6 +69,8 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
+
+    public Hash256? InclusionListSummaryRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
@@ -103,6 +105,10 @@ public class BlockHeader
         if (WithdrawalsRoot is not null)
         {
             builder.AppendLine($"{indent}WithdrawalsRoot: {WithdrawalsRoot}");
+        }
+        if(InclusionListSummaryRoot is not null)
+        {
+            builder.AppendLine($"{indent}InclusionListSummaryRoot: {InclusionListSummaryRoot}");
         }
         if (ParentBeaconBlockRoot is not null)
         {

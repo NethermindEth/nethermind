@@ -7,11 +7,12 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null)
+        public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, InclusionListSummary? inclusionListSummary = null)
         {
             Transactions = transactions ?? Array.Empty<Transaction>();
             Uncles = uncles ?? Array.Empty<BlockHeader>();
             Withdrawals = withdrawals;
+            InclusionListSummary = inclusionListSummary;
         }
 
         public BlockBody() : this(null, null, null) { }
@@ -29,6 +30,8 @@ namespace Nethermind.Core
         public BlockHeader[] Uncles { get; }
 
         public Withdrawal[]? Withdrawals { get; }
+
+        public InclusionListSummary? InclusionListSummary { get; set; }
 
         public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0;
     }
