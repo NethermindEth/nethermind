@@ -29,7 +29,7 @@ namespace Nethermind.Evm.Tracing
 
         internal long IntrinsicGasAt { get; set; }
 
-        private long TotalRefund { get; set; }
+        internal long TotalRefund { get; private set; }
 
         public string? Error { get; set; }
 

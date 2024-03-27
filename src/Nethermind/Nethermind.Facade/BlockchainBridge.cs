@@ -166,7 +166,7 @@ namespace Nethermind.Facade
             };
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
             using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
 
@@ -179,7 +179,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
