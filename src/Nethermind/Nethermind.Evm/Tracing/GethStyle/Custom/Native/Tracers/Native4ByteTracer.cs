@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -32,8 +33,6 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
-        IsTracingMemory = true;
-        IsTracingStack = true;
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -50,7 +49,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (_depth == 0)
+        if (Depth == 0)
         {
             CaptureStart(input);
         }
@@ -75,18 +74,18 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 
     private void CaptureEnter(Instruction op, ReadOnlyMemory<byte> input, Address? to, bool isPrecompileCall)
     {
-        if (input.Length < 4)
-            return;
-        if (op is not (Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE))
-            return;
-        if (to is null || isPrecompileCall)
-            return;
-        Store4ByteIds(input, input.Length - 4);
+        if (input.Length >= 4
+            && op is Instruction.DELEGATECALL or Instruction.STATICCALL or Instruction.CALL or Instruction.CALLCODE
+            && to is not null
+            && !isPrecompileCall)
+        {
+            Store4ByteIds(input, input.Length - 4);
+        }
     }
 
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
-        string _4byteId = input.Span[..4].ToHexString() + '-' + size;
-        _4ByteIds[_4byteId] = _4ByteIds.TryGetValue(_4byteId, out int count) ? count + 1 : 1;
+        string _4byteId = string.Concat(input.Span[..4].ToHexString(), '-', size);
+        CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
     }
 }

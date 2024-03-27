@@ -31,7 +31,7 @@ public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
             .STOP()
             .Done;
 
-        Dictionary<string, int> expected4ByteIds = new()
+        Dictionary<string, int> expected4ByteIds = new Dictionary<string, int>
         {
             { "62b15678-1", 2 },
             { "00000000-2", 1 }

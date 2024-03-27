@@ -169,18 +169,13 @@ public class GethStyleTracer : IGethStyleTracer
         return tracer.BuildResult().SingleOrDefault();
     }
 
-    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options)
-    {
-        string tracer = options.Tracer;
-
-        if (string.IsNullOrEmpty(tracer))
-            return new GethLikeBlockMemoryTracer(options);
-
-        if (GethLikeNativeTracerFactory.IsNativeTracer(tracer))
-            return new GethLikeBlockNativeTracer(options);
-
-        return new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options);
-    }
+    private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
+        options switch
+        {
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            _ => new GethLikeBlockMemoryTracer(options),
+        };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {

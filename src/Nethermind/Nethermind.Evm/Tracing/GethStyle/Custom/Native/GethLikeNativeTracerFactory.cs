@@ -12,14 +12,10 @@ public static class GethLikeNativeTracerFactory
 
     private static readonly Dictionary<string, Func<GethTraceOptions, GethLikeNativeTxTracer>> _tracers = new();
 
-    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options)
-    {
-        if (_tracers.TryGetValue(options.Tracer, out Func<GethTraceOptions, GethLikeNativeTxTracer> tracerFunc))
-        {
-            return tracerFunc(options);
-        }
-        throw new ArgumentException($"Unknown tracer: {options.Tracer}");
-    }
+    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options) =>
+        _tracers.TryGetValue(options.Tracer, out Func<GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
+        ? tracerFunc(options)
+        : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
 
     public static bool IsNativeTracer(string tracerName)
     {
@@ -28,11 +24,14 @@ public static class GethLikeNativeTracerFactory
 
     private static void RegisterNativeTracers()
     {
-        RegisterTracer(Native4ByteTracer._4byteTracer, (options) => new Native4ByteTracer(options));
+        RegisterTracer(Native4ByteTracer._4byteTracer, static options => new Native4ByteTracer(options));
     }
 
     private static void RegisterTracer(string tracerName, Func<GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
     {
-        _tracers.TryAdd(tracerName, tracerFunc);
+        if (!_tracers.TryAdd(tracerName, tracerFunc))
+        {
+            throw new Exception("Could not register tracer " + tracerName);
+        }
     }
 }
