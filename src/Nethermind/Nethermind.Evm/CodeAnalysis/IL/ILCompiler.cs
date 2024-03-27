@@ -270,6 +270,8 @@ internal class ILCompiler
                     method.LoadObject(typeof(Word));
                     method.StoreObject(typeof(Word));
                     break;
+                default:
+                    throw new NotSupportedException();
             }
         }
 

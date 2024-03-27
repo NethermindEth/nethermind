@@ -137,6 +137,7 @@ internal static class IlAnalyzer
             }
             return patternFound.ToFrozenDictionary();
         }
+
         return new IlInfo(CheckPatterns(machineCode, out OpcodeInfo[] strippedBytecode), SegmentCode(strippedBytecode));
     }
 

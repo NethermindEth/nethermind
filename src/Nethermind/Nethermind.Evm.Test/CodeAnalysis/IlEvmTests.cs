@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
@@ -114,5 +115,32 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             Assert.Greater(pattern.CallCount, 0);   
         }
+
+        [Test]
+        public void Pure_Opcode_Emition_Coveraga()
+        {
+            Instruction[] instructions =
+                System.Enum.GetValues<Instruction>()
+                .Where(opcode => !opcode.IsStateful())
+                .ToArray();
+
+
+            List<Instruction> notYetImplemented = [];
+            foreach (var instruction in instructions)
+            {
+                string name = $"ILEVM_TEST_{instruction}";
+                OpcodeInfo opcode = new OpcodeInfo(0, instruction, null, null);
+                try
+                {
+                    ILCompiler.CompileSegment(name, [opcode]);
+                } catch (NotSupportedException)
+                {
+                    notYetImplemented.Add(instruction);
+                }
+            }
+
+            Assert.That(notYetImplemented.Count, Is.EqualTo(0));
+        }
+
     }
 }
