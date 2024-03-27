@@ -16,6 +16,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
@@ -36,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IReceiptStorage _receiptStorage;
         private readonly IChainLevelHelper _chainLevelHelper;
         private readonly IPoSSwitcher _poSSwitcher;
-        private readonly IFullStateFinder _fullStateFinder;
+        private readonly IStateReader _stateReader;
 
         public MergeBlockDownloader(
             IPoSSwitcher posSwitcher,
@@ -51,7 +52,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISpecProvider specProvider,
             IBetterPeerStrategy betterPeerStrategy,
             IChainLevelHelper chainLevelHelper,
-            IFullStateFinder fullStateFinder,
+            IStateReader stateReader,
             ILogManager logManager,
             SyncBatchSize? syncBatchSize = null)
             : base(feed, syncPeerPool, blockTree, blockValidator, sealValidator, syncReport, receiptStorage,
@@ -66,7 +67,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _beaconPivot = beaconPivot;
             _receiptsRecovery = new ReceiptsRecovery(new EthereumEcdsa(specProvider.ChainId, logManager), specProvider);
-            _fullStateFinder = fullStateFinder ?? throw new ArgumentNullException(nameof(fullStateFinder));
+            _stateReader = stateReader ?? throw new ArgumentNullException(nameof(stateReader));
             _logger = logManager.GetClassLogger();
         }
 
@@ -130,6 +131,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
             int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
+
+            BlockHeader? header = _blockTree.FindHeader(currentNumber);
+            if (shouldProcess && header is not null && !_stateReader.HasStateForBlock(header))
+            {
+                shouldProcess = false;
+                downloadReceipts = true;
+            }
+
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
@@ -225,28 +234,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         throw new EthSyncException(message);
                     }
 
-                    if (shouldProcess)
-                    {
-                        // An edge case when we've got state already, but still downloading blocks before it.
-                        // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
-                        // So we'are detecting it and chaing from processing to receipts downloading
-                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
-                        bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                        if (isFastSyncTransition)
-                        {
-                            long bestFullState = _fullStateFinder.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess && !downloadReceipts)
-                            {
-                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                                downloadReceipts = true;
-                                context.SetDownloadReceipts();
-                                await RequestReceipts(bestPeer, cancellation, context);
-                                receipts = context.ReceiptsForBlocks;
-                            }
-                        }
-                    }
+                    if (_logger.IsWarn) _logger.Warn($"Syncing block: {currentBlock}, shouldProcess: {shouldProcess}");
 
                     if (downloadReceipts)
                     {

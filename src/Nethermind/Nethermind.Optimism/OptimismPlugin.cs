@@ -145,7 +145,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.SealValidator!,
             _syncConfig,
             _api.BetterPeerStrategy!,
-            new FullStateFinder(_api.BlockTree, _api.StateReader!),
+            _api.StateReader!,
             _api.LogManager);
 
         _api.Synchronizer = new MergeSynchronizer(
