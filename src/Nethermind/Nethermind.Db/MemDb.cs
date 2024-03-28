@@ -88,6 +88,8 @@ namespace Nethermind.Db
 
         public IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false) => _db;
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Keys;
+
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Values;
 
         public virtual IWriteBatch StartWriteBatch()
@@ -101,7 +103,7 @@ namespace Nethermind.Db
         public int Count => _db.Count;
 
         public long GetSize() => 0;
-        public long GetCacheSize() => 0;
+        public long GetCacheSize(bool includeCacheSize) => 0;
         public long GetIndexSize() => 0;
         public long GetMemtableSize() => 0;
 
@@ -116,7 +118,7 @@ namespace Nethermind.Db
             return Get(key).AsSpan();
         }
 
-        public void DangerousReleaseMemory(in Span<byte> span)
+        public void DangerousReleaseMemory(in ReadOnlySpan<byte> span)
         {
         }
 
@@ -139,6 +141,11 @@ namespace Nethermind.Db
             }
 
             WritesCount++;
+            if (value is null)
+            {
+                _db.TryRemove(key, out _);
+                return;
+            }
             _db[key] = value;
         }
     }

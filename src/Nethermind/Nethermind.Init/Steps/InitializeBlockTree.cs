@@ -52,12 +52,14 @@ namespace Nethermind.Init.Steps
 
             IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
             IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
+            IBlockStore badBlockStore = _set.BadBlocksStore = new BlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored);
 
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
                 blockStore,
                 headerStore,
                 _get.DbProvider.BlockInfosDb,
                 _get.DbProvider.MetadataDb,
+                badBlockStore,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
@@ -78,7 +80,7 @@ namespace Nethermind.Init.Steps
 
             IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
-            IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
+            IReceiptStorage receiptStorage = _set.ReceiptStorage = receiptConfig.StoreReceipts
                 ? new PersistentReceiptStorage(
                     _get.DbProvider.ReceiptsDb,
                     _get.SpecProvider!,
@@ -101,6 +103,11 @@ namespace Nethermind.Init.Steps
                 receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
+
+            if (initConfig.ExitOnBlockNumber is not null)
+            {
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+            }
 
             return Task.CompletedTask;
         }

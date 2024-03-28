@@ -20,7 +20,7 @@ namespace Nethermind.Core.Test
 
         public ILogger GetClassLogger<T>() => GetClassLogger();
 
-        public ILogger GetClassLogger() => _logger;
+        public ILogger GetClassLogger() => new(_logger);
 
         public ILogger GetLogger(string loggerName) => GetClassLogger();
     }

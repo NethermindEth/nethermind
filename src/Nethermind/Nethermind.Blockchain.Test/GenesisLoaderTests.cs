@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO;
@@ -71,9 +71,8 @@ public class GenesisLoaderTests
 
     private static ChainSpec LoadChainSpec(string path)
     {
-        string data = File.ReadAllText(path);
         ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
-        ChainSpec chainSpec = chainSpecLoader.Load(data);
+        ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
         return chainSpec;
     }
 }

@@ -12,6 +12,7 @@ using Nethermind.JsonRpc.Data;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
@@ -138,6 +139,19 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
+    public async Task Eth_call_with_blockhash_ok()
+    {
+        using Context ctx = await Context.Create();
+        TransactionForRpc transaction = new(Keccak.Zero, 1L, 1, new Transaction());
+        transaction.From = TestItem.AddressA;
+        transaction.To = TestItem.AddressB;
+
+        string serialized =
+            await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "{\"blockHash\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937\"}");
+        Assert.That(serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"error\":{\"code\":-32001,\"message\":\"0xf0b3f69cbd4e1e8d9b0ef02ff5d1384d18e19d251a4052f5f90bab190c5e8937 could not be found\"},\"id\":67}"));
+    }
+
+    [Test]
     public async Task Eth_call_create_tx_with_empty_data()
     {
         using Context ctx = await Context.Create();
@@ -228,7 +242,7 @@ public partial class EthRpcModuleTests
     }
 
     [Test]
-    public async Task Eth_call_with_base_fee_opcode()
+    public async Task Eth_call_with_base_fee_opcode_should_return_0()
     {
         using Context ctx = await Context.CreateWithLondonEnabled();
 
@@ -246,7 +260,7 @@ public partial class EthRpcModuleTests
             $"{{\"from\": \"0x32e4e4c7c5d1cea5db5f9202a9e4d99e56c91a24\", \"type\": \"0x2\", \"data\": \"{dataStr}\"}}");
         string serialized = await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction));
         Assert.That(
-            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x000000000000000000000000000000000000000000000000000000002da282a8\",\"id\":67}"));
+            serialized, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":\"0x0000000000000000000000000000000000000000000000000000000000000000\",\"id\":67}"));
     }
 
     [Test]

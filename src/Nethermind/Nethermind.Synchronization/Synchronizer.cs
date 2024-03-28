@@ -19,20 +19,24 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.DbTuner;
-using Nethermind.Synchronization.FastBlocks;
+using Nethermind.Synchronization.FastBlocks
+    ;
 using Nethermind.Synchronization.FastSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.StateSync;
-using Nethermind.Trie.Pruning;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization
 {
     public class Synchronizer : ISynchronizer
     {
         private const int FeedsTerminationTimeout = 5_000;
+
+        private static MallocTrimmer? s_trimmer;
+        private static SyncDbTuner? s_dbTuner;
 
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptStorage _receiptStorage;
@@ -87,6 +91,8 @@ namespace Nethermind.Synchronization
 
         protected ISyncModeSelector? _syncModeSelector;
         private readonly IStateReader _stateReader;
+        private INodeStorage _nodeStorage;
+        private readonly ProgressTracker _progressTracker;
 
         public virtual ISyncModeSelector SyncModeSelector => _syncModeSelector ??= new MultiSyncModeSelector(
             SyncProgressResolver,
@@ -99,6 +105,7 @@ namespace Nethermind.Synchronization
 
         public Synchronizer(
             IDbProvider dbProvider,
+            INodeStorage nodeStorage,
             ISpecProvider specProvider,
             IBlockTree blockTree,
             IReceiptStorage receiptStorage,
@@ -114,6 +121,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
@@ -131,12 +139,12 @@ namespace Nethermind.Synchronization
 
             _syncReport = new SyncReport(_syncPeerPool!, nodeStatsManager!, _syncConfig, _pivot, logManager);
 
-            ProgressTracker progressTracker = new(
+            _progressTracker = new(
                 blockTree,
                 dbProvider.StateDb,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(_progressTracker, dbProvider.CodeDb, nodeStorage, logManager);
         }
 
         public virtual void Start()
@@ -150,10 +158,7 @@ namespace Nethermind.Synchronization
 
             if (_syncConfig.FastSync)
             {
-                if (_syncConfig.FastBlocks)
-                {
-                    StartFastBlocksComponents();
-                }
+                StartFastBlocksComponents();
 
                 StartFastSyncComponents();
 
@@ -177,25 +182,25 @@ namespace Nethermind.Synchronization
 
             WireMultiSyncModeSelector();
 
-            new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
+            s_trimmer ??= new MallocTrimmer(SyncModeSelector, TimeSpan.FromSeconds(_syncConfig.MallocTrimIntervalSec), _logManager);
             SyncModeSelector.Changed += _syncReport.SyncModeSelectorOnChanged;
         }
 
         private HeadersSyncFeed? CreateHeadersSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync) return null;
             return new HeadersSyncFeed(_blockTree, _syncPeerPool, _syncConfig, _syncReport, _logManager);
         }
 
         private BodiesSyncFeed? CreateBodiesSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync) return null;
             return new BodiesSyncFeed(_specProvider, _blockTree, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.BlocksDb, _dbProvider.MetadataDb, _logManager);
         }
 
         private ReceiptsSyncFeed? CreateReceiptsSyncFeed()
         {
-            if (!_syncConfig.FastSync || !_syncConfig.FastBlocks || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
+            if (!_syncConfig.FastSync || !_syncConfig.DownloadHeadersInFastSync || !_syncConfig.DownloadBodiesInFastSync || !_syncConfig.DownloadReceiptsInFastSync) return null;
             return new ReceiptsSyncFeed(_specProvider, _blockTree, _receiptStorage, _syncPeerPool, _syncConfig, _syncReport, _dbProvider.MetadataDb, _logManager);
         }
 
@@ -207,7 +212,7 @@ namespace Nethermind.Synchronization
 
         private void SetupDbOptimizer()
         {
-            new SyncDbTuner(
+            s_dbTuner ??= new SyncDbTuner(
                 _syncConfig,
                 SnapSyncFeed,
                 BodiesSyncFeed,
@@ -270,7 +275,7 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _nodeStorage, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,
@@ -438,7 +443,7 @@ namespace Nethermind.Synchronization
 
         protected void WireFeedWithModeSelector<T>(ISyncFeed<T>? feed)
         {
-            if (feed == null) return;
+            if (feed is null) return;
             SyncModeSelector.Changed += ((sender, args) =>
             {
                 feed?.SyncModeSelectorOnChanged(args.Current);
@@ -457,6 +462,7 @@ namespace Nethermind.Synchronization
             HeadersSyncFeed?.Dispose();
             BodiesSyncFeed?.Dispose();
             ReceiptsSyncFeed?.Dispose();
+            _progressTracker.Dispose();
         }
     }
 }

@@ -9,6 +9,6 @@ namespace Nethermind.Merge.Plugin.Handlers;
 
 public interface IBlockCacheService
 {
-    public ConcurrentDictionary<Hash256, Block> BlockCache { get; }
-    Hash256 FinalizedHash { get; set; }
+    public ConcurrentDictionary<Hash256AsKey, Block> BlockCache { get; }
+    Hash256? FinalizedHash { get; set; }
 }

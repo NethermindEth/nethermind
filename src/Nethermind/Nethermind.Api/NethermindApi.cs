@@ -3,10 +3,10 @@
 
 using System.Collections.Generic;
 using System.IO.Abstractions;
-using System.Threading;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.FullPruning;
@@ -18,6 +18,7 @@ using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Authentication;
@@ -53,8 +54,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Synchronization.Blocks;
+using Nethermind.Trie;
 
 namespace Nethermind.Api
 {
@@ -100,7 +100,7 @@ namespace Nethermind.Api
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;
-        public ITxStorage? BlobTxStorage { get; set; }
+        public IBlobTxStorage? BlobTxStorage { get; set; }
         public IBlockchainProcessor? BlockchainProcessor { get; set; }
         public CompositeBlockPreprocessorStep BlockPreprocessor { get; } = new();
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
@@ -113,8 +113,7 @@ namespace Nethermind.Api
         public IConfigProvider ConfigProvider { get; set; }
         public ICryptoRandom CryptoRandom { get; }
         public IDbProvider? DbProvider { get; set; }
-        public IRocksDbFactory? RocksDbFactory { get; set; }
-        public IMemDbFactory? MemDbFactory { get; set; }
+        public IDbFactory? DbFactory { get; set; }
         public IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         public IDiscoveryApp? DiscoveryApp { get; set; }
         public ISigner? EngineSigner { get; set; }
@@ -209,7 +208,10 @@ namespace Nethermind.Api
 
         public IEthSyncingInfo? EthSyncingInfo { get; set; }
         public IBlockProductionPolicy? BlockProductionPolicy { get; set; }
+        public INodeStorageFactory NodeStorageFactory { get; set; } = null!;
+        public BackgroundTaskScheduler BackgroundTaskScheduler { get; set; } = null!;
         public IWallet? Wallet { get; set; }
+        public IBlockStore? BadBlocksStore { get; set; }
         public ITransactionComparerProvider? TransactionComparerProvider { get; set; }
         public IWebSocketsManager WebSocketsManager { get; set; } = new WebSocketsManager();
 

@@ -22,11 +22,7 @@ public class BlobTxDistinctSortedPool : TxDistinctSortedPool
     protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer)
         => comparer.GetBlobReplacementComparer();
 
-    public override void VerifyCapacity()
-    {
-        if (Count > _poolCapacity && _logger.IsWarn)
-            _logger.Warn($"Blob pool exceeds the config size {Count}/{_poolCapacity}");
-    }
+    protected override string ShortPoolName => "BlobPool";
 
     /// <summary>
     /// For tests only - to test sorting

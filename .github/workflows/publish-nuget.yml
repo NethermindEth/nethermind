@@ -3,7 +3,7 @@ name: Publish NuGet packages
 on:
   release:
     types: [published]
-  
+
 jobs:
   publish:
     name: Publish Nethermind.ReferenceAssemblies
@@ -16,8 +16,6 @@ jobs:
           ref: ${{ github.event.release.tag_name }}
       - name: Set up .NET
         uses: actions/setup-dotnet@v4
-      - name: Wait to ensure assets are uploaded
-        run: sleep 5m
       - name: Download Nethermind reference assemblies
         run: |
           json=$(curl -s ${{ github.event.release.assets_url }})
@@ -26,6 +24,6 @@ jobs:
           unzip refasm.zip -d src/Nethermind/Nethermind.ReferenceAssemblies/ref
       - name: Submit package
         working-directory: src/Nethermind/Nethermind.ReferenceAssemblies
-        run: | 
+        run: |
           dotnet pack -c release
-          dotnet nuget push bin/release/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json
+          dotnet nuget push ../artifacts/**/*.nupkg -k ${{ secrets.NUGET_API_KEY }} -s https://api.nuget.org/v3/index.json

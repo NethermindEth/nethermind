@@ -43,17 +43,12 @@ namespace Nethermind.Db
             return false;
         }
 
-        public long GetSize() => 0;
-        public long GetCacheSize() => 0;
-        public long GetIndexSize() => 0;
-        public long GetMemtableSize() => 0;
-
-        public IDb Innermost => this;
         public void Flush() { }
         public void Clear() { }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Enumerable.Empty<byte[]>();
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
 
         public IWriteBatch StartWriteBatch()

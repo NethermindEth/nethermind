@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
@@ -56,7 +57,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             for (int i = 0; i < pathPoolCount; i++)
             {
                 byte[] key = new byte[32];
-                ((UInt256)i).ToBigEndian(key);
+                // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
+                ((UInt256)(i * 255)).ToBigEndian(key);
                 Hash256 keccak = new Hash256(key);
                 pathPool[i] = keccak;
             }
@@ -137,7 +139,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             dbContext.LocalStateTree.RootHash = dbContext.RemoteStateTree.RootHash;
 
             SafeContext ctx = PrepareDownloader(dbContext);
-            await ActivateAndWait(ctx, dbContext, 9);
+            await ActivateAndWait(ctx, dbContext, 9, timeout: 10000);
 
             DetailedProgress data = ctx.TreeFeed.GetDetailedProgress();
 

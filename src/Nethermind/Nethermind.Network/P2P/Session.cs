@@ -178,6 +178,8 @@ namespace Nethermind.Network.P2P
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
 
+            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
+
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
                               $"({dynamicMessageCode} => {protocol}.{messageId})");
@@ -224,7 +226,11 @@ namespace Nethermind.Network.P2P
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             int size = _packetSender.Enqueue(message);
+
+            RecordOutgoingMessageMetric(message, size);
+
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+
             return size;
         }
 
@@ -248,6 +254,8 @@ namespace Nethermind.Network.P2P
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
+
+            RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -305,7 +313,7 @@ namespace Nethermind.Network.P2P
             // Disconnect may send disconnect reason message. But the hello message must be sent first, which is done
             // during Initialized event.
             // https://github.com/ethereum/devp2p/blob/master/rlpx.md#user-content-hello-0x00
-            if (_disconnectAfterInitialized != null)
+            if (_disconnectAfterInitialized is not null)
             {
                 InitiateDisconnect(_disconnectAfterInitialized.Value.Item1, _disconnectAfterInitialized.Value.Item2);
                 _disconnectAfterInitialized = null;
@@ -394,7 +402,7 @@ namespace Nethermind.Network.P2P
 
                 if (State <= SessionState.HandshakeComplete)
                 {
-                    if (_disconnectAfterInitialized != null) return;
+                    if (_disconnectAfterInitialized is not null) return;
 
                     _disconnectAfterInitialized = (disconnectReason, details);
                     return;
@@ -651,6 +659,43 @@ namespace Nethermind.Network.P2P
         public void StartTrackingSession()
         {
             _isTracked = true;
+        }
+
+        private void RecordOutgoingMessageMetric<T>(T message, int size) where T : P2PMessage
+        {
+            byte version = _protocols.TryGetValue(message.Protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+
+            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(message.Protocol, version), message.PacketType);
+            Metrics.OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            Metrics.OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+        }
+
+        private void RecordIncomingMessageMetric(string protocol, int packetType, int size)
+        {
+            if (protocol == null) return;
+            byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(protocol, version), packetType);
+            Metrics.IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            Metrics.IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+        }
+
+        private static long IncrementMetric(P2PMessageKey _, long value)
+        {
+            return value + 1;
+        }
+
+        private static long ZeroMetric(P2PMessageKey _, int i)
+        {
+            return 0;
+        }
+
+        private static long AddMetric(P2PMessageKey _, long value, int toAdd)
+        {
+            return value + toAdd;
         }
     }
 }

@@ -297,14 +297,14 @@ namespace Nethermind.Network
 
                     if (_logger.IsTrace || (_logger.IsDebug && _logCounter % 5 == 0))
                     {
-                        List<KeyValuePair<PublicKey, Peer>>? activePeers = _peerPool.ActivePeers.ToList();
-                        int activePeersCount = activePeers.Count;
+                        KeyValuePair<PublicKeyAsKey, Peer>[] activePeers = _peerPool.ActivePeers.ToArray();
+                        int activePeersCount = activePeers.Length;
                         if (activePeersCount != previousActivePeersCount)
                         {
                             string countersLog = string.Join(", ", _currentSelection.Counters.Select(x => $"{x.Key.ToString()}: {x.Value}"));
                             _logger.Debug($"RunPeerUpdate | {countersLog}, Incompatible: {GetIncompatibleDesc(_currentSelection.Incompatible)}, EligibleCandidates: {_currentSelection.Candidates.Count}, " +
                                           $"Tried: {_tryCount}, Rounds: {_connectionRounds}, Failed initial connect: {_failedInitialConnect}, Established initial connect: {_newActiveNodes}, " +
-                                          $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Count} " +
+                                          $"Current candidate peers: {_peerPool.PeerCount}, Current active peers: {activePeers.Length} " +
                                           $"[InOut: {activePeers.Count(x => x.Value.OutSession is not null && x.Value.InSession is not null)} | " +
                                           $"[Out: {activePeers.Count(x => x.Value.OutSession is not null)} | " +
                                           $"In: {activePeers.Count(x => x.Value.InSession is not null)}]");
@@ -372,9 +372,9 @@ namespace Nethermind.Network
             // Once the connection was established, the active peer count will increase, but it might
             // not pass the handshake and the status check. So we wait for a bit to see if we can get
             // the active peer count to go down within this time window.
-            DateTimeOffset deadline = DateTimeOffset.Now + Timeouts.Handshake +
+            DateTimeOffset deadline = DateTimeOffset.UtcNow + Timeouts.Handshake +
                                       TimeSpan.FromMilliseconds(_networkConfig.ConnectTimeoutMs);
-            while (DateTimeOffset.Now < deadline && (AvailableActivePeersCount - _pending) <= 0)
+            while (DateTimeOffset.UtcNow < deadline && (AvailableActivePeersCount - _pending) <= 0)
             {
                 // The signal is not very reliable. So we just do like a simple pool.
                 _peerUpdateRequested.Reset();
@@ -733,7 +733,7 @@ namespace Nethermind.Network
             if (!session.Node.IsStatic && _peerPool.ActivePeers.Count >= MaxActivePeers)
             {
                 int initCount = 0;
-                foreach (KeyValuePair<PublicKey, Peer> pair in _peerPool.ActivePeers)
+                foreach (KeyValuePair<PublicKeyAsKey, Peer> pair in _peerPool.ActivePeers)
                 {
                     // we need to count initialized as we may have a list of active peers that is just being initialized
                     // and we do not know yet whether they are fine or not

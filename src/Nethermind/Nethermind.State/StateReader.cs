@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -13,84 +15,61 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    public class StateReader : IStateReader
+    public class StateReader(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager) : IStateReader
     {
-        private readonly IKeyValueStore _codeDb;
-        private readonly ILogger _logger;
-        private readonly StateTree _state;
-        private readonly StorageTree _storage;
+        private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        private readonly StateTree _state = new StateTree(trieStore.GetTrieStore(null), logManager);
+        private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+        private readonly ILogManager _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
 
-        public StateReader(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
+
+        public ReadOnlySpan<byte> GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
         {
-            _logger = logManager?.GetClassLogger<StateReader>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _state = new StateTree(trieStore, logManager);
-            _storage = new StorageTree(trieStore, Keccak.EmptyTreeHash, logManager);
-        }
+            if (!TryGetAccount(stateRoot, address, out AccountStruct account)) return ReadOnlySpan<byte>.Empty;
 
-        public Account? GetAccount(Hash256 stateRoot, Address address)
-        {
-            return GetState(stateRoot, address);
-        }
-
-        public byte[] GetStorage(Hash256 stateRoot, Address address, in UInt256 index)
-        {
-            Account? account = GetAccount(stateRoot, address);
-            if (account == null) return null;
-
-            Hash256 storageRoot = account.StorageRoot;
+            ValueHash256 storageRoot = account.StorageRoot;
             if (storageRoot == Keccak.EmptyTreeHash)
             {
-                return new byte[] { 0 };
+                return Bytes.ZeroByte.Span;
             }
 
             Metrics.StorageTreeReads++;
-            return _storage.Get(index, storageRoot);
+
+            StorageTree storage = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
+            return storage.Get(index, new Hash256(storageRoot));
         }
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
         {
-            return GetState(stateRoot, address)?.Balance ?? UInt256.Zero;
+            TryGetState(stateRoot, address, out AccountStruct account);
+            return account.Balance;
         }
 
-        public byte[]? GetCode(Hash256 codeHash)
+        public byte[]? GetCode(Hash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+
+        public void RunTreeVisitor<TCtx>(ITreeVisitor<TCtx> treeVisitor, Hash256 stateRoot, VisitingOptions? visitingOptions = null) where TCtx : struct, INodeContext<TCtx>
         {
-            if (codeHash == Keccak.OfAnEmptyString)
-            {
-                return Array.Empty<byte>();
-            }
-
-            return _codeDb[codeHash.Bytes];
+            _state.Accept(treeVisitor, stateRoot, visitingOptions);
         }
 
-        public void RunTreeVisitor(ITreeVisitor treeVisitor, Hash256 rootHash, VisitingOptions? visitingOptions = null)
-        {
-            _state.Accept(treeVisitor, rootHash, visitingOptions);
-        }
+        public bool HasStateForRoot(Hash256 stateRoot) => trieStore.HasRoot(stateRoot);
 
-        public bool HasStateForRoot(Hash256 stateRoot)
-        {
-            RootCheckVisitor visitor = new();
-            RunTreeVisitor(visitor, stateRoot);
-            return visitor.HasRoot;
-        }
+        public byte[]? GetCode(Hash256 stateRoot, Address address) =>
+            TryGetState(stateRoot, address, out AccountStruct account) ? GetCode(account.CodeHash) : Array.Empty<byte>();
 
-        public byte[] GetCode(Hash256 stateRoot, Address address)
-        {
-            Account? account = GetState(stateRoot, address);
-            return account is null ? Array.Empty<byte>() : GetCode(account.CodeHash);
-        }
+        public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 
-        private Account? GetState(Hash256 stateRoot, Address address)
+        private bool TryGetState(Hash256 stateRoot, Address address, out AccountStruct account)
         {
             if (stateRoot == Keccak.EmptyTreeHash)
             {
-                return null;
+                account = AccountStruct.TotallyEmpty;
+                return false;
             }
 
             Metrics.StateTreeReads++;
-            Account? account = _state.Get(address, stateRoot);
-            return account;
+            return _state.TryGetStruct(address, out account, stateRoot);
         }
     }
 }

@@ -59,7 +59,7 @@ namespace Nethermind.Synchronization.FastBlocks
             ISyncReport syncReport,
             IDb metadataDb,
             ILogManager logManager)
-            : base(metadataDb, specProvider, logManager?.GetClassLogger())
+            : base(metadataDb, specProvider, logManager?.GetClassLogger() ?? default)
         {
             _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-            if (!_syncConfig.FastBlocks)
+            if (!_syncConfig.FastSync)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
@@ -172,6 +172,7 @@ namespace Nethermind.Synchronization.FastBlocks
             }
             finally
             {
+                batch?.Dispose();
                 batch?.MarkHandlingEnd();
             }
         }
@@ -194,7 +195,8 @@ namespace Nethermind.Synchronization.FastBlocks
                 {
                     // BlockInfo has no timestamp
                     IReceiptSpec releaseSpec = _specProvider.GetReceiptSpec(blockInfo.BlockNumber);
-                    preparedReceipts = receipts.GetReceiptsRoot(releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
+                    // TODO: Optimism use op root calculator
+                    preparedReceipts = ReceiptsRootCalculator.Instance.GetReceiptsRoot(receipts, releaseSpec, header.ReceiptsRoot) != header.ReceiptsRoot
                         ? null
                         : receipts;
                 }
@@ -212,7 +214,7 @@ namespace Nethermind.Synchronization.FastBlocks
             for (int i = 0; i < blockInfos.Length; i++)
             {
                 BlockInfo? blockInfo = blockInfos[i];
-                TxReceipt[]? receipts = (batch.Response?.Length ?? 0) <= i
+                TxReceipt[]? receipts = (batch.Response?.Count ?? 0) <= i
                     ? null
                     : (batch.Response![i] ?? Array.Empty<TxReceipt>());
 

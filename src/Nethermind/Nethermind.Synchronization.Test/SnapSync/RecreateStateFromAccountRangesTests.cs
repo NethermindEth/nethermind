@@ -31,13 +31,13 @@ namespace Nethermind.Synchronization.Test.SnapSync
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree(null);
+            _inputTree = TestItem.Tree.GetStateTree();
         }
 
         private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
         {
             AccountProofCollector accountProofCollector = new(path);
-            if (tree == null)
+            if (tree is null)
             {
                 tree = _inputTree;
             }
@@ -54,16 +54,18 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             MemDb db = new();
-            TrieStore store = new(db, LimboLogs.Instance);
+            TrieStore fullStore = new(db, LimboLogs.Instance);
+            IScopedTrieStore store = fullStore.GetTrieStore(null);
             StateTree tree = new(store, LimboLogs.Instance);
 
             IList<TrieNode> nodes = new List<TrieNode>();
+            TreePath emptyPath = TreePath.Empty;
 
             for (int i = 0; i < (firstProof!).Length; i++)
             {
                 byte[] nodeBytes = (firstProof!)[i];
                 var node = new TrieNode(NodeType.Unknown, nodeBytes);
-                node.ResolveKey(store, i == 0);
+                node.ResolveKey(store, ref emptyPath, i == 0);
 
                 nodes.Add(node);
                 if (i < (firstProof!).Length - 1)
@@ -78,7 +80,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             {
                 byte[] nodeBytes = (lastProof!)[i];
                 var node = new TrieNode(NodeType.Unknown, nodeBytes);
-                node.ResolveKey(store, i == 0);
+                node.ResolveKey(store, ref emptyPath, i == 0);
 
                 nodes.Add(node);
                 if (i < (lastProof!).Length - 1)
@@ -114,10 +116,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
@@ -134,10 +136,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
 
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
@@ -151,10 +153,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
 
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
             var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
@@ -169,10 +171,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -207,10 +209,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -242,10 +244,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -277,10 +279,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
@@ -321,10 +323,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -375,10 +377,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(ac1.Path.Bytes, tree);
             byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
@@ -414,10 +416,10 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             // output state
             MemDb db = new();
-            DbProvider dbProvider = new(DbModeHint.Mem);
+            DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            using ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -444,6 +446,19 @@ namespace Nethermind.Synchronization.Test.SnapSync
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
             Assert.That(db.Keys.Count, Is.EqualTo(6));
             Assert.IsFalse(db.KeyExists(rootHash));
+        }
+
+        private SnapProvider CreateSnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider)
+        {
+            try
+            {
+                IDb _ = dbProvider.CodeDb;
+            }
+            catch (ArgumentException)
+            {
+                dbProvider.RegisterDb(DbNames.Code, new MemDb());
+            }
+            return new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
         }
     }
 }

@@ -11,8 +11,8 @@ namespace Nethermind.Consensus.Processing;
 
 internal static class TransactionProcessorAdapterExtensions
 {
-    public static void ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
-        BlockExecutionContext blkCtx,
+    public static TransactionResult ProcessTransaction(this ITransactionProcessorAdapter transactionProcessor,
+        in BlockExecutionContext blkCtx,
         Transaction currentTx,
         BlockReceiptsTracer receiptsTracer,
         ProcessingOptions processingOptions,
@@ -24,7 +24,8 @@ internal static class TransactionProcessorAdapterExtensions
         }
 
         using ITxTracer tracer = receiptsTracer.StartNewTxTrace(currentTx);
-        transactionProcessor.Execute(currentTx, blkCtx, receiptsTracer);
+        TransactionResult result = transactionProcessor.Execute(currentTx, in blkCtx, receiptsTracer);
         receiptsTracer.EndTxTrace();
+        return result;
     }
 }

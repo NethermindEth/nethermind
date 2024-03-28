@@ -12,6 +12,7 @@ namespace Nethermind.Db
         string Name { get; }
         KeyValuePair<byte[], byte[]?>[] this[byte[][] keys] { get; }
         IEnumerable<KeyValuePair<byte[], byte[]?>> GetAll(bool ordered = false);
+        IEnumerable<byte[]> GetAllKeys(bool ordered = false);
         IEnumerable<byte[]> GetAllValues(bool ordered = false);
 
         public IReadOnlyDb CreateReadOnly(bool createInMemWriteStore) => new ReadOnlyDb(this, createInMemWriteStore);
@@ -20,13 +21,20 @@ namespace Nethermind.Db
     // Some metadata options
     public interface IDbMeta
     {
-        long GetSize() => 0;
-        long GetCacheSize() => 0;
-        long GetIndexSize() => 0;
-        long GetMemtableSize() => 0;
+        DbMetric GatherMetric(bool includeSharedCache = false) => new DbMetric();
 
         void Flush() { }
         void Clear() { }
         void Compact() { }
+
+        readonly struct DbMetric
+        {
+            public long Size { get; init; }
+            public long CacheSize { get; init; }
+            public long IndexSize { get; init; }
+            public long MemtableSize { get; init; }
+            public long TotalReads { get; init; }
+            public long TotalWrites { get; init; }
+        }
     }
 }

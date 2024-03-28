@@ -201,7 +201,7 @@ public class NodeRecord
         int totalLength = Rlp.LengthOfSequence(contentLength);
         RlpStream rlpStream = new(totalLength);
         Encode(rlpStream);
-        return rlpStream.Data!.ToHexString();
+        return rlpStream.Data.AsSpan().ToHexString();
     }
 
     /// <summary>

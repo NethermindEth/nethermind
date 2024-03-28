@@ -3,6 +3,7 @@
 
 using System;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
@@ -22,6 +23,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Stats.Model;
@@ -76,7 +78,7 @@ namespace Nethermind.Synchronization.Test
         {
             Context ctx = new();
             ctx.SyncServer.Find(TestItem.KeccakA);
-            ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            ctx.BlockTree.Received().FindBlock(Arg.Any<Hash256>(), BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
         }
 
         [TestCase(true, true, true)]
@@ -180,6 +182,7 @@ namespace Nethermind.Synchronization.Test
                 new MemDb(),
                 localBlockTree,
                 testSpecProvider,
+                new ChainSpec(),
                 LimboLogs.Instance);
             HeaderValidator headerValidator = new(
                 localBlockTree,
@@ -389,6 +392,7 @@ namespace Nethermind.Synchronization.Test
                 new MemDb(),
                 localBlockTree,
                 testSpecProvider,
+                new ChainSpec(),
                 LimboLogs.Instance);
             MergeSealEngine sealEngine = new(
                 new SealEngine(new NethDevSealEngine(), Always.Valid),
@@ -661,11 +665,12 @@ namespace Nethermind.Synchronization.Test
 
             Hash256 nodeKey = TestItem.KeccakA;
             TrieNode node = new(NodeType.Leaf, nodeKey, TestItem.KeccakB.Bytes);
-            trieStore.CommitNode(1, new NodeCommitInfo(node));
-            trieStore.FinishBlockCommit(TrieType.State, 1, node);
+            IScopedTrieStore scopedTrieStore = trieStore.GetTrieStore(null);
+            scopedTrieStore.CommitNode(1, new NodeCommitInfo(node, TreePath.Empty));
+            scopedTrieStore.FinishBlockCommit(TrieType.State, 1, node);
 
             stateDb.KeyExists(nodeKey).Should().BeFalse();
-            ctx.SyncServer.GetNodeData(new[] { nodeKey }, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
+            ctx.SyncServer.GetNodeData(new[] { nodeKey }, CancellationToken.None, NodeDataType.All).Should().BeEquivalentTo(new[] { TestItem.KeccakB.BytesToArray() });
         }
 
         private class Context

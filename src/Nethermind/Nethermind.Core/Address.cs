@@ -4,6 +4,7 @@
 using System;
 using System.ComponentModel;
 using System.Globalization;
+using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Text.Json.Serialization;
@@ -19,12 +20,18 @@ namespace Nethermind.Core
     [TypeConverter(typeof(AddressTypeConverter))]
     public class Address : IEquatable<Address>, IComparable<Address>
     {
+        // Ensure that hashes are different for every run of the node and every node, so if are any hash collisions on
+        // one node they will not be the same on another node or across a restart so hash collision cannot be used to degrade
+        // the performance of the network as a whole.
+        private static readonly uint s_instanceRandom = (uint)System.Security.Cryptography.RandomNumberGenerator.GetInt32(int.MinValue, int.MaxValue);
+
         public const int Size = 20;
         private const int HexCharsCount = 2 * Size; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
         public static Address Zero { get; } = new(new byte[Size]);
-        public static Address SystemUser { get; } = new("0xfffffffffffffffffffffffffffffffffffffffe");
+        public const string SystemUserHex = "0xfffffffffffffffffffffffffffffffffffffffe";
+        public static Address SystemUser { get; } = new(SystemUserHex);
 
         public byte[] Bytes { get; }
 
@@ -91,18 +98,31 @@ namespace Nethermind.Core
         /// <summary>
         /// Parses string value to Address. String can be shorter than 20 bytes long, it is padded with leading 0's then.
         /// </summary>
-        public static bool TryParseVariableLength(string? value, out Address? address)
+        public static bool TryParseVariableLength(string? value, out Address? address, bool allowOverflow = false)
         {
             if (value is not null)
             {
-                try
+                const int size = Size << 1;
+
+                int start = value is ['0', 'x', ..] ? 2 : 0;
+                ReadOnlySpan<char> span = value.AsSpan(start);
+                if (span.Length > size)
                 {
-                    address = new Address(Extensions.Bytes.FromHexString(value, Size));
-                    return true;
+                    if (allowOverflow)
+                    {
+                        span = span.Slice(value.Length - size);
+                    }
+                    else
+                    {
+                        goto False;
+                    }
                 }
-                catch (IndexOutOfRangeException) { }
+
+                address = new Address(Extensions.Bytes.FromHexString(span, Size));
+                return true;
             }
 
+        False:
             address = default;
             return false;
         }
@@ -174,11 +194,11 @@ namespace Nethermind.Core
 
         public override int GetHashCode()
         {
-            long l0 = Unsafe.ReadUnaligned<long>(ref MemoryMarshal.GetArrayDataReference(Bytes));
-            long l1 = Unsafe.ReadUnaligned<long>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long)));
-            int i2 = Unsafe.ReadUnaligned<int>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2));
-            l0 ^= l1 ^ i2;
-            return (int)(l0 ^ (l0 >> 32));
+            uint hash = s_instanceRandom;
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref MemoryMarshal.GetArrayDataReference(Bytes)));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<ulong>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(ulong))));
+            hash = BitOperations.Crc32C(hash, Unsafe.ReadUnaligned<uint>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(Bytes), sizeof(long) * 2)));
+            return (int)hash;
         }
 
         public static bool operator ==(Address? a, Address? b)
@@ -213,6 +233,20 @@ namespace Nethermind.Core
             public override bool CanConvertTo(ITypeDescriptorContext? context, Type? destinationType) =>
                 destinationType == typeof(string) || base.CanConvertTo(context, destinationType);
         }
+
+        public Hash256 ToAccountPath => Keccak.Compute(Bytes);
+    }
+
+    public readonly struct AddressAsKey(Address key) : IEquatable<AddressAsKey>
+    {
+        private readonly Address _key = key;
+        public Address Value => _key;
+
+        public static implicit operator Address(AddressAsKey key) => key._key;
+        public static implicit operator AddressAsKey(Address key) => new(key);
+
+        public bool Equals(AddressAsKey other) => _key.Equals(other._key);
+        public override int GetHashCode() => _key.GetHashCode();
     }
 
     public ref struct AddressStructRef
@@ -221,7 +255,7 @@ namespace Nethermind.Core
         private const int HexCharsCount = 2 * ByteLength; // 5a4eab120fb44eb6684e5e32785702ff45ea344d
         private const int PrefixedHexCharsCount = 2 + HexCharsCount; // 0x5a4eab120fb44eb6684e5e32785702ff45ea344d
 
-        public Span<byte> Bytes { get; }
+        public ReadOnlySpan<byte> Bytes { get; }
 
         public AddressStructRef(Hash256StructRef keccak) : this(keccak.Bytes.Slice(12, ByteLength)) { }
 
@@ -260,7 +294,7 @@ namespace Nethermind.Core
 
         public AddressStructRef(string hexString) : this(Extensions.Bytes.FromHexString(hexString)) { }
 
-        public AddressStructRef(Span<byte> bytes)
+        public AddressStructRef(ReadOnlySpan<byte> bytes)
         {
             if (bytes.Length != ByteLength)
             {

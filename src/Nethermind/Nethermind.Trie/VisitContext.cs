@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Trie
         private int _visitedNodes;
 
         public int Level { get; internal set; }
-        public bool IsStorage { get; internal set; }
+        public bool IsStorage { get; set; }
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
         public int VisitedNodes => _visitedNodes;
@@ -114,7 +115,7 @@ namespace Nethermind.Trie
             readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
             internal set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _branchChildIndex = 255;
                 }
@@ -125,7 +126,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext ToVisitContext()
+        public readonly TrieVisitContext ToVisitContext()
         {
             return new TrieVisitContext()
             {

@@ -1,6 +1,6 @@
 # Contributing to Nethermind
 
-The Nethermind team maintains guidelines for contributing to the Nethermind repos. Check out our [docs page](https://docs.nethermind.io/nethermind/) for more info about us.
+The Nethermind team maintains guidelines for contributing to the Nethermind repos. Check out our [docs page](https://docs.nethermind.io/) for more info about us.
 
 ### Code of Conduct
 
@@ -56,7 +56,7 @@ Branch names must follow `snake_case` pattern. Follow the pattern `<projectIfAny
 The following notice must be included as a header in all source files if possible.
 
 ```
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 ```
 

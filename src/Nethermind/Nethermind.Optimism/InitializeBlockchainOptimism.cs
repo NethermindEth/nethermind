@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
+using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Evm;
@@ -27,11 +28,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
 
     protected override Task InitBlockchain()
     {
-        _api.SpecHelper = new(
-            _api.ChainSpec.Optimism.RegolithTimestamp,
-            _api.ChainSpec.Optimism.BedrockBlockNumber,
-            _api.ChainSpec.Optimism.L1FeeRecipient
-        );
+        _api.SpecHelper = new(_api.ChainSpec.Optimism);
         _api.L1CostHelper = new(_api.SpecHelper, _api.ChainSpec.Optimism.L1BlockAddress);
 
         return base.InitBlockchain();
@@ -82,6 +79,32 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.LogManager);
 
         return new InvalidBlockInterceptor(blockValidator, _api.InvalidChainTracker, _api.LogManager);
+    }
+
+    protected override BlockProcessor CreateBlockProcessor()
+    {
+        if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
+        if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
+        if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+        if (_api.SpecHelper is null) throw new StepDependencyException(nameof(_api.SpecHelper));
+        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+        if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+        if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
+
+        Create2DeployerContractRewriter contractRewriter =
+            new(_api.SpecHelper, _api.SpecProvider, _api.BlockTree);
+
+        return new OptimismBlockProcessor(
+            _api.SpecProvider,
+            _api.BlockValidator,
+            _api.RewardCalculatorSource.Get(_api.TransactionProcessor!),
+            new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState),
+            _api.WorldState,
+            _api.ReceiptStorage,
+            _api.WitnessCollector,
+            _api.LogManager,
+            _api.SpecHelper,
+            contractRewriter);
     }
 
     protected override IUnclesValidator CreateUnclesValidator() => Always.Valid;

@@ -7,13 +7,16 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Microsoft.ClearScript.JavaScript;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -24,20 +27,18 @@ using Nethermind.Logging;
 using Nethermind.Network;
 using Nethermind.Specs;
 using Nethermind.State.Proofs;
-using Nethermind.State.Repositories;
 using Nethermind.Stats.Model;
-using Nethermind.Db.Blooms;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Serialization.Rlp;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 using BlockTree = Nethermind.Blockchain.BlockTree;
+using System.Diagnostics.CodeAnalysis;
 
 namespace Nethermind.Synchronization.Test
 {
@@ -481,7 +482,35 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateOrphanedBlock(Block block, out string? error)
+            public bool ValidateOrphanedBlock(Block block, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, [NotNullWhen(false)] out string? error)
+            {
+                Thread.Sleep(1000);
+                error = null;
+                return true;
+            }
+
+            public bool Validate(BlockHeader header, bool isUncle, [NotNullWhen(false)] out string? error)
             {
                 Thread.Sleep(1000);
                 error = null;
@@ -567,7 +596,8 @@ namespace Nethermind.Synchronization.Test
             };
             BlockDownloader downloader = ctx.BlockDownloader;
 
-            BlockHeader[] blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            using IOwnedReadOnlyList<BlockHeader>? blockHeaders = await ctx.ResponseBuilder.BuildHeaderResponse(0, 512, Response.AllCorrect);
+            BlockHeader[] blockHeadersCopy = blockHeaders?.ToArray() ?? Array.Empty<BlockHeader>();
             ISyncPeer syncPeer = Substitute.For<ISyncPeer>();
             syncPeer.TotalDifficulty.Returns(UInt256.MaxValue);
             syncPeer.GetBlockHeaders(Arg.Any<long>(), Arg.Any<int>(), Arg.Any<int>(), Arg.Any<CancellationToken>())
@@ -581,7 +611,7 @@ namespace Nethermind.Synchronization.Test
 
             sealValidator.Received(2).ValidateSeal(Arg.Any<BlockHeader>(), true);
             sealValidator.Received(510).ValidateSeal(Arg.Any<BlockHeader>(), false);
-            sealValidator.Received().ValidateSeal(blockHeaders[^1], true);
+            sealValidator.Received().ValidateSeal(blockHeadersCopy![^1], true);
         }
 
         private class ThrowingPeer : ISyncPeer
@@ -614,12 +644,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new Exception();
             }
@@ -641,12 +671,12 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -721,7 +751,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-                .Returns(Task.FromException<TxReceipt[]?[]>(new TimeoutException()));
+                .Returns(Task.FromException<IOwnedReadOnlyList<TxReceipt[]?>>(new TimeoutException()));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -772,9 +802,11 @@ namespace Nethermind.Synchronization.Test
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
                 .Returns(async ci =>
                 {
-                    TxReceipt[]?[] receipts = await syncPeerInternal.GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1));
+                    ArrayPoolList<TxReceipt[]?> receipts = (await syncPeerInternal
+                        .GetReceipts(ci.ArgAt<IReadOnlyList<Hash256>>(0), ci.ArgAt<CancellationToken>(1)))
+                        .ToPooledList();
                     receipts[^1] = null;
-                    return receipts;
+                    return (IOwnedReadOnlyList<TxReceipt[]?>)receipts;
                 });
 
             syncPeer.TotalDifficulty.Returns(_ => syncPeerInternal.TotalDifficulty);
@@ -818,7 +850,7 @@ namespace Nethermind.Synchronization.Test
                 .Returns(ci => ctx.ResponseBuilder.BuildBlocksResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions));
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
-                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToArray());
+                .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions).Result.Skip(1).ToPooledList(10));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -847,7 +879,7 @@ namespace Nethermind.Synchronization.Test
 
             syncPeer.GetReceipts(Arg.Any<IReadOnlyList<Hash256>>(), Arg.Any<CancellationToken>())
                 .Returns(ci => ctx.ResponseBuilder.BuildReceiptsResponse(ci.ArgAt<IList<Hash256>>(0), Response.AllCorrect | Response.WithTransactions)
-                    .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToArray());
+                    .Result.Select(r => r is null || r.Length == 0 ? r : r.Skip(1).ToArray()).ToPooledList(10));
 
             PeerInfo peerInfo = new(syncPeer);
             syncPeer.HeadNumber.Returns(1);
@@ -1092,12 +1124,12 @@ namespace Nethermind.Synchronization.Test
                     headers[i++] = BlockTree.FindBlock(blockHash, BlockTreeLookupOptions.None)!.Body;
                 }
 
-                BlockBodiesMessage message = new(headers);
+                using BlockBodiesMessage message = new(headers);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
             {
                 bool justFirst = _flags.HasFlag(Response.JustFirst);
                 bool timeoutOnFullBatch = _flags.HasFlag(Response.TimeoutOnFullBatch);
@@ -1113,12 +1145,12 @@ namespace Nethermind.Synchronization.Test
                     headers[i] = BlockTree.FindHeader(number + i, BlockTreeLookupOptions.None)!;
                 }
 
-                BlockHeadersMessage message = new(headers);
+                using BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
 
-            public async Task<TxReceipt[]?[]> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
+            public async Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHash.Count][];
                 int i = 0;
@@ -1129,7 +1161,7 @@ namespace Nethermind.Synchronization.Test
                     receipts[i++] = blockReceipts;
                 }
 
-                ReceiptsMessage message = new(receipts);
+                using ReceiptsMessage message = new(receipts.ToPooledList());
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }
@@ -1139,7 +1171,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<BlockHeader[]> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
+            public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 startHash, int maxBlocks, int skip, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1159,7 +1191,7 @@ namespace Nethermind.Synchronization.Test
                 throw new NotImplementedException();
             }
 
-            public Task<byte[][]> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
+            public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token)
             {
                 throw new NotImplementedException();
             }
@@ -1186,7 +1218,7 @@ namespace Nethermind.Synchronization.Test
                 _testHeaderMapping = testHeaderMapping;
             }
 
-            public async Task<BlockHeader[]> BuildHeaderResponse(long startNumber, int number, Response flags)
+            public async Task<IOwnedReadOnlyList<BlockHeader>?> BuildHeaderResponse(long startNumber, int number, Response flags)
             {
                 bool consistent = flags.HasFlag(Response.Consistent);
                 bool justFirst = flags.HasFlag(Response.JustFirst);
@@ -1234,7 +1266,7 @@ namespace Nethermind.Synchronization.Test
                     _headers[header.Hash!] = header;
                 }
 
-                BlockHeadersMessage message = new(headers);
+                using BlockHeadersMessage message = new(headers.ToPooledList());
                 byte[] messageSerialized = _headersSerializer.Serialize(message);
                 return await Task.FromResult(_headersSerializer.Deserialize(messageSerialized).BlockHeaders);
             }
@@ -1307,12 +1339,12 @@ namespace Nethermind.Synchronization.Test
                     }
                 }
 
-                BlockBodiesMessage message = new(blockBodies);
+                using BlockBodiesMessage message = new(blockBodies);
                 byte[] messageSerialized = _bodiesSerializer.Serialize(message);
                 return await Task.FromResult(_bodiesSerializer.Deserialize(messageSerialized).Bodies!);
             }
 
-            public async Task<TxReceipt[]?[]> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
+            public async Task<IOwnedReadOnlyList<TxReceipt[]?>> BuildReceiptsResponse(IList<Hash256> blockHashes, Response flags = Response.AllCorrect)
             {
                 TxReceipt[][] receipts = new TxReceipt[blockHashes.Count][];
                 for (int i = 0; i < receipts.Length; i++)
@@ -1329,10 +1361,10 @@ namespace Nethermind.Synchronization.Test
 
                     _headers[blockHashes[i]].ReceiptsRoot = flags.HasFlag(Response.IncorrectReceiptRoot)
                         ? Keccak.EmptyTreeHash
-                        : new ReceiptTrie(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i]).RootHash;
+                        : ReceiptTrie<TxReceipt>.CalculateRoot(MainnetSpecProvider.Instance.GetSpec((ForkActivation)_headers[blockHashes[i]].Number), receipts[i], ReceiptMessageDecoder.Instance);
                 }
 
-                ReceiptsMessage message = new(receipts);
+                using ReceiptsMessage message = new(receipts.ToPooledList());
                 byte[] messageSerialized = _receiptsSerializer.Serialize(message);
                 return await Task.FromResult(_receiptsSerializer.Deserialize(messageSerialized).TxReceipts);
             }

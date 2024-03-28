@@ -6,6 +6,7 @@ using Nethermind.Core.Attributes;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.State;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test.Tracing;
@@ -15,13 +16,36 @@ namespace Nethermind.Evm.Test.Tracing;
 public class GethLikeTxMemoryTracerTests : VirtualMachineTestsBase
 {
     [Test]
-    public void Can_trace_gas()
+    public void Can_trace_gas_halt_with_stop()
     {
         byte[] code = Prepare.EvmCode
             .PushData("0x1")
             .PushData("0x2")
             .Op(Instruction.ADD)
             .Op(Instruction.STOP)
+            .Done;
+
+        int[] gasCosts = new int[] { 3, 3, 3, 0 };
+
+        GethLikeTxTrace trace = ExecuteAndTrace(code);
+
+        int gasTotal = 0;
+        for (int i = 0; i < gasCosts.Length; i++)
+        {
+            Assert.That(trace.Entries[i].Gas, Is.EqualTo(79000 - gasTotal), $"gas[{i}]");
+            Assert.That(trace.Entries[i].GasCost, Is.EqualTo(gasCosts[i]), $"gasCost[{i}]");
+            gasTotal += gasCosts[i];
+        }
+    }
+
+    [Test]
+    public void Can_trace_gas_halt_with_return()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData("0x1")
+            .PushData("0x2")
+            .Op(Instruction.ADD)
+            .Op(Instruction.RETURN)
             .Done;
 
         int[] gasCosts = new int[] { 3, 3, 3, 0 };

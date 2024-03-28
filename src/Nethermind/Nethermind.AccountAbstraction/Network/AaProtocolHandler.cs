@@ -97,17 +97,20 @@ namespace Nethermind.AccountAbstraction.Network
             switch (message.PacketType)
             {
                 case AaMessageCode.UserOperations:
-                    Metrics.UserOperationsMessagesReceived++;
-                    UserOperationsMessage uopMsg = Deserialize<UserOperationsMessage>(message.Content);
-                    ReportIn(uopMsg, size);
-                    Handle(uopMsg);
-                    break;
+                    {
+                        Metrics.UserOperationsMessagesReceived++;
+                        using UserOperationsMessage uopMsg = Deserialize<UserOperationsMessage>(message.Content);
+                        ReportIn(uopMsg, size);
+                        Handle(uopMsg);
+
+                        break;
+                    }
             }
         }
 
         private void Handle(UserOperationsMessage uopMsg)
         {
-            IList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
+            IOwnedReadOnlyList<UserOperationWithEntryPoint> userOperations = uopMsg.UserOperationsWithEntryPoint;
             for (int i = 0; i < userOperations.Count; i++)
             {
                 UserOperationWithEntryPoint uop = userOperations[i];
@@ -125,20 +128,20 @@ namespace Nethermind.AccountAbstraction.Network
 
         public void SendNewUserOperation(UserOperationWithEntryPoint uop)
         {
-            SendMessage(new[] { uop });
+            SendMessage(new ArrayPoolList<UserOperationWithEntryPoint>(1) { uop });
         }
 
         public void SendNewUserOperations(IEnumerable<UserOperationWithEntryPoint> uops)
         {
             const int maxCapacity = 256;
-            using ArrayPoolList<UserOperationWithEntryPoint> uopsToSend = new(maxCapacity);
+            ArrayPoolList<UserOperationWithEntryPoint> uopsToSend = new(maxCapacity);
 
             foreach (UserOperationWithEntryPoint uop in uops)
             {
                 if (uopsToSend.Count == maxCapacity)
                 {
                     SendMessage(uopsToSend);
-                    uopsToSend.Clear();
+                    uopsToSend = new(maxCapacity);
                 }
 
                 // TODO: Why this check
@@ -153,9 +156,13 @@ namespace Nethermind.AccountAbstraction.Network
             {
                 SendMessage(uopsToSend);
             }
+            else
+            {
+                uopsToSend.Dispose();
+            }
         }
 
-        private void SendMessage(IList<UserOperationWithEntryPoint> uopsToSend)
+        private void SendMessage(IOwnedReadOnlyList<UserOperationWithEntryPoint> uopsToSend)
         {
             UserOperationsMessage msg = new(uopsToSend);
             Send(msg);

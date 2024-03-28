@@ -24,13 +24,14 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly ResettableDictionary<Address, Stack<int>> _intraBlockCache = new();
-        private readonly ResettableHashSet<Address> _committedThisRound = new();
+        private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraBlockCache = new();
+        private readonly ResettableHashSet<AddressAsKey> _committedThisRound = new();
+        private readonly HashSet<AddressAsKey> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Hash256> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCache<Hash256AsKey> _codeInsertFilter = new(2048, "Code Insert Filter");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -40,7 +41,7 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
+        public StateProvider(IScopedTrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -145,10 +146,9 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
             _needsStateRootUpdate = true;
-            Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
 
             // Don't reinsert if already inserted. This can be the case when the same
             // code is used by multiple deployments. Either from factory contracts (e.g. LPs)
@@ -181,7 +181,7 @@ namespace Nethermind.State
 
             if (account.CodeHash != codeHash)
             {
-                if (_logger.IsTrace) _logger.Trace($"  Update {address} C {account.CodeHash} -> {codeHash}");
+                if (_logger.IsDebug) _logger.Debug($"  Update {address} C {account.CodeHash} -> {codeHash}");
                 Account changedAccount = account.WithChangedCodeHash(codeHash);
                 PushUpdate(address, changedAccount);
             }
@@ -307,7 +307,7 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(Hash256 codeHash)
+        public void TouchCode(in ValueHash256 codeHash)
         {
             if (_codeDb is WitnessingStore witnessingStore)
             {
@@ -324,12 +324,13 @@ namespace Nethermind.State
         public byte[] GetCode(Hash256 codeHash)
         {
             byte[]? code = codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
-            if (code is null)
-            {
-                throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
-            }
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
+        }
 
-            return code;
+        public byte[] GetCode(ValueHash256 codeHash)
+        {
+            byte[]? code = codeHash == Keccak.OfAnEmptyString.ValueHash256 ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
+            return code ?? throw new InvalidOperationException($"Code {codeHash} is missing from the database.");
         }
 
         public byte[] GetCode(Address address)
@@ -481,10 +482,10 @@ namespace Nethermind.State
             }
 
             bool isTracing = stateTracer.IsTracingState;
-            Dictionary<Address, ChangeTrace> trace = null;
+            Dictionary<AddressAsKey, ChangeTrace> trace = null;
             if (isTracing)
             {
-                trace = new Dictionary<Address, ChangeTrace>();
+                trace = new Dictionary<AddressAsKey, ChangeTrace>();
             }
 
             for (int i = 0; i <= _currentPosition; i++)
@@ -508,7 +509,7 @@ namespace Nethermind.State
                 // because it was not committed yet it means that the just cache is the only state (so it was read only)
                 if (isTracing && change.ChangeType == ChangeType.JustCache)
                 {
-                    _readsForTracing.Add(change.Address);
+                    _nullAccountReads.Add(change.Address);
                     continue;
                 }
 
@@ -597,7 +598,7 @@ namespace Nethermind.State
 
             if (isTracing)
             {
-                foreach (Address nullRead in _readsForTracing)
+                foreach (Address nullRead in _nullAccountReads)
                 {
                     // // this may be enough, let us write tests
                     stateTracer.ReportAccountRead(nullRead);
@@ -606,7 +607,7 @@ namespace Nethermind.State
 
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _intraBlockCache.Reset();
 
             if (isTracing)
@@ -615,7 +616,7 @@ namespace Nethermind.State
             }
         }
 
-        private void ReportChanges(IStateTracer stateTracer, Dictionary<Address, ChangeTrace> trace)
+        private void ReportChanges(IStateTracer stateTracer, Dictionary<AddressAsKey, ChangeTrace> trace)
         {
             foreach ((Address address, ChangeTrace change) in trace)
             {
@@ -687,10 +688,10 @@ namespace Nethermind.State
             _tree.Set(address, account);
         }
 
-        private readonly HashSet<Address> _readsForTracing = new();
-
         private Account? GetAndAddToCache(Address address)
         {
+            if (_nullAccountReads.Contains(address)) return null;
+
             Account? account = GetState(address);
             if (account is not null)
             {
@@ -699,7 +700,7 @@ namespace Nethermind.State
             else
             {
                 // just for tracing - potential perf hit, maybe a better solution?
-                _readsForTracing.Add(address);
+                _nullAccountReads.Add(address);
             }
 
             return account;
@@ -803,15 +804,10 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _intraBlockCache.Reset();
             _committedThisRound.Reset();
-            _readsForTracing.Clear();
+            _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
             _needsStateRootUpdate = false;
-
-            if (_codeDb is IReadOnlyDb readOnlyDb)
-            {
-                readOnlyDb.ClearTempChanges();
-            }
         }
 
         public void CommitTree(long blockNumber)

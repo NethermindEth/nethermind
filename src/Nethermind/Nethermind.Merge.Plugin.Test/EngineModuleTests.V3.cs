@@ -29,6 +29,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
+using NUnit.Framework.Constraints;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -181,6 +182,42 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithCorrectErrorMessage()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.BlockNumber = 2;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidBlockNumber"));
+    }
+
+    [Test]
+    public async Task NewPayloadV3_WrongStateRoot_CorrectErrorIsReturnedAfterProcessing()
+    {
+        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+
+        payload.StateRoot = Keccak.Zero;
+        payload.TryGetBlock(out Block? b);
+        payload.BlockHash = b!.CalculateHash();
+
+        byte[]?[] blobVersionedHashes = transactions.SelectMany(tx => tx.BlobVersionedHashes ?? Array.Empty<byte[]>()).ToArray();
+        ResultWrapper<PayloadStatusV1> result = await prevRpcModule.engine_newPayloadV3(payload, blobVersionedHashes, payload.ParentBeaconBlockRoot);
+
+        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.None));
+        result.Data.Status.Should().Be("INVALID");
+        Assert.That(result.Data.ValidationError, Does.StartWith("InvalidStateRoot"));
+    }
+
+    [Test]
     public async Task NewPayloadV3_should_decline_null_blobversionedhashes()
     {
         (JsonRpcService jsonRpcService, JsonRpcContext context, EthereumJsonSerializer serializer, ExecutionPayloadV3 executionPayload)
@@ -287,7 +324,7 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
             ParentBeaconBlockRoot = isBeaconRootSet ? Keccak.Zero : null,
         };
 
@@ -399,7 +436,7 @@ public partial class EngineModuleTests
             Timestamp = payload.Timestamp + 1,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
             ParentBeaconBlockRoot = null,
         };
 
@@ -426,7 +463,7 @@ public partial class EngineModuleTests
             Timestamp = payload.Timestamp + 1,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
-            Withdrawals = new List<Withdrawal>(),
+            Withdrawals = Array.Empty<Withdrawal>(),
         };
 
         await rpcModule.engine_newPayloadV3(payload, Array.Empty<byte[]>(), payload.ParentBeaconBlockRoot);
@@ -590,7 +627,7 @@ public partial class EngineModuleTests
         }
     }
 
-    private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, IList<Withdrawal>? withdrawals)
+    private async Task<ExecutionPayload> SendNewBlockV3(IEngineRpcModule rpc, MergeTestBlockchain chain, Withdrawal[]? withdrawals)
     {
         ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
             chain, CreateParentBlockRequestOnHead(chain.BlockTree), TestItem.AddressD, withdrawals, 0, 0, parentBeaconBlockRoot: TestItem.KeccakE);
@@ -605,14 +642,14 @@ public partial class EngineModuleTests
         IReleaseSpec spec, int transactionCount = 0)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
-        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        IEngineRpcModule rpcModule = CreateEngineModule(chain, null, TimeSpan.FromDays(1));
         Transaction[] txs = Array.Empty<Transaction>();
 
         if (transactionCount is not 0)
         {
             using SemaphoreSlim blockImprovementLock = new(0);
 
-            ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, new List<Withdrawal>());
+            ExecutionPayload executionPayload1 = await SendNewBlockV3(rpcModule, chain, Array.Empty<Withdrawal>());
             txs = BuildTransactions(chain, executionPayload1.BlockHash, TestItem.PrivateKeyA, TestItem.AddressB, (uint)transactionCount, 0, out _, out _, 1);
             chain.AddTransactions(txs);
 
@@ -628,7 +665,7 @@ public partial class EngineModuleTests
             Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = TestItem.KeccakH,
             SuggestedFeeRecipient = TestItem.AddressF,
-            Withdrawals = new List<Withdrawal> { TestItem.WithdrawalA_1Eth },
+            Withdrawals = [TestItem.WithdrawalA_1Eth],
             ParentBeaconBlockRoot = spec.IsBeaconBlockRootAvailable ? TestItem.KeccakE : null
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;

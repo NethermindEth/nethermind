@@ -20,10 +20,10 @@ namespace Nethermind.Synchronization.Test
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class SyncReportTest
     {
-        [TestCase(true, false)]
-        [TestCase(true, true)]
-        [TestCase(false, false)]
-        public void Smoke(bool fastSync, bool fastBlocks)
+        [Test]
+        public void Smoke(
+            [Values(true, false)]
+            bool fastSync)
         {
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
             pool.InitializedPeersCount.Returns(1);
@@ -41,7 +41,6 @@ namespace Nethermind.Synchronization.Test
 
             SyncConfig syncConfig = new()
             {
-                FastBlocks = fastBlocks,
                 FastSync = fastSync,
             };
 
@@ -62,9 +61,10 @@ namespace Nethermind.Synchronization.Test
             timer.Elapsed += Raise.Event();
         }
 
-        [TestCase(false)]
-        [TestCase(true)]
-        public void Ancient_bodies_and_receipts_are_reported_correctly(bool setBarriers)
+        [Test]
+        public void Ancient_bodies_and_receipts_are_reported_correctly(
+            [Values(false, true)]
+            bool setBarriers)
         {
             CultureInfo.CurrentCulture = CultureInfo.InvariantCulture;
             ISyncPeerPool pool = Substitute.For<ISyncPeerPool>();
@@ -73,8 +73,10 @@ namespace Nethermind.Synchronization.Test
             ITimer timer = Substitute.For<ITimer>();
             timerFactory.CreateTimer(Arg.Any<TimeSpan>()).Returns(timer);
             ILogManager logManager = Substitute.For<ILogManager>();
-            ILogger logger = Substitute.For<ILogger>();
-            logger.IsInfo.Returns(true);
+            InterfaceLogger iLogger = Substitute.For<InterfaceLogger>();
+            iLogger.IsInfo.Returns(true);
+            iLogger.IsError.Returns(true);
+            ILogger logger = new(iLogger);
             logManager.GetClassLogger().Returns(logger);
 
             Queue<SyncMode> syncModes = new();
@@ -84,7 +86,6 @@ namespace Nethermind.Synchronization.Test
 
             SyncConfig syncConfig = new()
             {
-                FastBlocks = true,
                 FastSync = true,
                 PivotNumber = "100",
             };
@@ -100,15 +101,15 @@ namespace Nethermind.Synchronization.Test
 
             if (setBarriers)
             {
-                logger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 70 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 65 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
             else
             {
-                logger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
-                logger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Headers    0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Bodies     0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
+                iLogger.Received(1).Info("Old Receipts   0 / 100 (  0.00 %) | queue         0 | current            0 Blk/s | total            0 Blk/s");
             }
         }
     }

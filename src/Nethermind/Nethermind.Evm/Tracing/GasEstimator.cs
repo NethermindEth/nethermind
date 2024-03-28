@@ -38,7 +38,7 @@ namespace Nethermind.Evm.Tracing
 
             // Calculate and return additional gas required in case of insufficient funds.
             UInt256 senderBalance = _stateProvider.GetBalance(tx.SenderAddress);
-            if (tx.Value != UInt256.Zero && tx.Value >= senderBalance)
+            if (tx.Value != UInt256.Zero && tx.Value > senderBalance)
             {
                 return gasTracer.CalculateAdditionalGasRequired(tx, releaseSpec);
             }
@@ -89,7 +89,7 @@ namespace Nethermind.Evm.Tracing
             transaction.GasLimit = gasLimit;
 
             BlockExecutionContext blCtx = new(block);
-            _transactionProcessor.CallAndRestore(transaction, blCtx, tracer.WithCancellation(token));
+            _transactionProcessor.CallAndRestore(transaction, in blCtx, tracer.WithCancellation(token));
 
             transaction.GasLimit = originalGasLimit;
 
@@ -104,6 +104,7 @@ namespace Nethermind.Evm.Tracing
             }
             public override bool IsTracingReceipt => true;
             public override bool IsTracingInstructions => true;
+            public override bool IsTracingActions => true;
             public bool OutOfGas { get; private set; }
 
             public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -112,6 +113,11 @@ namespace Nethermind.Evm.Tracing
 
             public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
             {
+            }
+
+            public override void ReportActionError(EvmExceptionType error)
+            {
+                OutOfGas |= error == EvmExceptionType.OutOfGas;
             }
 
             public override void ReportOperationError(EvmExceptionType error)

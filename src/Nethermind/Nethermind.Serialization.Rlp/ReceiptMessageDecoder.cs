@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class ReceiptMessageDecoder : IRlpStreamDecoder<TxReceipt>
     {
+        public static readonly ReceiptMessageDecoder Instance = new();
+
         static ReceiptMessageDecoder()
         {
             Rlp.Decoders[typeof(TxReceipt)] = new ReceiptMessageDecoder();
@@ -57,8 +59,8 @@ namespace Nethermind.Serialization.Rlp
             {
                 entries[i] = Rlp.Decode<LogEntry>(rlpStream, RlpBehaviors.AllowExtraBytes);
             }
-
             txReceipt.Logs = entries;
+
             return txReceipt;
         }
 
@@ -126,7 +128,7 @@ namespace Nethermind.Serialization.Rlp
             int length = GetLength(item, rlpBehaviors);
             RlpStream stream = new(length);
             Encode(stream, item, rlpBehaviors);
-            return stream.Data;
+            return stream.Data.ToArray();
         }
 
         public void Encode(RlpStream rlpStream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

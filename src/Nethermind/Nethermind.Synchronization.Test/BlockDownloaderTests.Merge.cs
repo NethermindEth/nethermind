@@ -20,6 +20,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization.Blocks;
@@ -417,6 +418,33 @@ public partial class BlockDownloaderTests
         await action.Should().NotThrowAsync();
     }
 
+    [TestCase(2)]
+    [TestCase(6)]
+    [TestCase(34)]
+    [TestCase(129)]
+    [TestCase(1024)]
+    public void BlockDownloader_does_not_stop_processing_when_main_chain_is_unknown(long pivot)
+    {
+        DownloaderOptions downloaderOptions = DownloaderOptions.Process;
+        BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder blockTrees = BlockTreeTests.BlockTreeTestScenario
+             .GoesLikeThis()
+             .WithBlockTrees(1, (int)(pivot + 1), false, 0)
+             .InsertBeaconPivot(pivot)
+             .InsertBeaconHeaders(1, pivot)
+             .InsertBeaconBlocks(pivot, pivot, BlockTreeTests.BlockTreeTestScenario.ScenarioBuilder.TotalDifficultyMode.Null);
+
+        PostMergeContext ctx = new()
+        {
+            BlockTreeScenario = blockTrees,
+            MergeConfig = new MergeConfig { TerminalTotalDifficulty = "0" }
+        };
+        ctx.BeaconPivot.EnsurePivot(blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None));
+        ctx.BeaconPivot.ProcessDestination = blockTrees.SyncedTree.FindHeader(pivot, BlockTreeLookupOptions.None);
+
+        SyncPeerMock syncPeer = new(blockTrees.SyncedTree, true, Response.AllCorrect | Response.WithTransactions, 0);
+        Assert.DoesNotThrowAsync(() => ctx.BlockDownloader.DownloadBlocks(new(syncPeer), new BlocksRequest(downloaderOptions), CancellationToken.None));
+    }
+
     class PostMergeContext : Context
     {
         protected override ISpecProvider SpecProvider => _specProvider ??= new MainnetSpecProvider(); // PoSSwitcher changes TTD, so can't use MainnetSpecProvider.Instance
@@ -456,6 +484,7 @@ public partial class BlockDownloaderTests
             MetadataDb,
             BlockTree,
             SpecProvider,
+            new ChainSpec(),
             LimboLogs.Instance);
 
         protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=

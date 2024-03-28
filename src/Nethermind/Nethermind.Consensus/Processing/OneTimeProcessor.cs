@@ -39,17 +39,7 @@ namespace Nethermind.Consensus.Processing
         {
             lock (_lock)
             {
-                Block result;
-                try
-                {
-                    result = _processor.Process(block, options, tracer);
-                }
-                finally
-                {
-                    _worldState.Reset();
-                }
-
-                return result;
+                return _processor.Process(block, options, tracer);
             }
         }
 

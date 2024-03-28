@@ -1,8 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
@@ -17,13 +19,23 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning
 {
     [Parallelizable(ParallelScope.All)]
+    [TestFixture(INodeStorage.KeyScheme.HalfPath)]
+    [TestFixture(INodeStorage.KeyScheme.Hash)]
     public class CopyTreeVisitorTests
     {
+        private readonly INodeStorage.KeyScheme _keyScheme;
+
+        public CopyTreeVisitorTests(INodeStorage.KeyScheme scheme)
+        {
+            _keyScheme = scheme;
+        }
+
         [TestCase(0, 1)]
         [TestCase(0, 8)]
         [TestCase(1, 1)]
@@ -41,7 +53,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             };
 
             IPruningContext ctx = StartPruning(trieDb, clonedDb);
-            CopyDb(ctx, trieDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
+            CopyDb(ctx, CancellationToken.None, trieDb, visitingOptions, writeFlags: WriteFlags.LowPriority);
 
             List<byte[]> keys = trieDb.Keys.ToList();
             List<byte[]> values = trieDb.Values.ToList();
@@ -53,40 +65,54 @@ namespace Nethermind.Blockchain.Test.FullPruning
             clonedDb.Values.Should().BeEquivalentTo(values);
 
             clonedDb.KeyWasWrittenWithFlags(keys[0], WriteFlags.LowPriority);
+            trieDb.KeyWasReadWithFlags(keys[0], ReadFlags.SkipDuplicateRead | ReadFlags.HintReadAhead);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
-        public async Task cancel_coping_state_between_dbs()
+        public void cancel_coping_state_between_dbs()
         {
             MemDb trieDb = new();
             MemDb clonedDb = new();
             IPruningContext pruningContext = StartPruning(trieDb, clonedDb);
-            Task task = Task.Run(() => CopyDb(pruningContext, trieDb));
 
-            pruningContext.CancellationTokenSource.Cancel();
+            CancellationTokenSource cts = new CancellationTokenSource();
+            cts.Cancel();
 
-            await task;
+            CopyDb(pruningContext, cts.Token, trieDb);
 
             clonedDb.Count.Should().BeLessThan(trieDb.Count);
         }
 
-        private static IPruningContext CopyDb(IPruningContext pruningContext, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
+        private IPruningContext CopyDb(IPruningContext pruningContext, CancellationToken cancellationToken, MemDb trieDb, VisitingOptions? visitingOptions = null, WriteFlags writeFlags = WriteFlags.None)
         {
             LimboLogs logManager = LimboLogs.Instance;
-            PatriciaTree trie = Build.A.Trie(trieDb).WithAccountsByIndex(0, 100).TestObject;
+            PatriciaTree trie = Build.A.Trie(new NodeStorage(trieDb, _keyScheme)).WithAccountsByIndex(0, 100).TestObject;
             IStateReader stateReader = new StateReader(new TrieStore(trieDb, logManager), new MemDb(), logManager);
 
-            using CopyTreeVisitor copyTreeVisitor = new(pruningContext, writeFlags, logManager);
-            stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+            if (_keyScheme == INodeStorage.KeyScheme.Hash)
+            {
+                NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
+                using CopyTreeVisitor<NoopTreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
+                stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+                copyTreeVisitor.Finish();
+            }
+            else
+            {
+                NodeStorage nodeStorage = new NodeStorage(pruningContext, _keyScheme);
+                using CopyTreeVisitor<TreePathContextWithStorage> copyTreeVisitor = new(nodeStorage, writeFlags, logManager, cancellationToken);
+                stateReader.RunTreeVisitor(copyTreeVisitor, trie.RootHash, visitingOptions);
+                copyTreeVisitor.Finish();
+            }
+
             return pruningContext;
         }
 
         private static IPruningContext StartPruning(MemDb trieDb, MemDb clonedDb)
         {
-            IRocksDbFactory rocksDbFactory = Substitute.For<IRocksDbFactory>();
-            rocksDbFactory.CreateDb(Arg.Any<RocksDbSettings>()).Returns(trieDb, clonedDb);
+            IDbFactory dbFactory = Substitute.For<IDbFactory>();
+            dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(trieDb, clonedDb);
 
-            FullPruningDb fullPruningDb = new(new RocksDbSettings("test", "test"), rocksDbFactory);
+            FullPruningDb fullPruningDb = new(new DbSettings("test", "test"), dbFactory);
             fullPruningDb.TryStartPruning(out IPruningContext pruningContext);
             return pruningContext;
         }

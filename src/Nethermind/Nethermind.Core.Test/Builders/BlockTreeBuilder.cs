@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
+using Nethermind.Evm;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -47,6 +48,7 @@ namespace Nethermind.Core.Test.Builders
             BlockNumbersDb = new TestMemDb();
             BlockInfoDb = new TestMemDb();
             MetadataDb = new TestMemDb();
+            BadBlocksDb = new TestMemDb();
 
             _genesisBlock = genesisBlock;
             _specProvider = specProvider;
@@ -66,7 +68,7 @@ namespace Nethermind.Core.Test.Builders
         {
             get
             {
-                if (_blockTree == null)
+                if (_blockTree is null)
                 {
                     if (!_noHead)
                     {
@@ -79,6 +81,7 @@ namespace Nethermind.Core.Test.Builders
                         HeaderStore,
                         BlockInfoDb,
                         MetadataDb,
+                        BadBlockStore,
                         ChainLevelInfoRepository,
                         _specProvider,
                         BloomStorage,
@@ -94,7 +97,7 @@ namespace Nethermind.Core.Test.Builders
         {
             base.BeforeReturn();
 
-            if (TestObjectInternal == null)
+            if (TestObjectInternal is null)
             {
                 TestObjectInternal = BlockTree;
             }
@@ -105,6 +108,7 @@ namespace Nethermind.Core.Test.Builders
         public ISyncConfig SyncConfig { get; set; } = new SyncConfig();
 
         public IDb BlocksDb { get; set; }
+        public IDb BadBlocksDb { get; set; }
 
         private IBlockStore? _blockStore;
         public IBlockStore BlockStore
@@ -139,6 +143,18 @@ namespace Nethermind.Core.Test.Builders
 
         public IDb MetadataDb { get; set; }
 
+        private IBlockStore? _badBlockStore;
+        public IBlockStore BadBlockStore
+        {
+            get
+            {
+                return _badBlockStore ??= new BlockStore(BadBlocksDb, 100);
+            }
+            set
+            {
+                _badBlockStore = value;
+            }
+        }
         private IChainLevelInfoRepository? _chainLevelInfoRepository;
 
         public IChainLevelInfoRepository ChainLevelInfoRepository
@@ -244,8 +260,18 @@ namespace Nethermind.Core.Test.Builders
             {
                 Transaction[] transactions = new[]
                 {
-                    Build.A.Transaction.WithValue(1).WithData(Rlp.Encode(blockIndex).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject,
-                    Build.A.Transaction.WithValue(2).WithData(Rlp.Encode(blockIndex + 1).Bytes).Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider!.GetSpec(blockIndex + 1, null).IsEip155Enabled).TestObject
+                    Build.A.Transaction
+                        .WithValue(1)
+                        .WithData(Rlp.Encode(blockIndex).Bytes)
+                        .WithGasLimit(GasCostOf.Transaction * 2)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .TestObject,
+                    Build.A.Transaction
+                        .WithValue(2)
+                        .WithData(Rlp.Encode(blockIndex + 1).Bytes)
+                        .WithGasLimit(GasCostOf.Transaction * 2)
+                        .Signed(_ecdsa!, TestItem.PrivateKeyA, _specProvider.GetSpec(blockIndex + 1, null).IsEip155Enabled)
+                        .TestObject
                 };
 
                 currentBlock = currentBlockBuilder
@@ -270,9 +296,11 @@ namespace Nethermind.Core.Test.Builders
                     currentBlock.Bloom!.Add(receipt.Logs);
                 }
 
-                currentBlock.Header.TxRoot = new TxTrie(currentBlock.Transactions).RootHash;
+                currentBlock.Header.TxRoot = TxTrie.CalculateRoot(currentBlock.Transactions);
                 TxReceipt[] txReceipts = receipts.ToArray();
-                currentBlock.Header.ReceiptsRoot = new ReceiptTrie(_specProvider.GetSpec(currentBlock.Header), txReceipts).RootHash;
+                currentBlock.Header.ReceiptsRoot =
+                    ReceiptTrie<TxReceipt>.CalculateRoot(_specProvider.GetSpec(currentBlock.Header), txReceipts,
+                        ReceiptMessageDecoder.Instance);
                 currentBlock.Header.Hash = currentBlock.CalculateHash();
                 foreach (TxReceipt txReceipt in txReceipts)
                 {
@@ -381,6 +409,18 @@ namespace Nethermind.Core.Test.Builders
         public BlockTreeBuilder WithBlockStore(IBlockStore blockStore)
         {
             BlockStore = blockStore;
+            return this;
+        }
+
+        public BlockTreeBuilder WithBadBlockStore(IBlockStore blockStore)
+        {
+            BadBlockStore = blockStore;
+            return this;
+        }
+
+        public BlockTreeBuilder WithHeaderStore(IHeaderStore headerStore)
+        {
+            HeaderStore = headerStore;
             return this;
         }
 

@@ -10,7 +10,9 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -28,6 +30,7 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -103,6 +106,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    RunImmediatelyScheduler.Instance,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,
@@ -114,6 +118,7 @@ namespace Nethermind.Network.Test
                     forkInfo,
                     _gossipPolicy,
                     new NetworkConfig(),
+                    Substitute.For<ISnapServer>(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());
@@ -172,7 +177,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveDisconnect()
             {
-                DisconnectMessage message = new(EthDisconnectReason.Other);
+                using DisconnectMessage message = new(EthDisconnectReason.Other);
                 IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
 
                 // to account for AdaptivePacketType byte
@@ -207,7 +212,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatus()
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = _blockTree.Genesis.Hash;
@@ -257,8 +262,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHello(byte p2pVersion = 5)
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { new("eth", 66) };
+                using HelloMessage msg = new();
+                msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", 66) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
@@ -269,8 +274,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHelloNoEth()
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { };
+                using HelloMessage msg = new();
+                msg.Capabilities = ArrayPoolList<Capability>.Empty();
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
@@ -280,8 +285,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHelloEth(int protocolVersion)
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { new("eth", protocolVersion) };
+                using HelloMessage msg = new();
+                msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", protocolVersion) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
@@ -297,7 +302,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatusWrongChain(ulong networkId)
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = networkId;
                 msg.GenesisHash = TestItem.KeccakA;
@@ -309,7 +314,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatusWrongGenesis()
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = TestItem.KeccakB;

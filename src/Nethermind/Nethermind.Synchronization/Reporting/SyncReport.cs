@@ -35,7 +35,7 @@ namespace Nethermind.Synchronization.Reporting
 
         public SyncReport(ISyncPeerPool syncPeerPool, INodeStatsManager nodeStatsManager, ISyncConfig syncConfig, IPivot pivot, ILogManager logManager, ITimerFactory? timerFactory = null, double tickTime = 1000)
         {
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _syncPeerPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncConfig = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _pivot = pivot ?? throw new ArgumentNullException(nameof(pivot));
@@ -230,12 +230,11 @@ namespace Nethermind.Synchronization.Reporting
             if (!_logger.IsTrace) return;
 
             bool isFastSync = _syncConfig.FastSync;
-            bool isFastBlocks = _syncConfig.FastBlocks;
             bool bodiesInFastBlocks = _syncConfig.DownloadBodiesInFastSync;
             bool receiptsInFastBlocks = _syncConfig.DownloadReceiptsInFastSync;
 
             StringBuilder builder = new();
-            if (isFastSync && isFastBlocks)
+            if (isFastSync)
             {
                 builder.Append($"Sync config - fast sync with fast blocks from block {_syncConfig.PivotNumber}");
                 if (bodiesInFastBlocks)
@@ -247,10 +246,6 @@ namespace Nethermind.Synchronization.Reporting
                 {
                     builder.Append(" + receipts");
                 }
-            }
-            else if (isFastSync)
-            {
-                builder.Append("Sync config - fast sync without fast blocks");
             }
             else
             {

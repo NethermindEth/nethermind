@@ -10,11 +10,11 @@ using Nethermind.Evm.Tracing.GethStyle;
 using NUnit.Framework;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test.Tracing;
 
@@ -346,6 +346,20 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
+
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"type\":\"CALL\",\"from\":\"b7705ae4c6f81b66cdb323c65f4e8133690fc099\",\"to\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"value\":\"0x1\",\"gas\":\"0x186a0\",\"gasUsed\":\"0xdbd1\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"DELEGATECALL\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"76e68a8696537e4141926f3e528733af9e237d69\",\"gas\":\"0xc350\",\"gasUsed\":\"0x14d07\",\"input\":\"\",\"output\":\"\",\"calls\":[{\"type\":\"CREATE\",\"from\":\"942921b14f1b1c385cd7e0cc2ef7abe5598c8358\",\"to\":\"89aa9b2ce05aaef815f25b237238c0b4ffff6ae3\",\"value\":\"0x0\",\"gas\":\"0x4513\",\"gasUsed\":\"0x7f6e\",\"input\":\"7f000000000000000000000000000000000000000000000000000000000000000060005260036000f3\",\"output\":\"000000\"}]}]}"));
+    }
+
+    [Test]
+    public void _4byte_tracer_legacy()
+    {
+        GethLikeTxTrace traces = ExecuteBlock(
+                GetTracer("4byteTracer_legacy"),
+                CallWithInput(),
+                MainnetSpecProvider.CancunActivation)
+            .BuildResult().First();
+
+        Assert.That(JsonSerializer.Serialize(traces.CustomTracerResult?.Value), Is.EqualTo("{\"00000000-1\":2,\"00000000-2\":1}"));
     }
 
     [Test]
@@ -418,6 +432,18 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
         return Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
+            .Done;
+    }
+
+    private byte[] CallWithInput()
+    {
+        byte[] input = new byte[5];
+        byte[] input2 = new byte[6];
+
+        return Prepare.EvmCode
+            .CallWithInput(TestItem.AddressC, 50000, input)
+            .CallWithInput(TestItem.AddressC, 50000, input)
+            .CallWithInput(TestItem.AddressC, 50000, input2)
             .Done;
     }
 
