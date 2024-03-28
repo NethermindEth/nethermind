@@ -10,30 +10,35 @@ from signal import SIGINT, SIGTERM, SIGQUIT
 
 READ_BUFF_SIZE = 1024
 
-NETHERMIND_CMD = "nethermind"
+NETHERMIND_CMD = "./nethermind"
 
 COLIBRI_CMD = "colibri"
 
-ROTKI_CMD = "rotki"
 ROTKI_REST_API_PORT = "4242"
 ROTKI_WEBSOCKETS_API_PORT = "4243"
 ROTKI_API_CORS = "http://localhost:*/*,app://."
 ROTKI_API_HOST = "0.0.0.0"
 ROTKI_USERNAME = os.getenv("ROTKI_USERNAME")
 ROTKI_PASSWORD = os.getenv("ROTKI_PASSWORD")
+ROTKI_ARGS = [
+    "rotki",
+    "--rest-api-port",
+    ROTKI_REST_API_PORT,
+    "--websockets-api-port",
+    ROTKI_WEBSOCKETS_API_PORT,
+    "--api-cors",
+    ROTKI_API_CORS,
+    "--api-host",
+    ROTKI_API_HOST,
+]
+ROTKI_CMD = " ".join(ROTKI_ARGS)
 
-NGINX_CMD = "nginx"
-NGINX_CONF = "/opt/rotki/nginx.conf"
+NGINX_CMD = "nginx -g 'daemon off;'"
 
 
 async def run_nginx() -> asyncio.subprocess.Process:
-    args = [
-        "-c",
-        NGINX_CONF,
-    ]
-    proc = await asyncio.create_subprocess_exec(
+    proc = await asyncio.create_subprocess_shell(
         NGINX_CMD,
-        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -41,10 +46,8 @@ async def run_nginx() -> asyncio.subprocess.Process:
 
 
 async def run_colibri() -> asyncio.subprocess.Process:
-    args = []
-    proc = await asyncio.create_subprocess_exec(
+    proc = await asyncio.create_subprocess_shell(
         COLIBRI_CMD,
-        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )
@@ -52,19 +55,8 @@ async def run_colibri() -> asyncio.subprocess.Process:
 
 
 async def run_rotki() -> asyncio.subprocess.Process:
-    args = [
-        "--rest-api-port",
-        ROTKI_REST_API_PORT,
-        "--websockets-api-port",
-        ROTKI_WEBSOCKETS_API_PORT,
-        "--api-cors",
-        ROTKI_API_CORS,
-        "--api-host",
-        ROTKI_API_HOST,
-    ]
-    proc = await asyncio.create_subprocess_exec(
+    proc = await asyncio.create_subprocess_shell(
         ROTKI_CMD,
-        *args,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
     )

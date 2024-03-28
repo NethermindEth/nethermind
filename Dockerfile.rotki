@@ -26,9 +26,7 @@ FROM --platform=$TARGETPLATFORM rotki/rotki:latest as rotki-app
 FROM --platform=$TARGETPLATFORM mcr.microsoft.com/dotnet/aspnet:8.0-jammy
 
 # Prepare Rotki
-# Copy Rotki files
 COPY --from=rotki-app /opt/rotki /opt/rotki
-COPY --from=rotki-app /etc/nginx/conf.d/default.conf /opt/rotki/nginx.conf
 
 VOLUME /opt/rotki/data
 VOLUME /opt/rotki/logs
@@ -53,6 +51,11 @@ COPY --from=build /publish .
 RUN apt-get update && apt-get -y install libsnappy-dev procps python3-requests nginx && \
   rm -rf /var/lib/apt/lists/*
 
+# Prepare Nginx
+COPY --from=rotki-app /etc/nginx/conf.d/default.conf /etc/nginx/conf.d/default.conf
+RUN rm -rf /etc/nginx/sites-available/default rm /etc/nginx/sites-enabled/default
+
+# Prepare Entrypoint
 COPY ./scripts/docker-rotki-entrypoint.py entrypoint.py
 
 ENTRYPOINT ["./entrypoint.py"]
