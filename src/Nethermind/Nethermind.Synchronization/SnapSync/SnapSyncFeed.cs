@@ -205,6 +205,7 @@ namespace Nethermind.Synchronization.SnapSync
             if (_disposed) return;
             if (CurrentState == SyncFeedState.Dormant)
             {
+                _snapProvider.Dispose();
                 if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
                     if (_snapProvider.CanSync())

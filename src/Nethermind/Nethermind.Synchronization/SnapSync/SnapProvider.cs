@@ -339,6 +339,11 @@ namespace Nethermind.Synchronization.SnapSync
             _progressTracker.UpdatePivot();
         }
 
+        public void Dispose()
+        {
+            _codeExistKeyCache.Clear();
+        }
+
         private class TrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
         {
             private readonly IKeyValueStoreWithBatching _stateDb;
