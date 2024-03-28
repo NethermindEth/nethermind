@@ -64,7 +64,7 @@ public class ShutterP2P
         ITopic topic = router.Subscribe("decryptionKeys");
         ConcurrentQueue<byte[]> msgQueue = new();
 
-        Int64 msgCount = 0;
+        long msgCount = 0;
         topic.OnMessage += (byte[] msg) =>
         {
             Interlocked.Increment(ref msgCount);
@@ -83,46 +83,31 @@ public class ShutterP2P
         MyProto proto = new();
         CancellationTokenSource ts = new();
         _ = router.RunAsync(peer, proto, token: ts.Token);
+        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
-        foreach (string addr in auraConfig.ShutterKeyperP2PAddresses)
-        {
-            proto.OnAddPeer?.Invoke([addr]);
-        }
-
+        long emptyQueueCount = 0;
         Task.Run(() =>
         {
             for (; ; )
             {
                 Thread.Yield();
-                if (BlockTreeIsReady() && msgQueue.TryDequeue(out var msg))
+                if (BlockTreeIsReady())
                 {
-                    if (_logger.IsInfo) _logger.Info("Processing Shutter decryption keys...");
-
-                    IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
-                    KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
-                    KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
-
-                    Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
-                    if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+                    if (msgQueue.TryDequeue(out var msg))
                     {
-                        if (_logger.IsWarn) _logger.Warn("Could not parse Shutter decryption keys...");
-                        continue;
-                    }
-
-                    if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
-                    {
-                        if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
-                        continue;
-                    }
-
-                    if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
-                        _onDecryptionKeysReceived(decryptionKeys);
+                        ProcessP2PMessage(msg);
                     }
                     else
                     {
-                        if (_logger.IsWarn) _logger.Warn("Invalid decryption keys received on P2P network.");
+                        if (Interlocked.CompareExchange(ref emptyQueueCount, 0, 50) == 50)
+                        {
+                            if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
+                            ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
+                        }
+                        else
+                        {
+                            Interlocked.Increment(ref emptyQueueCount);
+                        }
                     }
                 }
             }
@@ -137,6 +122,38 @@ public class ShutterP2P
         public Task DiscoverAsync(Multiaddress localPeerAddr, CancellationToken token = default)
         {
             return Task.Delay(int.MaxValue);
+        }
+    }
+
+    internal void ProcessP2PMessage(byte[] msg)
+    {
+        if (_logger.IsInfo) _logger.Info("Processing Shutter decryption keys...");
+
+        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
+        KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
+        KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
+
+        Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
+        if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
+        {
+            if (_logger.IsWarn) _logger.Warn("Could not parse Shutter decryption keys...");
+            return;
+        }
+
+        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
+        {
+            if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
+            return;
+        }
+
+        if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
+        {
+            if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
+            _onDecryptionKeysReceived(decryptionKeys);
+        }
+        else
+        {
+            if (_logger.IsWarn) _logger.Warn("Invalid decryption keys received on P2P network.");
         }
     }
 
@@ -187,6 +204,14 @@ public class ShutterP2P
         // }
 
         return true;
+    }
+
+    internal void ConnectToPeers(MyProto proto, IEnumerable<string> p2pAddresses)
+    {
+        foreach (string addr in p2pAddresses)
+        {
+            proto.OnAddPeer?.Invoke([addr]);
+        }
     }
 
     internal bool BlockTreeIsReady()
