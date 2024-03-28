@@ -56,7 +56,8 @@ namespace Nethermind.Synchronization.Test.FastSync
             for (int i = 0; i < pathPoolCount; i++)
             {
                 byte[] key = new byte[32];
-                ((UInt256)i).ToBigEndian(key);
+                // Snap can't actually use GetTrieNodes where the path is exactly 64 nibble. So *255.
+                ((UInt256)(i * 255)).ToBigEndian(key);
                 Hash256 keccak = new Hash256(key);
                 pathPool[i] = keccak;
             }
