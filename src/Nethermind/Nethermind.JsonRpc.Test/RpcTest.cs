@@ -35,7 +35,7 @@ public static class RpcTest
         JsonRpcContext context = (module is IContextAwareRpcModule contextAwareModule && contextAwareModule.Context is not null) ?
             contextAwareModule.Context :
             new JsonRpcContext(RpcEndpoint.Http);
-        JsonRpcResponse response = await service.SendRequestAsync(request, context);
+        using JsonRpcResponse response = await service.SendRequestAsync(request, context);
 
         EthereumJsonSerializer serializer = new();
 
