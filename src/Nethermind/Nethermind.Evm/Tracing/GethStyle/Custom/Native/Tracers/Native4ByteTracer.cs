@@ -104,5 +104,5 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
     }
 
-    private static int GetDigitsBase10(int n) =>  n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
+    private static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
 }
