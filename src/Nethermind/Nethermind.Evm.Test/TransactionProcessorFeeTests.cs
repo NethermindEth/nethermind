@@ -17,6 +17,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using Nethermind.Int256;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test;
@@ -110,9 +111,11 @@ public class TransactionProcessorFeeTests
     [TestCase(true)]
     public void Check_paid_fees_with_blob(bool withFeeCollector)
     {
+        UInt256 initialBalance = 0;
         if (withFeeCollector)
         {
             _spec.Eip1559FeeCollector = TestItem.AddressC;
+            initialBalance = _stateProvider.GetBalance(TestItem.AddressC);
         }
 
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(0).TestObject;
@@ -131,6 +134,12 @@ public class TransactionProcessorFeeTests
 
         block.GasUsed.Should().Be(21000);
         tracer.BurntFees.Should().Be(131072);
+
+        if (withFeeCollector)
+        {
+            UInt256 currentBalance = _stateProvider.GetBalance(TestItem.AddressC);
+            (currentBalance - initialBalance).Should().Be(131072);
+        }
     }
 
     [Test]
