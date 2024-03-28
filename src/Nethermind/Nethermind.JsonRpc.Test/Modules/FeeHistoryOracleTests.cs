@@ -7,6 +7,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
@@ -30,6 +31,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, BlockParameter.Latest);
 
             resultWrapper.Should().BeEquivalentTo(expected);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [Test]
@@ -42,6 +44,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(0, new BlockParameter(TestItem.KeccakA));
 
             resultWrapper.Should().BeEquivalentTo(expected);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [Test]
@@ -57,6 +60,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, new BlockParameter((long)0));
 
             resultWrapper.Should().BeEquivalentTo(expected);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
 
@@ -76,6 +80,15 @@ namespace Nethermind.JsonRpc.Test.Modules
                 feeHistoryOracle.GetFeeHistory(1, new BlockParameter(lastBlockNumber));
 
             resultWrapper.Should().BeEquivalentTo(expected);
+            DisposePoolWhenSuccessFull(resultWrapper);
+        }
+
+        private static void DisposePoolWhenSuccessFull(ResultWrapper<FeeHistoryResults> resultWrapper)
+        {
+            if (resultWrapper.Result.ResultType != ResultType.Failure)
+            {
+                resultWrapper.Data.Dispose();
+            }
         }
 
         [Test]
@@ -91,6 +104,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resultWrapper.Result.Error.Should().Be("rewardPercentiles: Value at index 4: 1 is less than or equal to the value at previous index 3: 5.");
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(new double[] { -1, 1, 2 })]
@@ -106,6 +120,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resultWrapper.Result.Error.Should().Be("rewardPercentiles: Some values are below 0 or greater than 100.");
             resultWrapper.Result.ResultType.Should().Be(ResultType.Failure);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(3, 3, 5, 6)] //Target gas used: 3/2 = 1.5 | Actual Gas used = 3 | Base Fee Delta = Max((((3-1.5)/1.5 * 5) / 8, 1) = 1 | Next Base Fee = 5 + 1 = 6
@@ -127,8 +142,13 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlock);
 
-            resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256)expectedNextBaseFee);
-            resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256)baseFee);
+            var resultNextBaseFee = resultWrapper.Data.BaseFeePerGas[1];
+            var resultBaseFee = resultWrapper.Data.BaseFeePerGas[0];
+            DisposePoolWhenSuccessFull(resultWrapper);
+
+            resultNextBaseFee.Should().Be((UInt256)expectedNextBaseFee);
+            resultBaseFee.Should().Be((UInt256)baseFee);
+
         }
 
         [TestCase(3, 3, 1)]
@@ -150,6 +170,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlock);
 
             resultWrapper.Data.GasUsedRatio![0].Should().Be(expectedGasUsedRatio);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(3, 3)]
@@ -168,6 +189,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             resultWrapper.Data.BaseFeePerGas![1].Should().Be((UInt256)expectedNextBaseFee);
             resultWrapper.Data.BaseFeePerGas![0].Should().Be((UInt256)baseFee);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(null)]
@@ -181,6 +203,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest, rewardPercentiles);
 
             resultWrapper.Data.Reward.Should().BeNull();
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(5, new ulong[] { 0, 0, 0, 0, 0 })]
@@ -198,6 +221,7 @@ namespace Nethermind.JsonRpc.Test.Modules
 
             UInt256[] expectedRewardsUInt256 = expectedRewards.Select(x => (UInt256)x).ToArray();
             resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedRewardsUInt256);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
 
@@ -223,6 +247,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, lastBlockNumber);
 
             resultWrapper.Data.OldestBlock.Should().Be(expectedOldestBlockNumber);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(2, 2)]
@@ -239,6 +264,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 feeHistoryOracle.GetFeeHistory(1, BlockParameter.Pending);
 
             resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(2, 2)]
@@ -255,6 +281,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 feeHistoryOracle.GetFeeHistory(1, BlockParameter.Latest);
 
             resultWrapper.Data.OldestBlock.Should().Be(lastBlockNumberExpected);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [Test]
@@ -268,6 +295,7 @@ namespace Nethermind.JsonRpc.Test.Modules
                 feeHistoryOracle.GetFeeHistory(1, BlockParameter.Earliest);
 
             resultWrapper.Data.OldestBlock.Should().Be(0);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
         [TestCase(new double[] { 20, 40, 60, 80.5 }, new ulong[] { 4, 10, 10, 22 })]
@@ -285,8 +313,9 @@ namespace Nethermind.JsonRpc.Test.Modules
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentiles);
 
             UInt256[] expectedUInt256 = expected.Select(x => (UInt256)x).ToArray();
-            resultWrapper.Data.Reward!.Length.Should().Be(1);
-            resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expectedUInt256);
+            resultWrapper.Data.Reward!.Count.Should().Be(1);
+            resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
+            DisposePoolWhenSuccessFull(resultWrapper);
         }
 
 
@@ -329,8 +358,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                         feeHistoryOracle.GetFeeHistory(1, newestBlockParameter, rewardPercentilesArray[i]);
 
                     UInt256[] expectedUInt256 = expectedArray[i].Select(x => (UInt256)x).ToArray();
-                    resultWrapper.Data.Reward!.Length.Should().Be(1);
-                    resultWrapper.Data.Reward[0].Should().BeEquivalentTo(expectedUInt256);
+                    resultWrapper.Data.Reward!.Count.Should().Be(1);
+                    resultWrapper.Data.Reward![0].Should().BeEquivalentTo(expectedUInt256);
+                    DisposePoolWhenSuccessFull(resultWrapper);
                 }
 
             }
@@ -374,11 +404,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             BlockParameter newestBlockParameter = new(1);
             FeeHistoryOracle feeHistoryOracle = SetUpFeeHistoryManager(newestBlockParameter);
             double[] rewardPercentiles = { 0 };
-            FeeHistoryResults expected = new(0, new UInt256[] { 2, 3, 3 }, new[] { 0.6, 0.25 }, new UInt256[] { 1, 1, 1 }, new[] { 0.5, 0.3333333333333333 }, new[] { new UInt256[] { 1 }, new UInt256[] { 0 } });
+            FeeHistoryResults expected = new(0,
+                new ArrayPoolList<UInt256>(3, [2, 3, 3]),
+                new ArrayPoolList<double>(2, [0.6, 0.25]),
+                new ArrayPoolList<UInt256>(3, [1, 1, 1]),
+                new ArrayPoolList<double>(2, [0.5, 0.3333333333333333]),
+                new ArrayPoolList<ArrayPoolList<UInt256>>(2,
+                [
+                    new ArrayPoolList<UInt256>(1, [1]),
+                    new ArrayPoolList<UInt256>(1, [0])
+                ])
+            );
+
 
             ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(2, newestBlockParameter, rewardPercentiles);
 
             resultWrapper.Data.Should().BeEquivalentTo(expected);
+            DisposePoolWhenSuccessFull(resultWrapper);
+            expected.Dispose();
 
 
             FeeHistoryOracle SetUpFeeHistoryManager(BlockParameter blockParameter)

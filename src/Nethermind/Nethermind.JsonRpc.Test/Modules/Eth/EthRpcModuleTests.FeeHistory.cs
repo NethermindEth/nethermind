@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -37,7 +38,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(FeeHistoryBlobTestCases))]
-    public (UInt256[]?, double[]?) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
+    public (ArrayPoolList<UInt256>, ArrayPoolList<Double>) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
     {
         Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
