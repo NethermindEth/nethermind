@@ -17,18 +17,14 @@ public class ReceiptJsonConverter : JsonConverter<TxReceipt>
     private readonly TxTypeConverter _txTypeConverter = new();
     private readonly Hash256Converter _hash256Converter = new();
     private readonly UInt256Converter _uInt256Converter = new();
-    
     private readonly LongConverter _longConverter = new();
     private readonly BloomConverter _bloomConverter = new();
     private readonly EthereumJsonSerializer _ethereumJsonSerializer = new();
     private readonly AddressConverter _addressConverter = new();
-    private readonly IntConverter _intConverter = new();
-    private readonly ByteReadOnlyMemoryConverter _byteConverter = new();
-    private readonly MemoryByteConverter _memoryByteConverter = new();
 
     public override TxReceipt Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)
     {
-        throw new NotImplementedException();
+        return _ethereumJsonSerializer.Deserialize<TxReceipt>(ref reader);
     }
 
     public override void Write(Utf8JsonWriter writer, TxReceipt receipt, JsonSerializerOptions options)
