@@ -91,18 +91,17 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
      */
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
+        static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
         const int length = 4;
-        string _4byteId = string.Create(length * 2 + 1 + GetDigitsBase10(size), (input, size), (span, state) =>
+        string _4byteId = string.Create(length * 2 + 1 + GetDigitsBase10(size), (input, size), static (span, state) =>
         {
             ref char charsRef = ref MemoryMarshal.GetReference(span);
             ReadOnlySpan<byte> bytes = state.input.Span[..length];
             Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(bytes), length, ref charsRef, false, 0);
             span[length * 2] = '-';
-            size.TryFormat(span[(length * 2 + 1)..], out _);
+            state.size.TryFormat(span[(length * 2 + 1)..], out _);
         });
 
         CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
     }
-
-    private static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
 }
