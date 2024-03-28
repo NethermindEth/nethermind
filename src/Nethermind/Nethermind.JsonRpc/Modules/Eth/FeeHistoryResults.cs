@@ -37,12 +37,14 @@ public class FeeHistoryResults(
         BaseFeePerBlobGas.Dispose();
         GasUsedRatio.Dispose();
         BlobGasUsedRatio.Dispose();
-        if (Reward == null) return;
-        foreach (ArrayPoolList<UInt256> item in Reward)
+        if (Reward != null)
         {
-            item.Dispose();
-        }
+            foreach (ArrayPoolList<UInt256> item in Reward)
+            {
+                item?.Dispose();
+            }
 
-        Reward.Dispose();
+            Reward.Dispose();
+        }
     }
 }

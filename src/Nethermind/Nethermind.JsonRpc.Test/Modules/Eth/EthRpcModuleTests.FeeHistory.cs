@@ -38,7 +38,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(FeeHistoryBlobTestCases))]
-    public (ArrayPoolList<UInt256>, ArrayPoolList<Double>) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
+    public (UInt256[], double[]) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
     {
         Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
@@ -66,7 +66,7 @@ public partial class EthRpcModuleTests
             .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blocks.Length - 1), [0.0, 1.0]);
 
         Assert.That(result.ErrorCode, Is.Zero);
-        return (result.Data.BaseFeePerBlobGas, result.Data.BlobGasUsedRatio);
+        return (result.Data.BaseFeePerBlobGas.ToArray(), result.Data.BlobGasUsedRatio.ToArray());
     }
 
     public static IEnumerable<TestCaseData> FeeHistoryBlobTestCases
