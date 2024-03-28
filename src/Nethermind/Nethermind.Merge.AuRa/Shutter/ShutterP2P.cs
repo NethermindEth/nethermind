@@ -99,7 +99,7 @@ public class ShutterP2P
                     }
                     else
                     {
-                        if (Interlocked.CompareExchange(ref emptyQueueCount, 0, 50) == 50)
+                        if (Interlocked.CompareExchange(ref emptyQueueCount, 0, 10000000) == 10000000)
                         {
                             if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
                             ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
