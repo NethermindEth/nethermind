@@ -24,7 +24,7 @@ namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
 //   }
 public sealed class Native4ByteTracer : GethLikeNativeTxTracer
 {
-    public const string _4byteTracer = "4byteTracer";
+    public const string FourByteTracer = "4byteTracer";
 
     private readonly Dictionary<string, int> _4ByteIds = new();
     private Instruction _op;
@@ -83,9 +83,26 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
+    /*
+     * Store4ByteIds stores the first four bytes of the input data along with the size of the data as keys in a dictionary and counts their occurrences.
+     * To optimize performance, string.Create is used to build the 4byteId key instead of using string concatenation.
+     *
+     * example 4byteId: 0x27dc297e-128
+     */
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
-        string _4byteId = string.Concat(input.Span[..4].ToHexString(), '-', size);
+        const int length = 4;
+        string _4byteId = string.Create(length * 2 + 1 + GetDigitsBase10(size), (input, size), (span, state) =>
+        {
+            ref char charsRef = ref MemoryMarshal.GetReference(span);
+            ReadOnlySpan<byte> bytes = state.input.Span[..length];
+            Bytes.OutputBytesToCharHex(ref MemoryMarshal.GetReference(bytes), length, ref charsRef, false, 0);
+            span[length * 2] = '-';
+            size.TryFormat(span[(length * 2 + 1)..], out _);
+        });
+
         CollectionsMarshal.GetValueRefOrAddDefault(_4ByteIds, _4byteId, out _) += 1;
     }
+
+    private static int GetDigitsBase10(int n) =>  n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
 }

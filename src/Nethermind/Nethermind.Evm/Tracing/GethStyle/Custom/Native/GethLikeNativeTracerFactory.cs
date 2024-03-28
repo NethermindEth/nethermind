@@ -24,14 +24,11 @@ public static class GethLikeNativeTracerFactory
 
     private static void RegisterNativeTracers()
     {
-        RegisterTracer(Native4ByteTracer._4byteTracer, static options => new Native4ByteTracer(options));
+        RegisterTracer(Native4ByteTracer.FourByteTracer, static options => new Native4ByteTracer(options));
     }
 
     private static void RegisterTracer(string tracerName, Func<GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
     {
-        if (!_tracers.TryAdd(tracerName, tracerFunc))
-        {
-            throw new Exception("Could not register tracer " + tracerName);
-        }
+        _tracers.Add(tracerName, tracerFunc);
     }
 }

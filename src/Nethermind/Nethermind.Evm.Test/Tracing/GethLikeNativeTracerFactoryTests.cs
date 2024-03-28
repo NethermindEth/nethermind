@@ -13,7 +13,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void CreateTracer_NativeTracerExists()
     {
-        var options = new GethTraceOptions { Tracer = Native4ByteTracer._4byteTracer };
+        var options = new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer };
 
         GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options);
 
@@ -31,7 +31,7 @@ public class GethLikeNativeTracerFactoryTests
     [Test]
     public void IsNativeTracer_TracerNameExists()
     {
-        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer._4byteTracer);
+        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(Native4ByteTracer.FourByteTracer);
 
         Assert.True(isNativeTracer);
     }
