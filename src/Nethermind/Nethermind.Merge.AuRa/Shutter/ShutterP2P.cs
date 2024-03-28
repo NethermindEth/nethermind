@@ -85,7 +85,7 @@ public class ShutterP2P
         _ = router.RunAsync(peer, proto, token: ts.Token);
         ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
-        long emptyQueueCount = 0;
+        long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         Task.Run(() =>
         {
             for (; ; )
@@ -96,17 +96,15 @@ public class ShutterP2P
                     if (msgQueue.TryDequeue(out var msg))
                     {
                         ProcessP2PMessage(msg);
+                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                     }
                     else
                     {
-                        if (Interlocked.CompareExchange(ref emptyQueueCount, 0, 10000000) == 10000000)
+                        if (DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed >= 10)
                         {
                             if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
                             ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
-                        }
-                        else
-                        {
-                            Interlocked.Increment(ref emptyQueueCount);
+                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                         }
                     }
                 }
