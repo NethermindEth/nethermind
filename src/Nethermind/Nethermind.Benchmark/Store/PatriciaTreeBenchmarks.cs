@@ -13,6 +13,7 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
+using NUnit.Framework;
 
 namespace Nethermind.Benchmarks.Store
 {
@@ -44,6 +45,9 @@ namespace Nethermind.Benchmarks.Store
         private const int _entryCount = 1024 * 4;
         private (Hash256, Account)[] _entries;
         private (Hash256, Account)[] _entriesShuffled;
+
+        private const int _largerEntryCount = 1024 * 10 * 10;
+        private (bool, Hash256, Account)[] _largerEntriesAccess;
 
         private (string Name, Action<StateTree> Action)[] _scenarios = new (string, Action<StateTree>)[]
         {
@@ -260,6 +264,42 @@ namespace Nethermind.Benchmarks.Store
             }
 
             _memoryTrieStore = new TrieStore(_backingMemory, Prune.WhenCacheReaches(1.GB()), No.Persistence, NullLogManager.Instance);
+
+            // Preparing access for large entries
+            List<Hash256> currentItems = new();
+
+            _largerEntriesAccess = new (bool, Hash256, Account)[_largerEntryCount];
+            Random rand = new Random(0);
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (rand.NextDouble() < 0.4 && currentItems.Count != 0)
+                {
+                    // Its an existing read
+                    _largerEntriesAccess[i] = (
+                        false,
+                        currentItems[(int)(rand.NextInt64() % currentItems.Count)],
+                        Account.TotallyEmpty);
+                }
+                else if (rand.NextDouble() < 0.6 && currentItems.Count != 0)
+                {
+                    // Its an existing write
+                    _largerEntriesAccess[i] = (
+                        false,
+                        currentItems[(int)(rand.NextInt64() % currentItems.Count)],
+                        new Account((UInt256)rand.NextInt64()));
+                }
+                else
+                {
+                    // Its a new write
+                    Hash256 newAccount = Keccak.Compute(i.ToBigEndianByteArray());
+                    currentItems.Add(newAccount);
+                    _largerEntriesAccess[i] = (
+                        false,
+                        newAccount,
+                        new Account((UInt256)rand.NextInt64()));
+                }
+            }
+
         }
 
         [Benchmark]
@@ -291,6 +331,34 @@ namespace Nethermind.Benchmarks.Store
                 tempTree.Set(_entries[i].Item1, _entries[i].Item2);
             }
             tempTree.Commit(0);
+        }
+
+        [Benchmark]
+        public void InsertAndCommitRepeatedlyTimes()
+        {
+            StateTree tempTree = new StateTree(
+                new TrieStore(new MemDb(),
+                Prune.WhenCacheReaches(1.MiB()),
+                Persist.IfBlockOlderThan(2),
+                NullLogManager.Instance), NullLogManager.Instance);
+
+            for (int i = 0; i < _largerEntryCount; i++)
+            {
+                if (i % 2000 == 0)
+                {
+                    tempTree.Commit(i / 2000);
+                }
+
+                (bool isWrite, Hash256 address, Account value) = _largerEntriesAccess[i];
+                if (isWrite)
+                {
+                    tempTree.Set(address, value);
+                }
+                else
+                {
+                    tempTree.Get(address);
+                }
+            }
         }
 
         [Benchmark]
