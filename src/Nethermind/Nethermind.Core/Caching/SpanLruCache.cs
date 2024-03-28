@@ -133,20 +133,6 @@ namespace Nethermind.Core.Caching
             return _cacheMap.ContainsKey(key);
         }
 
-        public IDictionary<TKey[], TValue> Clone()
-        {
-            using var lockRelease = _lock.Acquire();
-
-            return _cacheMap.ToDictionary(i => i.Key, i => i.Value.Value.Value);
-        }
-
-        public KeyValuePair<TKey[], TValue>[] ToArray()
-        {
-            using var lockRelease = _lock.Acquire();
-
-            return _cacheMap.Select(kv => new KeyValuePair<TKey[], TValue>(kv.Key, kv.Value.Value.Value)).ToArray();
-        }
-
         private void Replace(ReadOnlySpan<TKey> key, TValue value)
         {
             LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
@@ -166,7 +152,7 @@ namespace Nethermind.Core.Caching
             static void ThrowInvalidOperationException()
             {
                 throw new InvalidOperationException(
-                    $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+                    $"{nameof(SpanLruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
             }
         }
 
