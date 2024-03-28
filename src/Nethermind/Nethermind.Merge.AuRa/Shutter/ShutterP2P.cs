@@ -36,6 +36,7 @@ public class ShutterP2P
     private readonly ILogger _logger;
     private readonly Address _keyBroadcastContractAddress;
     private readonly Address _keyperSetManagerContractAddress;
+    private ulong _eon = 0;
 
     public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
@@ -69,11 +70,6 @@ public class ShutterP2P
         {
             Interlocked.Increment(ref msgCount);
 
-            if (msgCount % 10 == 1)
-            {
-                if (_logger.IsInfo) _logger.Info("Receiving Shutter decryption keys...");
-            }
-
             if (BlockTreeIsReady())
             {
                 msgQueue.Enqueue(msg);
@@ -86,6 +82,7 @@ public class ShutterP2P
         ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+        long backoff = 10;
         long tmp = 0;
         Task.Run(() =>
         {
@@ -101,16 +98,18 @@ public class ShutterP2P
                         {
                             ProcessP2PMessage(msg);
                             lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                            backoff = 10;
                         }
-                        else if (delta >= 10)
+                        else if (delta >= backoff)
                         {
                             if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
                             ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
                             lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                            backoff *= 2;
                         }
-                        else if (tmp % 100 == 0)
+                        else if (tmp % 5000 == 0 & delta >= 5)
                         {
-                            _logger.Info("time since last message processed: " + delta);
+                            _logger.Info("No Shutter messages received for " + delta + "s");
                         }
                         Interlocked.Increment(ref tmp);
                     }
@@ -252,7 +251,11 @@ public class ShutterP2P
         // eonKey = new(eonKeyBytes);
         eonKey = new();
 
-        if (_logger.IsInfo) _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
+        if (_logger.IsInfo && _eon != eon)
+        {
+            _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
+            _eon = eon;
+        }
 
         return true;
     }
