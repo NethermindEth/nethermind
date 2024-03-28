@@ -6,6 +6,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using FluentAssertions;
+using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -13,6 +15,7 @@ using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
@@ -262,6 +265,55 @@ namespace Nethermind.Store.Test
             Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
             Assert.That(db.Keys.Count, Is.EqualTo(6));
             Assert.IsFalse(db.KeyExists(rootHash));
+        }
+
+        [Test]
+        public void Will_not_redownload_persisted_code()
+        {
+            MemDb db = new();
+            MemDb codeDb = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
+            dbProvider.RegisterDb(DbNames.Code, codeDb);
+
+            BlockTree tree = Build.A.BlockTree().OfChainLength(5).TestObject;
+            using ProgressTracker progressTracker = new(tree, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance,
+                accountRangePartitionCount: 1);
+            SnapProvider snapProvider = CreateSnapProvider(progressTracker, dbProvider);
+
+            PathWithAccount[] accountsWithPath =
+            [
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"),
+                    new Account(0, 0, Keccak.EmptyTreeHash, TestItem.Keccaks[0])),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"),
+                    new Account(0, 0, Keccak.EmptyTreeHash, TestItem.Keccaks[1])),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"),
+                    new Account(0, 0, Keccak.EmptyTreeHash, TestItem.Keccaks[2])),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"),
+                    new Account(0, 0, Keccak.EmptyTreeHash, TestItem.Keccaks[3])),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"),
+                    new Account(0, 0, Keccak.EmptyTreeHash, TestItem.Keccaks[4]))
+            ];
+
+            codeDb[TestItem.Keccaks[1].Bytes] = [1];
+            codeDb[TestItem.Keccaks[2].Bytes] = [1];
+
+            StateTree stateTree = new StateTree();
+            foreach (PathWithAccount pathWithAccount in accountsWithPath)
+            {
+                stateTree.Set(pathWithAccount.Path, pathWithAccount.Account);
+            }
+
+            stateTree.UpdateRootHash();
+
+            snapProvider.AddAccountRange(1,
+                stateTree.RootHash,
+                accountsWithPath[0].Path,
+                accountsWithPath);
+
+            progressTracker.IsFinished(out SnapSyncBatch nextRequest).Should().BeFalse();
+            progressTracker.IsFinished(out nextRequest).Should().BeFalse();
+            nextRequest.CodesRequest.Count.Should().Be(3);
         }
 
         private SnapProvider CreateSnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider)
