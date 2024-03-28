@@ -10,10 +10,10 @@ from signal import SIGINT, SIGTERM, SIGQUIT
 
 READ_BUFF_SIZE = 1024
 
+# Nethermind Command Configuration
 NETHERMIND_CMD = "./nethermind"
 
-COLIBRI_CMD = "colibri"
-
+# Rotki Command Configuration
 ROTKI_REST_API_PORT = "4242"
 ROTKI_WEBSOCKETS_API_PORT = "4243"
 ROTKI_API_CORS = "http://localhost:*/*,app://."
@@ -33,7 +33,16 @@ ROTKI_ARGS = [
 ]
 ROTKI_CMD = " ".join(ROTKI_ARGS)
 
+# Rotki Colibri Command Configuration
+COLIBRI_CMD = "colibri"
+
+# Nginx Command Configuration
 NGINX_CMD = "nginx -g 'daemon off;'"
+
+# Rotki Ethereum Node Configuration
+ROTKI_ETH_NODE_NAME = "Nethermind Local Node"
+ROTKI_ETH_NODE_ENDPOINT = "http://localhost:8545"
+ROTKI_ETH_NODE_WEIGHT = 50.0  # TODO: modify if we want to only use this node
 
 
 async def run_nginx() -> asyncio.subprocess.Process:
@@ -127,35 +136,56 @@ async def add_nethermind_to_rotki():
                 f"Failed to create Rotki User. Status: {resp.status_code}. Error: {data['message']}"
             )
             return
-        initial_config = True
         print("Rotki User created!")
     elif data["result"][ROTKI_USERNAME] == "loggedin":
         # User already logged in
-        print(f"Rotki already configured!")
-        return
-    # Authenticate Rotki User
-    body = {
-        "password": ROTKI_PASSWORD,
-        "sync_approval": "unknown",
-        "resume_from_backup": True,
-    }
-    resp = r.post(
-        f"http://localhost:{ROTKI_REST_API_PORT}/api/1/users/{ROTKI_USERNAME}",
-        json=body,
+        print(f"Rotki User already logged in!")
+    else:
+        print(f"Login in Rotki User...")
+        # Authenticate Rotki User
+        body = {
+            "password": ROTKI_PASSWORD,
+            "sync_approval": "unknown",
+            "resume_from_backup": True,
+        }
+        resp = r.post(
+            f"http://localhost:{ROTKI_REST_API_PORT}/api/1/users/{ROTKI_USERNAME}",
+            json=body,
+        )
+        data = resp.json()
+        if resp.status_code != 200:
+            print(
+                f"Failed to login Rotki User. Status: {resp.status_code}. Error: {data['message']}"
+            )
+            return
+        print("Rotki User logged in!")
+
+    # Check if Nethermind Node already exists
+    nethermind_node_configured = False
+    resp = r.get(
+        f"http://localhost:{ROTKI_REST_API_PORT}/api/1/blockchains/eth/nodes",
     )
     data = resp.json()
     if resp.status_code != 200:
         print(
-            f"Failed to login Rotki User. Status: {resp.status_code}. Error: {data['message']}"
+            f"Failed to get Ethereum Nodes from Rotki. Status: {resp.status_code}. Error: {data['message']}"
         )
         return
-    if initial_config:
+    for node in data["result"]:
+        if (
+            node["name"] == ROTKI_ETH_NODE_NAME
+            and node["endpoint"] == ROTKI_ETH_NODE_ENDPOINT
+        ):
+            nethermind_node_configured = True
+            break
+
+    if not nethermind_node_configured:
         # Add Nethermind Node to Rotki
         body = {
-            "name": "Nethermind Local Node",
-            "endpoint": "http://localhost:8545",
+            "name": ROTKI_ETH_NODE_NAME,
+            "endpoint": ROTKI_ETH_NODE_ENDPOINT,
             "owned": True,
-            "weight": 50.0,  # TODO: modify if we want to only use this node
+            "weight": ROTKI_ETH_NODE_WEIGHT,
             "active": True,
         }
         resp = r.put(
@@ -198,6 +228,8 @@ async def main():
         )
 
     if ROTKI_USERNAME and ROTKI_PASSWORD:
+        print("Waiting for Rotki to start...")
+        await asyncio.sleep(10)
         print("Checking Rotki configuration...")
         try:
             await add_nethermind_to_rotki()
@@ -222,11 +254,8 @@ async def main():
         nginx_proc.wait(),
         neth_proc.wait(),
     )
-    if any(results):
-        await printers
-        sys.exit(1)
     await printers
-    sys.exit(0)
+    sys.exit(1 if any(results) else 0)
 
 
 if __name__ == "__main__":
