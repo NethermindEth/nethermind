@@ -39,9 +39,9 @@ internal sealed class LinkedListNode<T>
             Debug.Assert(leastRecentlyUsed == node, "this should only be true for a list with only one node");
             leastRecentlyUsed = null;
         }
-        else
+        else if (node.Next is not null)
         {
-            node.Next!.Prev = node.Prev;
+            node.Next.Prev = node.Prev;
             node.Prev!.Next = node.Next;
             if (ReferenceEquals(leastRecentlyUsed, node))
             {
