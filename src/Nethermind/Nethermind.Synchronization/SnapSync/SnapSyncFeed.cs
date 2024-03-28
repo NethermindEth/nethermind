@@ -205,7 +205,6 @@ namespace Nethermind.Synchronization.SnapSync
             if (_disposed) return;
             if (CurrentState == SyncFeedState.Dormant)
             {
-                _snapProvider.Dispose();
                 if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
                     if (_snapProvider.CanSync())
@@ -214,6 +213,12 @@ namespace Nethermind.Synchronization.SnapSync
                     }
                 }
             }
+        }
+
+        public override void Finish()
+        {
+            _snapProvider.Dispose();
+            base.Finish();
         }
 
         public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
