@@ -1,5 +1,6 @@
 # SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 # SPDX-License-Identifier: LGPL-3.0-only
+ARG ROTKI_VERSION=latest
 
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:8.0-jammy AS build
 
@@ -8,7 +9,6 @@ ARG BUILD_TIMESTAMP
 ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
-ARG ROTKI_VERSION=latest
 
 COPY .git .git
 COPY src/Nethermind src/Nethermind
