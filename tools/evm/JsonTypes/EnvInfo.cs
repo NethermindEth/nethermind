@@ -5,7 +5,10 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
+using Nethermind.Serialization.Json;
 using Nethermind.Specs.Forks;
+using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Evm.JsonTypes
 {
@@ -18,7 +21,7 @@ namespace Evm.JsonTypes
 
         public Withdrawal[]? Withdrawals { get; set; }
 
-        public UInt256? CurrentRandom { get; set; }
+        public byte[]? CurrentRandom { get; set; }
         public ulong ParentTimestamp { get; set; }
         public UInt256? ParentDifficulty { get; set; }
         public UInt256? CurrentBaseFee { get; set; }
@@ -45,8 +48,16 @@ namespace Evm.JsonTypes
             blockHeaderBuilder.WithParentBeaconBlockRoot(ParentBeaconBlockRoot);
             if (CurrentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(CurrentBaseFee.Value);
             blockHeaderBuilder.WithTimestamp(CurrentTimestamp);
+            if (CurrentRandom != null) blockHeaderBuilder.WithMixHash(ConvertToHash256(CurrentRandom));
 
             return blockHeaderBuilder.TestObject;
+        }
+
+        private static Hash256 ConvertToHash256(byte[] bytes)
+        {
+            var updatedBytes = new byte[32];
+            Array.Copy(bytes, 0, updatedBytes, 32 - bytes.Length, bytes.Length);
+            return new Hash256(updatedBytes);
         }
 
         public BlockHeader GetParentBlockHeader()

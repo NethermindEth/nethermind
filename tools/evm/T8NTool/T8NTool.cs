@@ -175,6 +175,11 @@ public class T8NTool
         BlockHeader header = envInfo.GetBlockHeader();
         BlockHeader parent = envInfo.GetParentBlockHeader();
 
+        if (IsPostMerge(spec))
+        {
+            header.IsPostMerge = true;
+        }
+
         blockhashProvider.Insert(header.Hash, header.Number);
         blockhashProvider.Insert(parent.Hash, parent.Number);
         foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envInfo.BlockHashes)
