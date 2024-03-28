@@ -8,6 +8,7 @@ ARG BUILD_TIMESTAMP
 ARG CI
 ARG COMMIT_HASH
 ARG TARGETARCH
+ARG ROTKI_VERSION=latest
 
 COPY .git .git
 COPY src/Nethermind src/Nethermind
@@ -19,7 +20,7 @@ RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
 # A temporary symlink to support the old executable name
 RUN ln -s -r /publish/nethermind /publish/Nethermind.Runner
 
-FROM --platform=$TARGETPLATFORM rotki/rotki:latest as rotki-app
+FROM --platform=$TARGETPLATFORM rotki/rotki:$ROTKI_VERSION as rotki-app
 
 # See https://github.com/rotki/rotki/blob/develop/Dockerfile
 
