@@ -62,7 +62,7 @@ public partial class EthRpcModuleTests
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
-        ResultWrapper<FeeHistoryResults> result = oracle
+        using ResultWrapper<FeeHistoryResults> result = oracle
             .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blocks.Length - 1), [0.0, 1.0]);
 
         Assert.That(result.ErrorCode, Is.Zero);
