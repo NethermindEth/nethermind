@@ -145,6 +145,10 @@ namespace Nethermind.Core.Caching
                 while (_cacheMap.Count > _maxCapacity)
                 {
                     LinkedListNode<LruCacheItem> leastRecentlyUsed = _leastRecentlyUsed!;
+                    if (leastRecentlyUsed is null)
+                    {
+                        break;
+                    }
                     _cacheMap.TryRemove(leastRecentlyUsed.Value.Key, out _);
                     LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, leastRecentlyUsed);
                 }
