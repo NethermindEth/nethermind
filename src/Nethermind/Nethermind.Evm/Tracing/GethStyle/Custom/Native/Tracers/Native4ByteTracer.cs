@@ -84,15 +84,23 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     }
 
     /*
-     * Store4ByteIds stores the first four bytes of the input data along with the size of the data as keys in a dictionary and counts their occurrences.
-     * To optimize performance, string.Create is used to build the 4byteId key instead of using string concatenation.
+     * Store4ByteIds counts the occurrences of 4byteId keys and stores them in a dictionary.
+     * Each 4byteId key is composed of the function signature along with the size of the supplied call data.
      *
+     * 4byteId format: SELECTOR-CALLDATASIZE
      * example 4byteId: 0x27dc297e-128
      */
     private void Store4ByteIds(ReadOnlyMemory<byte> input, int size)
     {
         static int GetDigitsBase10(int n) => n == 0 ? 1 : (int)Math.Floor(Math.Log10(Math.Abs(n)) + 1);
         const int length = 4;
+
+        /*
+         * To optimize performance, string.Create is used to build the 4byteId key instead of using string concatenation.
+         *
+         * This is equivalent to the following code:
+         * string _4byteId = input.Span[..4].ToHexString() + '-' + size;
+         */
         string _4byteId = string.Create(length * 2 + 1 + GetDigitsBase10(size), (input, size), static (span, state) =>
         {
             ref char charsRef = ref MemoryMarshal.GetReference(span);
