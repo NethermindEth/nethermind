@@ -19,7 +19,7 @@ namespace Ethereum.Test.Base
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingDefault)]
         public UInt256 Nonce { get; set; }
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-        public Dictionary<UInt256, byte[]>? Storage { get; set; }
+        public Dictionary<UInt256, byte[]> Storage { get; set; }
 
         public static AccountState GetFromAccount(Address address, WorldState stateProvider)
         {

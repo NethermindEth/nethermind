@@ -391,7 +391,7 @@ namespace Ethereum.Test.Base
                 KeyValuePair<UInt256, byte[]>[] clearedStorages = new KeyValuePair<UInt256, byte[]>[0];
                 if (test.Pre.ContainsKey(acountAddress))
                 {
-                    clearedStorages = test.Pre[acountAddress].Storage.Where(s => accountState.Storage?.ContainsKey(s.Key) ?? true).ToArray();
+                    clearedStorages = test.Pre[acountAddress].Storage.Where(s => !accountState.Storage.ContainsKey(s.Key)).ToArray();
                 }
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
