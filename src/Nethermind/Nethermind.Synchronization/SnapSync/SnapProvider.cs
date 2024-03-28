@@ -24,7 +24,7 @@ namespace Nethermind.Synchronization.SnapSync
     public class SnapProvider : ISnapProvider
     {
         private readonly ObjectPool<ITrieStore> _trieStorePool;
-        private readonly IDbProvider _dbProvider;
+        private readonly IDb _codeDb;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
@@ -33,11 +33,11 @@ namespace Nethermind.Synchronization.SnapSync
         // This is actually close to 97% effective.
         private readonly LruKeyCache<ValueHash256> _codeExistKeyCache = new(1024 * 16, "");
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDb codeDb, INodeStorage nodeStorage, ILogManager logManager)
         {
-            _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
+            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(nodeStorage, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -78,7 +78,7 @@ namespace Nethermind.Synchronization.SnapSync
             ITrieStore store = _trieStorePool.Get();
             try
             {
-                StateTree tree = new(store, _logManager);
+                StateTree tree = new(store.GetTrieStore(null), _logManager);
 
                 ValueHash256 effectiveHashLimit = hashLimit.HasValue ? hashLimit.Value : ValueKeccak.MaxValue;
 
@@ -97,7 +97,7 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         if (_codeExistKeyCache.Get(code)) return false;
 
-                        bool exist = _dbProvider.CodeDb.KeyExists(code.Bytes);
+                        bool exist = _codeDb.KeyExists(code.Bytes);
                         if (exist) _codeExistKeyCache.Set(code);
                         return !exist;
                     }).ToPooledList(codeHashes.Count);
@@ -179,7 +179,7 @@ namespace Nethermind.Synchronization.SnapSync
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
             ITrieStore store = _trieStorePool.Get();
-            StorageTree tree = new(store, _logManager);
+            StorageTree tree = new(store.GetTrieStore(pathWithAccount.Path.ToCommitment()), _logManager);
             try
             {
                 (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
@@ -222,6 +222,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             int respLength = response.Count;
             ITrieStore store = _trieStorePool.Get();
+            IScopedTrieStore stateStore = store.GetTrieStore(null);
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Count; reqi++)
@@ -241,9 +242,10 @@ namespace Nethermind.Synchronization.SnapSync
 
                         try
                         {
+                            TreePath emptyTreePath = TreePath.Empty;
                             TrieNode node = new(NodeType.Unknown, nodeData, isDirty: true);
-                            node.ResolveNode(store);
-                            node.ResolveKey(store, true);
+                            node.ResolveNode(stateStore, emptyTreePath);
+                            node.ResolveKey(stateStore, ref emptyTreePath, true);
 
                             requestedPath.PathAndAccount.Account = requestedPath.PathAndAccount.Account.WithChangedStorageRoot(node.Keccak);
 
@@ -292,7 +294,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             HashSet<ValueHash256> set = requestedHashes.ToHashSet();
 
-            using (IWriteBatch writeBatch = _dbProvider.CodeDb.StartWriteBatch())
+            using (IWriteBatch writeBatch = _codeDb.StartWriteBatch())
             {
                 for (int i = 0; i < codes.Count; i++)
                 {
@@ -346,10 +348,10 @@ namespace Nethermind.Synchronization.SnapSync
 
         private class TrieStorePoolPolicy : IPooledObjectPolicy<ITrieStore>
         {
-            private readonly IKeyValueStoreWithBatching _stateDb;
+            private readonly INodeStorage _stateDb;
             private readonly ILogManager _logManager;
 
-            public TrieStorePoolPolicy(IKeyValueStoreWithBatching stateDb, ILogManager logManager)
+            public TrieStorePoolPolicy(INodeStorage stateDb, ILogManager logManager)
             {
                 _stateDb = stateDb;
                 _logManager = logManager;

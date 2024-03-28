@@ -2,16 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Linq;
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Linq;
 using System.Runtime.Intrinsics;
 
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Trie;
 
@@ -94,7 +94,7 @@ public struct TreePath
         return copy;
     }
 
-    public readonly TreePath Append(byte nib)
+    public readonly TreePath Append(int nib)
     {
         TreePath copy = this;
         copy.AppendMut(nib);
@@ -139,6 +139,12 @@ public struct TreePath
     {
         this[Length] = nib;
         Length++;
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public void SetLast(int nib)
+    {
+        this[Length - 1] = nib;
     }
 
     public readonly int this[int index]

@@ -20,11 +20,11 @@ public class HealingTrieStore : TrieStore
     private ITrieNodeRecovery<IReadOnlyList<Hash256>>? _recovery;
 
     public HealingTrieStore(
-        IKeyValueStoreWithBatching? keyValueStore,
+        INodeStorage nodeStorage,
         IPruningStrategy? pruningStrategy,
         IPersistenceStrategy? persistenceStrategy,
         ILogManager? logManager)
-        : base(keyValueStore, pruningStrategy, persistenceStrategy, logManager)
+        : base(nodeStorage, pruningStrategy, persistenceStrategy, logManager)
     {
     }
 
@@ -33,15 +33,15 @@ public class HealingTrieStore : TrieStore
         _recovery = recovery;
     }
 
-    public override byte[] LoadRlp(Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
+    public override byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 keccak, ReadFlags readFlags = ReadFlags.None)
     {
         try
         {
-            return base.LoadRlp(keccak, readFlags);
+            return base.LoadRlp(address, path, keccak, readFlags);
         }
         catch (TrieNodeException)
         {
-            if (TryRecover(keccak, out byte[] rlp))
+            if (TryRecover(address, path, keccak, out byte[] rlp))
             {
                 return rlp;
             }
@@ -50,7 +50,7 @@ public class HealingTrieStore : TrieStore
         }
     }
 
-    private bool TryRecover(Hash256 rlpHash, [NotNullWhen(true)] out byte[]? rlp)
+    private bool TryRecover(Hash256? address, in TreePath path, Hash256 rlpHash, [NotNullWhen(true)] out byte[]? rlp)
     {
         if (_recovery?.CanRecover == true)
         {
@@ -58,7 +58,7 @@ public class HealingTrieStore : TrieStore
             rlp = _recovery.Recover(rlpHash, request).GetAwaiter().GetResult();
             if (rlp is not null)
             {
-                _keyValueStore.Set(rlpHash.Bytes, rlp);
+                _nodeStorage.Set(address, path, rlpHash, rlp);
                 return true;
             }
         }
