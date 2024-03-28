@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Diagnostics;
+using Nethermind.Core;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -16,6 +17,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool PruningEnabled => true;
+        public int MaxDepth => (int)Reorganization.MaxDepth;
 
         public bool ShouldPrune(in long currentMemory)
         {

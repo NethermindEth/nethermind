@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Serialization.Json;
@@ -27,6 +28,17 @@ namespace Nethermind.JsonRpc.Test.Data
             {
                 Assert.True(equalityComparer(item, deserialized), description);
             }
+        }
+
+        protected void TestRoundtrip<TKey, TValue>(Dictionary<TKey, TValue> dictionary)
+            where TKey : notnull
+        {
+            IJsonSerializer serializer = BuildSerializer();
+
+            string result = serializer.Serialize(dictionary);
+            Dictionary<TKey, TValue> deserialized = serializer.Deserialize<Dictionary<TKey, TValue>>(result);
+
+            Assert.That(deserialized, Is.EquivalentTo(dictionary));
         }
 
         protected void TestRoundtrip<T>(T item, JsonConverter<T>? converter = null, string? description = null)

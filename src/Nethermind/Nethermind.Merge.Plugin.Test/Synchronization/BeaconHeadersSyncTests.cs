@@ -155,7 +155,6 @@ public class BeaconHeadersSyncTests
             SyncConfig = new SyncConfig
             {
                 FastSync = true,
-                FastBlocks = true,
                 PivotNumber = "1000",
                 PivotHash = Keccak.Zero.ToString(),
                 PivotTotalDifficulty = "1000"
@@ -186,7 +185,6 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            FastBlocks = true,
             PivotNumber = "1000",
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000"
@@ -223,7 +221,6 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            FastBlocks = true,
             PivotNumber = "500",
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "1000000" // default difficulty in block tree builder
@@ -310,7 +307,6 @@ public class BeaconHeadersSyncTests
         ISyncConfig syncConfig = new SyncConfig
         {
             FastSync = true,
-            FastBlocks = true,
             PivotNumber = "0",
             PivotHash = Keccak.Zero.ToString(),
             PivotTotalDifficulty = "0"
