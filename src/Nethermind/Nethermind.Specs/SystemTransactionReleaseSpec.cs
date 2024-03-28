@@ -133,5 +133,9 @@ namespace Nethermind.Specs
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;
+
+        public bool IsEip6110Enabled => _spec.IsEip6110Enabled;
+
+        public Address Eip6110ContractAddress => _spec.Eip6110ContractAddress;
     }
 }

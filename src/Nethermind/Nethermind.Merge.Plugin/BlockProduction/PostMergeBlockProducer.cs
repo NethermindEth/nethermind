@@ -54,7 +54,7 @@ namespace Nethermind.Merge.Plugin.BlockProduction
             blockHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
             blockHeader.TxRoot = Keccak.EmptyTreeHash;
             blockHeader.Bloom = Bloom.Empty;
-            var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
+            var block = new Block(blockHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals, payloadAttributes?.Deposits);
 
             if (_producingBlockLock.Wait(BlockProductionTimeout))
             {

@@ -93,6 +93,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
+    /// Gets or sets a collection of <see cref="Deposits"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
+    /// </summary>
+    public virtual Deposit[]? Deposits { get; set; }
+
+
+    /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
@@ -111,7 +118,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public Hash256? ParentBeaconBlockRoot { get; set; }
+    public virtual Hash256? ParentBeaconBlockRoot { get; set; }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -149,7 +156,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 
-            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
+            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals, Deposits);
 
             return true;
         }
@@ -203,12 +210,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        int actualVersion = this switch
+        if (spec.IsEip6110Enabled)
         {
-            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
-            { Withdrawals: not null } => 2,
-            _ => 1
-        };
+            error = "ExecutionPayloadV4 expected";
+            return ValidationResult.Fail;
+        }
+
+        var actualVersion = GetExecutionPayloadVersion();
 
         error = actualVersion switch
         {
@@ -218,6 +226,17 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         };
 
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
+    }
+
+    private int GetExecutionPayloadVersion()
+    {
+        return this switch
+        {
+            { Deposits: not null } => 4,
+            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+            { Withdrawals: not null } => 2,
+            _ => 1
+        };
     }
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>

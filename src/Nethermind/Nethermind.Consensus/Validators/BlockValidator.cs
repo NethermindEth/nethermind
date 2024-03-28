@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Messages;
@@ -12,6 +14,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
 using Nethermind.TxPool;
 
@@ -144,6 +147,9 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out errorMessage))
             return false;
 
+        if (!ValidateDeposits(block, spec, out _))
+            return false;
+
         return true;
     }
 
@@ -171,6 +177,7 @@ public class BlockValidator : IBlockValidator
     /// <returns><c>true</c> if the <paramref name="processedBlock"/> is valid; otherwise, <c>false</c>.</returns>
     public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
     {
+        IReleaseSpec spec = _specProvider.GetSpec(processedBlock.Header);
         bool isValid = processedBlock.Header.Hash == suggestedBlock.Header.Hash;
 
         if (isValid)
@@ -227,10 +234,37 @@ public class BlockValidator : IBlockValidator
         {
             if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
             {
-                if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
+                if (_logger.IsWarn) _logger.Error($"- invalid transaction {i}");
                 error = error ?? BlockErrorMessages.InvalidTxInBlock(i);
             }
         }
+
+        if (suggestedBlock.Deposits is not null)
+        {
+            List<Deposit> depositList = [];
+            for (int i = 0; i < processedBlock.Transactions.Length; i++)
+            {
+                foreach (var log in receipts[i].Logs)
+                {
+                    if (log.LoggersAddress == spec.Eip6110ContractAddress)
+                    {
+                        var depositDecoder = new DepositDecoder();
+                        Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
+                        depositList.Add(deposit);
+                    }
+                }
+            }
+
+            Hash256 expectedDepositsRoot = suggestedBlock.Header.DepositsRoot;
+            Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
+            if (actualDepositsRoot != expectedDepositsRoot)
+            {
+                if (_logger.IsWarn) _logger.Error($"- deposits root : expected {expectedDepositsRoot}, got {actualDepositsRoot}");
+                error = error ?? BlockErrorMessages.InvalidDepositsRoot(expectedDepositsRoot, actualDepositsRoot);
+            }
+        }
+
+
         if (suggestedBlock.ExtraData is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
@@ -277,7 +311,46 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
-    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string? errorMessage)
+    public bool ValidateDeposits(Block block, out string? error) =>
+        ValidateDeposits(block, _specProvider.GetSpec(block.Header), out error);
+
+    private bool ValidateDeposits(Block block, IReleaseSpec spec, out string? error)
+    {
+        if (spec.IsEip6110Enabled && block.Deposits is null)
+        {
+            error = $"Deposits cannot be null in block {block.Hash} when EIP-6110 activated.";
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if (!spec.IsEip6110Enabled && block.Deposits is not null)
+        {
+            error = $"Deposits must be null in block {block.Hash} when EIP-6110 not activated.";
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if (block.Deposits is not null)
+        {
+            if (!ValidateDepositsHashMatches(block, out Hash256 depositsRoot))
+            {
+                error = $"Deposits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.DepositsRoot}, got {depositsRoot}";
+                if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.DepositsRoot}, got {depositsRoot}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+    }
+
+    private bool ValidateTransactions(Block block, IReleaseSpec spec, out string errorMessage)
     {
         Transaction[] transactions = block.Transactions;
 
@@ -359,7 +432,8 @@ public class BlockValidator : IBlockValidator
     public static bool ValidateBodyAgainstHeader(BlockHeader header, BlockBody toBeValidated) =>
         ValidateTxRootMatchesTxs(header, toBeValidated, out _) &&
             ValidateUnclesHashMatches(header, toBeValidated, out _) &&
-            ValidateWithdrawalsHashMatches(header, toBeValidated, out _);
+            ValidateWithdrawalsHashMatches(header, toBeValidated, out _) &&
+            ValidateDepositsHashMatches(header, toBeValidated, out _);
 
     public static bool ValidateTxRootMatchesTxs(Block block, out Hash256 txRoot)
     {
@@ -397,6 +471,22 @@ public class BlockValidator : IBlockValidator
         withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash;
 
         return header.WithdrawalsRoot == withdrawalsRoot;
+    }
+
+    public static bool ValidateDepositsHashMatches(Block block, out Hash256? withdrawalsRoot)
+    {
+        return ValidateDepositsHashMatches(block.Header, block.Body, out withdrawalsRoot);
+    }
+
+    public static bool ValidateDepositsHashMatches(BlockHeader header, BlockBody body, out Hash256? depositsRoot)
+    {
+        depositsRoot = null;
+        if (body.Deposits == null)
+            return header.DepositsRoot == null;
+
+        depositsRoot = new DepositTrie(body.Deposits).RootHash;
+
+        return header.DepositsRoot == depositsRoot;
     }
 
     private static string Invalid(Block block) =>
