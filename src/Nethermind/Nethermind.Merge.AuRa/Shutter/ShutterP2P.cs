@@ -86,6 +86,7 @@ public class ShutterP2P
         ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+        long tmp = 0;
         Task.Run(() =>
         {
             for (; ; )
@@ -93,20 +94,24 @@ public class ShutterP2P
                 Thread.Yield();
                 if (BlockTreeIsReady())
                 {
+                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
                     if (msgQueue.TryDequeue(out var msg))
                     {
                         ProcessP2PMessage(msg);
                         lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                     }
-                    else
+                    else if (delta >= 10)
                     {
-                        if (DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed >= 10)
-                        {
-                            if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
-                            ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
-                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                        }
+                        
+                        if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
+                        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
+                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                     }
+                    else if (tmp % 10000000 == 0)
+                    {
+                        _logger.Info("time since last message processed: " + delta);
+                    }
+                    Interlocked.Increment(ref tmp);
                 }
             }
         });
