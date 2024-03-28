@@ -743,7 +743,7 @@ namespace Nethermind.Core.Extensions
             }
         }
 
-        internal static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
+        public static void OutputBytesToCharHex(ref byte input, int length, ref char charsRef, bool withZeroX, int leadingZeros)
         {
             if (withZeroX)
             {

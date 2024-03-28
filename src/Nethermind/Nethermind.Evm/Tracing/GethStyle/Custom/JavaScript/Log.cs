@@ -12,7 +12,7 @@ using Microsoft.ClearScript.JavaScript;
 
 // ReSharper disable InconsistentNaming
 
-namespace Nethermind.Evm.Tracing.GethStyle.JavaScript
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript
 {
     public class Log
     {

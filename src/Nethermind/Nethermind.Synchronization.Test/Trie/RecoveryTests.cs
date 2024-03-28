@@ -12,7 +12,6 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.State.Snap;

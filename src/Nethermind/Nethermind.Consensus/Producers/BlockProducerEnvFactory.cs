@@ -11,8 +11,6 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;

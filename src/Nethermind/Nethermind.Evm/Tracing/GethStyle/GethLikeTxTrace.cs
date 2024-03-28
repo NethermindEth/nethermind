@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
 
 namespace Nethermind.Evm.Tracing.GethStyle;
 
@@ -30,7 +30,7 @@ public class GethLikeTxTrace : IDisposable
 
     public List<GethTxTraceEntry> Entries { get; set; } = new();
 
-    public GethLikeJavaScriptTrace? CustomTracerResult { get; set; }
+    public GethLikeCustomTrace? CustomTracerResult { get; set; }
 
     public void Dispose()
     {

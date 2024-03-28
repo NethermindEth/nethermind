@@ -16,7 +16,8 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -169,9 +170,12 @@ public class GethStyleTracer : IGethStyleTracer
     }
 
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
-        !string.IsNullOrEmpty(options.Tracer)
-            ? new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options)
-            : new GethLikeBlockMemoryTracer(options);
+        options switch
+        {
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            _ => new GethLikeBlockMemoryTracer(options),
+        };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {

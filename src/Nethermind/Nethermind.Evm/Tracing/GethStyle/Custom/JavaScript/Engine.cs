@@ -18,7 +18,7 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Logging;
 #pragma warning disable CS0162 // Unreachable code detected
 
-namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 public class Engine : IDisposable
 {

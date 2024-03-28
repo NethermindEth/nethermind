@@ -11,7 +11,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, GethLikeJavaScriptTxTracer>, IDisposable
 {
