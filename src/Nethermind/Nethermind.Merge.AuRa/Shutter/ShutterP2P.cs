@@ -91,27 +91,33 @@ public class ShutterP2P
         {
             for (; ; )
             {
-                Thread.Yield();
-                if (BlockTreeIsReady())
+                try
                 {
-                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                    if (msgQueue.TryDequeue(out var msg))
+                    Thread.Sleep(20);
+                    if (BlockTreeIsReady())
                     {
-                        ProcessP2PMessage(msg);
-                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                        if (msgQueue.TryDequeue(out var msg))
+                        {
+                            ProcessP2PMessage(msg);
+                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        }
+                        else if (delta >= 10)
+                        {
+                            if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
+                            ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
+                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        }
+                        else if (tmp % 100 == 0)
+                        {
+                            _logger.Info("time since last message processed: " + delta);
+                        }
+                        Interlocked.Increment(ref tmp);
                     }
-                    else if (delta >= 10)
-                    {
-                        
-                        if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
-                        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
-                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                    }
-                    else if (tmp % 10000000 == 0)
-                    {
-                        _logger.Info("time since last message processed: " + delta);
-                    }
-                    Interlocked.Increment(ref tmp);
+                }
+                catch (Exception e)
+                {
+                    _logger.Error("Shutter processing thread exception: " + e.Message);
                 }
             }
         });
