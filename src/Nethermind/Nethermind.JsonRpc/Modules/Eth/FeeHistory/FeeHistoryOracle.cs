@@ -27,7 +27,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache = maxDistanceFromHead ?? MaxBlockCount + 16;
         private long _lastHeadBlockNumber = 0;
         private Task? _cleanupTask = null;
-        private readonly ConcurrentDictionary<ValueHash256, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
+        private readonly ConcurrentDictionary<Hash256AsKey, BlockFeeHistorySearchInfo> _feeHistoryCache = new();
 
         private readonly record struct RewardInfo(long GasUsed, UInt256 PremiumPerGas);
 
@@ -59,9 +59,13 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         }
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
         {
-            if (_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info)) return info;
-            Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
-            return block is null ? null : SaveHistorySearchInfo(block);
+            if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
+            {
+                Block? block = blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
+                return block is null ? null : SaveHistorySearchInfo(block);
+            }
+
+            return info;
         }
 
         // only saves block younger than the Oldest Block From the Head Allowed In Cache.
@@ -165,7 +169,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private void CleanupCache()
         {
-            foreach (KeyValuePair<ValueHash256, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
+            foreach (KeyValuePair<Hash256AsKey, BlockFeeHistorySearchInfo> historyInfo in _feeHistoryCache)
             {
                 if (historyInfo.Value.BlockNumber < _lastHeadBlockNumber - _oldestBlockDistanceFromHeadAllowedInCache)
                 {
