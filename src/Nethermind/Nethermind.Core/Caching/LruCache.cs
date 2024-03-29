@@ -29,8 +29,8 @@ namespace Nethermind.Core.Caching
             _maxCapacity = maxCapacity;
             _accesses = new ConcurrentQueue<LinkedListNode<LruCacheItem>>();
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>();
+                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity, (IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity);
             _cts = new CancellationTokenSource();
         }
 
@@ -41,14 +41,17 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
+            // Signal background thread to stop
             _cts.Cancel();
 
             using var handle = _lock.AcquireWrite();
 
+            // Signal background thread to stop (two ways)
             _leastRecentlyUsed = null;
             _accesses.Clear();
             _cacheMap.Clear();
             _cts = new CancellationTokenSource();
+            // reclear incase background thread set it before accesses were cleared
             _leastRecentlyUsed = null;
         }
 

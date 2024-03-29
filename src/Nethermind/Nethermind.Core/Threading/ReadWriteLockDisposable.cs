@@ -9,17 +9,11 @@ public class ReadWriteLockDisposable
 {
     private readonly ReaderWriterLockSlim _lock = new();
 
-    public ReadLock AcquireRead()
-    {
-        return new ReadLock(_lock);
-    }
+    public ReadLock AcquireRead() => new(_lock);
 
-    public WriteLock AcquireWrite()
-    {
-        return new WriteLock(_lock);
-    }
+    public WriteLock AcquireWrite() => new(_lock);
 
-    public struct ReadLock : IDisposable
+    public readonly struct ReadLock : IDisposable
     {
         private readonly ReaderWriterLockSlim _lock;
 
@@ -29,13 +23,10 @@ public class ReadWriteLockDisposable
             _lock.EnterReadLock();
         }
 
-        public void Dispose()
-        {
-            _lock.ExitReadLock();
-        }
+        public void Dispose() => _lock.ExitReadLock();
     }
 
-    public struct WriteLock : IDisposable
+    public readonly struct WriteLock : IDisposable
     {
         private readonly ReaderWriterLockSlim _lock;
 
@@ -45,9 +36,6 @@ public class ReadWriteLockDisposable
             _lock.EnterWriteLock();
         }
 
-        public void Dispose()
-        {
-            _lock.ExitWriteLock();
-        }
+        public void Dispose() => _lock.ExitWriteLock();
     }
 }
