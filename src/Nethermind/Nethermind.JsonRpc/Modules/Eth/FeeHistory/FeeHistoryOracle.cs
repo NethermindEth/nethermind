@@ -49,7 +49,10 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                     _feeHistoryCache.TryRemove(e.PreviousBlock.Hash, out _);
                 }
 
-                SaveHistorySearchInfo(e.Block);
+                if (ShouldCache(e.Block))
+                {
+                    SaveHistorySearchInfo(e.Block);
+                }
             });
         }
 
@@ -69,27 +72,29 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
-            Block? block;
-            if (blockParameter.Type != BlockParameterType.BlockHash)
+            if (blockParameter.Type == BlockParameterType.BlockHash
+                && _feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo i))
             {
-                block = _blockTree.FindBlock(blockParameter);
-                return block is null ? null : BlockFeeHistorySearchInfoFromBlock(block);
+                return i;
             }
 
-            if (!_feeHistoryCache.TryGetValue(blockParameter.BlockHash!, out BlockFeeHistorySearchInfo info))
-            {
-                block = _blockTree.FindBlock(blockParameter);
-                return block is null ? null : SaveHistorySearchInfo(block);
-            }
-
-            return info;
-
+            Block block = _blockTree.FindBlock(blockParameter);
+            return block is null
+                ? null
+                : _feeHistoryCache.TryGetValue(block.Hash!, out BlockFeeHistorySearchInfo info)
+                    ? info
+                    : SaveHistorySearchInfo(block);
         }
+
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(Hash256 blockHash, long blockNumber)
         {
             if (!_feeHistoryCache.TryGetValue(blockHash, out BlockFeeHistorySearchInfo info))
             {
-                Block? block = _blockTree.FindBlock(blockHash, BlockTreeLookupOptions.RequireCanonical, blockNumber);
+                const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                       BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+                Block? block = _blockTree.FindBlock(blockHash, options, blockNumber);
                 return block is null ? null : SaveHistorySearchInfo(block);
             }
 
@@ -100,9 +105,25 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
         // As time passes and the head progresses only older least used blocks are auto removed from the cache
         private BlockFeeHistorySearchInfo? SaveHistorySearchInfo(Block block)
         {
+            BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block b)
+            {
+                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(b.Header, out UInt256 blobGas);
+                return new(
+                    b.Number,
+                    b.BaseFeePerGas,
+                    BaseFeeCalculator.Calculate(b.Header, _specProvider.GetSpecFor1559(b.Number + 1)),
+                    blobGas == UInt256.MaxValue ? 0 : blobGas,
+                    b.GasUsed / (double)b.GasLimit,
+                    (b.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
+                    b.ParentHash,
+                    b.GasUsed,
+                    b.Transactions.Length,
+                    GetRewardsInBlock(b));
+            }
+
             BlockFeeHistorySearchInfo historyInfo = BlockFeeHistorySearchInfoFromBlock(block);
 
-            if (_blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache)
+            if (ShouldCache(block))
             {
                 _feeHistoryCache[block.Hash!] = historyInfo;
             }
@@ -110,21 +131,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             return historyInfo;
         }
 
-        private BlockFeeHistorySearchInfo BlockFeeHistorySearchInfoFromBlock(Block block)
-        {
-            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block.Header, out UInt256 blobGas);
-            return new(
-                block.Number,
-                block.BaseFeePerGas,
-                BaseFeeCalculator.Calculate(block.Header, _specProvider.GetSpecFor1559(block.Number + 1)),
-                blobGas == UInt256.MaxValue ? 0 : blobGas,
-                block.GasUsed / (double)block.GasLimit,
-                (block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock,
-                block.ParentHash,
-                block.GasUsed,
-                block.Transactions.Length,
-                GetRewardsInBlock(block));
-        }
+        private bool ShouldCache(Block block) =>
+            _blockTree.Head is null || block.Number >= _blockTree.Head.Number - _oldestBlockDistanceFromHeadAllowedInCache;
 
         public ResultWrapper<FeeHistoryResults> GetFeeHistory(
             int blockCount,
