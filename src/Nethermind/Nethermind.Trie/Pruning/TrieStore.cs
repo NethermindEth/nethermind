@@ -254,11 +254,11 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private LruCache<(Hash256?, TinyTreePath), ValueHash256>? _pastPathHash;
+        private LruCache<HashAndPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private ConcurrentDictionary<(Hash256?, TinyTreePath, ValueHash256), long> _persistedLastSeens = new();
+        private ConcurrentDictionary<HashAndPathAndHash, long> _persistedLastSeens = new();
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -653,9 +653,9 @@ namespace Nethermind.Trie.Pruning
                     // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                     candidateSets.Count == 1;
 
-                Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes =
+                Dictionary<HashAndPath, Hash256?>? persistedHashes =
                     shouldDeletePersistedNode
-                    ? new Dictionary<(Hash256?, TinyTreePath), Hash256?>()
+                    ? new Dictionary<HashAndPath, Hash256?>()
                     : null;
 
                 INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
@@ -672,7 +672,7 @@ namespace Nethermind.Trie.Pruning
                 writeBatch.Dispose();
                 deleteTask.Wait();
 
-                foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
+                foreach (KeyValuePair<HashAndPathAndHash, long> keyValuePair in _persistedLastSeens)
                 {
                     if (IsNoLongerNeeded(keyValuePair.Value))
                     {
@@ -692,7 +692,7 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<HashAndPath, Hash256?>? persistedHashes)
         {
             if (persistedHashes == null) return;
 
@@ -717,9 +717,9 @@ namespace Nethermind.Trie.Pruning
 
             using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
-            void DoAct(KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair)
+            void DoAct(KeyValuePair<HashAndPath, Hash256> keyValuePair)
             {
-                (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
+                HashAndPath key = keyValuePair.Key;
                 if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
@@ -731,10 +731,10 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            ActionBlock<KeyValuePair<(Hash256?, TinyTreePath), Hash256>> actionBlock =
-                new ActionBlock<KeyValuePair<(Hash256?, TinyTreePath), Hash256>>(DoAct);
+            ActionBlock<KeyValuePair<HashAndPath, Hash256>> actionBlock =
+                new ActionBlock<KeyValuePair<HashAndPath, Hash256>>(DoAct);
 
-            foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
+            foreach (KeyValuePair<HashAndPath, Hash256> keyValuePair in persistedHashes)
             {
                 actionBlock.Post(keyValuePair);
             }
@@ -938,7 +938,7 @@ namespace Nethermind.Trie.Pruning
             Hash256? address,
             BlockCommitSet commitSet,
             INodeStorage.WriteBatch writeBatch,
-            Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes = null,
+            Dictionary<HashAndPath, Hash256?>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None
         )
         {
@@ -1244,6 +1244,39 @@ namespace Nethermind.Trie.Pruning
             }
 
             return true;
+        }
+
+        private readonly struct HashAndPath(Hash256? hash, TinyTreePath path) : IEquatable<HashAndPath>
+        {
+            public readonly Hash256? addr = hash;
+            public readonly TinyTreePath path = path;
+
+            public static implicit operator HashAndPath((Hash256? hash, TinyTreePath path) value) => new HashAndPath(value.hash, value.path);
+
+            public bool Equals(HashAndPath other) => addr == other.addr && path.Equals(other.path);
+            public override bool Equals(object? obj) => obj is HashAndPath other && Equals(other);
+            public override int GetHashCode() => (int)BitOperations.Crc32C((uint)path.GetHashCode(), (uint)(addr?.GetHashCode() ?? 0));
+        }
+
+        private readonly struct HashAndPathAndHash(Hash256? hash, TinyTreePath path, ValueHash256 valueHash) : IEquatable<HashAndPathAndHash>
+        {
+            public readonly Hash256? hash = hash;
+            public readonly TinyTreePath path = path;
+            public readonly ValueHash256 valueHash = valueHash;
+
+            public static implicit operator HashAndPathAndHash((Hash256? hash, TinyTreePath path, ValueHash256 valueHash) value) => new HashAndPathAndHash(value.hash, value.path, value.valueHash);
+
+            public bool Equals(HashAndPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
+            public override bool Equals(object? obj) => obj is HashAndPath other && Equals(other);
+            public override int GetHashCode()
+            {
+                uint hashCode = BitOperations.Crc32C((uint)valueHash.GetHashCode(), (uint)path.GetHashCode());
+                if (hash is not null)
+                {
+                    hashCode = BitOperations.Crc32C(hashCode, (uint)hash.GetHashCode());
+                }
+                return (int)hashCode;
+            }
         }
     }
 }
