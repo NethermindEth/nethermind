@@ -68,7 +68,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             Hash256? ParentHash,
             long GasUsed,
             int BlockTransactionsLength,
-            List<RewardInfo>? RewardsInBlocks);
+            List<RewardInfo> RewardsInBlocks);
 
         private BlockFeeHistorySearchInfo? GetHistorySearchInfo(BlockParameter blockParameter)
         {
@@ -221,30 +221,37 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             BlockFeeHistorySearchInfo blockInfo,
             double[] rewardPercentiles)
         {
-            if (blockInfo.BlockTransactionsLength == 0)
-            {
-                return new ArrayPoolList<UInt256>(rewardPercentiles.Length, Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length));
-            }
-
-            List<RewardInfo>? rewardsInBlock = blockInfo.RewardsInBlocks;
-            return rewardsInBlock is null
-                ? null
-                : CalculatePercentileValues(blockInfo, rewardPercentiles, rewardsInBlock);
+            return blockInfo.BlockTransactionsLength == 0
+                ? new ArrayPoolList<UInt256>(rewardPercentiles.Length, Enumerable.Repeat(UInt256.Zero, rewardPercentiles.Length))
+                : CalculatePercentileValues(blockInfo, rewardPercentiles, blockInfo.RewardsInBlocks);
         }
 
-        private List<RewardInfo>? GetRewardsInBlock(Block block)
+        private List<RewardInfo> GetRewardsInBlock(Block block)
         {
-            TxReceipt[]? receipts = _receiptStorage.Get(block, false);
+            IEnumerable<long> CalculateGasUsed(TxReceipt[] txReceipts)
+            {
+                long previousGasUsedTotal = 0;
+                foreach (TxReceipt receipt in txReceipts)
+                {
+                    long gasUsedTotal = receipt.GasUsedTotal;
+                    yield return gasUsedTotal - previousGasUsedTotal;
+                    previousGasUsedTotal = gasUsedTotal;
+                }
+            }
+
+            TxReceipt[] receipts = _receiptStorage.Get(block, false);
             Transaction[] txs = block.Transactions;
+            using ArrayPoolList<long> gasUsed = new(txs.Length, receipts.Length == block.Transactions.Length
+                ? CalculateGasUsed(receipts)
+                // If no receipts available, approximate on GasLimit
+                // We could just go with null here too and just don't return percentiles
+                : txs.Select(tx => tx.GasLimit)); 
+
             List<RewardInfo> rewardInfos = new(txs.Length);
-            long previousGasUsedTotal = 0;
             for (int i = 0; i < txs.Length; i++)
             {
-                Transaction tx = txs[i];
-                tx.TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
-                long gasUsedTotal = receipts[i].GasUsedTotal;
-                rewardInfos.Add(new RewardInfo(gasUsedTotal - previousGasUsedTotal, premiumPerGas));
-                previousGasUsedTotal = gasUsedTotal;
+                txs[i].TryCalculatePremiumPerGas(block.BaseFeePerGas, out UInt256 premiumPerGas);
+                rewardInfos.Add(new RewardInfo(gasUsed[i], premiumPerGas));
             }
 
             rewardInfos.Sort((i1, i2) => i1.PremiumPerGas.CompareTo(i2.PremiumPerGas));
