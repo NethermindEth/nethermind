@@ -103,7 +103,7 @@ namespace Nethermind.Core.Caching
                 node = new LinkedListNode<LruCacheItem>(new(key, val));
             }
 
-            ScheduleLruAccounting(node);
+            ScheduleLruAccounting(node, isGet: false);
             return !exists;
         }
 
@@ -118,7 +118,7 @@ namespace Nethermind.Core.Caching
 
             if (exists)
             {
-                ScheduleLruAccounting(node!);
+                ScheduleLruAccounting(node!, isGet: false);
             }
 
             return exists;
@@ -130,11 +130,11 @@ namespace Nethermind.Core.Caching
             return TryGet(key, out _);
         }
 
-        private void ScheduleLruAccounting(LinkedListNode<LruCacheItem> node)
+        private void ScheduleLruAccounting(LinkedListNode<LruCacheItem> node, bool isGet = true)
         {
             _accesses.Enqueue(node);
 
-            if (_accesses.Count < _maxCapacity && _cacheMap.Count < _maxCapacity)
+            if (isGet || (_accesses.Count < _maxCapacity && _cacheMap.Count < _maxCapacity))
             {
                 // Can wait
                 return;
