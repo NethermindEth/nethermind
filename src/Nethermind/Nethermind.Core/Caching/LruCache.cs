@@ -15,12 +15,14 @@ namespace Nethermind.Core.Caching
     public sealed class LruCache<TKey, TValue> : IThreadPoolWorkItem, ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
-        private readonly ReadWriteLockDisposable _lock = new();
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
+        private readonly ReadWriteLockDisposable _lock = new();
         private readonly ConcurrentQueue<LinkedListNode<LruCacheItem>> _accesses;
+
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
         private CancellationTokenSource _cts;
-        private int _doingWork;
+
+        private int _processingLru;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
@@ -68,7 +70,7 @@ namespace Nethermind.Core.Caching
             if (success)
             {
                 TValue value = node!.Value.Value;
-                Schedule(node);
+                ScheduleLruAccounting(node);
                 return value;
             }
 
@@ -88,7 +90,7 @@ namespace Nethermind.Core.Caching
             if (success)
             {
                 value = node!.Value.Value;
-                Schedule(node);
+                ScheduleLruAccounting(node);
                 return true;
             }
 
@@ -119,7 +121,7 @@ namespace Nethermind.Core.Caching
                 node = new LinkedListNode<LruCacheItem>(new(key, val));
             }
 
-            Schedule(node);
+            ScheduleLruAccounting(node);
             return !exists;
         }
 
@@ -134,7 +136,7 @@ namespace Nethermind.Core.Caching
 
             if (exists)
             {
-                Schedule(node!);
+                ScheduleLruAccounting(node!);
             }
 
             return exists;
@@ -146,12 +148,12 @@ namespace Nethermind.Core.Caching
             return TryGet(key, out _);
         }
 
-        private void Schedule(LinkedListNode<LruCacheItem> node)
+        private void ScheduleLruAccounting(LinkedListNode<LruCacheItem> node)
         {
             _accesses.Enqueue(node);
 
             // Set working if it wasn't (via atomic Interlocked).
-            if (Interlocked.CompareExchange(ref _doingWork, 1, 0) == 0)
+            if (Interlocked.CompareExchange(ref _processingLru, 1, 0) == 0)
             {
                 // Wasn't working, schedule.
                 ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
@@ -168,7 +170,7 @@ namespace Nethermind.Core.Caching
             {
                 // Tear it all down
                 Clear();
-                _doingWork = 0;
+                _processingLru = 0;
             }
         }
 
@@ -228,7 +230,7 @@ namespace Nethermind.Core.Caching
 
                 // Set _doingWork (0 == false) prior to checking IsEmpty to catch any missed work in interim.
                 // This doesn't need to be volatile due to the following barrier (i.e. it is volatile).
-                _doingWork = 0;
+                _processingLru = 0;
 
                 // Ensure _doingWork is written before IsEmpty is read.
                 // As they are two different memory locations, we insert a barrier to guarantee ordering.
@@ -242,7 +244,7 @@ namespace Nethermind.Core.Caching
                 }
 
                 // Is work, can we set it as active again (via atomic Interlocked), prior to scheduling?
-                if (Interlocked.Exchange(ref _doingWork, 1) == 1)
+                if (Interlocked.Exchange(ref _processingLru, 1) == 1)
                 {
                     // Execute has been rescheduled already, exit.
                     break;
