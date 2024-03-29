@@ -134,7 +134,7 @@ namespace Nethermind.Core.Caching
         {
             _accesses.Enqueue(node);
 
-            if (isGet || (_accesses.Count < _maxCapacity && _cacheMap.Count < _maxCapacity))
+            if (_accesses.Count < _maxCapacity && (isGet || _cacheMap.Count < _maxCapacity))
             {
                 // Can wait
                 return;
