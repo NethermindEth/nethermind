@@ -34,7 +34,6 @@ jobs:
           body: |
             Config files included:
             - mainnet.cfg
-            - goerli.cfg
             - gnosis.cfg
             - chiado.cfg
             - sepolia.cfg
