@@ -33,8 +33,8 @@ public class PaprikaConfig : IPaprikaConfig
     public ushort CacheStateBeyond { get; set; } = 8;
     public int CacheStatePerBlock { get; set; } = 5000;
 
-    public ushort CacheMerkleBeyond { get; set; } = 4;
-    public int CacheMerklePerBlock { get; set; } = 10000;
+    public ushort CacheMerkleBeyond { get; set; } = 8;
+    public int CacheMerklePerBlock { get; set; } = 5000;
 
     public bool ParallelMerkle { get; set; } = false;
 }

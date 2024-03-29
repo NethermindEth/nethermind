@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -26,17 +25,15 @@ public class PaprikaStateFactory : IStateFactory
 
     private static readonly TimeSpan _flushFileEvery = TimeSpan.FromSeconds(10);
 
-    public static readonly byte[] ZeroByte = new byte[] { 0 };
-
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
-    private uint _lastFinalized = 0;
+    private uint _lastFinalized;
 
     public PaprikaStateFactory()
     {
-        _db = PagedDb.NativeMemoryDb(32 * 1024, 2);
-        var merkle = new ComputeMerkleBehavior(2, 2);
+        _db = PagedDb.NativeMemoryDb(32 * 1024);
+        var merkle = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
         _blockchain = new Blockchain(_db, merkle);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
@@ -48,8 +45,10 @@ public class PaprikaStateFactory : IStateFactory
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
+
         var parallelism = config.ParallelMerkle ? ComputeMerkleBehavior.ParallelismUnlimited : ComputeMerkleBehavior.ParallelismNone;
-        ComputeMerkleBehavior merkle = new(1, 1, Memoization.None, parallelism);
+
+        ComputeMerkleBehavior merkle = new(parallelism);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
