@@ -25,6 +25,7 @@ using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.Clique;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
@@ -112,6 +113,14 @@ public static class Program
     {
         _logger.Info("Nethermind starting initialization.");
         _logger.Info($"Client version: {ProductInfo.ClientId}");
+
+        string duplicateArgumentsList = string.Join(", ", GetDuplicateArguments(args));
+        if (!string.IsNullOrEmpty(duplicateArgumentsList))
+        {
+            _logger.Error($"Failed due to duplicated arguments - [{duplicateArgumentsList}] passed while execution");
+            Environment.ExitCode = ExitCodes.DuplicatedArguments;
+            return;
+        }
 
         AppDomain.CurrentDomain.ProcessExit += CurrentDomainOnProcessExit;
         AssemblyLoadContext.Default.ResolvingUnmanagedDll += OnResolvingUnmanagedDll;
@@ -247,6 +256,34 @@ public static class Program
         {
             _appClosed.Wait();
         }
+    }
+
+    private static IEnumerable<ReadOnlyMemory<char>> GetDuplicateArguments(string[] args)
+    {
+        static ReadOnlyMemory<char> GetArgumentName(string arg) => arg.StartsWith("--") ? arg.AsMemory(2) : arg.StartsWith('-') ? arg.AsMemory(1) : ReadOnlyMemory<char>.Empty;
+        static IEnumerable<ReadOnlyMemory<char>> GetArgumentNames(IEnumerable<string> args)
+        {
+            bool lastWasArgument = false;
+            foreach (ReadOnlyMemory<char> potentialArgument in args.Select(GetArgumentName))
+            {
+                if (!lastWasArgument)
+                {
+                    bool isCurrentArgument = lastWasArgument = !potentialArgument.IsEmpty;
+                    if (isCurrentArgument)
+                    {
+                        yield return potentialArgument;
+                    }
+                }
+                else
+                {
+                    lastWasArgument = false;
+                }
+            }
+        }
+
+        return GetArgumentNames(args).GroupBy(n => n, new MemoryContentsComparer<char>())
+            .Where(g => g.Count() > 1)
+            .Select(g => g.Key);
     }
 
     private static IntPtr OnResolvingUnmanagedDll(Assembly _, string nativeLibraryName)
