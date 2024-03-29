@@ -49,7 +49,7 @@ public class DebugModuleTests
 
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response =
+        using var response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as
                 JsonRpcSuccessResponse;
 
@@ -64,7 +64,7 @@ public class DebugModuleTests
         IConfigProvider configProvider = Substitute.For<IConfigProvider>();
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         byte[] key = new byte[] { 1, 2, 3 };
-        JsonRpcSuccessResponse? response =
+        using var response =
             await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getFromDb", "STATE", key.ToHexString(true)) as
                 JsonRpcSuccessResponse;
 
@@ -85,8 +85,8 @@ public class DebugModuleTests
                 }));
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
-        ChainLevelForRpc? chainLevel = response?.Result as ChainLevelForRpc;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getChainLevel", parameter) as JsonRpcSuccessResponse;
+        var chainLevel = response?.Result as ChainLevelForRpc;
         Assert.NotNull(chainLevel);
         Assert.That(chainLevel?.HasBlockOnMainChain, Is.EqualTo(true));
         Assert.That(chainLevel?.BlockInfos.Length, Is.EqualTo(2));
@@ -100,7 +100,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).Returns(rlp.Bytes);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -113,7 +113,7 @@ public class DebugModuleTests
         debugBridge.GetBlock(new BlockParameter((long)0)).Returns(blk);
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawHeader", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcSuccessResponse;
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
 
@@ -121,12 +121,12 @@ public class DebugModuleTests
     public async Task Get_block_rlp()
     {
         BlockDecoder decoder = new();
-        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -135,12 +135,12 @@ public class DebugModuleTests
     public async Task Get_rawblock()
     {
         BlockDecoder decoder = new();
-        IDebugBridge debugBridge = Substitute.For<IDebugBridge>();
+        IDebugBridge localDebugBridge = Substitute.For<IDebugBridge>();
         Rlp rlp = decoder.Encode(Build.A.Block.WithNumber(1).TestObject);
-        debugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
+        localDebugBridge.GetBlockRlp(new BlockParameter(1)).Returns(rlp.Bytes);
 
-        DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcSuccessResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcSuccessResponse;
+        DebugRpcModule rpcModule = new(LimboLogs.Instance, localDebugBridge, jsonRpcConfig, specProvider);
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcSuccessResponse;
 
         Assert.That((byte[]?)response?.Result, Is.EqualTo(rlp.Bytes));
     }
@@ -151,7 +151,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlp", "1") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -162,7 +162,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(1)).ReturnsNull();
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcErrorResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getRawBlock", "1") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -175,7 +175,7 @@ public class DebugModuleTests
         debugBridge.GetBlockRlp(new BlockParameter(Keccak.Zero)).ReturnsNull();
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
-        JsonRpcErrorResponse? response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
+        using var response = await RpcTest.TestRequest<IDebugRpcModule>(rpcModule, "debug_getBlockRlpByHash", $"{Keccak.Zero.Bytes.ToHexString()}") as JsonRpcErrorResponse;
 
         Assert.That(response?.Error?.Code, Is.EqualTo(-32001));
     }
@@ -354,7 +354,7 @@ public class DebugModuleTests
 
         DebugRpcModule rpcModule = new(LimboLogs.Instance, debugBridge, jsonRpcConfig, specProvider);
         ResultWrapper<GethLikeTxTrace> debugTraceCall = rpcModule.debug_traceCall(txForRpc, null, gtOptions);
-        ResultWrapper<GethLikeTxTrace> expected = ResultWrapper<GethLikeTxTrace>.Success(
+        var expected = ResultWrapper<GethLikeTxTrace>.Success(
             new GethLikeTxTrace()
             {
                 Failed = false,

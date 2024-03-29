@@ -32,7 +32,7 @@ public static class RpcTest
         IJsonRpcService service = BuildRpcService(module);
         JsonRpcRequest request = GetJsonRequest(method, parameters);
 
-        JsonRpcContext context = (module is IContextAwareRpcModule contextAwareModule && contextAwareModule.Context is not null) ?
+        JsonRpcContext context = module is IContextAwareRpcModule { Context: not null } contextAwareModule ?
             contextAwareModule.Context :
             new JsonRpcContext(RpcEndpoint.Http);
         using JsonRpcResponse response = await service.SendRequestAsync(request, context);
@@ -40,21 +40,21 @@ public static class RpcTest
         EthereumJsonSerializer serializer = new();
 
         Stream stream = new MemoryStream();
-        long size = serializer.Serialize(stream, response);
+        long size = await serializer.SerializeAsync(stream, response);
 
         // for coverage (and to prove that it does not throw
         Stream indentedStream = new MemoryStream();
-        serializer.Serialize(indentedStream, response, true);
+        await serializer.SerializeAsync(indentedStream, response, true);
 
         stream.Seek(0, SeekOrigin.Begin);
-        string serialized = new StreamReader(stream).ReadToEnd();
+        string serialized = await new StreamReader(stream).ReadToEndAsync();
 
         size.Should().Be(serialized.Length);
 
         return serialized;
     }
 
-    public static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
+    private static IJsonRpcService BuildRpcService<T>(T module) where T : class, IRpcModule
     {
         var moduleProvider = new TestRpcModuleProvider<T>(module);
 
@@ -77,10 +77,6 @@ public static class RpcTest
         return request;
     }
 
-    private class TestSingletonFactory<T> : SingletonFactory<T> where T : IRpcModule
-    {
-        public TestSingletonFactory(T module) : base(module)
-        {
-        }
-    }
+    private class TestSingletonFactory<T>(T module) : SingletonFactory<T>(module)
+        where T : IRpcModule;
 }

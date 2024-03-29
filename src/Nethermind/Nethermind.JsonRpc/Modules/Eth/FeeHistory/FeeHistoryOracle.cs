@@ -114,37 +114,37 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 
             BlockFeeHistorySearchInfo info = historyInfo.Value;
 
-            var localBlockCount = blockCount + 1;
-            ArrayPoolList<UInt256> baseFeePerGas = new(localBlockCount, localBlockCount);
-            ArrayPoolList<UInt256> baseFeePerBlobGas = new(localBlockCount, localBlockCount);
-            ArrayPoolList<double> gasUsedRatio = new(blockCount, blockCount);
-            ArrayPoolList<double> blobGasUsedRatio = new(blockCount, blockCount);
+            // Assumes if blockCount is ever greater than the BlockNumber then BlockNumber must fall within integer size limits
+            var effectiveBlockCount = (info.BlockNumber < blockCount - 1) ? (int)info.BlockNumber + 1 : blockCount;
+            var tempBlockCount = effectiveBlockCount + 1;
+            ArrayPoolList<UInt256> baseFeePerGas = new(tempBlockCount, tempBlockCount);
+            ArrayPoolList<UInt256> baseFeePerBlobGas = new(tempBlockCount, tempBlockCount);
+            ArrayPoolList<double> gasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
+            ArrayPoolList<double> blobGasUsedRatio = new(effectiveBlockCount, effectiveBlockCount);
             ArrayPoolList<ArrayPoolList<UInt256>>? rewards = rewardPercentiles is null || rewardPercentiles.Length == 0
                 ? null
-                : new ArrayPoolList<ArrayPoolList<UInt256>>(blockCount, blockCount);
+                : new ArrayPoolList<ArrayPoolList<UInt256>>(effectiveBlockCount, effectiveBlockCount);
 
             long oldestBlockNumber = info.BlockNumber;
-            baseFeePerGas[blockCount] = info.BaseFeePerGasEst;
-            baseFeePerBlobGas[blockCount] = (info.BaseFeePerBlobGas);
+            baseFeePerGas[effectiveBlockCount] = info.BaseFeePerGasEst;
+            baseFeePerBlobGas[effectiveBlockCount] = (info.BaseFeePerBlobGas);
 
-            while (historyInfo is not null && blockCount > 0)
+            while (historyInfo is not null && effectiveBlockCount-- > 0)
             {
                 info = historyInfo.Value;
                 oldestBlockNumber = info.BlockNumber;
-                localBlockCount = blockCount - 1;
-                baseFeePerGas[localBlockCount] = info.BlockBaseFeePerGas;
-                baseFeePerBlobGas[localBlockCount] = info.BaseFeePerBlobGas;
-                gasUsedRatio[localBlockCount] = info.GasUsedRatio;
-                blobGasUsedRatio[localBlockCount] = info.BlobGasUsedRatio;
+                baseFeePerGas[effectiveBlockCount] = info.BlockBaseFeePerGas;
+                baseFeePerBlobGas[effectiveBlockCount] = info.BaseFeePerBlobGas;
+                gasUsedRatio[effectiveBlockCount] = info.GasUsedRatio;
+                blobGasUsedRatio[effectiveBlockCount] = info.BlobGasUsedRatio;
                 if (rewards is not null)
                 {
                     ArrayPoolList<UInt256> rewardsInBlock = CalculateRewardsPercentiles(info, rewardPercentiles);
                     if (rewardsInBlock is not null)
                     {
-                        rewards[localBlockCount] = rewardsInBlock;
+                        rewards[effectiveBlockCount] = rewardsInBlock;
                     }
                 }
-                blockCount--;
                 historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
@@ -176,7 +176,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             _cleanupTask = null;
         }
 
-        private ArrayPoolList<UInt256>? CalculateRewardsPercentiles(BlockFeeHistorySearchInfo blockInfo,
+        private static ArrayPoolList<UInt256>? CalculateRewardsPercentiles(BlockFeeHistorySearchInfo blockInfo,
             IReadOnlyCollection<double> rewardPercentiles)
         {
             if (blockInfo.BlockTransactionsLength == 0)
