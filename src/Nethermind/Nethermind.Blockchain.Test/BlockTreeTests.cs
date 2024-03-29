@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Blockchain.Visitors;
 using Nethermind.Core;
@@ -22,7 +21,6 @@ using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
 using Nethermind.Db.Blooms;
@@ -1793,6 +1791,24 @@ namespace Nethermind.Blockchain.Test
             Block block = Build.A.Block.WithDifficulty(0).WithParent(genesisWithZeroDifficulty).TestObject;
             blockTree.SuggestBlock(block).Should().Be(AddBlockResult.Added);
             blockTree.SuggestBlock(Build.A.Block.WithParent(block).WithDifficulty(0).TestObject).Should().Be(AddBlockResult.Added);
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void BlockAddedToMain_should_have_updated_Head()
+        {
+            BlockTree blockTree = BuildBlockTree();
+            Block block0 = Build.A.Block.WithNumber(0).WithDifficulty(1).TestObject;
+            Block block1 = Build.A.Block.WithNumber(1).WithDifficulty(2).WithParent(block0).TestObject;
+            AddToMain(blockTree, block0);
+            blockTree.SuggestBlock(block0);
+            blockTree.UpdateMainChain(new[] { block0 }, true);
+
+            long blockAddedToMainHeadNumber = 0;
+            blockTree.BlockAddedToMain += (_, _) => { blockAddedToMainHeadNumber = blockTree.Head!.Header.Number; };
+
+            AddToMain(blockTree, block1);
+
+            Assert.That(blockAddedToMainHeadNumber, Is.EqualTo(blockTree.Head!.Number));
         }
 
         public static IEnumerable<TestCaseData> InvalidBlockTestCases
