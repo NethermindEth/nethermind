@@ -188,7 +188,8 @@ public partial class EngineModuleTests
         };
         string[] @params =
         [
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttributes)
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes)
         ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
@@ -206,7 +207,7 @@ public partial class EngineModuleTests
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
         string BlockHash,
-        int errorCode
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -226,7 +227,8 @@ public partial class EngineModuleTests
         };
         string[] @params =
         [
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttrs)
         ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
@@ -234,7 +236,7 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(input.errorCode);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
@@ -573,7 +575,7 @@ public partial class EngineModuleTests
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
         string BlockHash,
-        int errorCode
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -608,16 +610,16 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(input.errorCode);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
-        IReleaseSpec spec,
+        IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string blockHash,
-        int errorCode
+        string BlockHash,
+        int ErrorCode
         )> GetWithdrawalValidationValues()
     {
         yield return (
@@ -625,13 +627,13 @@ public partial class EngineModuleTests
             "{0}V2 expected",
             null,
             "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576",
-            MergeErrorCodes.InvalidPayloadAttributes);
+            ErrorCodes.InvalidParams);
         yield return (
             London.Instance,
             "{0}V1 expected",
             Array.Empty<Withdrawal>(),
             "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98",
-            MergeErrorCodes.UnsupportedFork);
+            ErrorCodes.InvalidParams);
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]
