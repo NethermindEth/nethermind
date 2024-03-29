@@ -134,6 +134,12 @@ namespace Nethermind.Core.Caching
         {
             _accesses.Enqueue(node);
 
+            if (_accesses.Count < _maxCapacity && _cacheMap.Count < _maxCapacity)
+            {
+                // Can wait
+                return;
+            }
+
             // Set working if it wasn't (via atomic Interlocked).
             if (Interlocked.CompareExchange(ref _processingLru, 1, 0) == 0)
             {
