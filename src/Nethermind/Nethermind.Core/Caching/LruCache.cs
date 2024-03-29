@@ -19,6 +19,7 @@ namespace Nethermind.Core.Caching
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly ConcurrentQueue<LinkedListNode<LruCacheItem>> _accesses;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
+        private CancellationTokenSource _cts;
         private int _doingWork;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
@@ -30,6 +31,7 @@ namespace Nethermind.Core.Caching
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
                 : new Dictionary<TKey, LinkedListNode<LruCacheItem>>();
+            _cts = new CancellationTokenSource();
         }
 
         public LruCache(int maxCapacity, string name)
@@ -39,10 +41,14 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
+            _cts.Cancel();
+
             using var handle = _lock.AcquireWrite();
 
-            _cacheMap.Clear();
+            _leastRecentlyUsed = null;
             _accesses.Clear();
+            _cacheMap.Clear();
+            _cts = new CancellationTokenSource();
             _leastRecentlyUsed = null;
         }
 
@@ -151,9 +157,10 @@ namespace Nethermind.Core.Caching
 
         void IThreadPoolWorkItem.Execute()
         {
+            CancellationToken ct = _cts.Token;
             while (true)
             {
-                while (_accesses.TryDequeue(out LinkedListNode<LruCacheItem>? node))
+                while (!ct.IsCancellationRequested && _accesses.TryDequeue(out LinkedListNode<LruCacheItem>? node))
                 {
                     bool exists = false;
                     using (var handle = _lock.AcquireRead())
@@ -161,26 +168,40 @@ namespace Nethermind.Core.Caching
                         exists = _cacheMap.ContainsKey(node.Value.Key);
                     }
 
+                    ref LinkedListNode<LruCacheItem>? leastRecentlyUsed = ref _leastRecentlyUsed;
+                    if (leastRecentlyUsed is null)
+                    {
+                        // Clear has been called
+                        break;
+                    }
+
                     if (!exists)
                     {
-                        LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+                        LinkedListNode<LruCacheItem>.Remove(ref leastRecentlyUsed, node);
                     }
                     else if (node.Next is null)
                     {
-                        LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, node);
+                        LinkedListNode<LruCacheItem>.AddMostRecent(ref leastRecentlyUsed, node);
                     }
                     else
                     {
-                        LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                        LinkedListNode<LruCacheItem>.MoveToMostRecent(ref leastRecentlyUsed, node);
                     }
                 }
 
-                while (_cacheMap.Count > _maxCapacity)
+                while (!ct.IsCancellationRequested && _cacheMap.Count > _maxCapacity)
                 {
                     LinkedListNode<LruCacheItem>? leastRecentlyUsed;
                     using (var handle = _lock.AcquireWrite())
                     {
-                        _cacheMap.Remove(_leastRecentlyUsed!.Value.Key, out leastRecentlyUsed);
+                        leastRecentlyUsed = _leastRecentlyUsed;
+                        if (leastRecentlyUsed is null)
+                        {
+                             // Clear has been called
+                            break;
+                        }
+
+                        _cacheMap.Remove(leastRecentlyUsed.Value.Key, out leastRecentlyUsed);
                     }
 
                     LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, leastRecentlyUsed!);
@@ -197,7 +218,7 @@ namespace Nethermind.Core.Caching
                 Thread.MemoryBarrier();
 
                 // Check if there is work to do
-                if (_accesses.IsEmpty)
+                if (ct.IsCancellationRequested || _accesses.IsEmpty)
                 {
                     // Nothing to do, exit.
                     break;
