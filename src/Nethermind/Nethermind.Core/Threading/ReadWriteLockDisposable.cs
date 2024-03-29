@@ -46,12 +46,12 @@ public class ReadWriteLockDisposable
         public WriteLock(ReaderWriterLockSlim @lock)
         {
             _lock = @lock;
-            _lock.EnterReadLock();
+            _lock.EnterWriteLock();
         }
 
         public void Dispose()
         {
-            _lock.ExitReadLock();
+            _lock.ExitWriteLock();
         }
     }
 }
