@@ -18,6 +18,7 @@ using Nethermind.Logging;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
@@ -149,6 +150,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
+            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
             _api.SpecProvider!,
             _api.BlockTree!,
             _api.ReceiptStorage!,
@@ -218,7 +220,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,
-                initConfig,
                 _syncConfig,
                 _api.PoSSwitcher,
                 _beaconSync,
@@ -228,7 +229,8 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
                 _invalidChainTracker,
                 _beaconSync,
                 _api.LogManager,
-                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout)),
+                TimeSpan.FromSeconds(_mergeConfig.NewPayloadTimeout),
+                _api.Config<IReceiptConfig>().StoreReceipts),
             new ForkchoiceUpdatedHandler(
                 _api.BlockTree,
                 _blockFinalizationManager,

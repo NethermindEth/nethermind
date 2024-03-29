@@ -1518,6 +1518,15 @@ public partial class EngineModuleTests
     }
 
     [Test]
+    public async Task Should_return_ClientVersionV1()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpcModule = CreateEngineModule(chain);
+        ResultWrapper<ClientVersionV1[]> result = rpcModule.engine_getClientVersionV1(new ClientVersionV1());
+        result.Data.Should().BeEquivalentTo([new ClientVersionV1()]);
+    }
+
+    [Test]
     public async Task Should_return_capabilities()
     {
         using MergeTestBlockchain chain = await CreateBlockchain(Cancun.Instance);
@@ -1544,6 +1553,8 @@ public partial class EngineModuleTests
         string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();
         var expectedMethods = new string[]
         {
+            nameof(IEngineRpcModule.engine_getClientVersionV1),
+
             nameof(IEngineRpcModule.engine_getPayloadV1),
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV1),
             nameof(IEngineRpcModule.engine_newPayloadV1),
@@ -1553,8 +1564,11 @@ public partial class EngineModuleTests
             nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2),
             nameof(IEngineRpcModule.engine_newPayloadV2),
             nameof(IEngineRpcModule.engine_getPayloadBodiesByHashV1),
-            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1)
+            nameof(IEngineRpcModule.engine_getPayloadBodiesByRangeV1),
 
+            nameof(IEngineRpcModule.engine_getPayloadV3),
+            nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3),
+            nameof(IEngineRpcModule.engine_newPayloadV3)
         };
         Assert.That(result, Is.EquivalentTo(expectedMethods));
     }

@@ -125,7 +125,7 @@ namespace Nethermind.Blockchain.Test.Builders
 
         public FilterBuilder WithAddresses(params Address[] addresses)
         {
-            _address = new AddressFilter(addresses.ToHashSet());
+            _address = new AddressFilter(addresses.Select(a => new AddressAsKey(a)).ToHashSet());
 
             return this;
         }

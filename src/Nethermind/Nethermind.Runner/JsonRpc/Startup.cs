@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Diagnostics.HealthChecks;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.Http.Features;
 using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.DependencyInjection;
@@ -145,6 +146,9 @@ namespace Nethermind.Runner.JsonRpc
                     jsonRpcUrlCollection.TryGetValue(ctx.Connection.LocalPort, out JsonRpcUrl jsonRpcUrl) &&
                     jsonRpcUrl.RpcEndpoint.HasFlag(RpcEndpoint.Http))
                 {
+                    if (jsonRpcUrl.MaxRequestBodySize is not null)
+                        ctx.Features.Get<IHttpMaxRequestBodySizeFeature>().MaxRequestBodySize = jsonRpcUrl.MaxRequestBodySize;
+
                     if (jsonRpcUrl.IsAuthenticated && !rpcAuthentication!.Authenticate(ctx.Request.Headers.Authorization))
                     {
                         await PushErrorResponse(StatusCodes.Status403Forbidden, ErrorCodes.InvalidRequest,
@@ -159,87 +163,92 @@ namespace Nethermind.Runner.JsonRpc
                         JsonRpcContext jsonRpcContext = JsonRpcContext.Http(jsonRpcUrl);
                         await foreach (JsonRpcResult result in jsonRpcProcessor.ProcessAsync(request, jsonRpcContext))
                         {
-                            using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
-                            ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
-                            try
+                            using (result)
                             {
-                                ctx.Response.ContentType = "application/json";
-                                ctx.Response.StatusCode = GetStatusCode(result);
-
-                                if (result.IsCollection)
+                                await using Stream stream = jsonRpcConfig.BufferResponses ? RecyclableStream.GetStream("http") : null;
+                                ICountingBufferWriter resultWriter = stream is not null ? new CountingStreamPipeWriter(stream) : new CountingPipeWriter(ctx.Response.BodyWriter);
+                                try
                                 {
-                                    resultWriter.Write(_jsonOpeningBracket);
-                                    bool first = true;
-                                    JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
-                                    try
+                                    ctx.Response.ContentType = "application/json";
+                                    ctx.Response.StatusCode = GetStatusCode(result);
+
+                                    if (result.IsCollection)
                                     {
-                                        while (await enumerator.MoveNextAsync())
+                                        resultWriter.Write(_jsonOpeningBracket);
+                                        bool first = true;
+                                        JsonRpcBatchResultAsyncEnumerator enumerator = result.BatchedResponses.GetAsyncEnumerator(CancellationToken.None);
+                                        try
                                         {
-                                            JsonRpcResult.Entry entry = enumerator.Current;
-                                            using (entry)
+                                            while (await enumerator.MoveNextAsync())
                                             {
-                                                if (!first)
+                                                JsonRpcResult.Entry entry = enumerator.Current;
+                                                using (entry)
                                                 {
-                                                    resultWriter.Write(_jsonComma);
-                                                }
+                                                    if (!first)
+                                                    {
+                                                        resultWriter.Write(_jsonComma);
+                                                    }
 
-                                                first = false;
-                                                jsonSerializer.Serialize(resultWriter, entry.Response);
-                                                _ = jsonRpcLocalStats.ReportCall(entry.Report);
+                                                    first = false;
+                                                    jsonSerializer.Serialize(resultWriter, entry.Response);
+                                                    _ = jsonRpcLocalStats.ReportCall(entry.Report);
 
-                                                // We reached the limit and don't want to responded to more request in the batch
-                                                if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
-                                                {
-                                                    if (logger.IsWarn) logger.Warn($"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
-                                                    enumerator.IsStopped = true;
+                                                    // We reached the limit and don't want to responded to more request in the batch
+                                                    if (!jsonRpcContext.IsAuthenticated && resultWriter.WrittenCount > jsonRpcConfig.MaxBatchResponseBodySize)
+                                                    {
+                                                        if (logger.IsWarn)
+                                                            logger.Warn(
+                                                                $"The max batch response body size exceeded. The current response size {resultWriter.WrittenCount}, and the config setting is JsonRpc.{nameof(jsonRpcConfig.MaxBatchResponseBodySize)} = {jsonRpcConfig.MaxBatchResponseBodySize}");
+                                                        enumerator.IsStopped = true;
+                                                    }
                                                 }
                                             }
                                         }
+                                        finally
+                                        {
+                                            await enumerator.DisposeAsync();
+                                        }
+
+                                        resultWriter.Write(_jsonClosingBracket);
                                     }
-                                    finally
+                                    else
                                     {
-                                        await enumerator.DisposeAsync();
+                                        using (result.Response)
+                                        {
+                                            jsonSerializer.Serialize(resultWriter, result.Response);
+                                        }
                                     }
 
-                                    resultWriter.Write(_jsonClosingBracket);
-                                }
-                                else
-                                {
-                                    using (result.Response)
+                                    if (stream is not null)
                                     {
-                                        jsonSerializer.Serialize(resultWriter, result.Response);
+                                        ctx.Response.ContentLength = resultWriter.WrittenCount;
+                                        stream.Seek(0, SeekOrigin.Begin);
+                                        await stream.CopyToAsync(ctx.Response.Body);
                                     }
                                 }
-
-                                if (stream is not null)
+                                catch (Exception e) when (e.InnerException is OperationCanceledException)
                                 {
-                                    ctx.Response.ContentLength = resultWriter.WrittenCount;
-                                    stream.Seek(0, SeekOrigin.Begin);
-                                    await stream.CopyToAsync(ctx.Response.Body);
+                                    SerializeTimeoutException(resultWriter);
                                 }
-                            }
-                            catch (Exception e) when (e.InnerException is OperationCanceledException)
-                            {
-                                SerializeTimeoutException(resultWriter);
-                            }
-                            catch (OperationCanceledException)
-                            {
-                                SerializeTimeoutException(resultWriter);
-                            }
-                            finally
-                            {
-                                await ctx.Response.CompleteAsync();
-                            }
+                                catch (OperationCanceledException)
+                                {
+                                    SerializeTimeoutException(resultWriter);
+                                }
+                                finally
+                                {
+                                    await ctx.Response.CompleteAsync();
+                                }
 
-                            long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
-                            _ = jsonRpcLocalStats.ReportCall(result.IsCollection
-                                ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
-                                : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
+                                long handlingTimeMicroseconds = stopwatch.ElapsedMicroseconds();
+                                _ = jsonRpcLocalStats.ReportCall(result.IsCollection
+                                    ? new RpcReport("# collection serialization #", handlingTimeMicroseconds, true)
+                                    : result.Report.Value, handlingTimeMicroseconds, resultWriter.WrittenCount);
 
-                            Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
+                                Interlocked.Add(ref Metrics.JsonRpcBytesSentHttp, resultWriter.WrittenCount);
 
-                            // There should be only one response because we don't expect multiple JSON tokens in the request
-                            break;
+                                // There should be only one response because we don't expect multiple JSON tokens in the request
+                                break;
+                            }
                         }
                     }
                     catch (Microsoft.AspNetCore.Http.BadHttpRequestException e)

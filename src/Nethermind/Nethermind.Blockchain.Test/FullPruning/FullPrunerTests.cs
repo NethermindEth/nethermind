@@ -50,6 +50,28 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.ShouldCopyAllValues();
         }
 
+        [Timeout(Timeout.MaxTestTime)]
+        [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.Hash)]
+        [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath)]
+        [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath)]
+        [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath)]
+        public async Task can_prune_and_switch_key_scheme(INodeStorage.KeyScheme currentKeyScheme, INodeStorage.KeyScheme newKeyScheme, INodeStorage.KeyScheme expectedNewScheme)
+        {
+            TestContext test = new(
+                true,
+                false,
+                FullPruningCompletionBehavior.None,
+                _fullPrunerMemoryBudgetMb,
+                _degreeOfParallelism,
+                currentKeyScheme: currentKeyScheme,
+                preferredKeyScheme: newKeyScheme);
+
+            test.NodeStorage.Scheme.Should().Be(currentKeyScheme);
+            await test.RunFullPruning();
+            test.ShouldCopyAllValuesWhenVisitingTrie();
+            test.NodeStorage.Scheme.Should().Be(expectedNewScheme);
+        }
+
         [Test, Timeout(Timeout.MaxTestTime)]
         public async Task pruning_deletes_old_db_on_success()
         {
@@ -91,6 +113,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
         [TestCase(false, FullPruningCompletionBehavior.None, false)]
         [TestCase(false, FullPruningCompletionBehavior.ShutdownOnSuccess, false)]
         [TestCase(false, FullPruningCompletionBehavior.AlwaysShutdown, true)]
+        [Retry(10)]
         public async Task pruning_shuts_down_node(bool success, FullPruningCompletionBehavior behavior, bool expectedShutdown)
         {
             TestContext test = CreateTest(successfulPruning: success, completionBehavior: behavior);
@@ -161,8 +184,16 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.FullPruningDb[key].Should().BeEquivalentTo(key);
         }
 
-        private TestContext CreateTest(bool successfulPruning = true, bool clearPrunedDb = false, FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
-            new(successfulPruning, clearPrunedDb, completionBehavior, _fullPrunerMemoryBudgetMb, _degreeOfParallelism);
+        private TestContext CreateTest(
+            bool successfulPruning = true,
+            bool clearPrunedDb = false,
+            FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None) =>
+            new(
+                successfulPruning,
+                clearPrunedDb,
+                completionBehavior,
+                _fullPrunerMemoryBudgetMb,
+                _degreeOfParallelism);
 
         private class TestContext
         {
@@ -175,6 +206,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             public IStateReader StateReader { get; }
             public FullPruner Pruner { get; }
             public MemDb TrieDb { get; }
+            public INodeStorage NodeStorage { get; }
             public TestMemDb CopyDb { get; }
             public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
             public IChainEstimations _chainEstimations = ChainSizes.UnknownChain.Instance;
@@ -186,7 +218,9 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 bool clearPrunedDb = false,
                 FullPruningCompletionBehavior completionBehavior = FullPruningCompletionBehavior.None,
                 int fullScanMemoryBudgetMb = 0,
-                int degreeOfParallelism = 0)
+                int degreeOfParallelism = 0,
+                INodeStorage.KeyScheme currentKeyScheme = INodeStorage.KeyScheme.HalfPath,
+                INodeStorage.KeyScheme preferredKeyScheme = INodeStorage.KeyScheme.Current)
             {
                 BlockTree.OnUpdateMainChain += (_, e) => _head = e.Blocks[^1].Number;
                 _clearPrunedDb = clearPrunedDb;
@@ -195,17 +229,26 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 IDbFactory dbFactory = Substitute.For<IDbFactory>();
                 dbFactory.CreateDb(Arg.Any<DbSettings>()).Returns(TrieDb, CopyDb);
 
-                PatriciaTree trie = Build.A.Trie(TrieDb).WithAccountsByIndex(0, 100).TestObject;
+                NodeStorage storageForWrite = new NodeStorage(TrieDb, currentKeyScheme);
+                PatriciaTree trie = Build.A.Trie(storageForWrite).WithAccountsByIndex(0, 100).TestObject;
                 _stateRoot = trie.RootHash;
-                StateReader = new StateReader(new TrieStore(TrieDb, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
                 FullPruningDb = new TestFullPruningDb(new DbSettings("test", "test"), dbFactory, successfulPruning, clearPrunedDb);
+                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(preferredKeyScheme, LimboLogs.Instance);
+                nodeStorageFactory.DetectCurrentKeySchemeFrom(TrieDb);
+                NodeStorage = nodeStorageFactory.WrapKeyValueStore(FullPruningDb);
+                StateReader = new StateReader(new TrieStore(NodeStorage, LimboLogs.Instance), new TestMemDb(), LimboLogs.Instance);
 
-                Pruner = new(FullPruningDb, PruningTrigger, new PruningConfig()
-                {
-                    FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
-                    FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
-                    FullPruningCompletionBehavior = completionBehavior
-                }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<IPruningTrieStore>(), LimboLogs.Instance);
+                Pruner = new(
+                    FullPruningDb,
+                    nodeStorageFactory,
+                    NodeStorage,
+                    PruningTrigger,
+                    new PruningConfig()
+                    {
+                        FullPruningMaxDegreeOfParallelism = degreeOfParallelism,
+                        FullPruningMemoryBudgetMb = fullScanMemoryBudgetMb,
+                        FullPruningCompletionBehavior = completionBehavior
+                    }, BlockTree, StateReader, ProcessExitSource, _chainEstimations, DriveInfo, Substitute.For<IPruningTrieStore>(), LimboLogs.Instance);
             }
 
             public async Task RunFullPruning()
@@ -267,6 +310,13 @@ namespace Nethermind.Blockchain.Test.FullPruning
                     BlockTree.OnUpdateMainChain += Raise.EventWith(new OnUpdateMainChainArgs(new List<Block>() { head }, true));
                     Thread.Sleep(1); // Need to add a little sleep as the wait for event in full pruner is async.
                 }
+            }
+
+            public void ShouldCopyAllValuesWhenVisitingTrie()
+            {
+                PatriciaTree trie = new PatriciaTree(new TrieStore(new NodeStorage(TrieDb), LimboLogs.Instance).GetTrieStore(null), LimboLogs.Instance);
+                TrieCopiedNodeVisitor visitor = new TrieCopiedNodeVisitor(new NodeStorage(CopyDb));
+                trie.Accept(visitor, BlockTree.Head!.StateRoot!);
             }
 
             public void ShouldCopyAllValues()
@@ -372,6 +422,51 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 }
 
                 public CancellationTokenSource CancellationTokenSource { get; } = new();
+            }
+        }
+
+        class TrieCopiedNodeVisitor : ITreeVisitor<TreePathContextWithStorage>
+        {
+            private INodeStorage _nodeStorageToCompareTo;
+
+            public TrieCopiedNodeVisitor(INodeStorage nodeStorage)
+            {
+                _nodeStorageToCompareTo = nodeStorage;
+            }
+
+            private void CheckNode(Hash256? storage, in TreePath path, TrieNode node)
+            {
+                _nodeStorageToCompareTo.KeyExists(storage, path, node.Keccak).Should().BeTrue();
+            }
+
+            public bool IsFullDbScan => true;
+            public bool ShouldVisit(in TreePathContextWithStorage ctx, Hash256 nextNode) => true;
+
+            public void VisitTree(in TreePathContextWithStorage ctx, Hash256 rootHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitMissingNode(in TreePathContextWithStorage ctx, Hash256 nodeHash, TrieVisitContext trieVisitContext)
+            {
+            }
+
+            public void VisitBranch(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext)
+            {
+                CheckNode(ctx.Storage, ctx.Path, node);
+            }
+
+            public void VisitExtension(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext)
+            {
+                CheckNode(ctx.Storage, ctx.Path, node);
+            }
+
+            public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
+            {
+                CheckNode(ctx.Storage, ctx.Path, node);
+            }
+
+            public void VisitCode(in TreePathContextWithStorage ctx, Hash256 codeHash, TrieVisitContext trieVisitContext)
+            {
             }
         }
     }

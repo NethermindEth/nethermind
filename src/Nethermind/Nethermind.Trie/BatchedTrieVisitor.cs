@@ -68,6 +68,8 @@ public class BatchedTrieVisitor<TNodeContext>
     {
         _visitor = visitor;
         _resolver = resolver;
+        if (resolver.Scheme != INodeStorage.KeyScheme.Hash)
+            throw new InvalidOperationException("BatchedTrieVisitor can only be used with Hash database.");
 
         _maxBatchSize = 128;
 
@@ -197,7 +199,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 for (int i = 0; i < _maxBatchSize; i++)
                 {
                     if (!theStack.TryPop(out Job item)) break;
-                    finalBatch.Add((_resolver.FindCachedOrUnknown(item.Key.ToCommitment()), item.NodeContext,
+                    finalBatch.Add((_resolver.FindCachedOrUnknown(TreePath.Empty, item.Key.ToCommitment()), item.NodeContext,
                         item.Context));
                     Interlocked.Decrement(ref _queuedJobs);
                 }
@@ -231,7 +233,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 Job job = preSort[i];
 
-                TrieNode node = _resolver.FindCachedOrUnknown(job.Key.ToCommitment());
+                TrieNode node = _resolver.FindCachedOrUnknown(TreePath.Empty, job.Key.ToCommitment());
                 finalBatch.Add((node, job.NodeContext, job.Context));
             }
 
@@ -253,6 +255,7 @@ public class BatchedTrieVisitor<TNodeContext>
     void QueueNextNodes(ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> batchResult)
     {
         // Reverse order is important so that higher level appear at the end of the stack.
+        TreePath emptyPath = TreePath.Empty;
         for (int i = batchResult.Count - 1; i >= 0; i--)
         {
             (TrieNode trieNode, TNodeContext nodeContext, SmallTrieVisitContext ctx) = batchResult[i];
@@ -261,7 +264,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 // Inline node. Seems rare, so its fine to create new list for this. Does not have a keccak
                 // to queue, so we'll just process it inline.
                 using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> recursiveResult = new(1);
-                trieNode.ResolveNode(_resolver);
+                trieNode.ResolveNode(_resolver, emptyPath);
                 Interlocked.Increment(ref _activeJobs);
                 trieNode.AcceptResolvedNode(_visitor, nodeContext, _resolver, ctx, recursiveResult);
                 QueueNextNodes(recursiveResult);
@@ -289,6 +292,7 @@ public class BatchedTrieVisitor<TNodeContext>
         using ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)> nextToProcesses = new(_maxBatchSize);
         using ArrayPoolList<int> resolveOrdering = new(_maxBatchSize);
         ArrayPoolList<(TrieNode, TNodeContext, SmallTrieVisitContext)>? currentBatch;
+        TreePath emptyPath = TreePath.Empty;
         while ((currentBatch = GetNextBatch()) is not null)
         {
             // Storing the idx separately as the ordering is important to reduce memory (approximate dfs ordering)
@@ -298,7 +302,7 @@ public class BatchedTrieVisitor<TNodeContext>
             {
                 (TrieNode? cur, TNodeContext _, SmallTrieVisitContext ctx) = currentBatch[i];
 
-                cur.ResolveKey(_resolver, false);
+                cur.ResolveKey(_resolver, ref emptyPath, false);
 
                 if (cur.FullRlp.IsNotNull) continue;
                 if (cur.Keccak is null)
@@ -328,7 +332,7 @@ public class BatchedTrieVisitor<TNodeContext>
                 try
                 {
                     Hash256 theKeccak = nodeToResolve.Keccak;
-                    nodeToResolve.ResolveNode(_resolver, flags);
+                    nodeToResolve.ResolveNode(_resolver, emptyPath, flags);
                     nodeToResolve.Keccak = theKeccak; // The resolve may set a key which clear the keccak
                 }
                 catch (TrieException)
@@ -384,15 +388,116 @@ public class BatchedTrieVisitor<TNodeContext>
 
 public readonly struct EmptyContext : INodeContext<EmptyContext>
 {
-    public EmptyContext Add(byte[] nibblePath) => this;
+    public EmptyContext Add(ReadOnlySpan<byte> nibblePath) => this;
     public EmptyContext Add(byte nibble) => this;
+    public EmptyContext AddStorage(in ValueHash256 storage) => this;
 }
 
-public interface INodeContext<TNodeContext>
+public struct TreePathContext : INodeContext<TreePathContext>
+{
+    public TreePath Path = TreePath.Empty;
+
+    public TreePathContext()
+    {
+    }
+
+    public TreePathContext Add(ReadOnlySpan<byte> nibblePath)
+    {
+        return new TreePathContext()
+        {
+            Path = Path.Append(nibblePath)
+        };
+    }
+
+    public TreePathContext Add(byte nibble)
+    {
+        return new TreePathContext()
+        {
+            Path = Path.Append(nibble)
+        };
+    }
+
+    public readonly TreePathContext AddStorage(in ValueHash256 storage)
+    {
+        return new TreePathContext();
+    }
+}
+
+public interface ITreePathContextWithStorage
+{
+    public TreePath Path { get; }
+    public Hash256? Storage { get; }
+}
+
+public struct TreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<TreePathContextWithStorage>
+{
+    public TreePath Path { get; init; } = TreePath.Empty;
+    public Hash256? Storage { get; init; } = null; // Not using ValueHash as value is shared with many context.
+
+    public TreePathContextWithStorage()
+    {
+    }
+
+    public TreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = Path.Append(nibblePath),
+            Storage = Storage
+        };
+    }
+
+    public TreePathContextWithStorage Add(byte nibble)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = Path.Append(nibble),
+            Storage = Storage
+        };
+    }
+
+    public readonly TreePathContextWithStorage AddStorage(in ValueHash256 storage)
+    {
+        return new TreePathContextWithStorage()
+        {
+            Path = TreePath.Empty,
+            Storage = Path.Path.ToCommitment(),
+        };
+    }
+}
+
+/// <summary>
+/// Used as a substitute for TreePathContextWithStorage but does not actually keep track of path and storage.
+/// Used for hash only database pruning to reduce memory usage.
+/// </summary>
+public struct NoopTreePathContextWithStorage : ITreePathContextWithStorage, INodeContext<NoopTreePathContextWithStorage>
+{
+    public NoopTreePathContextWithStorage Add(ReadOnlySpan<byte> nibblePath)
+    {
+        return this;
+    }
+
+    public NoopTreePathContextWithStorage Add(byte nibble)
+    {
+        return this;
+    }
+
+    public readonly NoopTreePathContextWithStorage AddStorage(in ValueHash256 storage)
+    {
+        return this;
+    }
+
+    public TreePath Path => TreePath.Empty;
+    public Hash256? Storage => null;
+}
+
+
+public interface INodeContext<out TNodeContext>
     // The context needs to be the struct so that it's passed nicely via in and returned from the methods.
     where TNodeContext : struct, INodeContext<TNodeContext>
 {
-    TNodeContext Add(byte[] nibblePath);
+    TNodeContext Add(ReadOnlySpan<byte> nibblePath);
 
     TNodeContext Add(byte nibble);
+    TNodeContext AddStorage(in ValueHash256 storage);
 }

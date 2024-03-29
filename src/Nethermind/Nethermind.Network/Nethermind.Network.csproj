@@ -14,7 +14,7 @@
   <ItemGroup>
     <PackageReference Include="Crc32.NET" />
     <PackageReference Include="Nethermind.DotNetty.Handlers" />
-    <PackageReference Include="Snappy.Standard" />
+    <PackageReference Include="Snappier" />
   </ItemGroup>
   <ItemGroup>
     <Compile Remove="Swarm\**" />

@@ -26,6 +26,8 @@ namespace Nethermind.Blockchain.FullPruning
     public class FullPruner : IDisposable
     {
         private readonly IFullPruningDb _fullPruningDb;
+        private readonly INodeStorageFactory _nodeStorageFactory;
+        private readonly INodeStorage _nodeStorage;
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
@@ -41,6 +43,8 @@ namespace Nethermind.Blockchain.FullPruning
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
@@ -52,6 +56,8 @@ namespace Nethermind.Blockchain.FullPruning
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
+            _nodeStorageFactory = nodeStorageFactory;
+            _nodeStorage = mainNodeStorage;
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
@@ -79,7 +85,7 @@ namespace Nethermind.Blockchain.FullPruning
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
-            if (DateTime.Now - _lastPruning < _minimumPruningDelay)
+            if (DateTime.UtcNow - _lastPruning < _minimumPruningDelay)
             {
                 e.Status = PruningStatus.Delayed;
             }
@@ -222,6 +228,9 @@ namespace Nethermind.Blockchain.FullPruning
 
         private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
         {
+            INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
+            ICopyTreeVisitor visitor = null;
+
             try
             {
                 pruning.MarkStart();
@@ -232,19 +241,35 @@ namespace Nethermind.Blockchain.FullPruning
                     writeFlags |= WriteFlags.LowPriority;
                 }
 
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, writeFlags, _logManager, cancellationToken);
+                INodeStorage targetNodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
+
+                if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath && targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
+                {
+                    // Because of write on read duplication, we can't move from HalfPath to Hash scheme as some of the
+                    // read key which are in HalfPath may be written to the new db. This cause a problem as Hash
+                    // scheme can be started with some code not tracking path, which will be unable to read these HalfPath
+                    // keys.
+                    if (_logger.IsWarn) _logger.Warn($"Full pruning from from HalfPath key to Hash key is not supported. Switching to HalfPath key scheme.");
+                    targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
+                }
+
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
                 if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
-                _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+
+                visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
+                    ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
+                    : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
 
                 if (!cancellationToken.IsCancellationRequested)
                 {
-                    copyTreeVisitor.Finish();
+                    visitor.Finish();
 
+                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
+                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
                     await WaitForMainChainChange((e) =>
                     {
                         // The db swap happens here. We do it within the event handler of main chain change to block
@@ -259,8 +284,26 @@ namespace Nethermind.Blockchain.FullPruning
             catch (Exception e)
             {
                 _logger.Error("Error during pruning. ", e);
+                _nodeStorage.Scheme = originalKeyScheme;
                 throw;
             }
+            finally
+            {
+                visitor?.Dispose();
+            }
+        }
+
+        private ICopyTreeVisitor CopyTree<TContext>(
+            Hash256 stateRoot,
+            INodeStorage targetNodeStorage,
+            WriteFlags writeFlags,
+            VisitingOptions visitingOptions,
+            CancellationToken cancellationToken
+        ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
+        {
+            CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+            _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            return copyTreeVisitor;
         }
 
         public void Dispose()

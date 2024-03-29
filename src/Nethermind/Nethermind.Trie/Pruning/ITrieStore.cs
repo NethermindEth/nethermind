@@ -9,15 +9,18 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public interface ITrieStore : ITrieNodeResolver, IDisposable
+    /// <summary>
+    /// Full traditional trie store.
+    /// </summary>
+    public interface ITrieStore : IDisposable
     {
-        void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
+        void CommitNode(long blockNumber, Hash256? address, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
-        void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
+        void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 
-        bool IsPersisted(in ValueHash256 keccak);
+        bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak);
 
-        IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore);
+        IReadOnlyTrieStore AsReadOnly(INodeStorage? keyValueStore = null);
 
         event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -25,8 +28,16 @@ namespace Nethermind.Trie.Pruning
         IReadOnlyKeyValueStore TrieNodeRlpStore { get; }
 
         // Used by healing
-        void Set(in ValueHash256 hash, byte[] rlp);
+        void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp);
+
         bool HasRoot(Hash256 stateRoot);
+
+        IScopedTrieStore GetTrieStore(Hash256? address);
+
+        TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash);
+        byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None);
+        INodeStorage.KeyScheme Scheme { get; }
     }
 
     public interface IPruningTrieStore

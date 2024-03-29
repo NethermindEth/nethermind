@@ -65,15 +65,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Wit
             switch (packetType)
             {
                 case WitMessageCode.GetBlockWitnessHashes:
-                    GetBlockWitnessHashesMessage requestMsg = Deserialize<GetBlockWitnessHashesMessage>(message.Content);
-                    ReportIn(requestMsg, size);
-                    Handle(requestMsg);
-                    break;
+                    {
+                        using GetBlockWitnessHashesMessage requestMsg = Deserialize<GetBlockWitnessHashesMessage>(message.Content);
+                        ReportIn(requestMsg, size);
+                        Handle(requestMsg);
+                        break;
+                    }
                 case WitMessageCode.BlockWitnessHashes:
-                    BlockWitnessHashesMessage responseMsg = Deserialize<BlockWitnessHashesMessage>(message.Content);
-                    ReportIn(responseMsg, size);
-                    Handle(responseMsg, size);
-                    break;
+                    {
+                        BlockWitnessHashesMessage responseMsg = Deserialize<BlockWitnessHashesMessage>(message.Content);
+                        ReportIn(responseMsg, size);
+                        Handle(responseMsg, size);
+                        break;
+                    }
             }
         }
 
