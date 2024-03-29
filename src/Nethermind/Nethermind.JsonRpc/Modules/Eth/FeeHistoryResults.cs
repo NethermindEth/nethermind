@@ -29,7 +29,7 @@ public class FeeHistoryResults(
     public ArrayPoolList<double> BlobGasUsedRatio { get; } = blobGasUsedRatio;
 
     public long OldestBlock { get; } = oldestBlock;
-    
+
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ArrayPoolList<ArrayPoolList<UInt256>>? Reward { get; } = reward;
 
