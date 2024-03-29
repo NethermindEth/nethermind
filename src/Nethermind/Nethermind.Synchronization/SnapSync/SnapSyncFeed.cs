@@ -215,6 +215,12 @@ namespace Nethermind.Synchronization.SnapSync
             }
         }
 
+        public override void Finish()
+        {
+            _snapProvider.Dispose();
+            base.Finish();
+        }
+
         public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
     }
 }
