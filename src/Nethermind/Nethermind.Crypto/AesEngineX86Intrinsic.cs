@@ -61,6 +61,20 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
         return 16;
     }
 
+    public int ProcessBlock(ReadOnlySpan<byte> input, Span<byte> output)
+    {
+        Check.DataLength(input, 16);
+        Check.OutputLength(output, 16);
+
+        Vector128<byte> state = Unsafe.As<byte, Vector128<byte>>(ref MemoryMarshal.GetReference(input));
+
+        _implementation.ProcessRounds(ref state);
+
+        Unsafe.As<byte, Vector128<byte>>(ref MemoryMarshal.GetReference(output)) = state;
+
+        return 16;
+    }
+
     private static Vector128<byte>[] CreateRoundKeys(byte[] key, bool forEncryption)
     {
         Vector128<byte>[] K = key.Length switch
@@ -406,6 +420,19 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
     private static class Check
     {
+        public static void DataLength(ReadOnlySpan<byte> buf, int len)
+        {
+            if (buf.Length < len) ThrowDataLengthException();
+
+            static void ThrowDataLengthException() => throw new DataLengthException("input buffer too short");
+        }
+
+        public static void OutputLength(Span<byte> buf, int len)
+        {
+            if (buf.Length < len) ThrowOutputLengthException();
+
+            static void ThrowOutputLengthException() => throw new OutputLengthException("output buffer too short");
+        }
         public static void DataLength(byte[] buf, int off, int len)
         {
             if (off > (buf.Length - len)) ThrowDataLengthException();

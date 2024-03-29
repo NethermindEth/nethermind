@@ -338,15 +338,16 @@ namespace Nethermind.Synchronization.ParallelSync
         private bool ShouldBeInBeaconHeaders(bool shouldBeInUpdatingPivot)
         {
             bool shouldBeInBeaconHeaders = _beaconSyncStrategy.ShouldBeInBeaconHeaders();
+            bool shouldBeNotInUpdatingPivot = !shouldBeInUpdatingPivot;
 
             bool result = shouldBeInBeaconHeaders &&
-                          !shouldBeInUpdatingPivot;
+                          shouldBeNotInUpdatingPivot;
 
             if (_logger.IsTrace)
             {
                 LogDetailedSyncModeChecks("BEACON HEADERS",
                     (nameof(shouldBeInBeaconHeaders), shouldBeInBeaconHeaders),
-                    (nameof(shouldBeInUpdatingPivot), shouldBeInUpdatingPivot));
+                    (nameof(shouldBeNotInUpdatingPivot), shouldBeNotInUpdatingPivot));
             }
 
             return result;

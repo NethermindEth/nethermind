@@ -25,6 +25,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
 
@@ -72,6 +73,12 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
         ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+
+    public Task InitRlpDecoders()
+    {
+        Rlp.RegisterDecoders(typeof(OptimismReceiptDecoder).Assembly);
+        return Task.CompletedTask;
+    }
 
     public Task Init(INethermindApi api)
     {
@@ -169,6 +176,16 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.StateReader!,
             _api.LogManager
         );
+
+        PivotUpdator pivotUpdator = new(
+            _api.BlockTree,
+            _api.Synchronizer.SyncModeSelector,
+            _api.SyncPeerPool,
+            _syncConfig,
+            _blockCacheService,
+            _beaconSync,
+            _api.DbProvider.MetadataDb,
+            _api.LogManager);
 
         return Task.CompletedTask;
     }

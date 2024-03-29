@@ -310,6 +310,13 @@ public class InitializeNetwork : IStep
             return;
         }
 
+        if (_api.Config<IDiscoveryConfig>().Discv5Enabled)
+        {
+            _api.DiscoveryApp = new DiscV5DiscoveryApp(_api.NodeKey, _api.Config<INetworkConfig>(), _api.Config<IDiscoveryConfig>(), _api.LogManager);
+            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+            return;
+        }
+
         IDiscoveryConfig discoveryConfig = _api.Config<IDiscoveryConfig>();
 
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
