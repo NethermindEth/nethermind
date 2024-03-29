@@ -57,25 +57,7 @@ namespace Nethermind.Core.Caching
             _leastRecentlyUsed = null;
         }
 
-        public TValue Get(TKey key)
-        {
-            bool success = false;
-            LinkedListNode<LruCacheItem>? node;
-
-            using (var handle = _lock.AcquireRead())
-            {
-                success = _cacheMap.TryGetValue(key, out node);
-            }
-
-            if (success)
-            {
-                TValue value = node!.Value.Value;
-                ScheduleLruAccounting(node);
-                return value;
-            }
-
-            return default!;
-        }
+        public TValue Get(TKey key) => TryGet(key, out TValue value) ? value : default!;
 
         public bool TryGet(TKey key, out TValue value)
         {
