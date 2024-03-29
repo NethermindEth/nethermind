@@ -254,11 +254,11 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private LruCache<HashAndPath, ValueHash256>? _pastPathHash;
+        private LruCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private ConcurrentDictionary<HashAndPathAndHash, long> _persistedLastSeens = new();
+        private ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -653,9 +653,9 @@ namespace Nethermind.Trie.Pruning
                     // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                     candidateSets.Count == 1;
 
-                Dictionary<HashAndPath, Hash256?>? persistedHashes =
+                Dictionary<HashAndTinyPath, Hash256?>? persistedHashes =
                     shouldDeletePersistedNode
-                    ? new Dictionary<HashAndPath, Hash256?>()
+                    ? new Dictionary<HashAndTinyPath, Hash256?>()
                     : null;
 
                 INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
@@ -672,7 +672,7 @@ namespace Nethermind.Trie.Pruning
                 writeBatch.Dispose();
                 deleteTask.Wait();
 
-                foreach (KeyValuePair<HashAndPathAndHash, long> keyValuePair in _persistedLastSeens)
+                foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in _persistedLastSeens)
                 {
                     if (IsNoLongerNeeded(keyValuePair.Value))
                     {
@@ -692,7 +692,7 @@ namespace Nethermind.Trie.Pruning
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<HashAndPath, Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes)
         {
             if (persistedHashes == null) return;
 
@@ -717,9 +717,9 @@ namespace Nethermind.Trie.Pruning
 
             using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
 
-            void DoAct(KeyValuePair<HashAndPath, Hash256> keyValuePair)
+            void DoAct(KeyValuePair<HashAndTinyPath, Hash256> keyValuePair)
             {
-                HashAndPath key = keyValuePair.Key;
+                HashAndTinyPath key = keyValuePair.Key;
                 if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
@@ -731,10 +731,10 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            ActionBlock<KeyValuePair<HashAndPath, Hash256>> actionBlock =
-                new ActionBlock<KeyValuePair<HashAndPath, Hash256>>(DoAct);
+            ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>> actionBlock =
+                new ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>>(DoAct);
 
-            foreach (KeyValuePair<HashAndPath, Hash256> keyValuePair in persistedHashes)
+            foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
             {
                 actionBlock.Post(keyValuePair);
             }
@@ -938,7 +938,7 @@ namespace Nethermind.Trie.Pruning
             Hash256? address,
             BlockCommitSet commitSet,
             INodeStorage.WriteBatch writeBatch,
-            Dictionary<HashAndPath, Hash256?>? persistedHashes = null,
+            Dictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None
         )
         {
@@ -1246,28 +1246,28 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        private readonly struct HashAndPath(Hash256? hash, TinyTreePath path) : IEquatable<HashAndPath>
+        private readonly struct HashAndTinyPath(Hash256? hash, TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
             public readonly Hash256? addr = hash;
             public readonly TinyTreePath path = path;
 
-            public static implicit operator HashAndPath((Hash256? hash, TinyTreePath path) value) => new HashAndPath(value.hash, value.path);
+            public static implicit operator HashAndTinyPath((Hash256? hash, TinyTreePath path) value) => new HashAndTinyPath(value.hash, value.path);
 
-            public bool Equals(HashAndPath other) => addr == other.addr && path.Equals(other.path);
-            public override bool Equals(object? obj) => obj is HashAndPath other && Equals(other);
+            public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
+            public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode() => (int)BitOperations.Crc32C((uint)path.GetHashCode(), (uint)(addr?.GetHashCode() ?? 0));
         }
 
-        private readonly struct HashAndPathAndHash(Hash256? hash, TinyTreePath path, ValueHash256 valueHash) : IEquatable<HashAndPathAndHash>
+        private readonly struct HashAndTinyPathAndHash(Hash256? hash, TinyTreePath path, ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
         {
             public readonly Hash256? hash = hash;
             public readonly TinyTreePath path = path;
             public readonly ValueHash256 valueHash = valueHash;
 
-            public static implicit operator HashAndPathAndHash((Hash256? hash, TinyTreePath path, ValueHash256 valueHash) value) => new HashAndPathAndHash(value.hash, value.path, value.valueHash);
+            public static implicit operator HashAndTinyPathAndHash((Hash256? hash, TinyTreePath path, ValueHash256 valueHash) value) => new HashAndTinyPathAndHash(value.hash, value.path, value.valueHash);
 
-            public bool Equals(HashAndPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
-            public override bool Equals(object? obj) => obj is HashAndPath other && Equals(other);
+            public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
+            public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
                 uint hashCode = BitOperations.Crc32C((uint)valueHash.GetHashCode(), (uint)path.GetHashCode());
