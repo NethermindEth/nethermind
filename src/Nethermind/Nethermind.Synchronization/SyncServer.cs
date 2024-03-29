@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
-        private readonly LruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
+        private readonly ConcurrentLruCache<ValueHash256, ISyncPeer> _recentlySuggested = new(128, 128, "recently suggested blocks");
 
         private readonly long _pivotNumber;
         private readonly Hash256 _pivotHash;
@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
+            if (_recentlySuggested.SetResult(block.Hash, nodeWhoSentTheBlock))
             {
                 if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {

@@ -40,7 +40,7 @@ public class Engine : IDisposable
 
     private static readonly V8Runtime _runtime = new();
     private static readonly ConcurrentDictionary<string, V8Script> _builtInScripts = new();
-    private static readonly LruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
+    private static readonly ConcurrentLruCache<int, V8Script> _runtimeScripts = new(10, "runtime scripts");
 
     public static Engine? CurrentEngine
     {
@@ -190,7 +190,7 @@ public class Engine : IDisposable
                 }
 
                 script = _runtime.Compile(PackTracerCode(tracer));
-                if (_runtimeScripts.Set(hashCode, script))
+                if (_runtimeScripts.SetResult(hashCode, script))
                 {
                     return script;
                 }

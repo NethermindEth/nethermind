@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         private IValidatorStore? _validatorStore = null;
         public IValidatorStore ValidatorStore => _validatorStore ??= new ValidatorStore(DbProvider!.BlockInfosDb);
 
-        public LruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
+        public ConcurrentLruCache<ValueHash256, UInt256> TransactionPermissionContractVersions { get; }
             = new(
                 PermissionBasedTxFilter.Cache.MaxCacheSize,
                 nameof(TransactionPermissionContract));

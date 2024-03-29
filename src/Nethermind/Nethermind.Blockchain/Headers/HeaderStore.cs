@@ -21,7 +21,7 @@ public class HeaderStore : IHeaderStore
     private readonly IDb _headerDb;
     private readonly IDb _blockNumberDb;
     private readonly HeaderDecoder _headerDecoder = new();
-    private readonly LruCache<ValueHash256, BlockHeader> _headerCache =
+    private readonly ConcurrentLruCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize, CacheSize, "headers");
 
     public HeaderStore(IDb headerDb, IDb blockNumberDb)

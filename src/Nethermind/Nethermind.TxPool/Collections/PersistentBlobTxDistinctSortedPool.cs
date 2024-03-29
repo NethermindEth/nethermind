@@ -15,7 +15,7 @@ namespace Nethermind.TxPool.Collections;
 public class PersistentBlobTxDistinctSortedPool : BlobTxDistinctSortedPool
 {
     private readonly ITxStorage _blobTxStorage;
-    private readonly LruCache<ValueHash256, Transaction> _blobTxCache;
+    private readonly ConcurrentLruCache<ValueHash256, Transaction> _blobTxCache;
     private readonly ILogger _logger;
 
     public PersistentBlobTxDistinctSortedPool(ITxStorage blobTxStorage, ITxPoolConfig txPoolConfig, IComparer<Transaction> comparer, ILogManager logManager)

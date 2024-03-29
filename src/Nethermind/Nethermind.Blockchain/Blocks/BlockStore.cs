@@ -20,7 +20,7 @@ public class BlockStore : IBlockStore
     private readonly BlockDecoder _blockDecoder = new();
     private const int CacheSize = 128 + 32;
 
-    private readonly LruCache<ValueHash256, Block>
+    private readonly ConcurrentLruCache<ValueHash256, Block>
         _blockCache = new(CacheSize, CacheSize, "blocks");
     private readonly long? _maxSize;
 

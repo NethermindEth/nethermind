@@ -26,11 +26,11 @@ namespace Nethermind.Consensus.Clique
         private readonly IBlockTree _blockTree;
         private readonly ICliqueConfig _cliqueConfig;
         private readonly ILogger _logger;
-        private readonly LruCache<ValueHash256, Address> _signatures;
+        private readonly ConcurrentLruCache<ValueHash256, Address> _signatures;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly IDb _blocksDb;
         private ulong _lastSignersCount = 0;
-        private readonly LruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
+        private readonly ConcurrentLruCache<ValueHash256, Snapshot> _snapshotCache = new(Clique.InMemorySnapshots, "clique snapshots");
 
         public SnapshotManager(ICliqueConfig cliqueConfig, IDb blocksDb, IBlockTree blockTree, IEthereumEcdsa ecdsa, ILogManager logManager)
         {

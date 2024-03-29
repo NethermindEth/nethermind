@@ -237,7 +237,7 @@ namespace Nethermind.Db.Blooms
 
             private readonly IFileStore _fileStore;
             private readonly bool _migrationStatistics;
-            private readonly LruCache<long, Bloom> _cache;
+            private readonly ConcurrentLruCache<long, Bloom> _cache;
 
             public BloomStorageLevel(IFileStore fileStore, in byte level, in int levelElementSize, in int levelMultiplier, bool migrationStatistics)
             {
@@ -246,7 +246,7 @@ namespace Nethermind.Db.Blooms
                 LevelElementSize = levelElementSize;
                 LevelMultiplier = levelMultiplier;
                 _migrationStatistics = migrationStatistics;
-                _cache = new LruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
+                _cache = new ConcurrentLruCache<long, Bloom>(levelMultiplier, levelMultiplier, "blooms");
             }
 
             public void Store(long blockNumber, Bloom bloom)

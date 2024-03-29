@@ -166,7 +166,7 @@ namespace Nethermind.Core.Caching
             static void ThrowInvalidOperationException()
             {
                 throw new InvalidOperationException(
-                    $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
+                    $"{nameof(SpanLruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
             }
         }
 

@@ -18,10 +18,10 @@ namespace Nethermind.Consensus.AuRa.Contracts
         private readonly IDictionary<UInt256, T> _versions;
 
         private readonly IVersionedContract _versionSelectorContract;
-        private readonly LruCache<ValueHash256, UInt256> _versionsCache;
+        private readonly ConcurrentLruCache<ValueHash256, UInt256> _versionsCache;
         private readonly ILogger _logger;
 
-        protected VersionedContract(IDictionary<UInt256, T> versions, LruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager)
+        protected VersionedContract(IDictionary<UInt256, T> versions, ConcurrentLruCache<ValueHash256, UInt256> cache, long activation, ILogManager logManager)
         {
             _versions = versions ?? throw new ArgumentNullException(nameof(versions));
             _versionSelectorContract = versions.Values.Last();

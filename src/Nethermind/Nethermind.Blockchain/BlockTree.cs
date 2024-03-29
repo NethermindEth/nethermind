@@ -46,7 +46,7 @@ namespace Nethermind.Blockchain
         private readonly IDb _metadataDb;
         private readonly IBlockStore _badBlockStore;
 
-        private readonly LruCache<ValueHash256, Block> _invalidBlocks =
+        private readonly ConcurrentLruCache<ValueHash256, Block> _invalidBlocks =
             new(128, 128, "invalid blocks");
 
         private readonly ILogger _logger;

@@ -15,19 +15,19 @@ public static class KeyValueStoreRlpExtensions
 {
     [SkipLocalsInit]
     public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long blockNumber, ValueHash256 hash, IRlpStreamDecoder<TItem> decoder,
-        LruCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+        ConcurrentLruCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         Span<byte> dbKey = stackalloc byte[40];
         KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, hash, dbKey);
         return Get(db, hash, dbKey, decoder, cache, rlpBehaviors, shouldCache);
     }
 
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ValueHash256 key, IRlpStreamDecoder<TItem> decoder, LruCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, ValueHash256 key, IRlpStreamDecoder<TItem> decoder, ConcurrentLruCache<ValueHash256, TItem> cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         return Get(db, key, key.Bytes, decoder, cache, rlpBehaviors, shouldCache);
     }
 
-    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, LruCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
+    public static TItem? Get<TItem>(this IReadOnlyKeyValueStore db, long key, IRlpStreamDecoder<TItem>? decoder, ConcurrentLruCache<long, TItem>? cache = null, RlpBehaviors rlpBehaviors = RlpBehaviors.None, bool shouldCache = true) where TItem : class
     {
         byte[] keyDb = key.ToBigEndianByteArrayWithoutLeadingZeros();
         return Get(db, key, keyDb, decoder, cache, rlpBehaviors, shouldCache);
@@ -38,7 +38,7 @@ public static class KeyValueStoreRlpExtensions
         TCacheKey cacheKey,
         ReadOnlySpan<byte> key,
         IRlpStreamDecoder<TItem> decoder,
-        LruCache<TCacheKey, TItem> cache = null,
+        ConcurrentLruCache<TCacheKey, TItem> cache = null,
         RlpBehaviors rlpBehaviors = RlpBehaviors.None,
         bool shouldCache = true
     ) where TItem : class

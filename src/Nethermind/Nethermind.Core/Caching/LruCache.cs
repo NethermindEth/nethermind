@@ -2,39 +2,26 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
-using System.Threading;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class LruCache<TKey, TValue> : IThreadPoolWorkItem, ICache<TKey, TValue> where TKey : notnull
+    public sealed class LruCache<TKey, TValue> : ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly ReadWriteLockDisposable _lock = new();
-        private readonly ConcurrentQueue<LinkedListNode<LruCacheItem>> _accesses;
-
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
-        private CancellationTokenSource _cts;
-
-        private long _toProcess;
-        private int _processingLru;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _maxCapacity = maxCapacity;
-            _accesses = new ConcurrentQueue<LinkedListNode<LruCacheItem>>();
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity, (IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity);
-            _cts = new CancellationTokenSource();
+                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>(startCapacity); // do not initialize it at the full capacity
         }
 
         public LruCache(int maxCapacity, string name)
@@ -44,36 +31,18 @@ namespace Nethermind.Core.Caching
 
         public void Clear()
         {
-            // Signal background thread to stop
-            _cts.Cancel();
-
-            using var handle = _lock.AcquireWrite();
-
-            // Signal background thread to stop (two ways)
             _leastRecentlyUsed = null;
-            _accesses.Clear();
             _cacheMap.Clear();
-            _cts = new CancellationTokenSource();
-            // reclear incase background thread set it before accesses were cleared
-            _leastRecentlyUsed = null;
         }
 
         public TValue Get(TKey key) => TryGet(key, out TValue value) ? value : default!;
 
         public bool TryGet(TKey key, out TValue value)
         {
-            bool success = false;
-            LinkedListNode<LruCacheItem>? node;
-
-            using (var handle = _lock.AcquireRead())
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                success = _cacheMap.TryGetValue(key, out node);
-            }
-
-            if (success)
-            {
-                value = node!.Value.Value;
-                ScheduleLruAccounting(node);
+                value = node.Value.Value;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return true;
             }
 
@@ -88,160 +57,65 @@ namespace Nethermind.Core.Caching
                 return Delete(key);
             }
 
-            ref LinkedListNode<LruCacheItem>? node = ref Unsafe.NullRef<LinkedListNode<LruCacheItem>?>();
-            bool exists = false;
-            using (var handle = _lock.AcquireWrite())
-            {
-                node = ref CollectionsMarshal.GetValueRefOrAddDefault(_cacheMap, key, out exists);
-            }
-
-            if (node is not null)
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 node.Value.Value = val;
+                LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+                return false;
             }
             else
             {
-                node = new LinkedListNode<LruCacheItem>(new(key, val));
-            }
+                if (_cacheMap.Count >= _maxCapacity)
+                {
+                    Replace(key, val);
+                }
+                else
+                {
+                    LinkedListNode<LruCacheItem> newNode = new(new(key, val));
+                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                    _cacheMap.Add(key, newNode);
+                }
 
-            ScheduleLruAccounting(node, isGet: false);
-            return !exists;
+                return true;
+            }
         }
 
         public bool Delete(TKey key)
         {
-            LinkedListNode<LruCacheItem>? node = null;
-            bool exists = false;
-            using (var handle = _lock.AcquireWrite())
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
-                exists = _cacheMap.Remove(key, out node);
+                LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, node);
+                _cacheMap.Remove(key);
+                return true;
             }
 
-            if (exists)
-            {
-                ScheduleLruAccounting(node!, isGet: false);
-            }
-
-            return exists;
+            return false;
         }
 
         public bool Contains(TKey key)
         {
-            // Use TryGet to schedule the node for Lru.
-            return TryGet(key, out _);
+            return _cacheMap.ContainsKey(key);
         }
 
-        private void ScheduleLruAccounting(LinkedListNode<LruCacheItem> node, bool isGet = true)
+        private void Replace(TKey key, TValue value)
         {
-            _accesses.Enqueue(node);
-
-            long count = Interlocked.Increment(ref _toProcess);
-            if (count < _maxCapacity && (isGet || _cacheMap.Count < _maxCapacity))
+            LinkedListNode<LruCacheItem>? node = _leastRecentlyUsed;
+            if (node is null)
             {
-                // Can wait
-                return;
+                ThrowInvalidOperationException();
             }
 
-            // Set working if it wasn't (via atomic Interlocked).
-            if (Interlocked.CompareExchange(ref _processingLru, 1, 0) == 0)
+            _cacheMap.Remove(node!.Value.Key);
+
+            node.Value = new(key, value);
+            LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
+            _cacheMap.Add(key, node);
+
+            [DoesNotReturn]
+            static void ThrowInvalidOperationException()
             {
-                Volatile.Write(ref _toProcess, 0);
-                // Wasn't working, schedule.
-                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
-            }
-        }
-
-        void IThreadPoolWorkItem.Execute()
-        {
-            try
-            {
-                ProcessExpiredItems();
-            }
-            catch
-            {
-                // Tear it all down
-                Clear();
-                _processingLru = 0;
-            }
-        }
-
-        private void ProcessExpiredItems()
-        {
-            CancellationToken ct = _cts.Token;
-            while (true)
-            {
-                while (!ct.IsCancellationRequested && _accesses.TryDequeue(out LinkedListNode<LruCacheItem>? node))
-                {
-                    bool exists = false;
-                    using (var handle = _lock.AcquireRead())
-                    {
-                        exists = _cacheMap.ContainsKey(node.Value.Key);
-                    }
-
-                    ref LinkedListNode<LruCacheItem>? leastRecentlyUsed = ref _leastRecentlyUsed;
-                    if (leastRecentlyUsed is null)
-                    {
-                        // Clear has been called
-                        break;
-                    }
-
-                    if (!exists)
-                    {
-                        LinkedListNode<LruCacheItem>.Remove(ref leastRecentlyUsed, node);
-                    }
-                    else if (node.Next is null)
-                    {
-                        LinkedListNode<LruCacheItem>.AddMostRecent(ref leastRecentlyUsed, node);
-                    }
-                    else
-                    {
-                        LinkedListNode<LruCacheItem>.MoveToMostRecent(ref leastRecentlyUsed, node);
-                    }
-                }
-
-                while (!ct.IsCancellationRequested && _cacheMap.Count > _maxCapacity)
-                {
-                    LinkedListNode<LruCacheItem>? leastRecentlyUsed;
-                    using (var handle = _lock.AcquireWrite())
-                    {
-                        leastRecentlyUsed = _leastRecentlyUsed;
-                        if (leastRecentlyUsed is null)
-                        {
-                            // Clear has been called
-                            break;
-                        }
-
-                        _cacheMap.Remove(leastRecentlyUsed.Value.Key, out leastRecentlyUsed);
-                    }
-
-                    LinkedListNode<LruCacheItem>.Remove(ref _leastRecentlyUsed, leastRecentlyUsed!);
-                }
-
-                // All work done.
-
-                // Set _doingWork (0 == false) prior to checking IsEmpty to catch any missed work in interim.
-                // This doesn't need to be volatile due to the following barrier (i.e. it is volatile).
-                _processingLru = 0;
-
-                // Ensure _doingWork is written before IsEmpty is read.
-                // As they are two different memory locations, we insert a barrier to guarantee ordering.
-                Thread.MemoryBarrier();
-
-                // Check if there is work to do
-                if (ct.IsCancellationRequested || _accesses.IsEmpty)
-                {
-                    // Nothing to do, exit.
-                    break;
-                }
-
-                // Is work, can we set it as active again (via atomic Interlocked), prior to scheduling?
-                if (Interlocked.Exchange(ref _processingLru, 1) == 1)
-                {
-                    // Execute has been rescheduled already, exit.
-                    break;
-                }
-
-                // Is work, wasn't already scheduled so continue loop.
+                throw new InvalidOperationException(
+                    $"{nameof(LruCache<TKey, TValue>)} called {nameof(Replace)} when empty.");
             }
         }
 

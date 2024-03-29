@@ -13,8 +13,8 @@ namespace Nethermind.Consensus.AuRa.Validators
         {
             internal LinkedList<PersistentReport> PersistentReports { get; } = new LinkedList<PersistentReport>();
 
-            private readonly LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports =
-                new LruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool>(MaxQueuedReports, "ReportCache");
+            private readonly ConcurrentLruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool> _lastBlockReports =
+                new ConcurrentLruCache<(Address Validator, ReportType ReportType, long BlockNumber), bool>(MaxQueuedReports, "ReportCache");
 
             internal bool AlreadyReported(ReportType reportType, Address validator, in long blockNumber)
             {

@@ -20,7 +20,7 @@ namespace Nethermind.State.Witnesses
         [ThreadStatic]
         private static bool _collectWitness;
 
-        private readonly LruCache<ValueHash256, Hash256[]> _witnessCache = new(256, "Witnesses");
+        private readonly ConcurrentLruCache<ValueHash256, Hash256[]> _witnessCache = new(256, "Witnesses");
 
         public IReadOnlyCollection<Hash256> Collected => _collected;
 
