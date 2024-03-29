@@ -160,6 +160,20 @@ namespace Nethermind.Core.Caching
 
         void IThreadPoolWorkItem.Execute()
         {
+            try
+            {
+                ProcessExpiredItems();
+            }
+            catch
+            {
+                // Tear it all down
+                Clear();
+                _doingWork = 0;
+            }
+        }
+
+        private void ProcessExpiredItems()
+        {
             CancellationToken ct = _cts.Token;
             while (true)
             {
