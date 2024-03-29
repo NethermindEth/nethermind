@@ -207,22 +207,34 @@ namespace Nethermind.JsonRpc.Test.Modules
         [TestCase(5, 3, 0)]
         public void GetFeeHistory_GivenValidInputs_FirstBlockNumberCalculatedCorrectly(int blockCount, long newestBlockNumber, long expectedOldestBlockNumber)
         {
-            BlockParameter lastBlockNumber = new(newestBlockNumber);
+            // BlockParameter lastBlockNumber = new(newestBlockNumber);
             IBlockTree blockTree = Substitute.For<IBlockTree>();
-            Block headBlock = Build.A.Block.WithNumber(10).TestObject;
-            Block blockToSetParentOf = headBlock;
-            blockTree.Head.Returns(headBlock);
-            blockTree.FindBlock(lastBlockNumber).Returns(headBlock);
-            Block parentBlock;
-            for (int i = 1; i < blockCount && newestBlockNumber - i >= 0; i++)
+            const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                   BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                   BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
+            Block? parent = null;
+            Block? latestBlock = null;
+            long latestBlockNumber = 0;
+            // build a full chain
+            while (latestBlockNumber <= newestBlockNumber)
             {
-                parentBlock = Build.A.Block.WithNumber(newestBlockNumber - i).TestObject;
-                blockTree.FindParent(blockToSetParentOf, BlockTreeLookupOptions.RequireCanonical).Returns(parentBlock);
-                blockToSetParentOf = parentBlock;
+                latestBlock = parent is not null ? Build.A.Block.WithNumber(latestBlockNumber).WithParent(parent).TestObject : Build.A.Block.Genesis.TestObject;
+                blockTree.FindBlock(latestBlock.Hash!, options, latestBlock.Number).Returns(latestBlock);
+                blockTree.FindParent(latestBlock, BlockTreeLookupOptions.RequireCanonical).Returns(parent);
+                parent = latestBlock;
+                latestBlockNumber++;
             }
+
+            latestBlockNumber--;
+
+            BlockParameter newestBlockParameter = new(latestBlockNumber);
+            blockTree.Head.Returns(latestBlock!);
+            blockTree.FindBlock(new BlockParameter(latestBlockNumber)).Returns(latestBlock);
+
             FeeHistoryOracle feeHistoryOracle = GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
 
-            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, lastBlockNumber);
+            using ResultWrapper<FeeHistoryResults> resultWrapper = feeHistoryOracle.GetFeeHistory(blockCount, newestBlockParameter);
 
             resultWrapper.Data.OldestBlock.Should().Be(expectedOldestBlockNumber);
         }
@@ -398,14 +410,21 @@ namespace Nethermind.JsonRpc.Test.Modules
             {
                 Transaction txFirstBlock = Build.A.Transaction.WithGasPrice(3).TestObject; //Reward: Min (3, 3-2) => 1
                 Transaction txSecondBlock = Build.A.Transaction.WithGasPrice(2).TestObject; //Reward: BaseFee > FeeCap => 0
+
+                const BlockTreeLookupOptions options = BlockTreeLookupOptions.ExcludeTxHashes |
+                                                       BlockTreeLookupOptions.TotalDifficultyNotNeeded |
+                                                       BlockTreeLookupOptions.DoNotCreateLevelIfMissing;
+
                 Block firstBlock = Build.A.Block.Genesis.WithBaseFeePerGas(2).WithGasUsed(3).WithBlobGasUsed(3 * Eip4844Constants.GasPerBlob).WithExcessBlobGas(0).WithGasLimit(5)
                     .WithTransactions(txFirstBlock).TestObject;
                 Block secondBlock = Build.A.Block.WithNumber(1).WithBaseFeePerGas(3).WithGasUsed(2).WithBlobGasUsed(2 * Eip4844Constants.GasPerBlob).WithExcessBlobGas(0).WithGasLimit(8)
-                    .WithTransactions(txSecondBlock).TestObject;
+                    .WithTransactions(txSecondBlock).WithParent(firstBlock).TestObject;
+
                 IBlockTree blockTree = Substitute.For<IBlockTree>();
                 blockTree.FindBlock(blockParameter).Returns(secondBlock);
                 blockTree.Head.Returns(secondBlock);
                 blockTree.FindParent(secondBlock, BlockTreeLookupOptions.RequireCanonical).Returns(firstBlock);
+                blockTree.FindBlock(firstBlock.Hash!, options, firstBlock.Number).Returns(firstBlock);
 
                 IReceiptStorage receiptStorage = Substitute.For<IReceiptStorage>();
                 receiptStorage.Get(firstBlock).Returns(new TxReceipt[] { new() { GasUsed = 3 } });
@@ -416,15 +435,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                     GetSubstitutedFeeHistoryOracle(blockTree: blockTree, receiptStorage: receiptStorage);
                 return feeHistoryOracle1;
             }
-        }
-
-        private static FeeHistoryOracle GetSubstitutedFeeHistoryOracleWithblockTree()
-        {
-            Block headBlock = Build.A.Block.WithNumber(0).TestObject;
-            IBlockTree blockTree = Substitute.For<IBlockTree>();
-            blockTree.Head.Returns(headBlock);
-
-            return GetSubstitutedFeeHistoryOracle(blockTree: blockTree);
         }
 
         private static FeeHistoryOracle GetSubstitutedFeeHistoryOracle(
