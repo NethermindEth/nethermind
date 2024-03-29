@@ -22,6 +22,7 @@ namespace Nethermind.Core.Caching
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
         private CancellationTokenSource _cts;
 
+        private long _toProcess;
         private int _processingLru;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
@@ -134,7 +135,8 @@ namespace Nethermind.Core.Caching
         {
             _accesses.Enqueue(node);
 
-            if (_accesses.Count < _maxCapacity && (isGet || _cacheMap.Count < _maxCapacity))
+            long count = Interlocked.Increment(ref _toProcess);
+            if (count < _maxCapacity && (isGet || _cacheMap.Count < _maxCapacity))
             {
                 // Can wait
                 return;
@@ -143,6 +145,7 @@ namespace Nethermind.Core.Caching
             // Set working if it wasn't (via atomic Interlocked).
             if (Interlocked.CompareExchange(ref _processingLru, 1, 0) == 0)
             {
+                Volatile.Write(ref _toProcess, 0);
                 // Wasn't working, schedule.
                 ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
             }
