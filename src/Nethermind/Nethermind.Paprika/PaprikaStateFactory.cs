@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Paprika.Chain;
@@ -20,6 +21,7 @@ namespace Nethermind.Paprika;
 
 public class PaprikaStateFactory : IStateFactory
 {
+    private readonly ILogger _logger;
     private static readonly long _sepolia = 32.GiB();
     private static readonly long _mainnet = 256.GiB();
 
@@ -37,10 +39,13 @@ public class PaprikaStateFactory : IStateFactory
         _blockchain = new Blockchain(_db, merkle);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+
+        _logger = LimboLogs.Instance.GetClassLogger();
     }
 
-    public PaprikaStateFactory(string directory, IPaprikaConfig config)
+    public PaprikaStateFactory(string directory, IPaprikaConfig config, ILogManager logManager)
     {
+        _logger = logManager.GetClassLogger();
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
@@ -52,6 +57,11 @@ public class PaprikaStateFactory : IStateFactory
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+
+        _blockchain.FlusherFailure += (_, exception) =>
+        {
+            _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
+        };
     }
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);

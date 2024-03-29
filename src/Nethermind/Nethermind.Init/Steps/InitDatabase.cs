@@ -90,7 +90,8 @@ namespace Nethermind.Init.Steps
                     _api.DbProvider = new DbProvider();
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
 
-                    PaprikaStateFactory paprika = new(Path.Combine(initConfig.BaseDbPath, "state"), paprikaConfig);
+                    var statePath = Path.Combine(initConfig.BaseDbPath, "state");
+                    PaprikaStateFactory paprika = new(statePath, paprikaConfig, _api.LogManager);
                     _api.RegisterForBlockFinalized((_, e) =>
                     {
                         foreach (BlockHeader finalized in e.FinalizedBlocks)
