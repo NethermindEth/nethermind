@@ -245,7 +245,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 ? CalculateGasUsed(receipts)
                 // If no receipts available, approximate on GasLimit
                 // We could just go with null here too and just don't return percentiles
-                : txs.Select(tx => tx.GasLimit)); 
+                : txs.Select(tx => tx.GasLimit));
 
             List<RewardInfo> rewardInfos = new(txs.Length);
             for (int i = 0; i < txs.Length; i++)
