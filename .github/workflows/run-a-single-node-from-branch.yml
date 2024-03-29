@@ -328,7 +328,7 @@ jobs:
         echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
 
     - name: Upload RPC URL
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: inputs.custom_run_id != ''
       with:
         name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}

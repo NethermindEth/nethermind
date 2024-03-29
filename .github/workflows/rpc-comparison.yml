@@ -162,29 +162,12 @@ jobs:
 
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
-    runs-on: ubuntu-latest
+    runs-on: [vpn]
     needs: [aggregate_rpcs]
     if: always() && needs.aggregate_rpcs.result == 'success'
     timeout-minutes: 600
     steps:
       - uses: actions/checkout@v3
-      - name: Install WireGuard
-        run: |
-          sudo apt update
-          sudo apt install -y wireguard resolvconf
-          sudo mkdir -p /etc/wireguard
-          envsubst < scripts/wireguard.conf.template > wg0.conf
-          sudo wg-quick up ./wg0.conf
-          sudo wg show
-        env:
-          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
       
       - name: Wait for the nodes to sync
         timeout-minutes: 600
@@ -248,7 +231,7 @@ jobs:
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
-    runs-on: ubuntu-latest
+    runs-on: [vpn]
     needs: [wait_for_node_to_sync, aggregate_rpcs]
     if: always() && needs.aggregate_rpcs.result == 'success' && needs.wait_for_node_to_sync.result == 'success'
     steps:
@@ -256,24 +239,6 @@ jobs:
       - name: Install flood
         run: pip install git+https://github.com/kamilchodola/flood.git
         
-      - name: Install WireGuard
-        run: |
-          sudo apt update
-          sudo apt install -y wireguard resolvconf
-          sudo mkdir -p /etc/wireguard
-          envsubst < scripts/wireguard.conf.template > wg0.conf
-          sudo wg-quick up ./wg0.conf
-          sudo wg show
-        env:
-          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-
       - name: Prepare Comparison Flags
         id: prep_comparison
         env:          
@@ -391,7 +356,7 @@ jobs:
           fi
 
       - name: Upload results as files
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: flood-results
           path: |
