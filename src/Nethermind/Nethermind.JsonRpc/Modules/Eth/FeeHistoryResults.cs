@@ -29,6 +29,8 @@ public class FeeHistoryResults(
     public ArrayPoolList<double> BlobGasUsedRatio { get; } = blobGasUsedRatio;
 
     public long OldestBlock { get; } = oldestBlock;
+    
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public ArrayPoolList<ArrayPoolList<UInt256>>? Reward { get; } = reward;
 
     public void Dispose()
@@ -37,14 +39,6 @@ public class FeeHistoryResults(
         BaseFeePerBlobGas.Dispose();
         GasUsedRatio.Dispose();
         BlobGasUsedRatio.Dispose();
-        if (Reward != null)
-        {
-            foreach (ArrayPoolList<UInt256> item in Reward)
-            {
-                item?.Dispose();
-            }
-
-            Reward.Dispose();
-        }
+        Reward?.DisposeRecursive();
     }
 }

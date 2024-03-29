@@ -51,7 +51,7 @@ public partial class EthRpcModuleTests
              ).ToArray();
 
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockTree blockFinder = Substitute.For<IBlockTree>();
         blockFinder.Head.Returns(Build.A.Block.WithNumber(excessBlobGas.Length - 1).TestObject);
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>())
             .Returns(ci => blocks[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
