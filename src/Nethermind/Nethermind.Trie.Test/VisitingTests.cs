@@ -66,18 +66,27 @@ public class VisitingTests
         MemDb memDb = new();
 
         using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
-        StorageTree storage = new(trieStore, LimboLogs.Instance);
 
         byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        Hash256 stateRootHash = Keccak.Zero;
 
-        for (int i = 0; i < 64; i++)
+        for (int outi = 0; outi < 64; outi++)
         {
-            ValueHash256 storageKey = default;
-            storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
-            storage.Set(storageKey, value);
+            ValueHash256 stateKey = default;
+            stateKey.BytesAsSpan[outi / 2] = (byte)(1 << (4 * (1 - outi % 2)));
+
+            StorageTree storage = new(trieStore.GetTrieStore(stateKey.ToCommitment()), LimboLogs.Instance);
+            for (int i = 0; i < 64; i++)
+            {
+                ValueHash256 storageKey = default;
+                storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+                storage.Set(storageKey, value);
+            }
+            storage.Commit(0);
+
+            stateRootHash = storage.RootHash;
         }
 
-        storage.Commit(0);
 
         StateTree stateTree = new(trieStore, LimboLogs.Instance);
 
@@ -87,7 +96,7 @@ public class VisitingTests
             stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
 
             stateTree.Set(stateKey,
-                new Account(10, (UInt256)(10_000_000 + i), storage.RootHash, Keccak.OfAnEmptySequenceRlp));
+                new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
         }
 
         stateTree.Commit(0);
@@ -169,6 +178,11 @@ public class VisitingTests
                 @new[Nibbles.Length] = nibble;
 
                 return new PathGatheringContext(@new);
+            }
+
+            public PathGatheringContext AddStorage(in ValueHash256 storage)
+            {
+                return this;
             }
         }
 

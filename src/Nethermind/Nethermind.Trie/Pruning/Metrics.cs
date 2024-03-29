@@ -17,6 +17,10 @@ namespace Nethermind.Trie.Pruning
         public static long PersistedNodeCount { get; set; }
 
         [GaugeMetric]
+        [Description("Nodes that was removed via live pruning.")]
+        public static long RemovedNodeCount { get; set; }
+
+        [GaugeMetric]
         [Description("Nodes that have been committed since the session start. These nodes may have been pruned, persisted or replaced.")]
         public static long CommittedNodesCount { get; set; }
 
