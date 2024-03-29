@@ -197,7 +197,7 @@ namespace Nethermind.Core.Caching
                         leastRecentlyUsed = _leastRecentlyUsed;
                         if (leastRecentlyUsed is null)
                         {
-                             // Clear has been called
+                            // Clear has been called
                             break;
                         }
 
