@@ -20,7 +20,7 @@ using NonBlocking;
 
 namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
 {
-    public class FeeHistoryOracle : IFeeHistoryOracle
+    public class FeeHistoryOracle : IFeeHistoryOracle, IDisposable
     {
         private const int MaxBlockCount = 1024;
         private readonly int _oldestBlockDistanceFromHeadAllowedInCache;
@@ -305,6 +305,11 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             }
 
             return ResultWrapper<FeeHistoryResults>.Success(null);
+        }
+
+        public void Dispose()
+        {
+            _blockTree.BlockAddedToMain -= OnBlockAddedToMain;
         }
     }
 }
