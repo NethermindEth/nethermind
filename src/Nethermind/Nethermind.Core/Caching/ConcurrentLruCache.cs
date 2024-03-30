@@ -11,7 +11,7 @@ namespace Nethermind.Core.Caching
 {
     using NonBlocking;
 
-    public sealed class ConcurrentLruCache<TKey, TValue> : IThreadPoolWorkItem where TKey : notnull
+    public sealed class ConcurrentLruCache<TKey, TValue> : IThreadPoolWorkItem, ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
         private readonly ConcurrentDictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
@@ -87,6 +87,8 @@ namespace Nethermind.Core.Caching
 
             ScheduleLruAccounting(node, isGet: false);
         }
+
+        bool ICache<TKey, TValue>.Set(TKey key, TValue val) => SetResult(key, val);
 
         public bool SetResult(TKey key, TValue val)
         {

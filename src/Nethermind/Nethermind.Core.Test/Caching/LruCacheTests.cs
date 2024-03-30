@@ -10,6 +10,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Core.Test.Caching
 {
+    [TestFixture(typeof(ConcurrentLruCache<Address, Account>))]
     [TestFixture(typeof(LruCache<Address, Account>))]
     public class LruCacheTests<TCache>
     {
