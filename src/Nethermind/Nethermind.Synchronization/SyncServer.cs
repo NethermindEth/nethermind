@@ -181,7 +181,7 @@ namespace Nethermind.Synchronization
                 return;
             }
 
-            if (_recentlySuggested.SetResult(block.Hash, nodeWhoSentTheBlock))
+            if (_recentlySuggested.Set(block.Hash, nodeWhoSentTheBlock))
             {
                 if (_specProvider.TerminalTotalDifficulty is not null && block.TotalDifficulty >= _specProvider.TerminalTotalDifficulty)
                 {

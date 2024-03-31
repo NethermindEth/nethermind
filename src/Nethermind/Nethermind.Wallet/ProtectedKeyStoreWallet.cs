@@ -22,7 +22,7 @@ namespace Nethermind.Wallet
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly ConcurrentLruCache<String, ProtectedPrivateKey> _unlockedAccounts;
+        private readonly NonBlockingLruCache<String, ProtectedPrivateKey> _unlockedAccounts;
         public event EventHandler<AccountLockedEventArgs> AccountLocked;
         public event EventHandler<AccountUnlockedEventArgs> AccountUnlocked;
 
@@ -33,7 +33,7 @@ namespace Nethermind.Wallet
             _timestamper = timestamper ?? Timestamper.Default;
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             // maxCapacity - 100, is just an estimate here
-            _unlockedAccounts = new ConcurrentLruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
+            _unlockedAccounts = new NonBlockingLruCache<string, ProtectedPrivateKey>(100, nameof(ProtectedKeyStoreWallet));
         }
 
         public void Import(byte[] keyData, SecureString passphrase)

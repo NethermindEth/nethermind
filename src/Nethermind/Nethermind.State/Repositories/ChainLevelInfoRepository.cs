@@ -14,7 +14,7 @@ namespace Nethermind.State.Repositories
         private const int CacheSize = 64;
 
         private readonly object _writeLock = new();
-        private readonly ConcurrentLruCache<long, ChainLevelInfo> _blockInfoCache = new ConcurrentLruCache<long, ChainLevelInfo>(CacheSize, CacheSize, "chain level infos");
+        private readonly NonBlockingLruCache<long, ChainLevelInfo> _blockInfoCache = new NonBlockingLruCache<long, ChainLevelInfo>(CacheSize, CacheSize, "chain level infos");
 
         private readonly IDb _blockInfoDb;
 

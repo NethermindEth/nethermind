@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -103,8 +104,23 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             public const int MaxCacheSize = 4096;
 
-            internal ConcurrentLruCache<(Hash256 ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
-                new ConcurrentLruCache<(Hash256 ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
+            internal ConcurrentLruCache<Key, (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
+                new ConcurrentLruCache<Key, (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
+            
+            /// <summary>
+            /// ValueTuples are terrible for performance as a Dictionary key
+            /// </summary>
+            internal readonly struct Key(Hash256 parentHash, Address sender) : IEquatable<Key>
+            {
+                public readonly Hash256 ParentHash = parentHash;
+                public readonly Address Sender = sender;
+
+                public static implicit operator Key((Hash256 ParentHash, Address Sender) value) => new (value.ParentHash, value.Sender);
+
+                public bool Equals(Key other) => ParentHash == other.ParentHash && Sender == other.Sender;
+                public override bool Equals(object? obj) => obj is Key other && Equals(other);
+                public override int GetHashCode() => (int)BitOperations.Crc32C((uint)ParentHash.GetHashCode(), (uint)Sender.GetHashCode());
+            }
         }
     }
 }

@@ -5,18 +5,17 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
-using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Threading;
 
 namespace Nethermind.Core.Caching
 {
-    public sealed class ConcurrentLruCache<TKey, TValue> : IThreadPoolWorkItem, ICache<TKey, TValue> where TKey : notnull
+    using NonBlocking;
+
+    public sealed class NonBlockingLruCache<TKey, TValue> : IThreadPoolWorkItem, ICache<TKey, TValue> where TKey : notnull
     {
         private readonly int _maxCapacity;
-        private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
-        private readonly ReadWriteLockDisposable _lock = new();
+        private readonly ConcurrentDictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly ConcurrentQueue<LinkedListNode<LruCacheItem>> _accesses;
 
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
@@ -25,19 +24,22 @@ namespace Nethermind.Core.Caching
         private long _toProcess;
         private int _processingLru;
 
-        public ConcurrentLruCache(int maxCapacity, int startCapacity, string name)
+        public NonBlockingLruCache(int maxCapacity, int startCapacity, string name)
         {
+            // Both types of concurrent dictionary heavily allocate if key is larger than pointer size.
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(IntPtr.Size, Unsafe.SizeOf<TKey>());
+
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _maxCapacity = maxCapacity;
             _accesses = new ConcurrentQueue<LinkedListNode<LruCacheItem>>();
             _cacheMap = typeof(TKey) == typeof(byte[])
-                ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
-                : new Dictionary<TKey, LinkedListNode<LruCacheItem>>();
+                ? new ConcurrentDictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
+                : new ConcurrentDictionary<TKey, LinkedListNode<LruCacheItem>>();
             _cts = new CancellationTokenSource();
         }
 
-        public ConcurrentLruCache(int maxCapacity, string name)
+        public NonBlockingLruCache(int maxCapacity, string name)
             : this(maxCapacity, 0, name)
         {
         }
@@ -48,9 +50,6 @@ namespace Nethermind.Core.Caching
             _cts.Cancel();
             // Signal background thread to stop (two ways)
             _leastRecentlyUsed = null;
-
-            using var handle = _lock.AcquireWrite();
-
             _accesses.Clear();
             _cacheMap.Clear();
             _cts = new CancellationTokenSource();
@@ -62,14 +61,7 @@ namespace Nethermind.Core.Caching
 
         public bool TryGet(TKey key, out TValue value)
         {
-            bool didGet;
-            LinkedListNode<LruCacheItem>? node;
-            using (var handle = _lock.AcquireWrite())
-            {
-                didGet = _cacheMap.TryGetValue(key, out node);
-            }
-
-            if (didGet)
+            if (_cacheMap.TryGetValue(key, out LinkedListNode<LruCacheItem>? node))
             {
                 value = node!.Value.Value;
                 ScheduleLruAccounting(node);
@@ -80,44 +72,54 @@ namespace Nethermind.Core.Caching
             return false;
         }
 
-        public bool Set(TKey key, TValue val)
+        public void Set(TKey key, TValue val)
         {
             if (val is null)
             {
                 Delete(key);
             }
 
-            ref LinkedListNode<LruCacheItem>? node = ref Unsafe.NullRef<LinkedListNode<LruCacheItem>?>();
-            using (var handle = _lock.AcquireWrite())
-            {
-                node = ref CollectionsMarshal.GetValueRefOrAddDefault(_cacheMap, key, out _);
-            }
-
-            bool isNew = false;
-            if (node is null)
-            {
-                node = new (new(key, val));
-                isNew = true;
-            }
-            else
-            {
-                node.Value.Value = val;
-            }
+            LinkedListNode<LruCacheItem> node = _cacheMap.AddOrUpdate(
+                key,
+                (k,v) => new (new(k, v)),
+                (k, node, v) =>
+                {
+                    node.Value.Value = val;
+                    return node;
+                },
+                val);
 
             ScheduleLruAccounting(node, isGet: false);
-            return isNew;
+        }
+
+        bool ICache<TKey, TValue>.Set(TKey key, TValue val) => SetResult(key, val);
+
+        public bool SetResult(TKey key, TValue val)
+        {
+            if (val is null)
+            {
+                return Delete(key);
+            }
+
+            bool exists = false; // Captured by lambda
+            LinkedListNode<LruCacheItem> node = _cacheMap.AddOrUpdate(
+                key,
+                (k,v) => new (new(k, v)),
+                (k, node, v) =>
+                {
+                    exists = true;
+                    node.Value.Value = val;
+                    return node;
+                },
+                val);
+
+            ScheduleLruAccounting(node, isGet: false);
+            return !exists;
         }
 
         public bool Delete(TKey key)
         {
-            bool didRemove;
-            LinkedListNode<LruCacheItem>? node;
-            using (var handle = _lock.AcquireWrite())
-            {
-                didRemove = _cacheMap.Remove(key, out node);
-            }
-
-            if (didRemove)
+            if (_cacheMap.Remove(key, out LinkedListNode<LruCacheItem>? node))
             {
                 ScheduleLruAccounting(node!, isGet: false);
                 return true;
