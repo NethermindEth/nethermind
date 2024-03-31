@@ -27,7 +27,7 @@ namespace Nethermind.Core.Caching
         public NonBlockingLruCache(int maxCapacity, int startCapacity, string name)
         {
             // Both types of concurrent dictionary heavily allocate if key is larger than pointer size.
-            ArgumentOutOfRangeException.ThrowIfGreaterThan(IntPtr.Size, Unsafe.SizeOf<TKey>());
+            ArgumentOutOfRangeException.ThrowIfGreaterThan(Unsafe.SizeOf<TKey>(), IntPtr.Size);
 
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
