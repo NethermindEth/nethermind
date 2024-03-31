@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.AuRa.Validators
                 public readonly ReportType ReportType = reportType;
                 public readonly long BlockNumber = blockNumber;
 
-                public static implicit operator Key((Address validator, ReportType reportType, long blockNumber) value) => new (value.validator, value.reportType, value.blockNumber);
+                public static implicit operator Key((Address validator, ReportType reportType, long blockNumber) value) => new(value.validator, value.reportType, value.blockNumber);
 
                 public bool Equals(Key other) => Validator == other.Validator && ReportType == other.ReportType && BlockNumber == other.BlockNumber;
                 public override bool Equals(object? obj) => obj is Key other && Equals(other);

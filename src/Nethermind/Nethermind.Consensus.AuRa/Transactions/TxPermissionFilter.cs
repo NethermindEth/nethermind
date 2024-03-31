@@ -106,7 +106,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
             internal ConcurrentLruCache<Key, (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
                 new ConcurrentLruCache<Key, (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
-            
+
             /// <summary>
             /// ValueTuples are terrible for performance as a Dictionary key
             /// </summary>
@@ -115,7 +115,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                 public readonly Hash256 ParentHash = parentHash;
                 public readonly Address Sender = sender;
 
-                public static implicit operator Key((Hash256 ParentHash, Address Sender) value) => new (value.ParentHash, value.Sender);
+                public static implicit operator Key((Hash256 ParentHash, Address Sender) value) => new(value.ParentHash, value.Sender);
 
                 public bool Equals(Key other) => ParentHash == other.ParentHash && Sender == other.Sender;
                 public override bool Equals(object? obj) => obj is Key other && Equals(other);

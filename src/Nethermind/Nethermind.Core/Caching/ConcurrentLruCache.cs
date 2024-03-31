@@ -27,6 +27,8 @@ namespace Nethermind.Core.Caching
 
         public ConcurrentLruCache(int maxCapacity, int startCapacity, string name)
         {
+            // Should use NonBlockingLruCache if key is less than or equal to pointer size.
+            ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(IntPtr.Size, Unsafe.SizeOf<TKey>());
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
             _maxCapacity = maxCapacity;
@@ -96,7 +98,7 @@ namespace Nethermind.Core.Caching
             bool isNew = false;
             if (node is null)
             {
-                node = new (new(key, val));
+                node = new(new(key, val));
                 isNew = true;
             }
             else

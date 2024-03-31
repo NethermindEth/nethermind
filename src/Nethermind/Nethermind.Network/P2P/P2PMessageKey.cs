@@ -59,7 +59,7 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
         if (!MessageNames.TryGetValue((Protocol.Protocol, PacketType), out string messageName))
         {
 #if DEBUG
-                throw new NotImplementedException($"Message name for protocol {Protocol.Protocol} message id {PacketType} not set.");
+            throw new NotImplementedException($"Message name for protocol {Protocol.Protocol} message id {PacketType} not set.");
 #else
             return PacketType.ToString(); // Just use the integer directly then
 #endif

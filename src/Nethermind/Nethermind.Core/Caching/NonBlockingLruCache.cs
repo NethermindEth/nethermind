@@ -81,7 +81,7 @@ namespace Nethermind.Core.Caching
 
             LinkedListNode<LruCacheItem> node = _cacheMap.AddOrUpdate(
                 key,
-                (k,v) => new (new(k, v)),
+                (k, v) => new(new(k, v)),
                 (k, node, v) =>
                 {
                     node.Value.Value = val;
@@ -104,7 +104,7 @@ namespace Nethermind.Core.Caching
             bool exists = false; // Captured by lambda
             LinkedListNode<LruCacheItem> node = _cacheMap.AddOrUpdate(
                 key,
-                (k,v) => new (new(k, v)),
+                (k, v) => new(new(k, v)),
                 (k, node, v) =>
                 {
                     exists = true;
