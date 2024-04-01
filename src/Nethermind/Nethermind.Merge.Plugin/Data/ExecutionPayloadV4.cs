@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Text.Json.Serialization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -30,13 +31,26 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
             return false;
         }
         block!.Header.InclusionListSummaryRoot = InclusionListSummaryRoot;
+        block!.Body.InclusionListSummary = InclusionListSummary;
         return true;
     }
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).IsEip7547Enabled;
 
+
+    /// <summary>
+    ///  Gets or sets <see cref="InclusionListSummary"/> as defined in
+    ///  <see href="https://eips.ethereum.org/EIPS/eip-7547">EIP-7547</see>.
+    /// </summary>
+    [JsonRequired]
     public InclusionListSummary? InclusionListSummary { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="InclusionListSummaryRoot"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7547">EIP-7547</see>.
+    /// </summary>
+    [JsonRequired]
     public Hash256? InclusionListSummaryRoot { get; set; }
 
 }

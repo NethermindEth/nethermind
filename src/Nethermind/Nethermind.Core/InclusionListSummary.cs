@@ -10,18 +10,16 @@ namespace Nethermind.Core;
 public class InclusionListSummary
 {
 
-    public InclusionListSummary(ulong slot, ulong proposerIndex, ulong nonce, Hash256 hash, InclusionListSummaryEntry[] summary)
+    public InclusionListSummary(ulong slot, ulong proposerIndex, Hash256 parentHash, InclusionListSummaryEntry[] summary)
     {
         Slot = slot;
         ProposerIndex = proposerIndex;
-        Nonce = nonce;
-        Hash = hash;
+        ParentHash = parentHash;
         Summary = summary;
     }
 
     public ulong Slot { get; set; }
     public ulong ProposerIndex { get; set; }
-    public ulong Nonce { get; set; }
-    public Hash256 Hash { get; set; }
+    public Hash256 ParentHash { get; set; }
     public InclusionListSummaryEntry[] Summary { get; set; }
 }
