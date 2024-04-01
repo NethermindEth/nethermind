@@ -150,6 +150,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
+            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
             _api.SpecProvider!,
             _api.BlockTree!,
             _api.ReceiptStorage!,
