@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -21,6 +22,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
         private readonly IDb _metadataDb;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
+        private readonly IPoSSwitcher _poSSwitcher;
         private BlockHeader? _currentBeaconPivot;
 
         private BlockHeader? CurrentBeaconPivot
@@ -45,12 +47,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             ISyncConfig syncConfig,
             IDb metadataDb,
             IBlockTree blockTree,
+            IPoSSwitcher poSSwitcher,
             ILogManager logManager)
         {
             _syncConfig = syncConfig;
             _metadataDb = metadataDb;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
+            _poSSwitcher = poSSwitcher;
             LoadBeaconPivot();
         }
 
@@ -112,10 +116,7 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     return;
                 }
 
-                if (blockHeader.TotalDifficulty is null && _syncConfig.PivotTotalDifficulty is not null)
-                {
-                    blockHeader.TotalDifficulty = _syncConfig.PivotTotalDifficultyParsed;
-                }
+                blockHeader.TotalDifficulty ??= _poSSwitcher.FinalTotalDifficulty;
 
                 // BeaconHeaderSync actually starts from the parent of the pivot. So we need to manually insert
                 // the pivot itself here.

@@ -326,7 +326,7 @@ namespace Nethermind.Synchronization.Test
                     mergeConfig.TerminalTotalDifficulty = UInt256.MaxValue.ToString(CultureInfo.InvariantCulture);
                 }
                 PoSSwitcher poSSwitcher = new(mergeConfig, syncConfig, dbProvider.MetadataDb, BlockTree, new TestSingleReleaseSpecProvider(Constantinople.Instance), new ChainSpec(), _logManager);
-                IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, _logManager);
+                IBeaconPivot beaconPivot = new BeaconPivot(syncConfig, dbProvider.MetadataDb, BlockTree, poSSwitcher, _logManager);
 
                 TrieStore trieStore = new(stateDb, LimboLogs.Instance);
                 TotalDifficultyBetterPeerStrategy totalDifficultyBetterPeerStrategy = new(LimboLogs.Instance);
