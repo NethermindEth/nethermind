@@ -21,16 +21,23 @@ namespace Ethereum.Test.Base
         [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
         public Dictionary<UInt256, byte[]> Storage { get; set; }
 
-        public static AccountState GetFromAccount(Address address, WorldState stateProvider)
+        public static AccountState GetFromAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, byte[]>> storages)
         {
             var account = stateProvider.GetAccount(address);
             var code = stateProvider.GetCode(address);
-            return new AccountState()
+            var accountState = new AccountState()
             {
                 Nonce = account.Nonce,
                 Balance = account.Balance,
                 Code = code.Length == 0 ? null : code
             };
+
+            if (storages.TryGetValue(address, out var storage))
+            {
+                accountState.Storage = storage;
+            }
+
+            return accountState;
         }
 
         public bool IsEmptyAccount()

@@ -207,7 +207,7 @@ public class T8NTool
 
         CalculateReward(stateReward, block, stateProvider, spec);
 
-        BlockReceiptsTracer tracer = new();
+        T8NToolTracer tracer = new();
         tracer.StartNewBlockTrace(block);
         var withdrawalProcessor = new WithdrawalProcessor(stateProvider, _logManager);
         withdrawalProcessor.ProcessWithdrawals(block, spec);
@@ -282,14 +282,14 @@ public class T8NTool
             BlobGasUsed = header.BlobGasUsed
         };
         
-        var accounts = allocJson.Keys.ToDictionary(address => address, address => AccountState.GetFromAccount(address, stateProvider));
+        var accounts = allocJson.Keys.ToDictionary(address => address, address => AccountState.GetFromAccount(address, stateProvider, tracer.storages));
         foreach (Ommer ommer in envInfo.Ommers)
         {
-            accounts.Add(ommer.Address, AccountState.GetFromAccount(ommer.Address, stateProvider));
+            accounts.Add(ommer.Address, AccountState.GetFromAccount(ommer.Address, stateProvider, tracer.storages));
         }
         if (header.Beneficiary != null)
         {
-            accounts.Add(header.Beneficiary, AccountState.GetFromAccount(header.Beneficiary, stateProvider));
+            accounts.Add(header.Beneficiary, AccountState.GetFromAccount(header.Beneficiary, stateProvider, tracer.storages));
         }
 
         accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
