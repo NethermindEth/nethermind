@@ -450,14 +450,13 @@ namespace Nethermind.TxPool
             if (tx.Hash == removed?.Hash)
             {
                 // it means it was added and immediately evicted - pool was full of better txs
-                if (isPersistentBroadcast)
+                if (!isPersistentBroadcast || tx.SupportsBlobs)
                 {
-                    // we are adding only to persistent broadcast - not good enough for standard pool,
-                    // but can be good enough for TxBroadcaster pool - for local txs only
-                    _broadcaster.Broadcast(tx, isPersistentBroadcast);
+                    Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
+                    return AcceptTxResult.FeeTooLowToCompete;
                 }
-                Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
-                return AcceptTxResult.FeeTooLowToCompete;
+                // we are adding only to persistent broadcast - not good enough for standard pool,
+                // but can be good enough for TxBroadcaster pool - for local txs only
             }
 
             relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
