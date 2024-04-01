@@ -26,7 +26,7 @@ public class McsLock
     /// </summary>
     private volatile ThreadNode? _tail;
 
-    internal volatile ThreadNode? currentLockHolder = null;
+    internal volatile ThreadNode? _currentLockHolder = null;
 
     /// <summary>
     /// Acquires the lock. If the lock is already held, the calling thread is placed into a queue and
@@ -37,7 +37,7 @@ public class McsLock
         ThreadNode node = _node.Value!;
 
         // Check for reentrancy.
-        if (ReferenceEquals(node, currentLockHolder))
+        if (ReferenceEquals(node, _currentLockHolder))
             ThrowInvalidOperationException();
 
         node.State = (nuint)LockState.Waiting;
@@ -49,7 +49,7 @@ public class McsLock
         }
 
         // Set current lock holder.
-        currentLockHolder = node;
+        _currentLockHolder = node;
 
         return new Disposable(this);
 
@@ -136,7 +136,7 @@ public class McsLock
                 if (Interlocked.CompareExchange(ref _lock._tail, null, node) == node)
                 {
                     // Clear current lock holder.
-                    _lock.currentLockHolder = null;
+                    _lock._currentLockHolder = null;
                     return;
                 }
 
@@ -148,7 +148,7 @@ public class McsLock
 
             ThreadNode next = node.Next!;
             // Clear current lock holder.
-            _lock.currentLockHolder = null;
+            _lock._currentLockHolder = null;
             // Pass the lock to the next thread by setting its 'Locked' flag to false.
             next.State = (nuint)LockState.ReadyToAcquire;
 
