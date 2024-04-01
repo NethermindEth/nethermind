@@ -1,10 +1,25 @@
+using System.Collections.Concurrent;
 using System.Text.RegularExpressions;
 
 bool doLog = true;
 
+if (args.Intersect(["--help", "-h", "help", "?"]).Any())
+{
+    Console.WriteLine(
+@"Transforms hive test execution output into sh/ps1/http scripts with big inputs dumped as separate files:
+
+    ./HiveToScripts.exe [<path-to-hive-logs> [<output-path> [<json-rpc-url>]]]
+
+Example:
+
+    ./HiveToScripts.exe T:\logs T:\output http://localhost:8551
+");
+    return;
+}
+
 string hiveLogsDirectory = args.Length > 0 ? args[0] : "logs";
 
-if(Directory.Exists(Path.Combine(hiveLogsDirectory, "logs")))
+if (Directory.Exists(Path.Combine(hiveLogsDirectory, "logs")))
 {
     hiveLogsDirectory = Path.Combine(hiveLogsDirectory, "logs");
 }
@@ -13,6 +28,7 @@ string outputDirectory = args.Length > 1 ? args[1] : "output";
 string jsonrpcUrl = args.Length > 2 ? args[2] : "http://localhost:8551";
 
 string[] simulatorFilePaths = Directory.GetFiles(hiveLogsDirectory, "*-simulator-*.log").Select(f => Path.Combine(outputDirectory, f)).ToArray();
+ConcurrentDictionary<string, TextWriter> fileDescriptors = new();
 
 foreach (string simulatorFilePath in simulatorFilePaths)
 {
@@ -29,7 +45,7 @@ foreach (string simulatorFilePath in simulatorFilePaths)
     if (doLog) Console.WriteLine($"Running...");
     HashSet<string> createdFiles = [];
 
-    string testListFile = Path.Combine(outputDirectory, "__tests.txt");
+    using StreamWriter testListWriter = new(Path.Combine(outputDirectory, "__tests.txt"));
     HashSet<string> reportedContainers = [];
 
     Regex starter = new("^>>\\s+\\(([a-f0-9]+)\\)\\s+");
@@ -42,9 +58,9 @@ foreach (string simulatorFilePath in simulatorFilePaths)
     {
         if (!line.StartsWith(">>"))
         {
-            if(line.StartsWith("Start test"))
+            if (line.StartsWith("Start test"))
             {
-                File.AppendAllText(testListFile, $"{line.Replace("Start test ", "")}\n");
+                testListWriter.WriteLine(line.Replace("Start test ", ""));
             }
             continue;
         }
@@ -53,7 +69,7 @@ foreach (string simulatorFilePath in simulatorFilePaths)
         if (!reportedContainers.Contains(container))
         {
             reportedContainers.Add(container);
-            File.AppendAllText(testListFile, $"{container}\n");
+            testListWriter.WriteLine(container);
         }
 
         string value = starter.Replace(line, "");
@@ -103,7 +119,7 @@ foreach (string simulatorFilePath in simulatorFilePaths)
             string dataFile = string.Format(filename, container, $"data-{++fileCounter}.txt");
             File.WriteAllText(dataFile, json);
 
-            File.AppendAllText(string.Format(filename, container, "http"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "http"), OpenFile).Write(@$"
 ###
 POST {jsonrpcUrl}
 Content-Type: application/json
@@ -111,20 +127,19 @@ Content-Type: application/json
 <@ {dataFile}
 ");
 
-            File.AppendAllText(string.Format(filename, container, "ps1"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "ps1"), OpenFile).Write(@$"
 $json = Get-Content {dataFile} -Raw
 Invoke-WebRequest -Method POST -Uri {jsonrpcUrl} -Headers @{{'content-type'='application/json'}} -Body $json | Select-Object -expand RawContent
 ");
 
-
-            File.AppendAllText(string.Format(filename, container, "sh"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "sh"), OpenFile).Write(@$"
 curl -s --request POST --url {jsonrpcUrl} --header 'content-type: application/json' --data '@{dataFile}'
 sleep 1; echo ""
 ");
         }
         else
         {
-            File.AppendAllText(string.Format(filename, container, "http"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "http"), OpenFile).Write(@$"
 ###
 POST {jsonrpcUrl}
 Content-Type: application/json
@@ -133,18 +148,23 @@ Content-Type: application/json
 ");
             json = json.Replace("\r", " ").Replace("\n", " ").Replace("'", "''");
 
-            File.AppendAllText(string.Format(filename, container, "ps1"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "ps1"), OpenFile).Write(@$"
 Invoke-WebRequest -Method POST -Uri {jsonrpcUrl} -Headers @{{'content-type'='application/json'}} -Body '{json}' | Select-Object -expand RawContent
 ");
 
-            File.AppendAllText(string.Format(filename, container, "sh"), @$"
+            fileDescriptors.GetOrAdd(string.Format(filename, container, "sh"), OpenFile).Write(@$"
 curl -s --request POST --url {jsonrpcUrl} --header 'content-type: application/json' --data '{json}'
 sleep 1; echo """"
 ");
 
         }
-
     }
 }
 
+foreach (TextWriter tw in fileDescriptors.Values)
+{
+    tw.Dispose();
+}
 if (doLog) Console.WriteLine($"Done!");
+
+static TextWriter OpenFile(string filePath) => new StreamWriter(filePath);

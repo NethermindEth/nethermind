@@ -4,7 +4,7 @@ Hive produces verbose output while running tests, it's enough to reproduce test 
 The only barrier is log trimming, which is turned off in flcl42/hive repo and will be soon disabled in case of **log level > 3** in the main hive repo.
 So to extract test cases in form of script, the following needs to be done:
 
-0. In case of pipeline usage download the logs and unpack them
+0. In case of pipeline usage: `flcl42/hive` should be set as hive repo instead of `ethereum/hive`, log level should be > 3, download the logs and unpack them after run 
 1. Confirm the logs were not trimmed
 2. Typically the directory has a `logs` entry that contains `*-simulator-*.log` files - it's the first input for the tool<br>
    Output directory and JSONRPC URL should be passed also:
