@@ -5,8 +5,9 @@ using System.Collections;
 using System.Collections.Generic;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using NUnit.Framework;
+
 namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
