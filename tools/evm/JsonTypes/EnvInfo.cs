@@ -48,16 +48,9 @@ namespace Evm.JsonTypes
             blockHeaderBuilder.WithParentBeaconBlockRoot(ParentBeaconBlockRoot);
             if (CurrentBaseFee.HasValue) blockHeaderBuilder.WithBaseFee(CurrentBaseFee.Value);
             blockHeaderBuilder.WithTimestamp(CurrentTimestamp);
-            if (CurrentRandom != null) blockHeaderBuilder.WithMixHash(ConvertToHash256(CurrentRandom));
+            if (CurrentRandom != null) blockHeaderBuilder.WithMixHash(Utils.ConvertToHash256(CurrentRandom));
 
             return blockHeaderBuilder.TestObject;
-        }
-
-        private static Hash256 ConvertToHash256(byte[] bytes)
-        {
-            var updatedBytes = new byte[32];
-            Array.Copy(bytes, 0, updatedBytes, 32 - bytes.Length, bytes.Length);
-            return new Hash256(updatedBytes);
         }
 
         public BlockHeader GetParentBlockHeader()

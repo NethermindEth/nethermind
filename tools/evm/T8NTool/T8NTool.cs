@@ -41,7 +41,7 @@ public class T8NTool
     public T8NTool()
     {
         _ethereumJsonSerializer = new EthereumJsonSerializer();
-        // EthereumJsonSerializer.AddConverter(new AccountJsonConverter());
+        EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
         EthereumJsonSerializer.AddConverter(new ReceiptJsonConverter());
     }
 
