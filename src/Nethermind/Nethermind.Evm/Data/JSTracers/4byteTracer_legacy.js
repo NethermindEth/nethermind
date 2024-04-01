@@ -14,12 +14,12 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-// 4byteTracer searches for 4byte-identifiers, and collects them for post-processing.
+// 4byteTracer_legacy searches for 4byte-identifiers, and collects them for post-processing.
 // It collects the methods identifiers along with the size of the supplied data, so
 // a reversed signature can be matched against the size of the data.
 //
 // Example:
-//   > debug.traceTransaction( "0x214e597e35da083692f5386141e69f47e973b2c56e7a8073b1ea08fd7571e9de", {tracer: "4byteTracer"})
+//   > debug.traceTransaction( "0x214e597e35da083692f5386141e69f47e973b2c56e7a8073b1ea08fd7571e9de", {tracer: "4byteTracer_legacy"})
 //   {
 //     0x27dc297e-128: 1,
 //     0x38cc4831-0: 2,
