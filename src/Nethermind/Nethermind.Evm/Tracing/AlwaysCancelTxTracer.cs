@@ -46,7 +46,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) => throw new OperationCanceledException(ErrorMessage);
+    public void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 

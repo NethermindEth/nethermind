@@ -34,5 +34,6 @@ public readonly struct TraceStack
         return hexWordList;
     }
 
-    public UInt256 Peek(int index) => new(this[^(index + 1)].Span, true);
+    public ReadOnlySpan<byte> Peek(int index) => this[^(index + 1)].Span;
+    public UInt256 PeekUInt256(int index) => new(Peek(index), true);
 }

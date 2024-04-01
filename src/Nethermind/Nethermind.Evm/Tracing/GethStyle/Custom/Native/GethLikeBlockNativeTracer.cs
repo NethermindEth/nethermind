@@ -2,8 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.State;
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
@@ -11,34 +9,19 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
 {
     private readonly GethTraceOptions _options;
     private readonly IWorldState _worldState;
-    private readonly IReleaseSpec _spec;
-    private Context _context;
-    private UInt256 _baseFee;
-    public struct Context
-    {
-        public UInt256 GasPrice;
-        public long GasLimit;
-        public Address ContractAddress;
-    }
+    private NativeTracerContext _context;
 
-    public GethLikeBlockNativeTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
+    public GethLikeBlockNativeTracer(IWorldState worldState, GethTraceOptions options) : base(options.TxHash)
     {
         _worldState = worldState;
         _options = options;
-        _spec = spec;
-        _context = new Context();
-    }
-
-    public override void StartNewBlockTrace(Block block)
-    {
-        _baseFee = block.BaseFeePerGas;
-        base.StartNewBlockTrace(block);
+        _context = new NativeTracerContext();
     }
 
     protected override GethLikeNativeTxTracer OnStart(Transaction? tx)
     {
-        _context.GasPrice = tx!.CalculateEffectiveGasPrice(_spec.IsEip1559Enabled, _baseFee);
-        _context.GasLimit = tx.GasLimit;
+        _context.From = tx?.SenderAddress;
+        _context.To = tx?.To;
         return GethLikeNativeTracerFactory.CreateTracer(_worldState, _context, _options);
     }
 

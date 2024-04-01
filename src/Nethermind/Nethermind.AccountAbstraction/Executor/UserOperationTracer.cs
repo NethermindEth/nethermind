@@ -83,7 +83,7 @@ namespace Nethermind.AccountAbstraction.Executor
             Output = output;
         }
 
-        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
         {
             if (_nextOpcodeMustBeCall)
             {

@@ -13,11 +13,10 @@ public static class GethLikeNativeTracerFactory
 {
     static GethLikeNativeTracerFactory() => RegisterNativeTracers();
 
-    private static readonly Dictionary<string, Func<IWorldState, GethLikeBlockNativeTracer.Context, GethTraceOptions, GethLikeNativeTxTracer>> _tracers = new();
+    private static readonly Dictionary<string, Func<IWorldState, NativeTracerContext, GethTraceOptions, GethLikeNativeTxTracer>> _tracers = new();
 
-    // TODO: move native context into a separate file
-    public static GethLikeNativeTxTracer CreateTracer(IWorldState worldState, GethLikeBlockNativeTracer.Context context, GethTraceOptions options) =>
-        _tracers.TryGetValue(options.Tracer, out Func<IWorldState, GethLikeBlockNativeTracer.Context, GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
+    public static GethLikeNativeTxTracer CreateTracer(IWorldState worldState, NativeTracerContext context, GethTraceOptions options) =>
+        _tracers.TryGetValue(options.Tracer, out Func<IWorldState, NativeTracerContext, GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
         ? tracerFunc(worldState, context, options)
         : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
 
@@ -32,7 +31,7 @@ public static class GethLikeNativeTracerFactory
         RegisterTracer(NativePrestateTracer.PrestateTracer, (worldState, context, options) => new NativePrestateTracer(worldState, context, options));
     }
 
-    private static void RegisterTracer(string tracerName, Func<IWorldState, GethLikeBlockNativeTracer.Context, GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
+    private static void RegisterTracer(string tracerName, Func<IWorldState, NativeTracerContext, GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
     {
         _tracers.Add(tracerName, tracerFunc);
     }
