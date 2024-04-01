@@ -301,12 +301,12 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
-        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+        void handleNewBlock(object? sender, BlockEventArgs e)
         {
             blockHash = e.Block.Hash;
-            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+            test.BlockTree.NewHeadBlock -= handleNewBlock;
         }
-        test.BlockTree.BlockAddedToMain += handleNewBlock;
+        test.BlockTree.NewHeadBlock += handleNewBlock;
 
         var newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", "{\"fromBlock\":\"latest\"}");
         string getFilterLogsSerialized1 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
@@ -494,12 +494,13 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
-        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+
+        void handleNewBlock(object? sender, BlockEventArgs e)
         {
             blockHash = e.Block.Hash;
-            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+            test.BlockTree.NewHeadBlock -= handleNewBlock;
         }
-        test.BlockTree.BlockAddedToMain += handleNewBlock;
+        test.BlockTree.NewHeadBlock += handleNewBlock;
 
         await test.AddBlock(createCodeTx);
 
