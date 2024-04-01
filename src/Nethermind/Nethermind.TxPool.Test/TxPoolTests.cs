@@ -508,6 +508,40 @@ namespace Nethermind.TxPool.Test
             result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.FeeTooLowToCompete) : nameof(AcceptTxResult.FeeTooLow));
         }
 
+        [TestCase(true)]
+        [TestCase(false)]
+        public void should_accept_underpaid_txs_if_persistent(bool isPersistentBroadcast) {
+            // copy and past of the code above for my test use.
+            TxHandlingOptions txHandlingOptions = isPersistentBroadcast ? TxHandlingOptions.PersistentBroadcast : TxHandlingOptions.None;
+
+            _txPool = CreatePool(new TxPoolConfig() { Size = 1 });
+
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+
+            foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
+            {
+                EnsureSenderBalance(address, UInt256.MaxValue);
+            }
+
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10;
+                _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            }
+
+            Transaction tx = Build.A.Transaction
+                .WithGasPrice(UInt256.Zero)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA)
+                .TestObject;
+            EnsureSenderBalance(tx.SenderAddress, UInt256.MaxValue);
+            _txPool.GetPendingTransactionsCount().Should().Be(1);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(0);
+            AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
+            _txPool.GetPendingTransactionsCount().Should().Be(1);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(isPersistentBroadcast ? 1 : 0);
+            result.ToString().Should().Contain(isPersistentBroadcast ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
+        }
+
         [TestCase(0)]
         [TestCase(1)]
         [TestCase(2)]
