@@ -3,10 +3,12 @@
 
 using System;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Validators;
@@ -129,21 +131,14 @@ namespace Nethermind.Merge.Plugin.Synchronization
             bool shouldProcess = (options & DownloaderOptions.Process) == DownloaderOptions.Process;
             bool shouldMoveToMain = (options & DownloaderOptions.MoveToMain) == DownloaderOptions.MoveToMain;
 
-            int blocksSynced = 0;
             long currentNumber = _blockTree.BestKnownNumber;
-
-            BlockHeader? header = _blockTree.FindHeader(currentNumber);
-            if (shouldProcess && header is not null && !_stateReader.HasStateForBlock(header))
-            {
-                shouldProcess = false;
-                downloadReceipts = true;
-            }
+            int blocksSynced = 0;
 
             if (_logger.IsDebug)
                 _logger.Debug(
                     $"MergeBlockDownloader GetCurrentNumber: currentNumber {currentNumber}, beaconPivotExists: {_beaconPivot.BeaconPivotExists()}, BestSuggestedBody: {_blockTree.BestSuggestedBody?.Number}, BestKnownNumber: {_blockTree.BestKnownNumber}, BestPeer: {bestPeer}, BestKnownBeaconNumber {_blockTree.BestKnownBeaconNumber}");
 
-            bool HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest)
+            bool HasMoreToSync([NotNullWhen(true)] out BlockHeader[]? headers, out int headersToRequest)
             {
                 if (_logger.IsDebug)
                     _logger.Debug($"Continue full sync with {bestPeer} (our best {_blockTree.BestKnownNumber})");
@@ -173,6 +168,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 }
 
                 if (cancellation.IsCancellationRequested) return blocksSynced; // check before every heavy operation
+
+                if (shouldProcess)
+                {
+                    BlockHeader? parentHeader = _blockTree.FindHeader(headers[0].ParentHash!);
+                    if (parentHeader is not null && !_stateReader.HasStateForBlock(parentHeader))
+                    {
+                        shouldProcess = false;
+                        downloadReceipts = true;
+                    }
+                }
+
                 Block[]? blocks = null;
                 TxReceipt[]?[]? receipts = null;
                 if (_logger.IsTrace)
