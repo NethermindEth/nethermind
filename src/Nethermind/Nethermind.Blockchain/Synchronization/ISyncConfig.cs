@@ -143,4 +143,7 @@ public interface ISyncConfig : IConfig
 
     [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
     bool? SnapServingEnabled { get; set; }
+
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int MultiSyncModeSelectorLoopTimerMs { get; set; }
 }
