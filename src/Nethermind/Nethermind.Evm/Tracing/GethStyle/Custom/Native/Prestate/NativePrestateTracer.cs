@@ -43,7 +43,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         }
 
         // Look up client coinbase address as well
-        LookupAccount(Address.Zero);
+        LookupAccount(context.Beneficiary ?? Address.Zero);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -125,8 +125,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.CREATE2:
                 if (stackLen >= 4)
                 {
-                    int offset = int.Parse(stack.Peek(1));
-                    int length = int.Parse(stack.Peek(2));
+                    int offset = stack.Peek(1).ReadEthInt32();
+                    int length = stack.Peek(2).ReadEthInt32();
                     ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
                     ReadOnlySpan<byte> salt = stack.Peek(3);
                     address = ContractAddress.From(_executingAccount!, salt, initCode);
@@ -159,7 +159,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void InvokeExit()
     {
-        if (_callers!.TryPop(out Address caller))
+        if (Depth > 0 && _callers!.TryPop(out Address caller))
         {
             _executingAccount = caller;
         }
@@ -167,16 +167,26 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void LookupAccount(Address addr)
     {
-        if (!_prestate.ContainsKey(addr) && _worldState!.TryGetAccount(addr, out AccountStruct account))
+        if (!_prestate.ContainsKey(addr))
         {
-            ulong nonce = (ulong)account.Nonce;
-            byte[]? code = _worldState.GetCode(addr);
-            _prestate.Add(addr, new NativePrestateTracerAccount
+            if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
-                Balance = account.Balance,
-                Nonce = nonce > 0 ? nonce : null,
-                Code = code is not null && code.Length > 0 ? code : null
-            });
+                ulong nonce = (ulong)account.Nonce;
+                byte[]? code = _worldState.GetCode(addr);
+                _prestate.Add(addr, new NativePrestateTracerAccount
+                {
+                    Balance = account.Balance,
+                    Nonce = nonce > 0 ? nonce : null,
+                    Code = code is not null && code.Length > 0 ? code : null
+                });
+            }
+            else
+            {
+                _prestate.Add(addr, new NativePrestateTracerAccount
+                {
+                    Balance = UInt256.Zero
+                });
+            }
         }
     }
 
