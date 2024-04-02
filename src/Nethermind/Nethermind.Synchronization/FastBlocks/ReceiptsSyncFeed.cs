@@ -13,7 +13,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Threading;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Stats.Model;
@@ -42,7 +41,6 @@ namespace Nethermind.Synchronization.FastBlocks
         private readonly ISyncReport _syncReport;
         private readonly IReceiptStorage _receiptStorage;
         private readonly ISyncPeerPool _syncPeerPool;
-        private readonly McsLock _allocatorLock = new();
 
         private SyncStatusList _syncStatusList;
 
@@ -232,16 +230,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {
-                        Block? block;
-                        // Although thread-safe, because the blocks are so large it causes a lot of contention
-                        // on the allocator inside RocksDb; which then impacts block processing heavily, especially on Windows.
-                        // We take the lock here instead to reduce contention on the allocator in the db.
-                        // A better solution would be to change the allocator https://github.com/NethermindEth/nethermind/issues/6107
-                        using (var handle = _allocatorLock.Acquire())
-                        {
-                            block = _blockTree.FindBlock(blockInfo.BlockHash);
-                        }
-
+                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
                         if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)

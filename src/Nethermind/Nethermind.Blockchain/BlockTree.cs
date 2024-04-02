@@ -19,6 +19,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -1292,6 +1293,8 @@ namespace Nethermind.Blockchain
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
 
+        private readonly McsLock _allocatorLock = new();
+
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1303,6 +1306,12 @@ namespace Nethermind.Blockchain
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
+                // Although thread-safe, because the blocks are so large it causes a lot of contention
+                // on the allocator inside RocksDb; which then impacts block processing heavily, especially on Windows.
+                // We take the lock here instead to reduce contention on the allocator in the db.
+                // A better solution would be to change the allocator https://github.com/NethermindEth/nethermind/issues/6107
+                using var handle = _allocatorLock.Acquire();
+
                 block = _blockStore.Get(
                     blockNumber.Value,
                     blockHash,
