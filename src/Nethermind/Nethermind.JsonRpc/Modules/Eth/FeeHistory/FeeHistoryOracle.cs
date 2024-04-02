@@ -46,8 +46,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             Stack<UInt256> baseFeePerGas = new((int)(blockCount + 1));
             baseFeePerGas.Push(BaseFeeCalculator.Calculate(block!.Header, _specProvider.GetSpecFor1559(block!.Number + 1)));
             Stack<UInt256> baseFeePerBlobGas = new((int)(blockCount + 1));
-            BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out UInt256 blobGas);
-            baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
+            BlobGasCalculator.TryCalculateFeePerBlobGas(block!.Header, out UInt256 feePerBlobGas);
+            baseFeePerBlobGas.Push(feePerBlobGas == UInt256.MaxValue ? 0 : feePerBlobGas);
 
             Stack<double> gasUsedRatio = new((int)blockCount);
             Stack<double> blobGasUsedRatio = new((int)blockCount);
@@ -58,8 +58,8 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             {
                 oldestBlockNumber = block.Number;
                 baseFeePerGas.Push(block.BaseFeePerGas);
-                BlobGasCalculator.TryCalculateBlobGasPricePerUnit(block!.Header, out blobGas);
-                baseFeePerBlobGas.Push(blobGas == UInt256.MaxValue ? 0 : blobGas);
+                BlobGasCalculator.TryCalculateFeePerBlobGas(block!.Header, out feePerBlobGas);
+                baseFeePerBlobGas.Push(feePerBlobGas == UInt256.MaxValue ? 0 : feePerBlobGas);
                 gasUsedRatio.Push(block.GasUsed / (double)block.GasLimit);
                 blobGasUsedRatio.Push((block.BlobGasUsed ?? 0) / (double)Eip4844Constants.MaxBlobGasPerBlock);
                 if (rewards is not null)

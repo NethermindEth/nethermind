@@ -122,12 +122,12 @@ public partial class EthRpcModule : IEthRpcModule
         {
             return ResultWrapper<UInt256?>.Success(UInt256.Zero);
         }
-        if (!BlobGasCalculator.TryCalculateBlobGasPricePerUnit(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
-            out UInt256 blobGasPricePerUnit))
+        if (!BlobGasCalculator.TryCalculateFeePerBlobGas(_blockFinder.Head?.Header?.ExcessBlobGas ?? 0,
+            out UInt256 feePerBlobGas))
         {
             return ResultWrapper<UInt256?>.Fail("Unable to calculate the current blob base fee");
         }
-        return ResultWrapper<UInt256?>.Success(blobGasPricePerUnit);
+        return ResultWrapper<UInt256?>.Success(feePerBlobGas);
     }
 
     public ResultWrapper<UInt256?> eth_maxPriorityFeePerGas()

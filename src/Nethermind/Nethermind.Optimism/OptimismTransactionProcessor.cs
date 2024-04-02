@@ -66,11 +66,11 @@ public class OptimismTransactionProcessor : TransactionProcessor
     }
 
     protected override TransactionResult BuyGas(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobGasFee)
+        in UInt256 effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment, out UInt256 blobBaseFee)
     {
         premiumPerGas = UInt256.Zero;
         senderReservedGasPayment = UInt256.Zero;
-        blobGasFee = UInt256.Zero;
+        blobBaseFee = UInt256.Zero;
 
         bool validate = !opts.HasFlag(ExecutionOptions.NoValidation);
 

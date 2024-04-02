@@ -29,32 +29,32 @@ public static class BlobGasCalculator
         return CalculateBlobGas(blobCount);
     }
 
-    public static bool TryCalculateBlobGasFee(BlockHeader header, Transaction transaction, out UInt256 blobGasFee)
+    public static bool TryCalculateBlobBaseFee(BlockHeader header, Transaction transaction, out UInt256 blobBaseFee)
     {
-        if (!TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out UInt256 blobGasPricePerUnit))
+        if (!TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out UInt256 feePerBlobGas))
         {
-            blobGasFee = UInt256.MaxValue;
+            blobBaseFee = UInt256.MaxValue;
             return false;
         }
-        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), blobGasPricePerUnit, out blobGasFee);
+        return !UInt256.MultiplyOverflow(CalculateBlobGas(transaction), feePerBlobGas, out blobBaseFee);
     }
 
-    public static bool TryCalculateBlobGasPricePerUnit(BlockHeader header, out UInt256 blobGasPricePerUnit)
+    public static bool TryCalculateFeePerBlobGas(BlockHeader header, out UInt256 feePerBlobGas)
     {
-        blobGasPricePerUnit = UInt256.MaxValue;
+        feePerBlobGas = UInt256.MaxValue;
         return header.ExcessBlobGas is not null
-            && TryCalculateBlobGasPricePerUnit(header.ExcessBlobGas.Value, out blobGasPricePerUnit);
+            && TryCalculateFeePerBlobGas(header.ExcessBlobGas.Value, out feePerBlobGas);
     }
 
-    public static bool TryCalculateBlobGasPricePerUnit(ulong excessBlobGas, out UInt256 blobGasPricePerUnit)
+    public static bool TryCalculateFeePerBlobGas(ulong excessBlobGas, out UInt256 feePerBlobGas)
     {
-        static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 blobGasPricePerUnit)
+        static bool FakeExponentialOverflow(UInt256 factor, UInt256 num, UInt256 denominator, out UInt256 feePerBlobGas)
         {
             UInt256 output = UInt256.Zero;
 
             if (UInt256.MultiplyOverflow(factor, denominator, out UInt256 numAccum))
             {
-                blobGasPricePerUnit = UInt256.MaxValue;
+                feePerBlobGas = UInt256.MaxValue;
                 return true;
             }
 
@@ -62,30 +62,30 @@ public static class BlobGasCalculator
             {
                 if (UInt256.AddOverflow(output, numAccum, out output))
                 {
-                    blobGasPricePerUnit = UInt256.MaxValue;
+                    feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
                 if (UInt256.MultiplyOverflow(numAccum, num, out UInt256 updatedNumAccum))
                 {
-                    blobGasPricePerUnit = UInt256.MaxValue;
+                    feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
                 if (UInt256.MultiplyOverflow(i, denominator, out UInt256 multipliedDeniminator))
                 {
-                    blobGasPricePerUnit = UInt256.MaxValue;
+                    feePerBlobGas = UInt256.MaxValue;
                     return true;
                 }
 
                 numAccum = updatedNumAccum / multipliedDeniminator;
             }
 
-            blobGasPricePerUnit = output / denominator;
+            feePerBlobGas = output / denominator;
             return false;
         }
 
-        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out blobGasPricePerUnit);
+        return !FakeExponentialOverflow(Eip4844Constants.MinBlobGasPrice, excessBlobGas, Eip4844Constants.BlobGasPriceUpdateFraction, out feePerBlobGas);
     }
 
     public static ulong? CalculateExcessBlobGas(BlockHeader? parentBlockHeader, IReleaseSpec releaseSpec)

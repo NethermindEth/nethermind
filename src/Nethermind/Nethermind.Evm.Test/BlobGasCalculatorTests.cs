@@ -42,27 +42,27 @@ public class BlobGasCalculatorTests
     }
 
     [TestCaseSource(nameof(BlobGasCostTestCaseSource))]
-    public void Blob_gas_fee_is_calculated_properly(
+    public void Blob_base_fee_is_calculated_properly(
         (Transaction tx, ulong excessBlobGas, UInt256 expectedCost) testCase)
     {
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(testCase.excessBlobGas).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobGasFee(header, testCase.tx, out UInt256 blobGasFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, testCase.tx, out UInt256 blobBaseFee);
 
         Assert.That(success, Is.True);
-        Assert.That(blobGasFee, Is.EqualTo(testCase.expectedCost));
+        Assert.That(blobBaseFee, Is.EqualTo(testCase.expectedCost));
     }
 
     [Test]
-    public void Blob_gas_fee_may_overflow()
+    public void Blob_base_fee_may_overflow()
     {
         var tx = Build.A.Transaction.WithType(TxType.Blob).WithBlobVersionedHashes(1000).TestObject;
         BlockHeader header = Build.A.BlockHeader.WithExcessBlobGas(ulong.MaxValue).TestObject;
 
-        bool success = BlobGasCalculator.TryCalculateBlobGasFee(header, tx, out UInt256 blobGasFee);
+        bool success = BlobGasCalculator.TryCalculateBlobBaseFee(header, tx, out UInt256 blobBaseFee);
 
         Assert.That(success, Is.False);
-        Assert.That(blobGasFee, Is.EqualTo(UInt256.MaxValue));
+        Assert.That(blobBaseFee, Is.EqualTo(UInt256.MaxValue));
     }
 
     public static IEnumerable<(ulong parentExcessBlobGas, int parentBlobsCount, ulong expectedExcessBlobGas)> ExcessBlobGasTestCaseSource()
