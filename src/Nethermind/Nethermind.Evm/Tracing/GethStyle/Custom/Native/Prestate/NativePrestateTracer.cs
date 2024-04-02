@@ -33,17 +33,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
 
         _executingAccount = context.To ?? context.From;
-        if (context.From is not null)
-        {
-            LookupAccount(context.From);
-        }
-        if (context.To is not null)
-        {
-            LookupAccount(context.To);
-        }
 
-        // Look up client coinbase address as well
-        LookupAccount(context.Beneficiary ?? Address.Zero);
+        LookupInitialTransactionAccounts(context);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -163,6 +154,24 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         {
             _executingAccount = caller;
         }
+    }
+
+    private void LookupInitialTransactionAccounts(NativeTracerContext context)
+    {
+        Address from = context.From!;
+        LookupAccount(from);
+
+        Address to = context.To;
+        if (to is null)
+        {
+            ulong fromNonce = _prestate[from].Nonce ?? 0;
+            to = ContractAddress.From(from, fromNonce);
+            _prestate[from].Nonce -= 1;
+        }
+        LookupAccount(to);
+
+        // Look up client beneficiary address as well
+        LookupAccount(context.Beneficiary ?? Address.Zero);
     }
 
     private void LookupAccount(Address addr)
