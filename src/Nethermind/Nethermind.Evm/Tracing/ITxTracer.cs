@@ -166,10 +166,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <param name="opcode"></param>
     /// <param name="pc"></param>
-    /// <param name="executingAccount"></param>
     /// <param name="isPostMerge"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false);
+    void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
 
     /// <summary>
     ///
