@@ -88,11 +88,11 @@ namespace Nethermind.Store.Test
 
             if (hasRoot)
             {
-                trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                trieStore.LoadRlp(null, TreePath.Empty, stateRoot).Length.Should().BeGreaterThan(0);
             }
             else
             {
-                trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                trieStore.Invoking(ts => ts.LoadRlp(null, TreePath.Empty, stateRoot)).Should().Throw<TrieException>();
             }
         }
     }
