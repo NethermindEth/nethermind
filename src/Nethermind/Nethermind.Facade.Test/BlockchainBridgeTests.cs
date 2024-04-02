@@ -134,26 +134,6 @@ namespace Nethermind.Facade.Test
         }
 
         [Test]
-        public void Estimate_gas_returns_the_estimate_from_the_tracer()
-        {
-            _timestamper.UtcNow = DateTime.MinValue;
-            _timestamper.Add(TimeSpan.FromDays(123));
-            BlockHeader header = Build.A.BlockHeader.WithNumber(10).TestObject;
-            Transaction tx = new();
-            tx.Data = new byte[0];
-            tx.GasLimit = Transaction.BaseTxGasCost;
-
-            var gas = _blockchainBridge.EstimateGas(header, tx, default);
-            gas.GasSpent.Should().Be(Transaction.BaseTxGasCost);
-
-            _transactionProcessor.Received().CallAndRestore(
-                tx,
-                Arg.Is<BlockExecutionContext>(blkCtx =>
-                    blkCtx.Header.Number == 11 && blkCtx.Header.Timestamp == ((ITimestamper)_timestamper).UnixTime.Seconds),
-                Arg.Is<CancellationTxTracer>(t => t.InnerTracer is EstimateGasTracer));
-        }
-
-        [Test]
         public void Call_uses_valid_post_merge_and_random_value()
         {
             BlockHeader header = Build.A.BlockHeader

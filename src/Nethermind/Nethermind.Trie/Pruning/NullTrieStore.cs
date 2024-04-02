@@ -9,7 +9,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning
 {
-    public class NullTrieStore : IReadOnlyTrieStore
+    public class NullTrieStore : IScopedTrieStore
     {
         private NullTrieStore() { }
 
@@ -19,34 +19,23 @@ namespace Nethermind.Trie.Pruning
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags flags = WriteFlags.None) { }
 
-        public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) => this;
+        public TrieNode FindCachedOrUnknown(in TreePath treePath, Hash256 hash) => new(NodeType.Unknown, hash);
 
-        public event EventHandler<ReorgBoundaryReached> ReorgBoundaryReached
-        {
-            add { }
-            remove { }
-        }
+        public byte[] LoadRlp(in TreePath treePath, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => null!;
+        public byte[]? TryLoadRlp(in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
 
-        public TrieNode FindCachedOrUnknown(Hash256 hash) => new(NodeType.Unknown, hash);
+        public bool IsPersisted(in TreePath path, in ValueHash256 keccak) => true;
 
-        public byte[] TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => null;
-        public byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None) => null;
-
-        public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => Array.Empty<byte>();
-
-        public bool IsPersisted(in ValueHash256 keccak) => true;
-
-        public void Dispose() { }
-
-        public void Set(in ValueHash256 hash, byte[] rlp)
+        public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)
         {
         }
 
-        public bool HasRoot(Hash256 stateRoot)
+        public ITrieNodeResolver GetStorageTrieNodeResolver(Hash256 storageRoot)
         {
-            return stateRoot == Keccak.EmptyTreeHash;
+            return this;
         }
+
+        public INodeStorage.KeyScheme Scheme => INodeStorage.KeyScheme.HalfPath;
     }
 }

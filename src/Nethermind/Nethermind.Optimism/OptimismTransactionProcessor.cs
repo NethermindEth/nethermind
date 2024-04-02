@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
@@ -35,25 +36,27 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
     protected override TransactionResult Execute(Transaction tx, in BlockExecutionContext blCtx, ITxTracer tracer, ExecutionOptions opts)
     {
+        if (tx.SupportsBlobs)
+        {
+            // No blob txs in optimism
+            return TransactionResult.MalformedTransaction;
+        }
+
         IReleaseSpec spec = SpecProvider.GetSpec(blCtx.Header);
         _currentTxL1Cost = null;
         if (tx.IsDeposit())
         {
             WorldState.AddToBalanceAndCreateIfNotExists(tx.SenderAddress!, tx.Mint, spec);
-
-            if (opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled)
-                WorldState.Commit(spec);
         }
 
-        return base.Execute(tx, in blCtx, tracer, opts);
-    }
+        Snapshot snapshot = WorldState.TakeSnapshot();
 
-    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
-        out long intrinsicGas)
-    {
-        TransactionResult result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
-        if (tx.IsDeposit() && !tx.IsOPSystemTransaction && !result)
+        TransactionResult result = base.Execute(tx, blCtx, tracer, opts);
+
+        if (!result && tx.IsDeposit() && result.Error != "block gas limit exceeded")
         {
+            // deposit tx should be included
+            WorldState.Restore(snapshot);
             if (!WorldState.AccountExists(tx.SenderAddress!))
             {
                 WorldState.CreateAccount(tx.SenderAddress!, 0, 1);
@@ -62,7 +65,18 @@ public class OptimismTransactionProcessor : TransactionProcessor
             {
                 WorldState.IncrementNonce(tx.SenderAddress!);
             }
+            blCtx.Header.GasUsed += tx.GasLimit;
+            tracer.MarkAsFailed(tx.To!, tx.GasLimit, Array.Empty<byte>(), $"failed deposit: {result.Error}");
+            result = TransactionResult.Ok;
         }
+
+        return result;
+    }
+
+    protected override TransactionResult ValidateStatic(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts,
+        out long intrinsicGas)
+    {
+        TransactionResult result = base.ValidateStatic(tx, header, spec, tracer, opts, out intrinsicGas);
 
         return result;
     }
@@ -79,14 +93,6 @@ public class OptimismTransactionProcessor : TransactionProcessor
 
         if (tx.IsDeposit() && !tx.IsOPSystemTransaction && senderBalance < tx.Value)
         {
-            if (!WorldState.AccountExists(tx.SenderAddress!))
-            {
-                WorldState.CreateAccount(tx.SenderAddress!, 0, 1);
-            }
-            else
-            {
-                WorldState.IncrementNonce(tx.SenderAddress!);
-            }
             return "insufficient sender balance";
         }
 

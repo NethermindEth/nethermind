@@ -1077,9 +1077,6 @@ namespace Nethermind.Blockchain
                 ? FindBlock(hashOfThePreviousMainBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded, blockNumber: block.Number)
                 : null;
 
-            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
-            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
-
             if (forceUpdateHeadBlock || block.IsGenesis || HeadImprovementRequirementsSatisfied(block.Header))
             {
                 if (block.Number == 0)
@@ -1097,6 +1094,10 @@ namespace Nethermind.Blockchain
                     UpdateHeadBlock(block);
                 }
             }
+
+            if (_logger.IsTrace) _logger.Trace($"Block added to main {block}, block TD {block.TotalDifficulty}");
+
+            BlockAddedToMain?.Invoke(this, new BlockReplacementEventArgs(block, previous));
 
             if (_logger.IsTrace) _logger.Trace($"Block {block.ToString(Block.Format.Short)}, TD: {block.TotalDifficulty} added to main chain");
         }

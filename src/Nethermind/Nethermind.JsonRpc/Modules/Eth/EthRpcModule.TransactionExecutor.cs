@@ -67,18 +67,25 @@ namespace Nethermind.JsonRpc.Modules.Eth
 
         private class EstimateGasTxExecutor : TxExecutor<UInt256?>
         {
+            private readonly int _errorMargin;
             public EstimateGasTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
                 : base(blockchainBridge, blockFinder, rpcConfig)
             {
+                _errorMargin = rpcConfig.EstimateErrorMargin;
             }
 
             protected override ResultWrapper<UInt256?> ExecuteTx(BlockHeader header, Transaction tx, CancellationToken token)
             {
-                CallOutput result = _blockchainBridge.EstimateGas(header, tx, token);
+                CallOutput result = _blockchainBridge.EstimateGas(header, tx, _errorMargin, token);
 
-                return result.Error is null
-                    ? ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent)
-                    : TryGetInputError(result) ?? ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
+                if (result.Error is null)
+                {
+                    return ResultWrapper<UInt256?>.Success((UInt256)result.GasSpent);
+                }
+
+                return result.InputError
+                    ? GetInputError(result)
+                    : ResultWrapper<UInt256?>.Fail(result.Error, ErrorCodes.ExecutionError);
             }
         }
 

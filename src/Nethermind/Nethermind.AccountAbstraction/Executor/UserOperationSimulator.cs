@@ -200,7 +200,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 estimateGasTracer.WithCancellation(cancellationToken));
 
             GasEstimator gasEstimator = new(transactionProcessor, _stateProvider, _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, GasEstimator.DefaultErrorMargin, cancellationToken);
 
             return new CallOutput
             {

@@ -156,6 +156,8 @@ public interface IJsonRpcConfig : IConfig
     long? MaxBatchResponseBodySize { get; set; }
 
     [ConfigItem(Description = "The max blocks count limit for eth_simulate JSON-RPC calls.", DefaultValue = "256")]
-
     long? MaxSimulateBlocksCap { get; set; }
+
+    [ConfigItem(Description = "The error margin used in eth_estimateGas expressed in basis points.", DefaultValue = "150")]
+    int EstimateErrorMargin { get; set; }
 }

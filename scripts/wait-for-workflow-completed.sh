@@ -43,7 +43,7 @@ else
     fi
     run_id=$(echo "$response" | \
       jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
-      '.workflow_runs[] | select(.head_branch == $ref and .created_at >= $current_time) | .id' | sort -r | head -n 1)
+      '.workflow_runs[] | select(.head_branch == $ref and .status == "in_progress") | .id' | sort -r | head -n 1)
     if [ -n "$run_id" ]; then
       echo "🎉 Workflow triggered! Run ID: $run_id"
       break

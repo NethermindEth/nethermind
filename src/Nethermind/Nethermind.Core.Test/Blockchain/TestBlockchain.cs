@@ -37,10 +37,9 @@ using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
 using Nethermind.State.Repositories;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using NSubstitute;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain;
 
@@ -157,7 +156,7 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
@@ -222,7 +221,7 @@ public class TestBlockchain : IDisposable
 
         _resetEvent = new SemaphoreSlim(0);
         _suggestedBlockResetEvent = new ManualResetEvent(true);
-        BlockTree.NewHeadBlock += OnNewHeadBlock;
+        BlockTree.BlockAddedToMain += BlockAddedToMain;
         BlockProducer.BlockProduced += (s, e) =>
         {
             _suggestedBlockResetEvent.Set();
@@ -246,7 +245,7 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    private void BlockAddedToMain(object? sender, BlockEventArgs e)
     {
         _resetEvent.Release(1);
     }
@@ -406,8 +405,8 @@ public class TestBlockchain : IDisposable
     private async Task<AcceptTxResult[]> AddBlockInternal(params Transaction[] transactions)
     {
         // we want it to be last event, so lets re-register
-        BlockTree.NewHeadBlock -= OnNewHeadBlock;
-        BlockTree.NewHeadBlock += OnNewHeadBlock;
+        BlockTree.BlockAddedToMain -= BlockAddedToMain;
+        BlockTree.BlockAddedToMain += BlockAddedToMain;
 
         await WaitAsync(_oneAtATime, "Multiple block produced at once.");
         AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();

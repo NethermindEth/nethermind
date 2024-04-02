@@ -31,6 +31,7 @@ using Microsoft.CSharp.RuntimeBinder;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
 using Nethermind.Specs;
+using MathNet.Numerics.RootFinding;
 
 namespace Nethermind.Facade
 {
@@ -175,7 +176,7 @@ namespace Nethermind.Facade
             return result;
         }
 
-        public CallOutput EstimateGas(BlockHeader header, Transaction tx, CancellationToken cancellationToken)
+        public CallOutput EstimateGas(BlockHeader header, Transaction tx, int errorMargin, CancellationToken cancellationToken)
         {
             using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = _processingEnv.Build(header.StateRoot!);
 
@@ -188,7 +189,7 @@ namespace Nethermind.Facade
 
             GasEstimator gasEstimator = new(readOnlyTransactionProcessor, _processingEnv.StateProvider,
                 _specProvider, _blocksConfig);
-            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, cancellationToken);
+            long estimate = gasEstimator.Estimate(tx, header, estimateGasTracer, errorMargin, cancellationToken);
 
             return new CallOutput
             {
@@ -292,7 +293,6 @@ namespace Nethermind.Facade
             transaction.Hash = transaction.CalculateHash();
             return transactionProcessor.CallAndRestore(transaction, new(callHeader), tracer);
         }
-
 
         public ulong GetChainId()
         {
