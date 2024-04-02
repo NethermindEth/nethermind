@@ -5,7 +5,6 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -18,7 +17,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
-    private readonly Dictionary<Address, NativePrestateTracerAccount> _prestate;
+    private Stack<Address>? _callers;
+    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate;
 
     public NativePrestateTracer(
         IWorldState worldState,
@@ -30,8 +30,9 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         IsTracingMemory = true;
         IsTracingStack = true;
 
-        _prestate = new Dictionary<Address, NativePrestateTracerAccount>();
+        _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
 
+        _executingAccount = context.To ?? context.From;
         if (context.From is not null)
         {
             LookupAccount(context.From);
@@ -55,12 +56,26 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        base.StartOperation(depth, gas, opcode, pc, executingAccount, isPostMerge);
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+
+        if (Depth > 0)
+        {
+            _callers ??= new Stack<Address>();
+            _callers.Push(_executingAccount);
+        }
+
+        _executingAccount = callType == ExecutionType.DELEGATECALL
+            ? _executingAccount
+            : to;
+    }
+
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    {
+        base.StartOperation(depth, gas, opcode, pc, isPostMerge);
 
         _op = opcode;
-        _executingAccount = executingAccount;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -93,7 +108,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.SELFDESTRUCT:
                 if (stackLen >= 1)
                 {
-                    address = stack.Peek(0).ToHexString(true, true).ToAddress();
+                    address = stack.PeekAddress(0);
                     LookupAccount(address);
                 }
                 break;
@@ -103,7 +118,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.CALLCODE:
                 if (stackLen >= 5)
                 {
-                    address = stack.Peek(1).ToHexString(true, true).ToAddress();
+                    address = stack.PeekAddress(1);
                     LookupAccount(address);
                 }
                 break;
@@ -121,6 +136,32 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.CREATE:
                 LookupAccount(_executingAccount!);
                 break;
+        }
+    }
+
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    {
+        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
+        InvokeExit();
+    }
+
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+    {
+        base.ReportActionEnd(gas, output);
+        InvokeExit();
+    }
+
+    public override void ReportActionError(EvmExceptionType evmExceptionType)
+    {
+        base.ReportActionError(evmExceptionType);
+        InvokeExit();
+    }
+
+    private void InvokeExit()
+    {
+        if (_callers!.TryPop(out Address caller))
+        {
+            _executingAccount = caller;
         }
     }
 

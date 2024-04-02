@@ -60,7 +60,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
     {
         _op = opcode;
     }

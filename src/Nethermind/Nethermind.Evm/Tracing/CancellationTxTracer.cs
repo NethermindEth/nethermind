@@ -186,12 +186,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
+    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingInstructions)
         {
-            _innerTracer.StartOperation(depth, gas, opcode, pc, executingAccount, isPostMerge);
+            _innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
         }
     }
 

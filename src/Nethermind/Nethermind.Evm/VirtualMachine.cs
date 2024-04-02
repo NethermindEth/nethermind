@@ -2825,7 +2825,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.ExecutingAccount, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory.GetTrace());

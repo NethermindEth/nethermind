@@ -22,6 +22,7 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
     {
         _context.From = tx?.SenderAddress;
         _context.To = tx?.To;
+        // _context.ExecutingAccount =
         return GethLikeNativeTracerFactory.CreateTracer(_worldState, _context, _options);
     }
 
