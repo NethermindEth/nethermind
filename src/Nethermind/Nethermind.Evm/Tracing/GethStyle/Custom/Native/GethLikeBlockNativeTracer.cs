@@ -11,18 +11,17 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
     private readonly IWorldState _worldState;
     private NativeTracerContext _context;
 
-    public GethLikeBlockNativeTracer(IWorldState worldState, GethTraceOptions options) : base(options.TxHash)
+    public GethLikeBlockNativeTracer(IWorldState worldState, GethTraceOptions options, NativeTracerContext context) : base(options.TxHash)
     {
         _worldState = worldState;
         _options = options;
-        _context = new NativeTracerContext();
+        _context = context;
     }
 
     protected override GethLikeNativeTxTracer OnStart(Transaction? tx)
     {
         _context.From = tx?.SenderAddress;
         _context.To = tx?.To;
-        // _context.ExecutingAccount =
         return GethLikeNativeTracerFactory.CreateTracer(_worldState, _context, _options);
     }
 
