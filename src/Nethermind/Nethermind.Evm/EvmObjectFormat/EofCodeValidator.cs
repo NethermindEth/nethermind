@@ -34,12 +34,13 @@ internal static class EvmObjectFormat
     {
         None = 0,
         Validate = 1,
-        ValidateSubContainers = Validate | 2
+        ValidateSubContainers = Validate | 2,
+        ValidateFullBody = Validate | 4
     }
 
     private interface IEofVersionHandler
     {
-        bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header);
+        bool ValidateBody(ReadOnlySpan<byte> code, EofHeader header, ValidationStrategy strategy);
         bool TryParseEofHeader(ReadOnlySpan<byte> code, [NotNullWhen(true)] out EofHeader? header);
     }
 
@@ -91,7 +92,7 @@ internal static class EvmObjectFormat
             && handler.TryParseEofHeader(container, out header))
         {
             EofHeader h = header.Value;
-            if (handler.ValidateBody(container, h))
+            if (handler.ValidateBody(container, h, strategy))
             {
                 if(strategy == ValidationStrategy.ValidateSubContainers && header?.ContainerSection?.Count > 0)
                 {
@@ -278,7 +279,7 @@ internal static class EvmObjectFormat
 
                     if (containerSectionSize == 0)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
+                        if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
                         return false;
                     }
 
@@ -340,13 +341,13 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header)
+        public bool ValidateBody(ReadOnlySpan<byte> container, EofHeader header,  ValidationStrategy strategy)
         {
             int startOffset = header.TypeSection.Start;
             int calculatedCodeLength =
                     header.TypeSection.Size
                 +   header.CodeSections.Size
-                +   header.DataSection.Size
+                +   (strategy == ValidationStrategy.ValidateFullBody ? header.DataSection.Size : 0) 
                 +   (header.ContainerSection?.Size ?? 0);
             CompoundSectionHeader codeSections = header.CodeSections;
             ReadOnlySpan<byte> contractBody = container[startOffset..];
@@ -402,7 +403,7 @@ internal static class EvmObjectFormat
 
                 bool isNonReturning = typesection[sectionIdx * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80;
                 ReadOnlySpan<byte> code = container.Slice(header.CodeSections.Start + codeSectionStartOffset, codeSectionSize);
-                if (!ValidateInstructions(sectionIdx, isNonReturning, typesection, code, header, validationQueue, out ushort jumpsCount))
+                if (!ValidateInstructions(sectionIdx, isNonReturning, typesection, code, header, container, validationQueue, out ushort jumpsCount))
                 {
                     ArrayPool<bool>.Shared.Return(visitedSections, true);
                     return false;
@@ -456,7 +457,7 @@ internal static class EvmObjectFormat
             return true;
         }
 
-        bool ValidateInstructions(ushort sectionId, bool isNonReturning, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, Queue<ushort> worklist, out ushort jumpsCount)
+        bool ValidateInstructions(ushort sectionId, bool isNonReturning, ReadOnlySpan<byte> typesection, ReadOnlySpan<byte> code, in EofHeader header, in ReadOnlySpan<byte> container, Queue<ushort> worklist, out ushort jumpsCount)
         {
             byte[] codeBitmap = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
             byte[] jumpdests = ArrayPool<byte>.Shared.Rent((code.Length / BYTE_BIT_COUNT) + 1);
@@ -660,6 +661,14 @@ internal static class EvmObjectFormat
                             if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSections.Count}");
                             return false;
                         }
+
+                        ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value[initcodeSectionId].Start, header.ContainerSection.Value[initcodeSectionId].Size);
+                        if(IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody, out _))
+                        {
+                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : EOFCREATE's immediate must be a valid Eof");
+                            return false;
+                        }
+
                     }
 
                     if (opcode is >= Instruction.PUSH0 and <= Instruction.PUSH32)

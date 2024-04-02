@@ -450,45 +450,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             {
                                 Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
 
-                                // copy magic eof prefix
-                                int movingOffset = 0;
-                                ReadOnlySpan<byte> eofPrefix = container.Slice(header.Value.PrefixSize);
-                                eofPrefix.CopyTo(bytecodeResult);
-                                movingOffset += header.Value.PrefixSize - 3; // we move offset back by TERMINATOR + SIZE_OF_DATA_SECTION_HEADER
-
-                                // copy datasection header
-                                byte[] newDataSectionLength = ((ushort)(auxExtraData.Length + header.Value.DataSection.Size)).ToBigEndianByteArray();
-                                newDataSectionLength.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset = header.Value.PrefixSize;
-
-                                // copy type section
-                                ReadOnlySpan<byte> typesectionSpan = container.Slice(header.Value.TypeSection.Start, header.Value.TypeSection.Size);
-                                typesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += typesectionSpan.Length;
-
-                                // copy code section
-                                ReadOnlySpan<byte> codesectionSpan = container.Slice(header.Value.CodeSections[0].Start, header.Value.CodeSections.Size);
-                                codesectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += codesectionSpan.Length;
-
-                                // copy container section
-                                ReadOnlySpan<byte> containersectionSpan = container.Slice(header.Value.ContainerSection?[0].Start ?? 0, header.Value.ContainerSection?.Size ?? 0);
-                                containersectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += containersectionSpan.Length;
-
-                                // copy data section
-                                ReadOnlySpan<byte> datasectionSpan = container.Slice(header.Value.DataSection.Start, header.Value.DataSection.Size);
-                                datasectionSpan.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += datasectionSpan.Length;
-
+                                // copy old container
+                                container.CopyTo(bytecodeResult);
                                 // copy aux data to dataSection
-                                auxExtraData.CopyTo(bytecodeResult.Slice(movingOffset));
-                                movingOffset += auxExtraData.Length;
-
+                                auxExtraData.CopyTo(bytecodeResult[container.Length..]);
                                 bytecodeResultArray = bytecodeResult.ToArray();
                             }
 
-                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.Validate, out _)
+                            bool invalidCode = !EvmObjectFormat.IsValidEof(bytecodeResultArray, EvmObjectFormat.ValidationStrategy.ValidateFullBody, out _)
                                 && bytecodeResultArray.Length < spec.MaxCodeSize;
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(bytecodeResultArray.Length, spec);
                             if (gasAvailableForCodeDeposit >= codeDepositGasCost && !invalidCode)
