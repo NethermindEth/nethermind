@@ -208,8 +208,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
-                long bestProcessedBlock = 0;
-
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -267,10 +265,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (shouldProcess == false)
                         {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                        }
-                        else
-                        {
-                            bestProcessedBlock = currentBlock.Number;
                         }
 
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);
