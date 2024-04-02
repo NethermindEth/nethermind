@@ -35,6 +35,9 @@ public class ExecutionPayloadV4 : ExecutionPayload
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).IsEip6110Enabled;
 
+    /// <summary>
+    /// Gets or sets <see cref="Block.Deposits"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
     /// </summary>
     [JsonRequired]
     public override Deposit[]? Deposits { get; set; }

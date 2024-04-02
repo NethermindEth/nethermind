@@ -24,6 +24,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         IAsyncHandler<byte[], ExecutionPayload?> getPayloadHandlerV1,
         IAsyncHandler<byte[], GetPayloadV2Result?> getPayloadHandlerV2,
         IAsyncHandler<byte[], GetPayloadV3Result?> getPayloadHandlerV3,
+        IAsyncHandler<byte[], GetPayloadV4Result?> getPayloadHandlerV4,
         IAsyncHandler<ExecutionPayload, PayloadStatusV1> newPayloadV1Handler,
         IForkchoiceUpdatedHandler forkchoiceUpdatedV1Handler,
         IAsyncHandler<IList<Hash256>, IEnumerable<ExecutionPayloadBodyV1Result?>> executionGetPayloadBodiesByHashV1Handler,
@@ -38,6 +39,7 @@ public partial class EngineRpcModule : IEngineRpcModule
         _getPayloadHandlerV1 = getPayloadHandlerV1;
         _getPayloadHandlerV2 = getPayloadHandlerV2;
         _getPayloadHandlerV3 = getPayloadHandlerV3;
+        _getPayloadHandlerV4 = getPayloadHandlerV4;
         _newPayloadV1Handler = newPayloadV1Handler;
         _forkchoiceUpdatedV1Handler = forkchoiceUpdatedV1Handler;
         _executionGetPayloadBodiesByHashV1Handler = executionGetPayloadBodiesByHashV1Handler;

@@ -4,7 +4,7 @@
 using System;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
