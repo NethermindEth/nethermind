@@ -18,8 +18,8 @@ public partial class EngineRpcModule : IEngineRpcModule
     public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
         => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Cancun);
 
-    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV4 executionPayload) =>
-        NewPayload(executionPayload, EngineApiVersions.Prague);
+    public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
+        NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Prague);
 
     public async Task<ResultWrapper<GetPayloadV4Result?>> engine_getPayloadV4(byte[] payloadId) =>
         await _getPayloadHandlerV4.HandleAsync(payloadId);
