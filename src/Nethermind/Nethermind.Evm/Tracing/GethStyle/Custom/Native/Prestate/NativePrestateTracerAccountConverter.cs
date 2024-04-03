@@ -4,7 +4,7 @@
 using System;
 using System.Text.Json;
 using System.Text.Json.Serialization;
-using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 
@@ -12,30 +12,41 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
 {
     public override void Write(Utf8JsonWriter writer, NativePrestateTracerAccount value, JsonSerializerOptions options)
     {
-        writer.WriteStartObject();
-
-        writer.WritePropertyName("balance"u8);
-        JsonSerializer.Serialize(writer, value.Balance.ToHexString(true), options);
-
-        if (value.Nonce is not null)
+        NumberConversion? previousValue = ForcedNumberConversion.ForcedConversion.Value;
+        try
         {
-            writer.WritePropertyName("nonce"u8);
-            JsonSerializer.Serialize(writer, value.Nonce, options);
-        }
+            writer.WriteStartObject();
 
-        if (value.Code is not null)
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            writer.WritePropertyName("balance"u8);
+            JsonSerializer.Serialize(writer, value.Balance, options);
+
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Raw;
+            if (value.Nonce is not null)
+            {
+                writer.WritePropertyName("nonce"u8);
+                JsonSerializer.Serialize(writer, value.Nonce, options);
+            }
+
+            if (value.Code is not null)
+            {
+                writer.WritePropertyName("code"u8);
+                JsonSerializer.Serialize(writer, value.Code, options);
+            }
+
+            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
+            if (value.Storage is not null)
+            {
+                writer.WritePropertyName("storage"u8);
+                JsonSerializer.Serialize(writer, value.Storage, options);
+            }
+
+            writer.WriteEndObject();
+        }
+        finally
         {
-            writer.WritePropertyName("code"u8);
-            JsonSerializer.Serialize(writer, value.Code, options);
+            ForcedNumberConversion.ForcedConversion.Value = previousValue;
         }
-
-        if (value.Storage is not null)
-        {
-            writer.WritePropertyName("storage"u8);
-            JsonSerializer.Serialize(writer, value.Storage, options);
-        }
-
-        writer.WriteEndObject();
     }
 
     public override NativePrestateTracerAccount? Read(ref Utf8JsonReader reader, Type typeToConvert, JsonSerializerOptions options)

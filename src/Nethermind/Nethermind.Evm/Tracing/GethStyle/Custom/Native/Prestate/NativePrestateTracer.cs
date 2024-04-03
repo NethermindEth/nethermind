@@ -65,7 +65,6 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
     {
         base.StartOperation(depth, gas, opcode, pc, isPostMerge);
-
         _op = opcode;
     }
 
@@ -90,6 +89,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     LookupStorage(_executingAccount!, index);
+                    // LookupStorage(_executingAccountLegacy!, index);
                 }
                 break;
             case Instruction.EXTCODECOPY:
@@ -201,14 +201,13 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void LookupStorage(Address addr, UInt256 index)
     {
-        _prestate[addr].Storage ??= new Dictionary<string, string>();
+        // TODO: continue looking into storage/execute account bug with 0x97182a2305a357bf2b3191ad2f02f887ccd69f21f92bc42973dd618a5c70cdff
+        _prestate[addr].Storage ??= new Dictionary<UInt256, UInt256>();
 
-        string key = index.ToHexString(false);
-        if (!_prestate[addr].Storage.ContainsKey(key))
+        if (!_prestate[addr].Storage.ContainsKey(index))
         {
-            ReadOnlySpan<byte> storage = _worldState!.Get(new StorageCell(addr, index));
-            string storageHex = storage.PadLeft(32).ToHexString(true);
-            _prestate[addr].Storage.Add(key, storageHex);
+            UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)), true);
+            _prestate[addr].Storage.Add(index, storage);
         }
     }
 }
