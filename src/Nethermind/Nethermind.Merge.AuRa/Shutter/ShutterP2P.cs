@@ -141,6 +141,8 @@ public class ShutterP2P
         KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
 
+        _logger.Info("keyperSetManagerContract is null? " + (keyperSetManagerContract is null));
+
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
         {
@@ -148,13 +150,13 @@ public class ShutterP2P
             return;
         }
 
-        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey))
+        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract!, out ulong eon, out Bls.P2 eonKey))
         {
             if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
             return;
         }
 
-        if (CheckDecryptionKeys(keyperSetManagerContract, decryptionKeys, eon, eonKey, Threshhold))
+        if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, Threshhold))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysReceived(decryptionKeys);
