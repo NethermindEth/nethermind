@@ -16,5 +16,5 @@ public class NativePrestateTracerAccount
 
     public byte[]? Code { get; set; }
 
-    public Dictionary<string, string>? Storage { get; set; }
+    public Dictionary<UInt256, UInt256>? Storage { get; set; }
 }
