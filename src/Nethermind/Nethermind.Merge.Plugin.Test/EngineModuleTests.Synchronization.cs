@@ -14,11 +14,13 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Specs.Forks;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
@@ -26,6 +28,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Peers.AllocationStrategies;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
@@ -529,6 +532,52 @@ public partial class EngineModuleTests
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
         chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.None);
         chain.BlockTree.FindLevel(newBlock2.Number)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.BeaconMainChain | BlockMetadata.BeaconHeader | BlockMetadata.BeaconBody);
+    }
+
+    [Test]
+    public async Task no_processing()
+    {
+        using MergeTestBlockchain chain = await CreateBlockchain();
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 lastHash = (await ProduceBranchV1(rpc, chain, 20, CreateParentBlockRequestOnHead(chain.BlockTree), true)).LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        last.Should().NotBeNull();
+        last!.IsGenesis.Should().BeTrue();
+
+        var rnd = new Random();
+
+        Block CreateWithTx(Block parent)
+        {
+            var buffer = new byte[20];
+            rnd.NextBytes(buffer);
+            Transaction tx = Build.A.Transaction
+                .WithTo(new Address(buffer))
+                .SignedAndResolved(TestItem.PrivateKeyA)
+                .TestObject;
+
+            Block newBlock1 = Build.A.Block
+                .WithParent(parent)
+                .WithNonce(0)
+                .WithDifficulty(0)
+                .WithExtraData([0x0, 0x1, buffer[0]])
+                .WithGasUsed(21000)
+                .WithTransactions(tx)
+                .TestObject;
+            var x = chain.BlockProcessor.Process(parent.StateRoot!, [newBlock1], Consensus.Processing.ProcessingOptions.ProducingBlock, new NullBlockTracer())[0];
+            x.CalculateHash();
+            return x;
+        }
+
+        Block? oldBlock = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b=> b.Number == 16, true);
+
+        Block newBlock1 = CreateWithTx(oldBlock!);
+
+        await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock1));
+
+        Block newBlock2 = CreateWithTx(chain.BlockTree.BestSuggestedBody!);
+
+        await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock2));
     }
 
 
