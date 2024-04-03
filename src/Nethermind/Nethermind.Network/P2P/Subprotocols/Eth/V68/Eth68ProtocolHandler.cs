@@ -113,8 +113,8 @@ public class Eth68ProtocolHandler : Eth67ProtocolHandler
         else
         {
             SendMessage(
-                new ArrayPoolList<byte>((byte)tx.Type),
-                new ArrayPoolList<int>(tx.GetLength()),
+                new ArrayPoolList<byte>(1) { (byte)tx.Type },
+                new ArrayPoolList<int>(1) { tx.GetLength() },
                 new ArrayPoolList<Hash256>(1) { tx.Hash }
             );
         }
