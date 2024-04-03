@@ -39,7 +39,7 @@ public class ShutterTxSource : ITxSource
     private readonly Address _validatorRegistryContractAddress;
     private IEnumerable<(ulong, byte[])> _validatorsInfo;
     private bool _validatorsRegistered = false;
-    private static readonly UInt256 EncryptedGasLimit = 300;
+    private static readonly UInt256 EncryptedGasLimit = 21000 * 10; // todo: change
     internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
         [
@@ -125,7 +125,10 @@ public class ShutterTxSource : ITxSource
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, int txPointer)
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
-        events = events.Where(e => e.Eon == eon).Skip(txPointer);
+        // todo: use txpointer once correct
+        events = events.Where(e => e.Eon == eon).Skip(30);
+        // events = events.Where(e => e.Eon == eon).Skip(txPointer);
+        _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
