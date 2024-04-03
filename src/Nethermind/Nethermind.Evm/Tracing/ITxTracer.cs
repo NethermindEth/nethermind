@@ -436,5 +436,5 @@ public interface ILogsTxTracer
     /// <param name="isPrecompileCall"></param>
     /// <returns>Created logs to be added, only when <see cref="isPrecompileCall"/> is true</returns>
     /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
-    IEnumerable<LogEntry> ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
+    IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 }

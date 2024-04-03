@@ -8,10 +8,14 @@ namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class Log
 {
-    public ulong LogIndex { get; set; }
-    public Hash256 BlockHash { get; set; }
-    public ulong BlockNumber { get; set; }
     public Address Address { get; set; }
-    public byte[] Data { get; set; }
     public Hash256[] Topics { get; set; }
+    public byte[] Data { get; set; }
+    public ulong BlockNumber { get; set; }
+    public Hash256 TransactionHash { get; set; }
+    public ulong TransactionIndex { get; set; }
+    public Hash256 BlockHash { get; set; }
+
+    public ulong LogIndex { get; set; }
+    public bool Removed { get; set; } = false;
 }

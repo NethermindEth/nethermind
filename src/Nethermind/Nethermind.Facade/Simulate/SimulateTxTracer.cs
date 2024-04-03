@@ -16,12 +16,23 @@ namespace Nethermind.Facade.Simulate;
 
 internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 {
+    private readonly Hash256 _txHash;
+    private readonly ulong _currentBlockNumber;
+    private readonly Hash256 _currentBlockHash;
+    private readonly ulong _txIndex;
     private static readonly Hash256[] _topics = [Keccak.Zero];
+    private readonly bool _isTracingTransfers;
 
-    public SimulateTxTracer(bool isTracingTransfers)
+    public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
+        ulong txIndex)
     {
-        IsTracingLogs = isTracingTransfers;
+        _txHash = txHash;
+        _currentBlockNumber = currentBlockNumber;
+        _currentBlockHash = currentBlockHash;
+        _txIndex = txIndex;
         IsTracingReceipt = true;
+
+        _isTracingTransfers = isTracingTransfers;
     }
 
     public SimulateCallResult? TraceResult { get; set; }
@@ -35,10 +46,15 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
             Status = StatusCode.Success,
             Logs = logs.Select((entry, i) => new Log
             {
-                Data = entry.Data,
                 Address = entry.LoggersAddress,
                 Topics = entry.Topics,
-                LogIndex = (ulong)i
+                Data = entry.Data,
+                LogIndex = (ulong)i,
+                TransactionHash = _txHash,
+                TransactionIndex = _txIndex,
+                BlockHash = _currentBlockHash,
+                BlockNumber = _currentBlockNumber
+
             })
         };
     }
@@ -50,17 +66,17 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = StatusCode.FailureBytes.ToArray(),
+                Code = -32015, // revert error code stub
                 Message = error
             },
-            ReturnData = output,
+            ReturnData = null,
             Status = StatusCode.Failure
         };
     }
 
-    public bool IsTracingLogs { get; }
+    public bool IsTracingLogs => _isTracingTransfers;
 
-    IEnumerable<LogEntry> ILogsTxTracer.ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall)
+    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         byte[] data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,

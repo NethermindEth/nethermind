@@ -4,13 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Threading;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
+public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
 {
     private readonly ITxTracer _innerTracer;
     private readonly CancellationToken _token;
@@ -27,12 +28,14 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     private readonly bool _isTracingBlockHash;
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
+    private readonly bool _isTracingLogs;
 
     public ITxTracer InnerTracer => _innerTracer;
-
+    private ILogsTxTracer? _logsTxTracer;
     public CancellationTxTracer(ITxTracer innerTracer, CancellationToken token = default)
     {
         _innerTracer = innerTracer;
+        _logsTxTracer = InnerTracer as ILogsTxTracer;
         _token = token;
     }
 
@@ -113,6 +116,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
     }
+    public bool IsTracingLogs
+    {
+        get => _isTracingLogs || (_logsTxTracer != null && _logsTxTracer!.IsTracingLogs);
+        init => _isTracingLogs = value;
+    }
+
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -441,5 +450,18 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     public void Dispose()
     {
         _innerTracer.Dispose();
+    }
+
+
+    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall = false)
+    {
+        if (_logsTxTracer == null)
+        {
+            return Enumerable.Empty<LogEntry>();
+        }
+
+        return _logsTxTracer.ReportActionAndAddResultsToState(gas, value, from, to, input, callType,
+            isPrecompileCall);
     }
 }

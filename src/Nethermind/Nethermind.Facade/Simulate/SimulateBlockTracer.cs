@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
@@ -29,9 +30,11 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 
     public override ITxTracer StartNewTxTrace(Transaction? tx)
     {
+
         if (tx?.Hash is not null)
         {
-            SimulateTxTracer result = new(isTracingLogs);
+            ulong txIndex = (ulong)_txTracers.Count;
+            SimulateTxTracer result = new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, txIndex);
             _txTracers.Add(result);
             return result;
         }
@@ -58,19 +61,6 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
             Withdrawals = _currentBlock.Withdrawals ?? Array.Empty<Withdrawal>()
         };
 
-        result.Calls.ForEach(callResult =>
-        {
-            if (callResult.Type == (ulong)ResultType.Success)
-            {
-                callResult.Logs?.ForEach(log =>
-                {
-                    log.BlockHash = _currentBlock.Hash!;
-                    log.BlockNumber = (ulong)_currentBlock.Number;
-                });
-            }
-        });
-
-        //TODO: We could potentially improve performance, through streaming through enumerable and yield return rather than accumulating huge result list in memory.
         Results.Add(result);
     }
 }

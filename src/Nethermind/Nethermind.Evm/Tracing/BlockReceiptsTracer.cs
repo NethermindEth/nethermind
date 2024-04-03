@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
+public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, ILogsTxTracer
 {
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
@@ -28,6 +28,9 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
 
+    public bool IsTracingLogs => _logsTxTracer != null && _logsTxTracer!.IsTracingLogs;
+
+    private ILogsTxTracer? _logsTxTracer;
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
@@ -237,6 +240,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         CurrentTx = tx;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
+        _logsTxTracer = _currentTxTracer as ILogsTxTracer;
+
         return _currentTxTracer;
     }
 
@@ -269,5 +274,18 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void Dispose()
     {
         _currentTxTracer.Dispose();
+    }
+
+    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
+        ExecutionType callType, bool isPrecompileCall = false)
+    {
+        if (_logsTxTracer != null)
+        {
+            return _logsTxTracer.ReportActionAndAddResultsToState(gas, value, from, to, input, callType,
+                isPrecompileCall);
+        }
+
+        return Enumerable.Empty<LogEntry>();
+
     }
 }

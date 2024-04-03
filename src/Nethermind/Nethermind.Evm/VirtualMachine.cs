@@ -219,7 +219,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (_txTracer is ILogsTxTracer { IsTracingLogs: true } logsTxTracer)
                         {
-                            IEnumerable<LogEntry> logs = logsTxTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                            IEnumerable<LogEntry> logs = logsTxTracer.ReportActionAndAddResultsToState(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
                                 currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
                                 currentState.ExecutionType);
 
