@@ -26,6 +26,7 @@ using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
 using NSubstitute;
+using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test;
@@ -50,8 +51,15 @@ public class JsonRpcServiceTests
 
     private JsonRpcResponse TestRequest<T>(T module, string method, params string[]? parameters) where T : IRpcModule
     {
+        var pool = new SingletonModulePool<T>(new SingletonFactory<T>(module), true);
+
+        return TestRequestWithPool(pool, method, parameters);
+    }
+
+    private JsonRpcResponse TestRequestWithPool<T>(IRpcModulePool<T> pool, string method, params string[]? parameters) where T : IRpcModule
+    {
         RpcModuleProvider moduleProvider = new(new FileSystem(), _configurationProvider.GetConfig<IJsonRpcConfig>(), LimboLogs.Instance);
-        moduleProvider.Register(new SingletonModulePool<T>(new SingletonFactory<T>(module), true));
+        moduleProvider.Register(pool);
         _jsonRpcService = new JsonRpcService(moduleProvider, _logManager, _configurationProvider.GetConfig<IJsonRpcConfig>());
         JsonRpcRequest request = RpcTest.GetJsonRequest(method, parameters);
         JsonRpcResponse response = _jsonRpcService.SendRequestAsync(request, _context).Result;
@@ -97,6 +105,24 @@ public class JsonRpcServiceTests
         ethRpcModule.eth_chainId().ReturnsForAnyArgs(ResultWrapper<ulong>.Success(1ul));
         TestRequest(ethRpcModule, "eth_chainID").Should().BeOfType<JsonRpcErrorResponse>();
         TestRequest(ethRpcModule, "eth_chainId").Should().BeOfType<JsonRpcSuccessResponse>();
+    }
+
+    [Test]
+    public void Will_return_to_pool_on_arbitrary_error()
+    {
+        IRpcModulePool<IEthRpcModule> pool = Substitute.For<IRpcModulePool<IEthRpcModule>>();
+        IEthRpcModule rpcModule = Substitute.For<IEthRpcModule>();
+        pool.GetModule(false).Returns(rpcModule);
+
+        rpcModule.eth_getLogs(Arg.Any<Filter>())
+            .Throws(new Exception("test exception"));
+
+        JsonRpcResponse response = TestRequestWithPool(pool, "eth_getLogs", "{}");
+        rpcModule.Received().eth_getLogs(Arg.Any<Filter>());
+        response.Should().BeOfType<JsonRpcErrorResponse>();
+
+        response.Dispose();
+        pool.Received().ReturnModule(rpcModule);
     }
 
     [Test]
