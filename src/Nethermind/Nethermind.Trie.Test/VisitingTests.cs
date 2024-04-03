@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -134,6 +135,58 @@ public class VisitingTests
         }
     }
 
+    [TestCaseSource(nameof(GetStorageOptions))]
+    public void VisitorTestTransition(VisitingOptions options)
+    {
+        MemDb memDb = new();
+
+        using TrieStore trieStore = new(memDb, Prune.WhenCacheReaches(1.MB()), Persist.EveryBlock, LimboLogs.Instance);
+
+        byte[] value = Enumerable.Range(1, 32).Select(i => (byte)i).ToArray();
+        Hash256 stateRootHash = Keccak.Zero;
+
+        for (int outi = 0; outi < 64; outi++)
+        {
+            ValueHash256 stateKey = default;
+            stateKey.BytesAsSpan[outi / 2] = (byte)(1 << (4 * (1 - outi % 2)));
+
+            StorageTree storage = new(trieStore.GetTrieStore(stateKey.ToCommitment()), LimboLogs.Instance);
+            for (int i = 0; i < 64; i++)
+            {
+                ValueHash256 storageKey = default;
+                storageKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+                storage.Set(storageKey, value);
+            }
+            storage.Commit(0);
+
+            stateRootHash = storage.RootHash;
+        }
+
+
+        StateTree stateTree = new(trieStore, LimboLogs.Instance);
+
+        for (int i = 0; i < 64; i++)
+        {
+            ValueHash256 stateKey = default;
+            stateKey.BytesAsSpan[i / 2] = (byte)(1 << (4 * (1 - i % 2)));
+
+            stateTree.Set(stateKey,
+                new Account(10, (UInt256)(10_000_000 + i), stateRootHash, Keccak.OfAnEmptySequenceRlp));
+        }
+
+        stateTree.Commit(0);
+
+        var collector = new TransitionCollector();
+
+        ValueHash256 visitorKey = default;
+        visitorKey.BytesAsSpan[5 / 2] = (byte)(1 << (4 * (1 - 5 % 2)));
+        var visitor = new TransitionQueryVisitor(visitorKey, visitorKey, collector, nodeLimit: 5);
+
+        stateTree.Accept(visitor, stateTree.RootHash, options);
+
+        Console.WriteLine($"ENDING {visitor.CurrentAccountPath.Path} {visitor.CurrentStoragePath.Path}");
+    }
+
     public static IEnumerable<TestCaseData> GetAccountOptions() => GetOptions(false);
     public static IEnumerable<TestCaseData> GetStorageOptions() => GetOptions(true);
 
@@ -216,6 +269,19 @@ public class VisitingTests
 
         public void VisitCode(in PathGatheringContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
+        }
+    }
+
+    private class TransitionCollector : TransitionQueryVisitor.IValueCollector
+    {
+        public void CollectAccount(in ValueHash256 path, CappedArray<byte> value)
+        {
+            Console.WriteLine($"Account {path} {value.ToArray()!.ToHexString()}");
+        }
+
+        public void CollectStorage(in ValueHash256 account, in ValueHash256 path, CappedArray<byte> value)
+        {
+            Console.WriteLine($"Storage {account} {path} {value.ToArray()!.ToHexString()}");
         }
     }
 }
