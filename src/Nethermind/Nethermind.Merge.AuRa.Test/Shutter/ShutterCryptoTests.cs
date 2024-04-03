@@ -9,6 +9,7 @@ using Nethermind.Int256;
 using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -57,6 +58,28 @@ class ShutterCryptoTests
         Assert.That(res.SequenceEqual(msg));
     }
 
+    [Test]
+    public void Can_encrypt()
+    {
+        Span<byte> msg = Convert.FromHexString("f86a8201f88504a817c800825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a010295a68cfc27a6647131a1cf6477bf43e615973f0b7e529bcef2dddf0b895f3a05a64529e0f44b2621e87c11ca9a2d638f3fa7994a8b043beed056d60e5608732");
+
+        Bytes32 identityPrefix = new([0x23, 0xbb, 0xdd, 0x06, 0x95, 0xf3, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
+        Address sender = new("3834a349678eF446baE07e2AefFC01054184af00");
+        G1 identity = ShutterCrypto.ComputeIdentity(identityPrefix, sender);
+
+        UInt256 sk = 123456789;
+        G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
+
+        Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
+
+        EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
+
+        byte[] encoded = EncodeEncryptedMessage(c);
+        TestContext.WriteLine("encrypted tx: " +  Convert.ToHexString(encoded));
+        TestContext.WriteLine("identity prefix: " + Convert.ToHexString(identityPrefix.Unwrap()));
+        TestContext.WriteLine("eon key: " + Convert.ToHexString(eonKey.compress()));
+    }
+
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
     {
         UInt256 r = ShutterCrypto.ComputeR(sigma, msg);
@@ -67,6 +90,22 @@ class ShutterCryptoTests
             c3 = ComputeC3(PadAndSplit(msg), sigma)
         };
         return c;
+    }
+
+    internal static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
+    {
+        byte[] bytes = new byte[96 + 32 + (encryptedMessage.c3.Count() * 32)];
+
+        encryptedMessage.c1.compress().CopyTo(bytes.AsSpan());
+        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[96..]);
+
+        foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
+        {
+            int offset = 96 + 32 + (32 * i);
+            block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
+        }
+
+        return bytes;
     }
 
     private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
