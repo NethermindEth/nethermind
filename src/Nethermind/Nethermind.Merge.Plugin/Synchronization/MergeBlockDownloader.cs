@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.AspNetCore.Connections;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -199,8 +200,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
-                long bestProcessedBlock = 0;
-
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -217,6 +216,17 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         throw new EthSyncException($"{bestPeer} didn't send body for block {currentBlock.ToString(Block.Format.Short)}.");
                     }
 
+                    long bestFullState = _fullStateFinder.FindBestFullState();
+                    if (!shouldProcess &&
+                        (
+                            (bestFullState != 0 && currentBlock.Number > bestFullState) ||
+                            (_blockTree.DesiredStateBlockNumber != 0 && currentBlock.Number > _blockTree.DesiredStateBlockNumber)
+                        )
+                       )
+                    {
+                        return blocksSynced;
+                    }
+
                     // can move this to block tree now?
                     if (!_blockValidator.ValidateSuggestedBlock(currentBlock, out _))
                     {
@@ -227,26 +237,18 @@ namespace Nethermind.Merge.Plugin.Synchronization
 
                     if (shouldProcess)
                     {
-                        // An edge case when we've got state already, but still downloading blocks before it.
-                        // We cannot process such blocks, but still we are requested to process them via blocksRequest.Options
-                        // So we'are detecting it and chaing from processing to receipts downloading
-                        bool headIsGenesis = _blockTree.Head?.IsGenesis ?? false;
-                        bool toBeProcessedHasNoProcessedParent = currentBlock.Number > (bestProcessedBlock + 1);
-                        bool isFastSyncTransition = headIsGenesis && toBeProcessedHasNoProcessedParent;
-                        if (isFastSyncTransition)
+                        if (currentBlock.Number <= bestFullState || currentBlock.Number <= _blockTree.DesiredStateBlockNumber)
                         {
-                            long bestFullState = _fullStateFinder.FindBestFullState();
-                            shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess && !downloadReceipts)
-                            {
-                                if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                                downloadReceipts = true;
-                                context.SetDownloadReceipts();
-                                await RequestReceipts(bestPeer, cancellation, context);
-                                receipts = context.ReceiptsForBlocks;
-                            }
+                            if (_logger.IsWarn) _logger.Warn($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
+                            downloadReceipts = true;
+                            shouldProcess = false;
+                            context.SetDownloadReceipts();
+                            await RequestReceipts(bestPeer, cancellation, context);
+                            receipts = context.ReceiptsForBlocks;
                         }
                     }
+
+                    if (_logger.IsInfo) _logger.Info($"Syncing block: currentBlock: {currentBlock}, bestFullState: {bestFullState}, desiredState: {_blockTree.DesiredStateBlockNumber}, sp: {shouldProcess}");
 
                     if (downloadReceipts)
                     {
@@ -279,10 +281,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         if (shouldProcess == false)
                         {
                             _blockTree.UpdateMainChain(new[] { currentBlock }, false);
-                        }
-                        else
-                        {
-                            bestProcessedBlock = currentBlock.Number;
                         }
 
                         TryUpdateTerminalBlock(currentBlock.Header, shouldProcess);

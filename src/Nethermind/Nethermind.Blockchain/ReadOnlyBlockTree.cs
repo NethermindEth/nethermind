@@ -21,6 +21,12 @@ namespace Nethermind.Blockchain
     {
         private readonly IBlockTree _wrapped;
 
+        public long DesiredStateBlockNumber
+        {
+            get => _wrapped.DesiredStateBlockNumber;
+            set => _wrapped.DesiredStateBlockNumber = value;
+        }
+
         public ReadOnlyBlockTree(IBlockTree wrapped)
         {
             _wrapped = wrapped;

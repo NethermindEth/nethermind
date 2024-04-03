@@ -140,6 +140,7 @@ namespace Nethermind.Blockchain
         void MarkChainAsProcessed(IReadOnlyList<Block> blocks);
 
         bool CanAcceptNewBlocks { get; }
+        long DesiredStateBlockNumber { get; set; }
 
         Task Accept(IBlockTreeVisitor blockTreeVisitor, CancellationToken cancellationToken);
 

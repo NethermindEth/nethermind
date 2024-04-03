@@ -1608,6 +1608,8 @@ namespace Nethermind.Blockchain
             }
         }
 
+        public long DesiredStateBlockNumber { get; set; }
+
         public void ForkChoiceUpdated(Hash256? finalizedBlockHash, Hash256? safeBlockHash)
         {
             FinalizedHash = finalizedBlockHash;

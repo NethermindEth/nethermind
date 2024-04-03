@@ -428,6 +428,7 @@ namespace Nethermind.Synchronization.FastSync
                 {
                     _branchProgress = new BranchProgress(blockNumber, _logger);
                     _blockNumber = blockNumber;
+                    _blockTree.DesiredStateBlockNumber = _blockNumber;
                     _rootNode = stateRoot;
                     lock (_dependencies) _dependencies.Clear();
 
