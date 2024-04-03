@@ -103,7 +103,10 @@ public class ShutterTxSource : ITxSource
     internal IEnumerable<TransactionSubmittedEvent> GetEvents()
     {
         IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
-        return logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
+        _logger.Info("total logs: " + logs.Count());
+        var tmp = logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
+        _logger.Info("tx submitted logs: " + tmp.Count());
+        return tmp;
     }
 
     internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
@@ -123,6 +126,7 @@ public class ShutterTxSource : ITxSource
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
         events = events.Where(e => e.Eon == eon).Skip(txPointer);
+        _logger.Info("this eon: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
         UInt256 totalGas = 0;
@@ -131,6 +135,7 @@ public class ShutterTxSource : ITxSource
         {
             if (totalGas + e.GasLimit > EncryptedGasLimit)
             {
+                _logger.Info("reached gas limit!");
                 break;
             }
 
@@ -142,6 +147,8 @@ public class ShutterTxSource : ITxSource
                 Identity = ShutterCrypto.ComputeIdentity(e.IdentityPrefix, e.Sender)
             };
             txs.Add(sequencedTransaction);
+
+            _logger.Info("added tx");
 
             totalGas += e.GasLimit;
         }

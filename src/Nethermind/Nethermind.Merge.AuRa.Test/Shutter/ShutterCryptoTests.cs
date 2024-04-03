@@ -75,7 +75,7 @@ class ShutterCryptoTests
         EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
 
         byte[] encoded = EncodeEncryptedMessage(c);
-        TestContext.WriteLine("encrypted tx: " +  Convert.ToHexString(encoded));
+        TestContext.WriteLine("encrypted tx: " + Convert.ToHexString(encoded));
         TestContext.WriteLine("identity prefix: " + Convert.ToHexString(identityPrefix.Unwrap()));
         TestContext.WriteLine("eon key: " + Convert.ToHexString(eonKey.compress()));
     }
