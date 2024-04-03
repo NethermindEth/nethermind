@@ -42,7 +42,7 @@ using System.Threading;
 
 using Int256;
 using Nethermind.Evm.EOF;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Org.BouncyCastle.Asn1.X509;
 using SectionHeader = EOF.SectionHeader;
 
