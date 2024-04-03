@@ -165,6 +165,12 @@ namespace Nethermind.Consensus.Validators
                 return false;
             }
 
+            if (transaction.Initcodes?.Length == 0)
+            {
+                error = TxErrorMessages.TooManyEofInitcodes;
+                return false;
+            }
+
             if (transaction.Initcodes?.Length >= Transaction.MaxInitcodeCount)
             {
                 error = TxErrorMessages.TooManyEofInitcodes;
@@ -174,7 +180,7 @@ namespace Nethermind.Consensus.Validators
             bool valid = true;
             foreach (var initcode in transaction.Initcodes)
             {
-                if (initcode?.Length >= spec.MaxInitCodeSize)
+                if (initcode?.Length >= spec.MaxInitCodeSize || initcode?.Length == 0)
                 {
                     valid = false;
                     break;  
@@ -183,7 +189,7 @@ namespace Nethermind.Consensus.Validators
 
             if(!valid)
             {
-                error = TxErrorMessages.EofContractSizeTooBig;
+                error = TxErrorMessages.EofContractSizeInvalid;
                 return false;
             }
 

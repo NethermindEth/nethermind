@@ -85,6 +85,9 @@ public static class TxErrorMessages
     public const string TooManyEofInitcodes
         = $"TooManyEofInitcodes: Eof initcodes count exceeded limit";
 
-    public const string EofContractSizeTooBig
-        = "EofContractSizeTooBig: Eof initcode size exceeded";
+    public const string EmptyEofInitcodesField
+        = $"EmptyEofInitcodesField: Eof initcodes count must be greater than 0";
+
+    public const string EofContractSizeInvalid
+        = "EofContractSizeInvalid: Eof initcode size is invalid (either 0 or too big)";
 }
