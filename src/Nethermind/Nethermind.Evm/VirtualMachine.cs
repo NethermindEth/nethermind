@@ -3054,18 +3054,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
-        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
+        if (!EvmObjectFormat.IsValidEof(initCode.Span, instruction is Instruction.TXCREATE ? EvmObjectFormat.ValidationStrategy.ValidateSubContainers : EvmObjectFormat.ValidationStrategy.Validate, out _))
         {
-            // TODO: need a test for this
+            // handle invalid Eof code
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
 
-        if (!EvmObjectFormat.IsValidEof(initCode.Span, instruction is Instruction.TXCREATE ? EvmObjectFormat.ValidationStrategy.ValidateSubContainers : EvmObjectFormat.ValidationStrategy.Validate, out _))
+        // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
+        if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
         {
-            // handle invalid Eof code
+            // TODO: need a test for this
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
             return (EvmExceptionType.None, null);
