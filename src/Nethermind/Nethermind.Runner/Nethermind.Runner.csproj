@@ -122,4 +122,11 @@
       </AssemblyAttribute>
     </ItemGroup>
   </Target>
+
+  <Target Name="CheckBranchName" AfterTargets="BeforeBuild" >
+    <Exec Command="git branch --show-current" ConsoleToMSBuild="True" StandardOutputImportance="low">
+      <Output PropertyName="BranchName" TaskParameter="ConsoleOutput" />
+    </Exec>
+    <Error Text="The current branch '$(BranchName)' should be named in lower case." Condition="$([System.Text.RegularExpressions.Regex]::IsMatch($(BranchName), '^.*[A-Z].*$'))" />
+  </Target>
 </Project>
