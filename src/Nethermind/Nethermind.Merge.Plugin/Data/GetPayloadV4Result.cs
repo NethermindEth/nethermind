@@ -6,20 +6,12 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV4Result : GetPayloadV2Result
+public class GetPayloadV4Result : GetPayloadV3Result
 {
-    public GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : base(block, blockFees)
+    public GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : base(block, blockFees, blobsBundle)
     {
         ExecutionPayload = new(block);
-        BlobsBundle = blobsBundle;
     }
 
-    public BlobsBundleV1 BlobsBundle { get; }
-
     public override ExecutionPayloadV4 ExecutionPayload { get; }
-
-    public bool ShouldOverrideBuilder { get; }
-
-    public override string ToString() =>
-        $"{{ExecutionPayload: {ExecutionPayload}, Fees: {BlockValue}, BlobsBundle blobs count: {BlobsBundle.Blobs.Length}, ShouldOverrideBuilder {ShouldOverrideBuilder}}}";
 }
