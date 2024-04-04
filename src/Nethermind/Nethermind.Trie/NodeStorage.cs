@@ -15,7 +15,8 @@ public class NodeStorage : INodeStorage
     private readonly IKeyValueStore _keyValueStore;
     private static readonly byte[] EmptyTreeHashBytes = { 128 };
     private const int StoragePathLength = 74;
-    private const int TopStateBoundary = 5;
+    private const int NewStoragePathLength = 62;
+    private const int TopStateBoundary = 4;
 
     public INodeStorage.KeyScheme Scheme { get; set; }
     public bool RequirePath { get; }
@@ -54,14 +55,14 @@ public class NodeStorage : INodeStorage
         // | section byte | 8 byte from path | path length byte | 32 byte hash |
         // +--------------+------------------+------------------+--------------+
         //
-        // For storage (total 74 byte)
+        // For storage (total 62 byte)
         // +--------------+---------------------+------------------+------------------+--------------+
-        // | section byte | 32 byte from address | 8 byte from path | path length byte | 32 byte hash |
+        // | section byte | 20 byte from address | 8 byte from path | path length byte | 32 byte hash |
         // +--------------+---------------------+------------------+------------------+--------------+
         //
         // The section byte is:
-        // - 0 if state and path length is <= 5.
-        // - 1 if state and path length is > 5.
+        // - 0 if state and path length is <= 4.
+        // - 1 if state and path length is > 4.
         // - 2 if storage.
         //
         // The keys are separated due to the different characteristics of these nodes. The idea being that top level
@@ -92,6 +93,40 @@ public class NodeStorage : INodeStorage
         else
         {
             pathSpan[0] = 2;
+            address.Bytes[..20].CopyTo(pathSpan[1..]);
+
+            path.Path.BytesAsSpan[..8].CopyTo(pathSpan[21..]);
+            pathSpan[29] = (byte)path.Length;
+            keccak.Bytes.CopyTo(pathSpan[30..]);
+            return pathSpan[..NewStoragePathLength];
+        }
+
+    }
+
+    private static Span<byte> GetExperimentalHalfPathNodeStoragePathSpan(Span<byte> pathSpan, Hash256? address, in TreePath path, in ValueHash256 keccak)
+    {
+        // Legacy encoding used during experimental.
+        const int oldTopStateBoundary = 5;
+
+        if (address is null)
+        {
+            // Separate the top level tree into its own section. This marginally improve cache hit rate, but not much.
+            // 70% of duplicated keys is in this section, making them pretty bad, so we isolate them here to not expand
+            // the space of other things, hopefully we can cache them by key somehow. Separating by the path length 4
+            // does improve cache hit and processing time a little bit, until a few hundreds prune persist where it grew
+            // beyond block cache size.
+            pathSpan[0] = path.Length <= oldTopStateBoundary ? (byte)0 : (byte)1;
+
+            // Keep key small
+            path.Path.BytesAsSpan[..8].CopyTo(pathSpan[1..]);
+            keccak.Bytes.CopyTo(pathSpan[10..]);
+
+            pathSpan[9] = (byte)path.Length;
+            return pathSpan[..42];
+        }
+        else
+        {
+            pathSpan[0] = 2;
             address.Bytes.CopyTo(pathSpan[1..]);
             path.Path.BytesAsSpan[..8].CopyTo(pathSpan[33..]);
 
@@ -99,7 +134,6 @@ public class NodeStorage : INodeStorage
             keccak.Bytes.CopyTo(pathSpan[42..]);
             return pathSpan;
         }
-
     }
 
     private static Span<byte> GetHashBasedStoragePath(Span<byte> pathSpan, in ValueHash256 keccak)
@@ -133,11 +167,13 @@ public class NodeStorage : INodeStorage
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
             return _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
+                   ?? _keyValueStore.Get(GetExperimentalHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
                    ?? _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags);
         }
 
         return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
-               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
+               ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags)
+               ?? _keyValueStore.Get(GetExperimentalHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
 
     public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 keccak)
@@ -151,11 +187,13 @@ public class NodeStorage : INodeStorage
         if (Scheme == INodeStorage.KeyScheme.HalfPath)
         {
             return _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
+                   || _keyValueStore.KeyExists(GetExperimentalHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
                    || _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak));
         }
 
         return _keyValueStore.KeyExists(GetHashBasedStoragePath(storagePathSpan, keccak))
-               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
+               || _keyValueStore.KeyExists(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak))
+               || _keyValueStore.KeyExists(GetExperimentalHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak));
     }
 
     public INodeStorage.WriteBatch StartWriteBatch()
