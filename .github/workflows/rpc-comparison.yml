@@ -315,8 +315,8 @@ jobs:
             
             for TEST in "${tests[@]}"; do
                 TEST_perf_result="${TEST}_perf_result"
-                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 100 1000 10000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
-                flood "$TEST" ${compare_to_other_branch_params} --rates 100 1000 10000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
+                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
+                flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
             echo "flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt"
