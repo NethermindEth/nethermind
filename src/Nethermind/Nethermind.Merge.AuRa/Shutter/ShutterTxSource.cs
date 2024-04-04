@@ -131,7 +131,7 @@ public class ShutterTxSource : ITxSource
         // events = events.Where(e => e.Eon == eon).Skip(txPointer);
         _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
-        events = events.Skip(5);
+        events = events.Skip(10);
         _logger.Info("after skipping: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
