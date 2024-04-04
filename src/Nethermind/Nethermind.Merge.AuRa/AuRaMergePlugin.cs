@@ -109,10 +109,10 @@ namespace Nethermind.Merge.AuRa
                 }
 
                 IReadOnlyBlockTree readOnlyBlockTree = _api.BlockTree!.AsReadOnly();
-                ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
+                ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager!, readOnlyBlockTree, _api.SpecProvider, _api.LogManager);
 
                 // init Shutter transaction source
-                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnv, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, validatorsInfo);
+                shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, validatorsInfo);
 
                 // init P2P to listen for decryption keys
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
@@ -124,7 +124,7 @@ namespace Nethermind.Merge.AuRa
                     }
                 };
 
-                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, readOnlyBlockTree, readOnlyTxProcessingEnv, _api.AbiEncoder!, _auraConfig, _api.LogManager);
+                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, _api.LogManager);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);

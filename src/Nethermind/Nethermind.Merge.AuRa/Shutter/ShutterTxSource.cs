@@ -19,6 +19,7 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
+using Nethermind.Consensus.Processing;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -51,13 +52,13 @@ public class ShutterTxSource : ITxSource
         ]
     );
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEnumerable<(ulong, byte[])> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
         IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
         _logFinder = logFinder;
         _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, auraConfig.ShutterSequencerContractAddress, topics);
-        _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
+        _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         _abiEncoder = abiEncoder;
         _auraConfig = auraConfig;
         _specProvider = specProvider;
@@ -68,7 +69,7 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        ITransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
+        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
         Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
         if (!_validatorsRegistered)

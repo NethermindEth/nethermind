@@ -21,6 +21,7 @@ using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Google.Protobuf.WellKnownTypes;
+using Nethermind.Consensus.Processing;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -38,11 +39,11 @@ public class ShutterP2P
     private readonly Address _keyperSetManagerContractAddress;
     private ulong _eon = 0;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, IReadOnlyTxProcessorSource readOnlyTxProcessorSource, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
+    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
         _onDecryptionKeysReceived = OnDecryptionKeysReceived;
         _readOnlyBlockTree = readOnlyBlockTree;
-        _readOnlyTxProcessorSource = readOnlyTxProcessorSource;
+        _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         _abiEncoder = abiEncoder;
         _logger = logManager.GetClassLogger();
         _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
