@@ -141,8 +141,6 @@ public class ShutterP2P
         KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
 
-        _logger.Info("keyperSetManagerContract is null? " + (keyperSetManagerContract is null));
-
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
         {
@@ -226,14 +224,15 @@ public class ShutterP2P
 
     internal bool BlockTreeIsReady()
     {
-        try
-        {
-            var _ = _readOnlyBlockTree.Head!.StateRoot!;
-        }
-        catch (Exception)
-        {
-            return false;
-        }
+        // todo: is this needed? hacky solution
+        // try
+        // {
+        //     var _ = _readOnlyBlockTree.Head!.StateRoot!;
+        // }
+        // catch (Exception)
+        // {
+        //     return false;
+        // }
 
         return true;
     }
