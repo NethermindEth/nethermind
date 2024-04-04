@@ -127,10 +127,12 @@ public class ShutterTxSource : ITxSource
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
         // todo: use txpointer once correct
-        events = events.Where(e => e.Eon == eon).Skip(30);
+        events = events.Where(e => e.Eon == eon);
         // events = events.Where(e => e.Eon == eon).Skip(txPointer);
         _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
+        events = events.Skip(5);
+        _logger.Info("after skipping: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
         UInt256 totalGas = 0;
