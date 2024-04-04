@@ -1441,6 +1441,9 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
                 break;
+            case ITunableDb.TuneType.HashDb:
+                ApplyOptions(GetHashDbOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1479,6 +1482,20 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
+        };
+    }
+
+    private IDictionary<string, string> GetHashDbOptions()
+    {
+        return new Dictionary<string, string>()
+        {
+            // Some database config is slightly faster on hash db database. These are applied when hash db is detected
+            // to prevent unexpected regression.
+            { "table_factory.block_size", "4096" },
+            { "table_factory.block_restart_interval", "16" },
+            { "compression", "kSnappyCompression" },
+            { "max_bytes_for_level_multiplier", "10" },
+            { "max_bytes_for_level_base", "256000000" },
         };
     }
 
@@ -1585,6 +1602,8 @@ public class DbOnTheRocks : IDb, ITunableDb
     internal class IteratorManager : IDisposable
     {
         private readonly ManagedIterators _readaheadIterators = new();
+        private readonly ManagedIterators _readaheadIterators2 = new();
+        private readonly ManagedIterators _readaheadIterators3 = new();
         private readonly RocksDb _rocksDb;
         private readonly ColumnFamilyHandle? _cf;
         private readonly ReadOptions? _readOptions;
@@ -1605,17 +1624,31 @@ public class DbOnTheRocks : IDb, ITunableDb
         private void OnTimer(object? state)
         {
             _readaheadIterators.ClearIterators();
+            _readaheadIterators2.ClearIterators();
+            _readaheadIterators3.ClearIterators();
         }
 
         public void Dispose()
         {
             _timer.Dispose();
             _readaheadIterators.DisposeAll();
+            _readaheadIterators2.DisposeAll();
+            _readaheadIterators3.DisposeAll();
         }
 
         public RentWrapper Rent(ReadFlags flags)
         {
+
             ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
+            {
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
+            }
+
             IteratorHolder holder = iterators.Value!;
             // If null, we create a new one.
             Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
@@ -1625,6 +1658,15 @@ public class DbOnTheRocks : IDb, ITunableDb
         private void Return(Iterator iterator, ReadFlags flags)
         {
             ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
+            {
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
+            }
+
             IteratorHolder holder = iterators.Value!;
 
             // We don't keep using the same iterator for too long.

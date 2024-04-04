@@ -9,7 +9,7 @@ using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Core.Crypto;
 
-namespace Nethermind.Evm.Tracing.GethStyle.JavaScript;
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 
 public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
 {
@@ -59,7 +59,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        result.CustomTracerResult = new GethLikeJavaScriptTrace() { Value = _tracer.result(_ctx, _db) };
+        result.CustomTracerResult = new GethLikeCustomTrace() { Value = _tracer.result(_ctx, _db) };
         _resultConstructed = true;
         return result;
     }

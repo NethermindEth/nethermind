@@ -6,7 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
-using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -29,7 +28,6 @@ using Nethermind.Crypto;
 using Nethermind.Facade.Eth;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.AuRa.Shutter;
 using Nethermind.Merge.AuRa.Withdrawals;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -65,7 +63,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int ErrorCode
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
