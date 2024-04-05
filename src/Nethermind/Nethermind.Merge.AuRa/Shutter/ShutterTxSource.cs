@@ -31,6 +31,7 @@ using G1 = Bls.P1;
 public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
+    public ulong? TxPointer;
     private bool _validatorsRegistered = false;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
@@ -73,16 +74,17 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        // todo: cache? check changes in header?
-        if (DecryptionKeys is null || DecryptionKeys!.Gnosis.Slot != (ulong)parent.Number)
+        if (DecryptionKeys is null || DecryptionKeys!.Gnosis.Slot != (ulong)parent.Number || TxPointer is null)
         {
             // todo: store a dictionary?
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {parent.Number}, cannot include Shutter transactions");
             return [];
         }
 
-        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, (int)DecryptionKeys.Gnosis.TxPointer);
+        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, TxPointer.Value);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
+
+        TxPointer = DecryptionKeys.Gnosis.TxPointer;
 
         IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
         if (_logger.IsInfo) _logger.Info("Decrypted Shutter transactions...");
@@ -112,14 +114,14 @@ public class ShutterTxSource : ITxSource
         return Rlp.Decode<Transaction>(new Rlp(transaction), RlpBehaviors.AllowUnsigned);
     }
 
-    internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, int txPointer)
+    internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
     {
         IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
         _logger.Info("total events: " + events.Count());
         events = events.Where(e => e.Eon == eon);
         _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
-        events = events.Skip(txPointer);
+        events = events.Skip((int) txPointer); //todo: check overflow
         _logger.Info("after skipping: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();

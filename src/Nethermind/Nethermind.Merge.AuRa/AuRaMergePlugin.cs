@@ -121,6 +121,11 @@ namespace Nethermind.Merge.AuRa
                     {
                         if (logger.IsInfo) logger.Info("Updated Shutter decryption keys...");
                         shutterTxSource.DecryptionKeys = decryptionKeys;
+
+                        if (shutterTxSource.TxPointer is null)
+                        {
+                            shutterTxSource.TxPointer = decryptionKeys.Gnosis.TxPointer;
+                        }
                     }
                 };
 
