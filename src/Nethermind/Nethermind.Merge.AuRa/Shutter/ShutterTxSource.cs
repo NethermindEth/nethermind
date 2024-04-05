@@ -20,6 +20,7 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
+using Nethermind.Merge.AuRa.Shutter.Contracts;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -31,38 +32,25 @@ public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
     private bool _validatorsRegistered = false;
-    private readonly ILogFinder? _logFinder;
-    private readonly LogFilter? _logFilter;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
     private readonly IAuraConfig _auraConfig;
     private readonly ILogger _logger;
+    private readonly SequencerContract _sequencerContract;
     private readonly Address ValidatorRegistryContractAddress;
     private readonly IEnumerable<(ulong, byte[])> ValidatorsInfo;
     private readonly UInt256 EncryptedGasLimit;
-    private readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
-        "TransactionSubmitted",
-        [
-            AbiType.UInt64, // eon
-            AbiType.Bytes32, // identity prefix
-            AbiType.Address, // sender
-            AbiType.DynamicBytes, // encrypted transaction
-            AbiType.UInt256 // gas limit
-        ]
-    );
 
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
-        IEnumerable<object> topics = new List<object>() { TransactionSubmmitedSig.Hash };
-        _logFinder = logFinder;
-        _logFilter = filterStore.CreateLogFilter(BlockParameter.Earliest, BlockParameter.Latest, auraConfig.ShutterSequencerContractAddress, topics);
         _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         _abiEncoder = abiEncoder;
         _auraConfig = auraConfig;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
+        _sequencerContract = new(auraConfig.ShutterSequencerContractAddress, logFinder, filterStore);
         ValidatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
         ValidatorsInfo = validatorsInfo;
         EncryptedGasLimit = _auraConfig.ShutterEncryptedGasLimit;
@@ -71,7 +59,7 @@ public class ShutterTxSource : ITxSource
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
-        Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
+        ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
         if (!_validatorsRegistered)
         {
@@ -102,15 +90,6 @@ public class ShutterTxSource : ITxSource
         return transactions;
     }
 
-    internal IEnumerable<TransactionSubmittedEvent> GetEvents()
-    {
-        IEnumerable<IFilterLog> logs = _logFinder!.FindLogs(_logFilter!);
-        _logger.Info("total logs: " + logs.Count());
-        var tmp = logs.Select(log => new TransactionSubmittedEvent(AbiEncoder.Instance.Decode(AbiEncodingStyle.None, TransactionSubmmitedSig, log.Data)));
-        _logger.Info("tx submitted logs: " + tmp.Count());
-        return tmp;
-    }
-
     internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
@@ -135,7 +114,8 @@ public class ShutterTxSource : ITxSource
 
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, int txPointer)
     {
-        IEnumerable<TransactionSubmittedEvent> events = GetEvents();
+        IEnumerable<ISequencerContract.TransactionSubmitted> events = _sequencerContract.GetEvents();
+        _logger.Info("total events: " + events.Count());
         events = events.Where(e => e.Eon == eon);
         _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
@@ -145,7 +125,7 @@ public class ShutterTxSource : ITxSource
         List<SequencedTransaction> txs = new List<SequencedTransaction>();
         UInt256 totalGas = 0;
 
-        foreach (TransactionSubmittedEvent e in events)
+        foreach (ISequencerContract.TransactionSubmitted e in events)
         {
             if (totalGas + e.GasLimit > EncryptedGasLimit)
             {
@@ -176,23 +156,5 @@ public class ShutterTxSource : ITxSource
         public byte[] EncryptedTransaction;
         public UInt256 GasLimit;
         public G1 Identity;
-    }
-
-    internal class TransactionSubmittedEvent
-    {
-        public ulong Eon;
-        public Bytes32 IdentityPrefix;
-        public Address Sender;
-        public byte[] EncryptedTransaction;
-        public UInt256 GasLimit;
-
-        public TransactionSubmittedEvent(object[] decodedEvent)
-        {
-            Eon = (ulong)decodedEvent[0];
-            IdentityPrefix = new Bytes32((byte[])decodedEvent[1]);
-            Sender = (Address)decodedEvent[2];
-            EncryptedTransaction = (byte[])decodedEvent[3];
-            GasLimit = (UInt256)decodedEvent[4];
-        }
     }
 }

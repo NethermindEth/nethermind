@@ -11,6 +11,7 @@
     <None Remove="Shutter\Contracts\ValidatorRegistryContract.json" />
     <None Remove="Shutter\Contracts\KeyBroadcastContract.json" />
     <None Remove="Shutter\Contracts\KeyperSetManagerContract.json" />
+    <None Remove="Shutter\Contracts\SequencerContract.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -18,6 +19,7 @@
     <EmbeddedResource Include="Shutter\Contracts\ValidatorRegistryContract.json" />
     <EmbeddedResource Include="Shutter\Contracts\KeyBroadcastContract.json" />
     <EmbeddedResource Include="Shutter\Contracts\KeyperSetManagerContract.json" />
+    <EmbeddedResource Include="Shutter\Contracts\SequencerContract.json" />
   </ItemGroup>
 
   <ItemGroup>
