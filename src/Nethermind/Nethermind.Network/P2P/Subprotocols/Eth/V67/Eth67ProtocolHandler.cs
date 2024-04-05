@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -23,12 +22,14 @@ public class Eth67ProtocolHandler : Eth66ProtocolHandler
         IMessageSerializationService serializer,
         INodeStatsManager nodeStatsManager,
         ISyncServer syncServer,
+        IBackgroundTaskScheduler backgroundTaskScheduler,
         ITxPool txPool,
         IPooledTxsRequestor pooledTxsRequestor,
         IGossipPolicy gossipPolicy,
         ForkInfo forkInfo,
-        ILogManager logManager)
-        : base(session, serializer, nodeStatsManager, syncServer, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager)
+        ILogManager logManager,
+        ITxGossipPolicy? transactionsGossipPolicy = null)
+        : base(session, serializer, nodeStatsManager, syncServer, backgroundTaskScheduler, txPool, pooledTxsRequestor, gossipPolicy, forkInfo, logManager, transactionsGossipPolicy)
     {
     }
 

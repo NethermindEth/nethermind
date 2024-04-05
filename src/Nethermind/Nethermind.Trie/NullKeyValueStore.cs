@@ -16,10 +16,14 @@ namespace Nethermind.Trie
         private static NullKeyValueStore _instance;
         public static NullKeyValueStore Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullKeyValueStore());
 
-        public byte[] this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => null;
-            set => throw new NotSupportedException();
+            return null;
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
         }
     }
 }

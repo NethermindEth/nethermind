@@ -5,20 +5,23 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Numerics;
+using System.Text.RegularExpressions;
 using Nethermind.Config;
 using Nethermind.Consensus;
-using Nethermind.Core.Specs;
+using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Les;
+using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
 using Nethermind.Network.P2P.Subprotocols.Wit;
 using Nethermind.Network.Rlpx;
@@ -26,7 +29,9 @@ using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
+using ShouldGossip = Nethermind.TxPool.ShouldGossip;
 
 namespace Nethermind.Network
 {
@@ -50,15 +55,21 @@ namespace Nethermind.Network
         private readonly INetworkStorage _peerStorage;
         private readonly ForkInfo _forkInfo;
         private readonly IGossipPolicy _gossipPolicy;
+        private readonly ITxGossipPolicy _txGossipPolicy;
+        private readonly INetworkConfig _networkConfig;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
         private readonly IDictionary<string, Func<ISession, int, IProtocolHandler>> _protocolFactories;
         private readonly HashSet<Capability> _capabilities = new();
-        public event EventHandler<ProtocolInitializedEventArgs> P2PProtocolInitialized;
+        private readonly Regex? _clientIdPattern;
+        private readonly IBackgroundTaskScheduler _backgroundTaskScheduler;
+        private readonly ISnapServer? _snapServer;
+        public event EventHandler<ProtocolInitializedEventArgs>? P2PProtocolInitialized;
 
         public ProtocolsManager(
             ISyncPeerPool syncPeerPool,
             ISyncServer syncServer,
+            IBackgroundTaskScheduler backgroundTaskScheduler,
             ITxPool txPool,
             IPooledTxsRequestor pooledTxsRequestor,
             IDiscoveryApp discoveryApp,
@@ -69,10 +80,14 @@ namespace Nethermind.Network
             INetworkStorage peerStorage,
             ForkInfo forkInfo,
             IGossipPolicy gossipPolicy,
-            ILogManager logManager)
+            INetworkConfig networkConfig,
+            ISnapServer? snapServer,
+            ILogManager logManager,
+            ITxGossipPolicy? transactionsGossipPolicy = null)
         {
             _syncPool = syncPeerPool ?? throw new ArgumentNullException(nameof(syncPeerPool));
             _syncServer = syncServer ?? throw new ArgumentNullException(nameof(syncServer));
+            _backgroundTaskScheduler = backgroundTaskScheduler ?? throw new ArgumentNullException(nameof(backgroundTaskScheduler));
             _txPool = txPool ?? throw new ArgumentNullException(nameof(txPool));
             _pooledTxsRequestor = pooledTxsRequestor ?? throw new ArgumentNullException(nameof(pooledTxsRequestor));
             _discoveryApp = discoveryApp ?? throw new ArgumentNullException(nameof(discoveryApp));
@@ -83,8 +98,16 @@ namespace Nethermind.Network
             _peerStorage = peerStorage ?? throw new ArgumentNullException(nameof(peerStorage));
             _forkInfo = forkInfo ?? throw new ArgumentNullException(nameof(forkInfo));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
+            _txGossipPolicy = transactionsGossipPolicy ?? ShouldGossip.Instance;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _networkConfig = networkConfig ?? throw new ArgumentNullException(nameof(networkConfig));
+            _snapServer = snapServer;
             _logger = _logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+
+            if (networkConfig.ClientIdMatcher is not null)
+            {
+                _clientIdPattern = new Regex(networkConfig.ClientIdMatcher, RegexOptions.Compiled);
+            }
 
             _protocolFactories = GetProtocolFactories();
             rlpxHost.SessionCreated += SessionCreated;
@@ -174,7 +197,7 @@ namespace Nethermind.Network
             {
                 [Protocol.P2P] = (session, _) =>
                 {
-                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _logManager);
+                    P2PProtocolHandler handler = new(session, _rlpxHost.LocalNodeId, _stats, _serializer, _clientIdPattern, _logManager);
                     session.PingSender = handler;
                     InitP2PProtocol(session, handler);
 
@@ -184,9 +207,9 @@ namespace Nethermind.Network
                 {
                     var ethHandler = version switch
                     {
-                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
-                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
-                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager),
+                        66 => new Eth66ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        67 => new Eth67ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
+                        68 => new Eth68ProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _txPool, _pooledTxsRequestor, _gossipPolicy, _forkInfo, _logManager, _txGossipPolicy),
                         _ => throw new NotSupportedException($"Eth protocol version {version} is not supported.")
                     };
 
@@ -197,8 +220,19 @@ namespace Nethermind.Network
                 {
                     var handler = version switch
                     {
-                        1 => new SnapProtocolHandler(session, _stats, _serializer, _logManager),
+                        1 => new SnapProtocolHandler(session, _stats, _serializer, _backgroundTaskScheduler, _logManager, _snapServer),
                         _ => throw new NotSupportedException($"{Protocol.Snap}.{version} is not supported.")
+                    };
+                    InitSatelliteProtocol(session, handler);
+
+                    return handler;
+                },
+                [Protocol.NodeData] = (session, version) =>
+                {
+                    var handler = version switch
+                    {
+                        1 => new NodeDataProtocolHandler(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager),
+                        _ => throw new NotSupportedException($"{Protocol.NodeData}.{version} is not supported.")
                     };
                     InitSatelliteProtocol(session, handler);
 
@@ -217,7 +251,7 @@ namespace Nethermind.Network
                 },
                 [Protocol.Les] = (session, version) =>
                 {
-                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _logManager);
+                    LesProtocolHandler handler = new(session, _serializer, _stats, _syncServer, _backgroundTaskScheduler, _logManager);
                     InitSyncPeerProtocol(session, handler);
 
                     return handler;
@@ -291,7 +325,7 @@ namespace Nethermind.Network
                 _stats.ReportP2PInitializationEvent(session.Node, new P2PNodeDetails
                 {
                     ClientId = typedArgs.ClientId,
-                    Capabilities = typedArgs.Capabilities.ToArray(),
+                    Capabilities = typedArgs.Capabilities,
                     P2PVersion = typedArgs.P2PVersion,
                     ListenPort = typedArgs.ListenPort
                 });
@@ -342,13 +376,13 @@ namespace Nethermind.Network
                     else
                     {
                         if (_logger.IsTrace) _logger.Trace($"Not able to add a sync peer on {session} for {session.Node:s}");
-                        session.InitiateDisconnect(InitiateDisconnectReason.SessionIdAlreadyExists, "sync peer");
+                        session.InitiateDisconnect(DisconnectReason.SessionIdAlreadyExists, "sync peer");
                     }
 
                     if (_logger.IsTrace) _logger.Trace($"Finalized {handler.ProtocolCode.ToUpper()} protocol initialization on {session} - adding sync peer {session.Node:s}");
 
                     //Add/Update peer to the storage and to sync manager
-                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation));
+                    _peerStorage.UpdateNode(new NetworkNode(session.Node.Id, session.Node.Host, session.Node.Port, _stats.GetOrAdd(session.Node).NewPersistedNodeReputation(DateTime.UtcNow)));
                 }
                 else
                 {
@@ -408,17 +442,14 @@ namespace Nethermind.Network
             AddCapabilityMessage message = new(capability);
             foreach ((Guid _, ISession session) in _sessions)
             {
-                if (session.HasAgreedCapability(capability))
+                if (!session.HasAgreedCapability(capability) && session.HasAvailableCapability(capability))
                 {
-                    continue;
+                    session.DeliverMessage(message);
                 }
-
-                if (!session.HasAvailableCapability(capability))
+                else
                 {
-                    continue;
+                    message.Dispose();
                 }
-
-                session.DeliverMessage(message);
             }
         }
     }

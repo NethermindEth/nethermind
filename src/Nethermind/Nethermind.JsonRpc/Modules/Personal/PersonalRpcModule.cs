@@ -6,19 +6,16 @@ using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
-using Nethermind.Logging;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Wallet;
 
 namespace Nethermind.JsonRpc.Modules.Personal
 {
     public class PersonalRpcModule : IPersonalRpcModule
     {
-        private Encoding _messageEncoding = Encoding.UTF8;
+        private readonly Encoding _messageEncoding = Encoding.UTF8;
         private readonly IEcdsa _ecdsa;
         private readonly IWallet _wallet;
         private readonly IKeyStore _keyStore;
@@ -66,7 +63,7 @@ namespace Nethermind.JsonRpc.Modules.Personal
         }
 
         [RequiresSecurityReview("Consider removing any operations that allow to provide passphrase in JSON RPC")]
-        public ResultWrapper<Keccak> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
+        public ResultWrapper<Hash256> personal_sendTransaction(TransactionForRpc transaction, string passphrase)
         {
             throw new NotImplementedException();
         }
@@ -74,14 +71,14 @@ namespace Nethermind.JsonRpc.Modules.Personal
         public ResultWrapper<Address> personal_ecRecover(byte[] message, byte[] signature)
         {
             message = ToEthSignedMessage(message);
-            Keccak msgHash = Keccak.Compute(message);
+            Hash256 msgHash = Keccak.Compute(message);
             PublicKey publicKey = _ecdsa.RecoverPublicKey(new Signature(signature), msgHash);
             return ResultWrapper<Address>.Success(publicKey.Address);
         }
 
         private static byte[] ToEthSignedMessage(byte[] message)
         {
-            string messageString = $"\\x19Ethereum Signed Message:\\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
+            string messageString = $"\u0019Ethereum Signed Message:\n{message.Length}{UTF8Encoding.UTF8.GetString(message)}";
             message = UTF8Encoding.UTF8.GetBytes(messageString);
             return message;
         }

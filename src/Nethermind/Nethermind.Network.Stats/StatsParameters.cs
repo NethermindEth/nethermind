@@ -17,52 +17,59 @@ namespace Nethermind.Stats
 
         public static StatsParameters Instance { get; } = new StatsParameters();
 
-        public HashSet<DisconnectReason> PenalizedReputationLocalDisconnectReasons { get; set; } =
-            new HashSet<DisconnectReason>
-            {
-                DisconnectReason.UnexpectedIdentity,
-                DisconnectReason.IncompatibleP2PVersion,
-                DisconnectReason.UselessPeer,
-                DisconnectReason.BreachOfProtocol
-            };
-
-        public HashSet<DisconnectReason> PenalizedReputationRemoteDisconnectReasons { get; set; } =
-            new HashSet<DisconnectReason>
-            {
-                DisconnectReason.UnexpectedIdentity,
-                DisconnectReason.IncompatibleP2PVersion,
-                DisconnectReason.UselessPeer,
-                DisconnectReason.BreachOfProtocol,
-                DisconnectReason.TooManyPeers,
-                DisconnectReason.AlreadyConnected
-            };
-
-        public long PenalizedReputationTooManyPeersTimeout { get; } = 10 * 1000;
-
         public int[] FailedConnectionDelays { get; }
 
-        public int[] DisconnectDelays { get; }
+        public int[] DisconnectDelays { get; set; }
 
-        public Dictionary<DisconnectReason, TimeSpan> DelayDueToLocalDisconnect { get; } = new()
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, long ReputationScore)> LocalDisconnectParams { get; } = new()
         {
-            { DisconnectReason.UselessPeer, TimeSpan.FromMinutes(5) }
+            // Its actually protocol init timeout, when status message is not received in time.
+            { DisconnectReason.ReceiveMessageTimeout, (TimeSpan.FromMinutes(5), 0)},
+
+            // Failed could be just timeout, or not synced.
+            { DisconnectReason.PeerRefreshFailed, (TimeSpan.FromMinutes(5), -500)},
+
+            { DisconnectReason.Other, (TimeSpan.Zero, -200)},
+
+            // These are like, very bad
+            { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.IncompatibleP2PVersion, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.UselessPeer, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), -10000) }
         };
 
-        public Dictionary<DisconnectReason, TimeSpan> DelayDueToRemoteDisconnect { get; } = new()
+        public Dictionary<DisconnectReason, (TimeSpan ReconnectDelay, long ReputationScore)> RemoteDisconnectParams { get; } = new()
         {
-            // Actual explicit ClientQuitting is very rare, but internally we also use this status for connection
-            // closed, which can happen if remote client close connection without giving any reason.
-            // It is unclear why we have such large number of these, but it seems that it is usually transient.
-            { DisconnectReason.ClientQuitting, TimeSpan.FromMinutes(1) }
+            { DisconnectReason.ClientQuitting, (TimeSpan.FromMinutes(5), -1000) },
+            { DisconnectReason.TooManyPeers, (TimeSpan.FromMinutes(1), -300) },
+
+            { DisconnectReason.Other, (TimeSpan.Zero, -200)},
+
+            // These are like, very bad
+            { DisconnectReason.UnexpectedIdentity, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.IncompatibleP2PVersion, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.UselessPeer, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.BreachOfProtocol, (TimeSpan.FromMinutes(15), -10000) },
+            { DisconnectReason.AlreadyConnected, (TimeSpan.Zero, -10000) },
         };
 
-        public Dictionary<NodeStatsEventType, TimeSpan> DelayDueToEvent { get; } = new()
+        public Dictionary<NodeStatsEventType, (TimeSpan ReconnectDelay, long ReputationScore)> EventParams { get; } = new()
         {
             // Geth have 30 second reconnect delay. So its useless to try again before that.
-            { NodeStatsEventType.Connecting, TimeSpan.FromSeconds(30) },
+            { NodeStatsEventType.Connecting, (TimeSpan.FromSeconds(30), 0) },
 
-            { NodeStatsEventType.ConnectionFailedTargetUnreachable, TimeSpan.FromMinutes(15) },
-            { NodeStatsEventType.ConnectionFailed, TimeSpan.FromMinutes(5) },
+            { NodeStatsEventType.ConnectionFailedTargetUnreachable, (TimeSpan.FromMinutes(15), 0) },
+            { NodeStatsEventType.ConnectionFailed, (TimeSpan.FromMinutes(5), -1000) },
+            { NodeStatsEventType.SyncInitFailed, (TimeSpan.Zero, -300) },
+            { NodeStatsEventType.SyncFailed, (TimeSpan.Zero, -500) },
+
+            // These are positive
+            { NodeStatsEventType.HandshakeCompleted, (TimeSpan.Zero, 10) },
+            { NodeStatsEventType.P2PInitialized, (TimeSpan.Zero, 10) },
+            { NodeStatsEventType.Eth62Initialized, (TimeSpan.Zero, 20) },
+            { NodeStatsEventType.SyncStarted, (TimeSpan.Zero, 1000) },
+            { NodeStatsEventType.DiscoveryPingIn, (TimeSpan.Zero, 500) },
+            { NodeStatsEventType.DiscoveryNeighboursIn, (TimeSpan.Zero, 500) },
         };
     }
 }

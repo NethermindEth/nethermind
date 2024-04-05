@@ -18,7 +18,7 @@ namespace Nethermind.Mev.Test
 {
     public class TestBundlePool : BundlePool
     {
-        private BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
+        private readonly BlockingCollection<(MevBundle Bundle, SimulatedMevBundleContext? Context)> _queue = new(new ConcurrentQueue<(MevBundle, SimulatedMevBundleContext?)>());
 
         public TestBundlePool(IBlockTree blockTree,
             IBundleSimulator simulator,
@@ -74,6 +74,10 @@ namespace Nethermind.Mev.Test
 
     public class MockProvider : IAccountStateProvider
     {
-        public Account GetAccount(Address address) => new Account(0);
+        public bool TryGetAccount(Address address, out AccountStruct account)
+        {
+            account = AccountStruct.TotallyEmpty;
+            return false;
+        }
     }
 }

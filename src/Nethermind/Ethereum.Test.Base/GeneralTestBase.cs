@@ -27,7 +27,7 @@ namespace Ethereum.Test.Base
 {
     public abstract class GeneralStateTestBase
     {
-        private static ILogger _logger = new ConsoleAsyncLogger(LogLevel.Info);
+        private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static UInt256 _defaultBaseFeeForStateTest = 0xA;
 
@@ -65,9 +65,8 @@ namespace Ethereum.Test.Base
             }
 
             TrieStore trieStore = new(stateDb, _logManager);
-            StateProvider stateProvider = new(trieStore, codeDb, _logManager);
+            WorldState stateProvider = new(trieStore, codeDb, _logManager);
             IBlockhashProvider blockhashProvider = new TestBlockhashProvider();
-            IStorageProvider storageProvider = new StorageProvider(trieStore, stateProvider, _logManager);
             IVirtualMachine virtualMachine = new VirtualMachine(
                 blockhashProvider,
                 specProvider,
@@ -76,28 +75,55 @@ namespace Ethereum.Test.Base
             TransactionProcessor transactionProcessor = new(
                 specProvider,
                 stateProvider,
-                storageProvider,
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, storageProvider, specProvider);
+            InitializeTestState(test, stateProvider, specProvider);
 
-            BlockHeader header = new(test.PreviousHash, Keccak.OfAnEmptySequenceRlp, test.CurrentCoinbase,
-                test.CurrentDifficulty, test.CurrentNumber, test.CurrentGasLimit, test.CurrentTimestamp, Array.Empty<byte>());
+            BlockHeader header = new(
+                test.PreviousHash,
+                Keccak.OfAnEmptySequenceRlp,
+                test.CurrentCoinbase,
+                test.CurrentDifficulty,
+                test.CurrentNumber,
+                test.CurrentGasLimit,
+                test.CurrentTimestamp,
+                Array.Empty<byte>());
             header.BaseFeePerGas = test.Fork.IsEip1559Enabled ? test.CurrentBaseFee ?? _defaultBaseFeeForStateTest : UInt256.Zero;
             header.StateRoot = test.PostHash;
             header.Hash = header.CalculateHash();
             header.IsPostMerge = test.CurrentRandom is not null;
             header.MixHash = test.CurrentRandom;
+            header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
+            header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
+            header.ExcessBlobGas = 0;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            var txValidator = new TxValidator((MainnetSpecProvider.Instance.ChainId));
-            var spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+            TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
+            IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
+            if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
+            {
+                BlockHeader parent = new(
+                    parentHash: Keccak.Zero,
+                    unclesHash: Keccak.OfAnEmptySequenceRlp,
+                    beneficiary: test.CurrentCoinbase,
+                    difficulty: test.CurrentDifficulty,
+                    number: test.CurrentNumber - 1,
+                    gasLimit: test.CurrentGasLimit,
+                    timestamp: test.CurrentTimestamp,
+                    extraData: Array.Empty<byte>()
+                )
+                {
+                    BlobGasUsed = (ulong)test.ParentBlobGasUsed,
+                    ExcessBlobGas = (ulong)test.ParentExcessBlobGas,
+                };
+                header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
+            }
             bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
             if (isValid)
-                transactionProcessor.Execute(test.Transaction, header, txTracer);
+                transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             stopwatch.Stop();
 
             stateProvider.Commit(specProvider.GenesisSpec);
@@ -114,41 +140,34 @@ namespace Ethereum.Test.Base
 
             List<string> differences = RunAssertions(test, stateProvider);
             EthereumTestResult testResult = new(test.Name, test.ForkName, differences.Count == 0);
-            testResult.TimeInMs = (int)stopwatch.Elapsed.TotalMilliseconds;
+            testResult.TimeInMs = stopwatch.Elapsed.TotalMilliseconds;
             testResult.StateRoot = stateProvider.StateRoot;
 
             //            Assert.Zero(differences.Count, "differences");
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, StateProvider stateProvider,
-            IStorageProvider storageProvider, ISpecProvider specProvider)
+        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
         {
             foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    storageProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
                         storageItem.Value.WithoutLeadingZeros().ToArray());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                Keccak codeHash = stateProvider.UpdateCode(accountState.Value.Code);
-                stateProvider.UpdateCodeHash(accountState.Key, codeHash, specProvider.GenesisSpec);
+                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
             }
 
-            storageProvider.Commit();
             stateProvider.Commit(specProvider.GenesisSpec);
-
-            storageProvider.CommitTrees(0);
             stateProvider.CommitTree(0);
-
-            storageProvider.Reset();
             stateProvider.Reset();
         }
 
-        private List<string> RunAssertions(GeneralStateTest test, IStateProvider stateProvider)
+        private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
         {
             List<string> differences = new();
             if (test.PostHash != stateProvider.StateRoot)

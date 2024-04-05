@@ -8,9 +8,6 @@ using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
-using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Specs.ChainSpecStyle;
 
@@ -23,9 +20,9 @@ namespace Nethermind.Consensus.AuRa.Rewards
 
         public AuRaRewardCalculator(AuRaParameters auRaParameters, IAbiEncoder abiEncoder, ITransactionProcessor transactionProcessor)
         {
-            if (auRaParameters is null) throw new ArgumentNullException(nameof(auRaParameters));
-            if (abiEncoder is null) throw new ArgumentNullException(nameof(abiEncoder));
-            if (transactionProcessor is null) throw new ArgumentNullException(nameof(transactionProcessor));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
+            ArgumentNullException.ThrowIfNull(abiEncoder);
+            ArgumentNullException.ThrowIfNull(transactionProcessor);
 
             IList<IRewardContract> BuildTransitions()
             {
@@ -51,7 +48,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
                 return contracts;
             }
 
-            if (auRaParameters is null) throw new ArgumentNullException(nameof(AuRaParameters));
+            ArgumentNullException.ThrowIfNull(auRaParameters);
             _contracts = BuildTransitions();
             _blockRewardCalculator = new StaticRewardCalculator(auRaParameters.BlockReward);
         }
@@ -69,7 +66,7 @@ namespace Nethermind.Consensus.AuRa.Rewards
         }
 
 
-        private BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
+        private static BlockReward[] CalculateRewardsWithContract(Block block, IRewardContract contract)
         {
             (Address[] beneficieries, ushort[] kinds) GetBeneficiaries()
             {
@@ -106,9 +103,8 @@ namespace Nethermind.Consensus.AuRa.Rewards
             return blockRewards;
         }
 
-        public static IRewardCalculatorSource GetSource(AuRaParameters auRaParameters, IAbiEncoder abiEncoder) => new AuRaRewardCalculatorSource(auRaParameters, abiEncoder);
 
-        private class AuRaRewardCalculatorSource : IRewardCalculatorSource
+        public class AuRaRewardCalculatorSource : IRewardCalculatorSource
         {
             private readonly AuRaParameters _auRaParameters;
             private readonly IAbiEncoder _abiEncoder;

@@ -4,19 +4,21 @@
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V67;
 using Nethermind.Network.Rlpx;
@@ -33,15 +35,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V67;
 [TestFixture, Parallelizable(ParallelScope.Self)]
 public class Eth67ProtocolHandlerTests
 {
-    private ISession _session;
-    private IMessageSerializationService _svc;
-    private ISyncServer _syncManager;
-    private ITxPool _transactionPool;
-    private IPooledTxsRequestor _pooledTxsRequestor;
-    private IGossipPolicy _gossipPolicy;
-    private ISpecProvider _specProvider;
-    private Block _genesisBlock;
-    private Eth66ProtocolHandler _handler;
+    private ISession _session = null!;
+    private IMessageSerializationService _svc = null!;
+    private ISyncServer _syncManager = null!;
+    private ITxPool _transactionPool = null!;
+    private IPooledTxsRequestor _pooledTxsRequestor = null!;
+    private IGossipPolicy _gossipPolicy = null!;
+    private ISpecProvider _specProvider = null!;
+    private Block _genesisBlock = null!;
+    private Eth66ProtocolHandler _handler = null!;
 
     [SetUp]
     public void Setup()
@@ -67,6 +69,7 @@ public class Eth67ProtocolHandlerTests
             _svc,
             new NodeStatsManager(timerFactory, LimboLogs.Instance),
             _syncManager,
+            RunImmediatelyScheduler.Instance,
             _transactionPool,
             _pooledTxsRequestor,
             _gossipPolicy,
@@ -78,7 +81,9 @@ public class Eth67ProtocolHandlerTests
     [TearDown]
     public void TearDown()
     {
-        _handler.Dispose();
+        _handler?.Dispose();
+        _session?.Dispose();
+        _syncManager?.Dispose();
     }
 
     [Test]
@@ -97,7 +102,7 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_get_node_data()
     {
-        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA });
+        var msg63 = new GetNodeDataMessage(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList());
         var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.GetNodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();
@@ -108,7 +113,7 @@ public class Eth67ProtocolHandlerTests
     [Test]
     public void Can_ignore_node_data_and_not_throw_when_receiving_unrequested_node_data()
     {
-        var msg63 = new NodeDataMessage(System.Array.Empty<byte[]>());
+        var msg63 = new NodeDataMessage(ArrayPoolList<byte[]>.Empty());
         var msg66 = new Network.P2P.Subprotocols.Eth.V66.Messages.NodeDataMessage(1111, msg63);
 
         HandleIncomingStatusMessage();

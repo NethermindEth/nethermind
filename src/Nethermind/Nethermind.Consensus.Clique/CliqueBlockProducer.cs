@@ -29,7 +29,7 @@ namespace Nethermind.Consensus.Clique;
 public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 {
     private readonly IBlockTree _blockTree;
-    private readonly IStateProvider _stateProvider;
+    private readonly IWorldState _stateProvider;
     private readonly ITimestamper _timestamper;
     private readonly ILogger _logger;
     private readonly ICryptoRandom _cryptoRandom;
@@ -52,7 +52,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     public CliqueBlockProducer(
         ITxSource txSource,
         IBlockchainProcessor blockchainProcessor,
-        IStateProvider stateProvider,
+        IWorldState stateProvider,
         IBlockTree blockTree,
         ITimestamper timestamper,
         ICryptoRandom cryptoRandom,
@@ -110,7 +110,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         if (_logger.IsWarn) _logger.Warn($"Removed Clique vote for {signer}");
     }
 
-    public void ProduceOnTopOf(Keccak hash)
+    public void ProduceOnTopOf(Hash256 hash)
     {
         _signalsQueue.Add(_blockTree.FindBlock(hash, BlockTreeLookupOptions.None));
     }
@@ -191,26 +191,43 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
     public Task Start()
     {
         _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
-        _producerTask = Task.Factory.StartNew(
-            ConsumeSignal,
-            _cancellationTokenSource.Token,
-            TaskCreationOptions.LongRunning,
-            TaskScheduler.Default).ContinueWith(t =>
+        _producerTask = RunConsumeSignal();
+        return Task.CompletedTask;
+    }
+
+    private Task RunConsumeSignal()
+    {
+        TaskCompletionSource tcs = new();
+
+        Thread thread = new(() =>
         {
-            if (t.IsFaulted)
+            try
             {
-                if (_logger.IsError) _logger.Error("Clique block producer encountered an exception.", t.Exception);
+                ConsumeSignal();
+                if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
             }
-            else if (t.IsCanceled)
+            catch (OperationCanceledException)
             {
                 if (_logger.IsDebug) _logger.Debug("Clique block producer stopped.");
             }
-            else if (t.IsCompleted)
+            catch (Exception ex)
             {
-                if (_logger.IsDebug) _logger.Debug("Clique block producer complete.");
+                if (_logger.IsError) _logger.Error("Clique block producer encountered an exception.", ex);
             }
-        });
-        return Task.CompletedTask;
+            finally
+            {
+                tcs.SetResult();
+            }
+        })
+        {
+            IsBackground = true,
+            Name = "Clique block producer",
+            // Boost priority to make sure we process blocks as fast as possible
+            Priority = ThreadPriority.AboveNormal,
+        };
+        thread.Start();
+
+        return tcs.Task;
     }
 
     private void BlockTreeOnNewHeadBlock(object? sender, BlockEventArgs e)
@@ -318,7 +335,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
 
     public event EventHandler<BlockEventArgs>? BlockProduced;
 
-    private Keccak? _recentNotAllowedParent;
+    private Hash256? _recentNotAllowedParent;
 
     private Block? PrepareBlock(Block parentBlock)
     {
@@ -362,7 +379,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
         // Assemble the voting snapshot to check which votes make sense
         Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(number - 1, parentHeader.Hash);
         bool isEpochBlock = (ulong)number % 30000 == 0;
-        if (!isEpochBlock && _proposals.Any())
+        if (!isEpochBlock && !_proposals.IsEmpty)
         {
             // Gather all the proposals that make sense voting on
             List<Address> addresses = new();
@@ -430,7 +447,7 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             Array.Empty<BlockHeader>(),
             spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
             );
-        header.TxRoot = new TxTrie(block.Transactions).RootHash;
+        header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
         return block;
     }

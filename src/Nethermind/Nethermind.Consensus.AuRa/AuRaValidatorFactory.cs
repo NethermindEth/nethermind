@@ -12,7 +12,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.TxPool;
@@ -22,7 +21,7 @@ namespace Nethermind.Consensus.AuRa
 {
     public class AuRaValidatorFactory : IAuRaValidatorFactory
     {
-        private readonly IStateProvider _stateProvider;
+        private readonly IWorldState _stateProvider;
         private readonly IAbiEncoder _abiEncoder;
         private readonly ITransactionProcessor _transactionProcessor;
         private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
@@ -42,7 +41,7 @@ namespace Nethermind.Consensus.AuRa
         private readonly bool _forSealing;
 
         public AuRaValidatorFactory(IAbiEncoder abiEncoder,
-            IStateProvider stateProvider,
+            IWorldState stateProvider,
             ITransactionProcessor transactionProcessor,
             IBlockTree blockTree,
             IReadOnlyTxProcessorSource readOnlyTxProcessorSource,

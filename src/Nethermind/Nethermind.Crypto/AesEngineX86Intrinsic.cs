@@ -2,8 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 // Modified from BouncyCastle MIT
 
+#pragma warning disable CA1857 // A constant is expected for the parameter
+
 using System;
-using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
@@ -216,7 +217,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -246,7 +247,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -276,7 +277,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -308,7 +309,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -340,7 +341,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -374,7 +375,7 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
 
             public override void ProcessRounds(ref Vector128<byte> state)
             {
-                // Take local refence to array so Jit can reason length doesn't change in method
+                // Take local reference to array so Jit can reason length doesn't change in method
                 Vector128<byte>[] roundKeys = _roundKeys;
                 {
                     // Get the Jit to bounds check once rather than each increasing array access
@@ -420,3 +421,5 @@ public sealed class AesEngineX86Intrinsic : IBlockCipher
         }
     }
 }
+
+#pragma warning restore CA1857 // A constant is expected for the parameter

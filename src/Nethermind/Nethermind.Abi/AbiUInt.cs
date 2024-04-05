@@ -4,6 +4,8 @@
 using System;
 using System.Buffers.Binary;
 using System.Numerics;
+using System.Text.Json;
+
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -20,15 +22,6 @@ namespace Nethermind.Abi
         public static new readonly AbiUInt UInt64 = new(64);
         public static new readonly AbiUInt UInt96 = new(96);
         public static new readonly AbiUInt UInt256 = new(256);
-
-        static AbiUInt()
-        {
-            RegisterMapping<byte>(UInt8);
-            RegisterMapping<ushort>(UInt16);
-            RegisterMapping<uint>(UInt32);
-            RegisterMapping<ulong>(UInt64);
-            RegisterMapping<UInt256>(UInt256);
-        }
 
         public AbiUInt(int length)
         {
@@ -89,7 +82,7 @@ namespace Nethermind.Abi
 
         public override byte[] Encode(object? arg, bool packed)
         {
-            Span<byte> bytes = null;
+            Span<byte> bytes;
             if (arg is UInt256 uint256)
             {
                 bytes = ((BigInteger)uint256).ToBigEndianByteArray();
@@ -127,6 +120,11 @@ namespace Nethermind.Abi
             {
                 bytes = new byte[2];
                 BinaryPrimitives.WriteUInt16BigEndian(bytes, ushortInput);
+            }
+            else if (arg is JsonElement element && element.ValueKind == JsonValueKind.Number)
+            {
+                bytes = new byte[8];
+                BinaryPrimitives.WriteInt64BigEndian(bytes, element.GetInt64());
             }
             else
             {

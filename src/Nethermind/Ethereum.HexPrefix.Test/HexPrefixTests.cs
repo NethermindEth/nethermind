@@ -3,8 +3,11 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core.Extensions;
+
 using NUnit.Framework;
 
 namespace Ethereum.HexPrefix.Test
@@ -18,7 +21,7 @@ namespace Ethereum.HexPrefix.Test
         {
             return TestLoader.LoadFromFile<Dictionary<string, HexPrefixTestJson>, HexPrefixTest>(
                 "hexencodetest.json",
-                c => c.Select(p => new HexPrefixTest(p.Key, p.Value.Seq, p.Value.Term, p.Value.Out)));
+                c => c.Select(p => new HexPrefixTest(p.Key, p.Value.Seq.Select(x => (byte)x).ToArray(), p.Value.Term, p.Value.Out)));
         }
 
         [TestCaseSource(nameof(LoadTests))]
@@ -26,17 +29,17 @@ namespace Ethereum.HexPrefix.Test
         {
             byte[] bytes = Nethermind.Trie.HexPrefix.ToBytes(test.Sequence, test.IsTerm);
             string resultHex = bytes.ToHexString(false);
-            Assert.AreEqual(test.Output, resultHex);
+            Assert.That(resultHex, Is.EqualTo(test.Output));
 
             (byte[] key, bool isLeaf) = Nethermind.Trie.HexPrefix.FromBytes(bytes);
             byte[] checkBytes = Nethermind.Trie.HexPrefix.ToBytes(key, isLeaf);
             string checkHex = checkBytes.ToHexString(false);
-            Assert.AreEqual(test.Output, checkHex);
+            Assert.That(checkHex, Is.EqualTo(test.Output));
         }
 
         private class HexPrefixTestJson
         {
-            public byte[] Seq { get; set; }
+            public int[] Seq { get; set; }
             public bool Term { get; set; }
             public string Out { get; set; }
         }

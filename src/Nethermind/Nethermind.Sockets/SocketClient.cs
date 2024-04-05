@@ -3,116 +3,102 @@
 
 using System;
 using System.Buffers;
-using System.Collections.Generic;
-using System.Diagnostics;
 using System.IO;
-using System.Linq;
-using System.Runtime.CompilerServices;
-using System.Text;
 using System.Threading.Tasks;
 using Nethermind.Serialization.Json;
 
-namespace Nethermind.Sockets
+namespace Nethermind.Sockets;
+
+public class SocketClient<TStream> : ISocketsClient where TStream : Stream, IMessageBorderPreservingStream
 {
-    public class SocketClient : ISocketsClient
+    public const int MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API = 128 * 1024 * 1024;
+
+    protected readonly TStream _stream;
+    protected readonly IJsonSerializer _jsonSerializer;
+
+    public string Id { get; } = Guid.NewGuid().ToString("N");
+    public string ClientName { get; }
+
+    public SocketClient(string clientName, TStream stream, IJsonSerializer jsonSerializer)
     {
-        public const int MAX_POOLED_SIZE = 5 * 1024 * 1024; // TODO: Either resize down or change to LargerArrayPool
+        ClientName = clientName;
+        _stream = stream;
+        _jsonSerializer = jsonSerializer;
+    }
 
-        protected readonly ISocketHandler _handler;
-        protected readonly IJsonSerializer _jsonSerializer;
+    public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
 
-        public string Id { get; } = Guid.NewGuid().ToString("N");
-        public string ClientName { get; }
-
-        public SocketClient(string clientName, ISocketHandler handler, IJsonSerializer jsonSerializer)
+    public virtual async Task SendAsync(SocketsMessage message)
+    {
+        if (message is null)
         {
-            ClientName = clientName;
-            _handler = handler;
-            _jsonSerializer = jsonSerializer;
+            return;
         }
 
-        public virtual Task ProcessAsync(ArraySegment<byte> data) => Task.CompletedTask;
-
-        public virtual Task SendAsync(SocketsMessage message)
+        if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
+            string.IsNullOrWhiteSpace(message.Client))
         {
-            if (message is null)
-            {
-                return Task.CompletedTask;
-            }
+            await _jsonSerializer.SerializeAsync(_stream, new { type = message.Type, client = ClientName, data = message.Data }, indented: false, leaveOpen: true);
+            await _stream.WriteEndOfMessageAsync();
+        }
+    }
 
-            if (message.Client == ClientName || string.IsNullOrWhiteSpace(ClientName) ||
-                string.IsNullOrWhiteSpace(message.Client))
+    public async Task ReceiveLoopAsync()
+    {
+        const int standardBufferLength = 1024 * 4;
+        int currentMessageLength = 0;
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
+        try
+        {
+            ReceiveResult? result = await _stream.ReceiveAsync(buffer);
+            while (result?.Closed == false)
             {
-                using MemoryStream memoryStream = new();
-                _jsonSerializer.Serialize(memoryStream, new { type = message.Type, client = ClientName, data = message.Data });
-                if (memoryStream.TryGetBuffer(out ArraySegment<byte> data))
+                currentMessageLength += result.Read;
+
+                if (currentMessageLength >= MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API)
                 {
-                    return _handler.SendRawAsync(data);
+                    throw new InvalidOperationException("Message too long");
                 }
-            }
 
-            return Task.CompletedTask;
-        }
-
-        public async Task ReceiveAsync()
-        {
-            const int standardBufferLength = 1024 * 4;
-            int currentMessageLength = 0;
-            byte[] buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
-            ReceiveResult? result = null;
-
-            try
-            {
-                result = await _handler.GetReceiveResult(buffer);
-                while (result?.Closed == false)
+                if (result.EndOfMessage)
                 {
-                    currentMessageLength += result.Read;
+                    // process the already filled bytes
+                    await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
+                    currentMessageLength = 0; // reset message length
 
-                    if (currentMessageLength >= MAX_POOLED_SIZE)
+                    // if we grew the buffer too big lets reset it
+                    if (buffer.Length > 2 * standardBufferLength)
                     {
-                        throw new InvalidOperationException("Message too long");
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
                     }
-
-                    if (result.EndOfMessage)
-                    {
-                        // process the already filled bytes
-                        await ProcessAsync(new ArraySegment<byte>(buffer, 0, currentMessageLength));
-                        currentMessageLength = 0; // reset message length
-
-                        // if we grew the buffer too big lets reset it
-                        if (buffer.Length > 2 * standardBufferLength)
-                        {
-                            ArrayPool<byte>.Shared.Return(buffer);
-                            buffer = ArrayPool<byte>.Shared.Rent(standardBufferLength);
-                        }
-                    }
-                    else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
-                    {
-                        // grow the buffer 4x, but not more than max
-                        int newLength = Math.Min(buffer.Length * 4, MAX_POOLED_SIZE);
-                        if (newLength > buffer.Length)
-                        {
-                            byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
-                            buffer.CopyTo(newBuffer, 0);
-                            ArrayPool<byte>.Shared.Return(buffer);
-                            buffer = newBuffer;
-                        }
-                    }
-
-                    // receive only new bytes, leave already filled buffer alone
-                    result = await _handler.GetReceiveResult(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength));
                 }
-            }
-            finally
-            {
-                await _handler.CloseAsync(result);
-                ArrayPool<byte>.Shared.Return(buffer);
-            }
-        }
+                else if (buffer.Length - currentMessageLength < standardBufferLength) // there is little room in current buffer
+                {
+                    // grow the buffer 4x, but not more than max
+                    int newLength = Math.Min(buffer.Length * 4, MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
+                    if (newLength > buffer.Length)
+                    {
+                        byte[] newBuffer = ArrayPool<byte>.Shared.Rent(newLength);
+                        buffer.CopyTo(newBuffer, 0);
+                        ArrayPool<byte>.Shared.Return(buffer);
+                        buffer = newBuffer;
+                    }
+                }
 
-        public virtual void Dispose()
-        {
-            _handler?.Dispose();
+                // receive only new bytes, leave already filled buffer alone
+                result = await _stream.ReceiveAsync(new ArraySegment<byte>(buffer, currentMessageLength, buffer.Length - currentMessageLength));
+            }
         }
+        finally
+        {
+            await _stream.DisposeAsync();
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+    }
+
+    public virtual void Dispose()
+    {
+        _stream?.Dispose();
     }
 }

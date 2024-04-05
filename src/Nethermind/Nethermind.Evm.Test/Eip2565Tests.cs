@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test
             (ReadOnlyMemory<byte>, bool) bigIntPair = ModExpPrecompile.OldRun(input.Done.ToArray());
 #pragma warning restore 618
 
-            Assert.AreEqual(gmpPair.Item1.ToArray(), bigIntPair.Item1.ToArray());
+            Assert.That(bigIntPair.Item1.ToArray(), Is.EqualTo(gmpPair.Item1.ToArray()));
         }
 
         [Test]

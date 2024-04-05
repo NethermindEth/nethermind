@@ -9,7 +9,7 @@ namespace Nethermind.Config
 {
     public class EnvConfigSource : IConfigSource
     {
-        private IEnvironment _environmentWrapper;
+        private readonly IEnvironment _environmentWrapper;
 
         public EnvConfigSource() : this(new EnvironmentWrapper())
         {
@@ -65,8 +65,6 @@ namespace Nethermind.Config
     {
         string GetEnvironmentVariable(string variableName);
         System.Collections.IDictionary GetEnvironmentVariables();
-
-        void Exit(int exitCode);
     }
 
     public class EnvironmentWrapper : IEnvironment
@@ -79,11 +77,6 @@ namespace Nethermind.Config
         public System.Collections.IDictionary GetEnvironmentVariables()
         {
             return Environment.GetEnvironmentVariables();
-        }
-
-        public void Exit(int exitCode)
-        {
-            Environment.Exit(exitCode);
         }
     }
 }

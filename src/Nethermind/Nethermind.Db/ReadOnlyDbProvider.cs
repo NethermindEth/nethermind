@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.IO;
 
 namespace Nethermind.Db
 {
@@ -13,36 +12,26 @@ namespace Nethermind.Db
         private readonly IDbProvider _wrappedProvider;
         private readonly bool _createInMemoryWriteStore;
         private readonly ConcurrentDictionary<string, IReadOnlyDb> _registeredDbs = new(StringComparer.InvariantCultureIgnoreCase);
+        private readonly ConcurrentDictionary<string, object> _registeredColumnDbs = new(StringComparer.InvariantCultureIgnoreCase);
 
         public ReadOnlyDbProvider(IDbProvider? wrappedProvider, bool createInMemoryWriteStore)
         {
             _wrappedProvider = wrappedProvider ?? throw new ArgumentNullException(nameof(wrappedProvider));
             _createInMemoryWriteStore = createInMemoryWriteStore;
-            if (wrappedProvider is null)
-            {
-                throw new ArgumentNullException(nameof(wrappedProvider));
-            }
-
-            foreach ((string key, IDb value) in _wrappedProvider.RegisteredDbs)
-            {
-                RegisterReadOnlyDb(key, value);
-            }
+            ArgumentNullException.ThrowIfNull(wrappedProvider);
         }
 
         public void Dispose()
         {
-            if (_registeredDbs is not null)
+            foreach (KeyValuePair<string, IReadOnlyDb> registeredDb in _registeredDbs)
             {
-                foreach (KeyValuePair<string, IReadOnlyDb> registeredDb in _registeredDbs)
-                {
-                    registeredDb.Value?.Dispose();
-                }
+                registeredDb.Value?.Dispose();
+            }
+            foreach (KeyValuePair<string, object> registeredColumnDb in _registeredColumnDbs)
+            {
+                (registeredColumnDb.Value as IDisposable)!.Dispose();
             }
         }
-
-        public DbModeHint DbMode => _wrappedProvider.DbMode;
-
-        public IDictionary<string, IDb> RegisteredDbs => _wrappedProvider.RegisteredDbs;
 
         public void ClearTempChanges()
         {
@@ -54,32 +43,33 @@ namespace Nethermind.Db
 
         public T GetDb<T>(string dbName) where T : class, IDb
         {
-            if (!_registeredDbs.ContainsKey(dbName))
-            {
-                throw new ArgumentException($"{dbName} database has not been registered in {nameof(ReadOnlyDbProvider)}.");
-            }
-
-            _registeredDbs.TryGetValue(dbName, out IReadOnlyDb? found);
-            T result = found as T;
-            if (result is null && found is not null)
-            {
-                throw new IOException(
-                    $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
-            }
-
-            return result;
+            return (T)_registeredDbs
+                .GetOrAdd(dbName, (_) => _wrappedProvider
+                    .GetDb<T>(dbName)
+                    .CreateReadOnly(_createInMemoryWriteStore));
         }
 
-        private void RegisterReadOnlyDb<T>(string dbName, T db) where T : IDb
+        public IColumnsDb<T> GetColumnDb<T>(string dbName)
         {
-            IReadOnlyDb readonlyDb = db.CreateReadOnly(_createInMemoryWriteStore);
-            _registeredDbs.TryAdd(dbName, readonlyDb);
+            return (IColumnsDb<T>)_registeredColumnDbs
+                .GetOrAdd(dbName, (_) => _wrappedProvider
+                    .GetColumnDb<T>(dbName)
+                    .CreateReadOnly(_createInMemoryWriteStore));
         }
 
         public void RegisterDb<T>(string dbName, T db) where T : class, IDb
         {
             _wrappedProvider.RegisterDb(dbName, db);
-            RegisterReadOnlyDb(dbName, db);
+        }
+
+        public void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db)
+        {
+            _wrappedProvider.RegisterColumnDb(dbName, db);
+        }
+
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
+        {
+            return _wrappedProvider.GetAllDbMeta();
         }
     }
 }

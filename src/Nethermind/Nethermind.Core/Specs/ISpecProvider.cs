@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Specs
@@ -43,6 +42,11 @@ namespace Nethermind.Core.Specs
         IReleaseSpec GenesisSpec { get; }
 
         /// <summary>
+        /// When true genesis state root calculation is disabled and spec state root is set.
+        /// </summary>
+        bool GenesisStateUnavailable { get => false; }
+
+        /// <summary>
         /// Block number at which DAO happens (only relevant for mainnet)
         /// </summary>
         long? DaoBlockNumber { get; }
@@ -75,7 +79,10 @@ namespace Nethermind.Core.Specs
         /// <summary>
         /// Resolves a spec for all planned forks applied.
         /// </summary>
-        /// <returns>A spec for all planned forks applied</returns>
-        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue, ulong.MaxValue);
+        /// <returns>A spec for all planned forks applied</
+        /// <remarks> The default value is long.MaxValue for block numbers and ulong.MaxValue for timestamps
+        /// for every new not yet scheduled EIP. Because of that we can't use long.MaxValue and
+        /// ulong.MaxValue for GetFinalSpec that is why we have long.MaxValue-1, ulong.MaxValue-1 </remarks>
+        IReleaseSpec GetFinalSpec() => GetSpec(long.MaxValue - 1, ulong.MaxValue - 1);
     }
 }

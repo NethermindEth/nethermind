@@ -2,10 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Logging;
@@ -20,30 +17,27 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly Stopwatch _handleWatch = new();
         private readonly ILogger _logger;
-        private readonly ISyncModeSelector _syncModeSelector;
         private readonly TreeSync _treeSync;
+        private bool _disposed = false;
+        private SyncMode _currentSyncMode = SyncMode.None;
 
         public override bool IsMultiFeed => true;
 
         public override AllocationContexts Contexts => AllocationContexts.State;
 
         public StateSyncFeed(
-            ISyncModeSelector syncModeSelector,
             TreeSync treeSync,
             ILogManager logManager)
         {
-            _syncModeSelector = syncModeSelector ?? throw new ArgumentNullException(nameof(syncModeSelector));
             _treeSync = treeSync ?? throw new ArgumentNullException(nameof(treeSync));
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
-
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         public override async Task<StateSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {
-                (bool continueProcessing, bool finishSyncRound) = _treeSync.ValidatePrepareRequest(_syncModeSelector.Current);
+                (bool continueProcessing, bool finishSyncRound) = _treeSync.ValidatePrepareRequest(_currentSyncMode);
 
                 if (finishSyncRound)
                 {
@@ -55,7 +49,7 @@ namespace Nethermind.Synchronization.FastSync
                     return EmptyBatch!;
                 }
 
-                return await _treeSync.PrepareRequest(_syncModeSelector.Current);
+                return await _treeSync.PrepareRequest();
             }
             catch (Exception e)
             {
@@ -64,26 +58,30 @@ namespace Nethermind.Synchronization.FastSync
             }
         }
 
-        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo peer = null)
+        public override SyncResponseHandlingResult HandleResponse(StateSyncBatch? batch, PeerInfo? peer = null)
         {
-            return _treeSync.HandleResponse(batch, peer);
+            using StateSyncBatch? b = batch;
+            return _treeSync.HandleResponse(b, peer);
         }
 
         public void Dispose()
         {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+            _disposed = true;
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        public override void SyncModeSelectorOnChanged(SyncMode current)
         {
+            if (_disposed) return;
             if (CurrentState == SyncFeedState.Dormant)
             {
-                if ((e.Current & SyncMode.StateNodes) == SyncMode.StateNodes)
+                if ((current & SyncMode.StateNodes) == SyncMode.StateNodes)
                 {
                     _treeSync.ResetStateRootToBestSuggested(CurrentState);
                     Activate();
                 }
             }
+
+            _currentSyncMode = current;
         }
 
         private void FinishThisSyncRound()
@@ -94,5 +92,7 @@ namespace Nethermind.Synchronization.FastSync
                 _treeSync.ResetStateRoot(CurrentState);
             }
         }
+
+        public override bool IsFinished => false; // Check MultiSyncModeSelector
     }
 }

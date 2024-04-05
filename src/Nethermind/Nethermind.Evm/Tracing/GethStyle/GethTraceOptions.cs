@@ -1,27 +1,40 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Newtonsoft.Json;
+using System;
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+using Nethermind.Core.Crypto;
+
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+public record GethTraceOptions
 {
-    public class GethTraceOptions
-    {
-        [JsonProperty("disableStorage")]
-        public bool DisableStorage { get; set; }
+    [JsonPropertyName("disableMemory")]
+    [Obsolete("Use EnableMemory instead.")]
+    public bool DisableMemory { get => !EnableMemory; init => EnableMemory = !value; }
 
-        [JsonProperty("disableMemory")]
-        public bool DisableMemory { get; set; }
+    [JsonPropertyName("disableStorage")]
+    public bool DisableStorage { get; init; }
 
-        [JsonProperty("disableStack")]
-        public bool DisableStack { get; set; }
+    [JsonPropertyName("enableMemory")]
+    public bool EnableMemory { get; init; }
 
-        [JsonProperty("tracer")]
-        public string Tracer { get; set; }
+    [JsonPropertyName("disableStack")]
+    public bool DisableStack { get; init; }
 
-        [JsonProperty("timeout")]
-        public string Timeout { get; set; }
+    [JsonPropertyName("timeout")]
+    public string Timeout { get; init; }
 
-        public static GethTraceOptions Default = new();
-    }
+    [JsonPropertyName("tracer")]
+    public string Tracer { get; init; }
+
+    [JsonPropertyName("txHash")]
+    public Hash256? TxHash { get; init; }
+
+    [JsonPropertyName("tracerConfig")]
+    public JsonElement? TracerConfig { get; init; }
+
+    public static GethTraceOptions Default { get; } = new();
 }

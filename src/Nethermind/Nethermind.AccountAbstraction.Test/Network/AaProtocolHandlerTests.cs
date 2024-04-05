@@ -6,11 +6,10 @@ using System.Collections.Generic;
 using System.Net;
 using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
-using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
@@ -66,6 +65,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         public void TearDown()
         {
             _handler!.Dispose();
+            _session?.Dispose();
         }
 
         [Test]
@@ -84,10 +84,12 @@ namespace Nethermind.AccountAbstraction.Test.Network
             parsed = Address.TryParse("0x90f3e1105e63c877bf9587de5388c23cdb702c6b", out Address? _ep2);
             Address ep1 = _ep1 ?? throw new ArgumentNullException(nameof(_ep1));
             Address ep2 = _ep2 ?? throw new ArgumentNullException(nameof(_ep2));
-            IList<UserOperationWithEntryPoint> uOps = new List<UserOperationWithEntryPoint>();
-            uOps.Add(new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep1));
-            uOps.Add(new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep2));
-            UserOperationsMessage msg = new UserOperationsMessage(uOps);
+            ArrayPoolList<UserOperationWithEntryPoint> uOps = new(2)
+            {
+                new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep1),
+                new UserOperationWithEntryPoint(Build.A.UserOperation.SignedAndResolved().TestObject, ep2)
+            };
+            using UserOperationsMessage msg = new UserOperationsMessage(uOps);
             HandleZeroMessage(msg, AaMessageCode.UserOperations);
         }
 

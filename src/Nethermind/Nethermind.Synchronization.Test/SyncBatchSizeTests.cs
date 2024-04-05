@@ -17,10 +17,10 @@ namespace Nethermind.Synchronization.Test
             SyncBatchSize syncBatchSize = new(LimboLogs.Instance);
             int beforeShrink = syncBatchSize.Current;
             syncBatchSize.Shrink();
-            Assert.AreEqual(Math.Floor(beforeShrink / SyncBatchSize.AdjustmentFactor), syncBatchSize.Current);
+            Assert.That(syncBatchSize.Current, Is.EqualTo(Math.Floor(beforeShrink / SyncBatchSize.AdjustmentFactor)));
             int beforeExpand = syncBatchSize.Current;
             syncBatchSize.Expand();
-            Assert.AreEqual(Math.Ceiling(beforeExpand * SyncBatchSize.AdjustmentFactor), syncBatchSize.Current);
+            Assert.That(syncBatchSize.Current, Is.EqualTo(Math.Ceiling(beforeExpand * SyncBatchSize.AdjustmentFactor)));
         }
 
         [Test]
@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.Test
                 syncBatchSize.Shrink();
             }
 
-            Assert.AreEqual(syncBatchSize.Current, SyncBatchSize.Min, "current is min");
+            Assert.That(syncBatchSize.Current, Is.EqualTo(SyncBatchSize.Min), "current is min");
             Assert.True(syncBatchSize.IsMin, "is min");
         }
 
@@ -45,7 +45,7 @@ namespace Nethermind.Synchronization.Test
                 syncBatchSize.Expand();
             }
 
-            Assert.AreEqual(syncBatchSize.Current, SyncBatchSize.Max, "current is max");
+            Assert.That(syncBatchSize.Current, Is.EqualTo(SyncBatchSize.Max), "current is max");
             Assert.True(syncBatchSize.IsMax, "is max");
         }
     }

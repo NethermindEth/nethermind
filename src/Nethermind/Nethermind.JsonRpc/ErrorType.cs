@@ -86,6 +86,5 @@ namespace Nethermind.JsonRpc
         /// Unknown block error
         /// </summary>
         public const int UnknownBlockError = -39001;
-
     }
 }

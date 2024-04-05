@@ -4,7 +4,6 @@
 using System;
 using System.IdentityModel.Tokens.Jwt;
 using System.IO;
-using System.Linq;
 using System.Security.Cryptography;
 using System.Text.RegularExpressions;
 using Microsoft.IdentityModel.Tokens;
@@ -27,7 +26,7 @@ public partial class JwtAuthentication : IRpcAuthentication
         ArgumentNullException.ThrowIfNull(secret);
 
         _securityKey = new SymmetricSecurityKey(secret);
-        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+        _logger = logger;
         _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
     }
 

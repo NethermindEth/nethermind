@@ -19,15 +19,15 @@ namespace Nethermind.Synchronization.FastSync
     /// </summary>
     internal class BranchProgress
     {
-        private ILogger _logger;
-        private NodeProgressState[] _syncProgress;
+        private readonly ILogger _logger;
+        private readonly NodeProgressState[] _syncProgress;
 
         public decimal LastProgress { get; private set; }
         public long CurrentSyncBlock { get; }
 
         public BranchProgress(long syncBlockNumber, ILogger logger)
         {
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
             CurrentSyncBlock = syncBlockNumber;
             _logger.Info($"Now syncing nodes starting from root of block {syncBlockNumber}");
             _syncProgress = new NodeProgressState[256];

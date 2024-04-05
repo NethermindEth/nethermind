@@ -22,7 +22,7 @@ public static partial class Merkle
         for (int i = 1; i < 64; i++)
         {
             var previous = ZeroHashes[i - 1];
-            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(0, 1));
+            MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation[..1]);
             MemoryMarshal.CreateSpan(ref previous, 1).CopyTo(concatenation.Slice(1, 1));
             ZeroHashes[i] = new UInt256(SHA256.HashData(MemoryMarshal.Cast<UInt256, byte>(concatenation)));
         }
@@ -163,9 +163,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<bool> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<bool> fullChunks = value[..^partialChunkLength];
             Span<bool> lastChunk = stackalloc bool[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<bool, UInt256>(fullChunks), MemoryMarshal.Cast<bool, UInt256>(lastChunk));
         }
         else
@@ -180,9 +180,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<byte> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk));
         }
         else
@@ -197,9 +197,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            ReadOnlySpan<byte> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            ReadOnlySpan<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), chunkCount);
         }
         else
@@ -215,16 +215,16 @@ public static partial class Merkle
         int length = value.Length * 8 - (8 - lastBitPosition);
         if (value[^1] == 0)
         {
-            value = value.Slice(0, value.Length - 1);
+            value = value[..^1];
         }
 
         const int typeSize = 1;
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<byte> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<byte> fullChunks = value[..^partialChunkLength];
             Span<byte> lastChunk = stackalloc byte[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<byte, UInt256>(fullChunks), MemoryMarshal.Cast<byte, UInt256>(lastChunk), limit);
         }
         else
@@ -294,9 +294,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<ushort> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<ushort> fullChunks = value[..^partialChunkLength];
             Span<ushort> lastChunk = stackalloc ushort[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<ushort, UInt256>(fullChunks), MemoryMarshal.Cast<ushort, UInt256>(lastChunk));
         }
         else
@@ -311,9 +311,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<uint> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<uint> fullChunks = value[..^partialChunkLength];
             Span<uint> lastChunk = stackalloc uint[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<uint, UInt256>(fullChunks), MemoryMarshal.Cast<uint, UInt256>(lastChunk));
         }
         else
@@ -329,9 +329,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<ulong> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<ulong> fullChunks = value[..^partialChunkLength];
             Span<ulong> lastChunk = stackalloc ulong[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<ulong, UInt256>(fullChunks), MemoryMarshal.Cast<ulong, UInt256>(lastChunk), limit);
         }
         else
@@ -346,9 +346,9 @@ public static partial class Merkle
         int partialChunkLength = value.Length % (32 / typeSize);
         if (partialChunkLength > 0)
         {
-            Span<UInt128> fullChunks = value.Slice(0, value.Length - partialChunkLength);
+            Span<UInt128> fullChunks = value[..^partialChunkLength];
             Span<UInt128> lastChunk = stackalloc UInt128[32 / typeSize];
-            value.Slice(value.Length - partialChunkLength).CopyTo(lastChunk);
+            value[^partialChunkLength..].CopyTo(lastChunk);
             Ize(out root, MemoryMarshal.Cast<UInt128, UInt256>(fullChunks), MemoryMarshal.Cast<UInt128, UInt256>(lastChunk));
         }
         else

@@ -14,7 +14,6 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Test.Builders;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
@@ -41,6 +40,9 @@ namespace Nethermind.Blockchain.Test.Find
         {
             SetUp(true);
         }
+
+        [TearDown]
+        public void TearDown() => _bloomStorage?.Dispose();
 
         private void SetUp(bool allowReceiptIterator)
         {
@@ -240,7 +242,7 @@ namespace Nethermind.Blockchain.Test.Find
             var logs = _logFinder.FindLogs(logFilter).ToArray();
 
             var blockNumbers = logs.Select((log) => log.BlockNumber).ToArray();
-            Assert.AreEqual(blockNumbers, expectedBlockNumbers);
+            Assert.That(expectedBlockNumbers, Is.EqualTo(blockNumbers));
         }
 
         public static IEnumerable FilterByBlocksTestsData
@@ -345,9 +347,9 @@ namespace Nethermind.Blockchain.Test.Find
         {
             if (withBloomDb)
             {
-                for (int i = 0; i <= _blockTree.Head.Number; i++)
+                for (int i = 0; i <= _blockTree.Head!.Number; i++)
                 {
-                    _bloomStorage.Store(i, _blockTree.FindHeader(i).Bloom);
+                    _bloomStorage.Store(i, _blockTree.FindHeader(i)!.Bloom!);
                 }
             }
         }

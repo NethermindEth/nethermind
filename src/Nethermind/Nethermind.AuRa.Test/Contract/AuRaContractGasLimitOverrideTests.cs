@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -83,8 +84,7 @@ public class AuRaContractGasLimitOverrideTests
             KeyValuePair<long, Address> blockGasLimitContractTransition = ChainSpec.AuRa.BlockGasLimitContractTransitions.First();
             BlockGasLimitContract gasLimitContract = new(AbiEncoder.Instance, blockGasLimitContractTransition.Value, blockGasLimitContractTransition.Key,
                 new ReadOnlyTxProcessingEnv(
-                    DbProvider,
-                    new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                    WorldStateManager,
                     BlockTree, SpecProvider, LimboLogs.Instance));
 
             GasLimitOverrideCache = new AuRaContractGasLimitOverride.Cache();
@@ -96,11 +96,11 @@ public class AuRaContractGasLimitOverrideTests
                 new RewardCalculator(SpecProvider),
                 new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                 State,
-                Storage,
                 ReceiptStorage,
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                null,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);
         }

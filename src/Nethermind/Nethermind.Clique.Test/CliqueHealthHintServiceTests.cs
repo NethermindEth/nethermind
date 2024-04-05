@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Services;
 using Nethermind.Consensus.Clique;
 using Nethermind.Core;
@@ -24,8 +23,8 @@ namespace Nethermind.Clique.Test
             IHealthHintService healthHintService = new CliqueHealthHintService(snapshotManager, test.ChainSpec);
             ulong? actualProcessing = healthHintService.MaxSecondsIntervalForProcessingBlocksHint();
             ulong? actualProducing = healthHintService.MaxSecondsIntervalForProducingBlocksHint();
-            Assert.AreEqual(test.ExpectedProcessingHint, actualProcessing);
-            Assert.AreEqual(test.ExpectedProducingHint, actualProducing);
+            Assert.That(actualProcessing, Is.EqualTo(test.ExpectedProcessingHint));
+            Assert.That(actualProducing, Is.EqualTo(test.ExpectedProducingHint));
         }
 
         public class BlockProcessorIntervalHint

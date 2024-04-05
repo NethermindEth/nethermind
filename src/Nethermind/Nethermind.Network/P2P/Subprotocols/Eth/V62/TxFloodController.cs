@@ -24,7 +24,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
         {
             _protocolHandler = protocolHandler ?? throw new ArgumentNullException(nameof(protocolHandler));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
         }
 
         public void Report(bool accepted)
@@ -43,7 +43,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 {
                     if (_logger.IsDebug) _logger.Debug($"Disconnecting {_protocolHandler} due to tx flooding");
                     _protocolHandler.Disconnect(
-                        InitiateDisconnectReason.TxFlooding,
+                        DisconnectReason.TxFlooding,
                         $"tx flooding {_notAcceptedSinceLastCheck}/{_checkInterval.TotalSeconds > 100}");
                 }
             }

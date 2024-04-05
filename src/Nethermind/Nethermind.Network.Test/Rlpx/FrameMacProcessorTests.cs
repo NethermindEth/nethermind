@@ -69,7 +69,7 @@ namespace Nethermind.Network.Test.Rlpx
             FrameMacProcessor macProcessorB = new(TestItem.PublicKeyA, secretsB);
             macProcessorB.AddMac(b1, 0, 16, false);
 
-            Assert.AreEqual(a1.Slice(16, 16), b1.Slice(16, 16));
+            Assert.That(b1.Slice(16, 16), Is.EqualTo(a1.Slice(16, 16)));
         }
     }
 }

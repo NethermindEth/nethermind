@@ -54,25 +54,34 @@ namespace Nethermind.Blockchain.Find
                 _blockFinder.FindHeader(blockParameter, headLimit) ?? throw new ResourceNotFoundException($"Block not found: {name} {blockParameter}");
 
             cancellationToken.ThrowIfCancellationRequested();
-            var toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
+            BlockHeader toBlock = FindHeader(filter.ToBlock, nameof(filter.ToBlock), false);
             cancellationToken.ThrowIfCancellationRequested();
-            var fromBlock = FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
+            BlockHeader fromBlock = filter.ToBlock == filter.FromBlock ?
+                toBlock :
+                FindHeader(filter.FromBlock, nameof(filter.FromBlock), false);
+
+            return FindLogs(filter, fromBlock, toBlock, cancellationToken);
+        }
+
+        public IEnumerable<FilterLog> FindLogs(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
 
             if (fromBlock.Number > toBlock.Number && toBlock.Number != 0)
             {
-                throw new ArgumentException($"'From' block '{fromBlock.Number}' is later than 'to' block '{toBlock.Number}'.");
+                throw new ArgumentException($"From block {fromBlock.Number} is later than to block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Hash!))
+            if (fromBlock.Number != 0 && fromBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(fromBlock.Number, fromBlock.Hash!))
             {
-                throw new ResourceNotFoundException($"Receipt not available for 'From' block '{fromBlock.Number}'.");
+                throw new ResourceNotFoundException($"Receipt not available for From block {fromBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
-            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Hash!))
+            if (toBlock.Number != 0 && toBlock.ReceiptsRoot != Keccak.EmptyTreeHash && !_receiptStorage.HasBlock(toBlock.Number, toBlock.Hash!))
             {
-                throw new ResourceNotFoundException($"Receipt not available for 'To' block '{toBlock.Number}'.");
+                throw new ResourceNotFoundException($"Receipt not available for To block {toBlock.Number}.");
             }
             cancellationToken.ThrowIfCancellationRequested();
 
@@ -84,7 +93,7 @@ namespace Nethermind.Blockchain.Find
                 : FilterLogsIteratively(filter, fromBlock, toBlock, cancellationToken);
         }
 
-        private bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
+        private static bool ShouldUseBloomDatabase(BlockHeader fromBlock, BlockHeader toBlock)
         {
             var blocksToSearch = toBlock.Number - fromBlock.Number + 1;
             return blocksToSearch > 1; // if we are searching only in 1 block skip bloom index altogether, this can be tweaked
@@ -92,7 +101,7 @@ namespace Nethermind.Blockchain.Find
 
         private IEnumerable<FilterLog> FilterLogsWithBloomsIndex(LogFilter filter, BlockHeader fromBlock, BlockHeader toBlock, CancellationToken cancellationToken)
         {
-            Keccak FindBlockHash(long blockNumber, CancellationToken token)
+            Hash256 FindBlockHash(long blockNumber, CancellationToken token)
             {
                 token.ThrowIfCancellationRequested();
                 var blockHash = _blockFinder.FindBlockHash(blockNumber);
@@ -199,7 +208,7 @@ namespace Nethermind.Blockchain.Find
                 ? FindLogsInBlock(filter, block.Hash, block.Number, cancellationToken)
                 : Enumerable.Empty<FilterLog>();
 
-        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FindLogsInBlock(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
         {
             if (blockHash is not null)
             {
@@ -214,15 +223,15 @@ namespace Nethermind.Blockchain.Find
         private static IEnumerable<FilterLog> FilterLogsInBlockLowMemoryAllocation(LogFilter filter, ref ReceiptsIterator iterator, CancellationToken cancellationToken)
         {
             List<FilterLog> logList = null;
-            using (iterator)
+            try
             {
                 long logIndexInBlock = 0;
                 while (iterator.TryGetNext(out var receipt))
                 {
                     cancellationToken.ThrowIfCancellationRequested();
 
-                    LogEntriesIterator logsIterator = receipt.Logs is null ? new LogEntriesIterator(receipt.LogsRlp) : new LogEntriesIterator(receipt.Logs);
-                    if (filter.Matches(ref receipt.Bloom))
+                    LogEntriesIterator logsIterator = iterator.IterateLogs(receipt);
+                    if (!iterator.CanDecodeBloom || filter.Matches(ref receipt.Bloom))
                     {
                         while (logsIterator.TryGetNext(out var log))
                         {
@@ -230,22 +239,21 @@ namespace Nethermind.Blockchain.Find
 
                             if (filter.Accepts(ref log))
                             {
-                                logList ??= new List<FilterLog>();
-                                Keccak[] topics = log.Topics;
+                                // On CL workload, recovery happens about 70% of the time.
+                                iterator.RecoverIfNeeded(ref receipt);
 
-                                if (topics is null)
-                                {
-                                    var topicsValueDecoderContext = new Rlp.ValueDecoderContext(log.TopicsRlp);
-                                    topics = KeccakDecoder.Instance.DecodeArray(ref topicsValueDecoderContext);
-                                }
+                                logList ??= new List<FilterLog>();
+                                Hash256[] topics = log.Topics;
+
+                                topics ??= iterator.DecodeTopics(new Rlp.ValueDecoderContext(log.TopicsRlp));
 
                                 logList.Add(new FilterLog(
                                     logIndexInBlock,
                                     logsIterator.Index,
                                     receipt.BlockNumber,
-                                    receipt.BlockHash.ToKeccak(),
+                                    receipt.BlockHash.ToCommitment(),
                                     receipt.Index,
-                                    receipt.TxHash.ToKeccak(),
+                                    receipt.TxHash.ToCommitment(),
                                     log.LoggersAddress.ToAddress(),
                                     log.Data.ToArray(),
                                     topics));
@@ -263,13 +271,18 @@ namespace Nethermind.Blockchain.Find
                     }
                 }
             }
+            finally
+            {
+                // Confusingly, the `using` statement causes the recovery context to be null during the dispose.
+                iterator.Dispose();
+            }
 
             return logList ?? (IEnumerable<FilterLog>)Array.Empty<FilterLog>();
         }
 
-        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Keccak blockHash, long blockNumber, CancellationToken cancellationToken)
+        private IEnumerable<FilterLog> FilterLogsInBlockHighMemoryAllocation(LogFilter filter, Hash256 blockHash, long blockNumber, CancellationToken cancellationToken)
         {
-            TxReceipt[]? GetReceipts(Keccak hash, long number)
+            TxReceipt[]? GetReceipts(Hash256 hash, long number)
             {
                 var canUseHash = _receiptFinder.CanGetReceiptsByHash(number);
                 if (canUseHash)
@@ -283,7 +296,7 @@ namespace Nethermind.Blockchain.Find
                 }
             }
 
-            void RecoverReceiptsData(Keccak hash, TxReceipt[] receipts)
+            void RecoverReceiptsData(Hash256 hash, TxReceipt[] receipts)
             {
                 if (_receiptsRecovery.NeedRecover(receipts))
                 {
@@ -332,18 +345,6 @@ namespace Nethermind.Blockchain.Find
                     }
                 }
             }
-        }
-
-        private bool TryGetParentBlock(BlockHeader currentBlock, out BlockHeader parentHeader)
-        {
-            if (currentBlock.IsGenesis)
-            {
-                parentHeader = null;
-                return false;
-            }
-
-            parentHeader = _blockFinder.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            return true;
         }
     }
 }

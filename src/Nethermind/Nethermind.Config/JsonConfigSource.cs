@@ -5,7 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Text;
-using Newtonsoft.Json.Linq;
+using System.Text.Json;
 using System.Linq;
 
 namespace Nethermind.Config
@@ -21,15 +21,15 @@ namespace Nethermind.Config
         {
             try
             {
-                var json = (JObject)JToken.Parse(jsonContent);
-                foreach (var moduleEntry in json)
+                using var json = JsonDocument.Parse(jsonContent);
+                foreach (var moduleEntry in json.RootElement.EnumerateObject())
                 {
-                    LoadModule(moduleEntry.Key, (JObject)moduleEntry.Value);
+                    LoadModule(moduleEntry.Name, moduleEntry.Value);
                 }
             }
-            catch (Newtonsoft.Json.JsonReaderException e)
+            catch (JsonException e)
             {
-                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSon. See inner exception for details.", e);
+                throw new System.Configuration.ConfigurationErrorsException($"Config is not correctly formed JSON. See inner exception for details.", e);
             }
         }
 
@@ -61,29 +61,43 @@ namespace Nethermind.Config
                 {
                     // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
                 }
-                finally
-                {
-                    throw new IOException(missingConfigFileMessage.ToString());
-                }
+
+                throw new IOException(missingConfigFileMessage.ToString());
             }
 
             ApplyJsonConfig(File.ReadAllText(configFilePath));
         }
 
-        private void LoadModule(string moduleName, JObject value)
+        private void LoadModule(string moduleName, JsonElement configItems)
         {
-            var configItems = value;
             var itemsDict = new Dictionary<string, string>(StringComparer.InvariantCultureIgnoreCase);
 
-            foreach (var configItem in configItems)
+            foreach (var configItem in configItems.EnumerateObject())
             {
-                if (!itemsDict.ContainsKey(configItem.Key))
+                var key = configItem.Name;
+                if (!itemsDict.ContainsKey(key))
                 {
-                    itemsDict[configItem.Key] = configItem.Value.ToString();
+                    var value = configItem.Value;
+                    if (value.ValueKind == JsonValueKind.Number)
+                    {
+                        itemsDict[key] = value.GetInt64().ToString();
+                    }
+                    else if (value.ValueKind == JsonValueKind.True)
+                    {
+                        itemsDict[key] = "true";
+                    }
+                    else if (value.ValueKind == JsonValueKind.False)
+                    {
+                        itemsDict[key] = "false";
+                    }
+                    else
+                    {
+                        itemsDict[key] = configItem.Value.ToString();
+                    }
                 }
                 else
                 {
-                    throw new Exception($"Duplicated config value: {configItem.Key}, module: {moduleName}");
+                    throw new System.Configuration.ConfigurationErrorsException($"Duplicated config value: {key}, module: {moduleName}");
                 }
             }
 
@@ -98,7 +112,7 @@ namespace Nethermind.Config
         {
             if (!configModule.EndsWith("Config"))
             {
-                configModule = configModule + "Config";
+                configModule += "Config";
             }
 
             _values[configModule] = items;

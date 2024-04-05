@@ -16,8 +16,8 @@ namespace Nethermind.Network.Test.P2P
             PongMessage msg = PongMessage.Instance;
             PongMessageSerializer serializer = new();
             byte[] serialized = serializer.Serialize(msg);
-            Assert.AreEqual(0xc0, serialized[0]);
-            PongMessage deserialized = serializer.Deserialize(serialized);
+            Assert.That(serialized[0], Is.EqualTo(0xc0));
+            using PongMessage deserialized = serializer.Deserialize(serialized);
             Assert.NotNull(deserialized);
         }
     }

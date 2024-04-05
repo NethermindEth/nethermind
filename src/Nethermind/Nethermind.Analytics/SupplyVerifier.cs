@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -14,7 +15,7 @@ namespace Nethermind.Analytics
     public class SupplyVerifier : ITreeVisitor
     {
         private readonly ILogger _logger;
-        private HashSet<Keccak> _ignoreThisOne = new HashSet<Keccak>();
+        private readonly HashSet<Hash256> _ignoreThisOne = new HashSet<Hash256>();
         private int _accountsVisited;
         private int _nodesVisited;
 
@@ -27,27 +28,26 @@ namespace Nethermind.Analytics
 
         public bool IsFullDbScan => false;
 
-        public bool ShouldVisit(Keccak nextNode)
+        public bool ShouldVisit(Hash256 nextNode)
         {
             if (_ignoreThisOne.Count > 16)
             {
                 _logger.Warn($"Ignore count leak -> {_ignoreThisOne.Count}");
             }
 
-            if (_ignoreThisOne.Contains(nextNode))
+            if (_ignoreThisOne.Remove(nextNode))
             {
-                _ignoreThisOne.Remove(nextNode);
                 return false;
             }
 
             return true;
         }
 
-        public void VisitTree(Keccak rootHash, TrieVisitContext trieVisitContext)
+        public void VisitTree(Hash256 rootHash, TrieVisitContext trieVisitContext)
         {
         }
 
-        public void VisitMissingNode(Keccak nodeHash, TrieVisitContext trieVisitContext)
+        public void VisitMissingNode(Hash256 nodeHash, TrieVisitContext trieVisitContext)
         {
             _logger.Warn($"Missing node {nodeHash}");
         }
@@ -61,7 +61,7 @@ namespace Nethermind.Analytics
             {
                 for (int i = 0; i < 16; i++)
                 {
-                    Keccak childHash = node.GetChildHash(i);
+                    Hash256 childHash = node.GetChildHash(i);
                     if (childHash is not null)
                     {
                         _ignoreThisOne.Add(childHash);
@@ -79,7 +79,7 @@ namespace Nethermind.Analytics
             }
         }
 
-        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, byte[] value = null)
+        public void VisitLeaf(TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
         {
             _nodesVisited++;
 
@@ -96,7 +96,7 @@ namespace Nethermind.Analytics
             _logger.Info($"Balance after visiting {_accountsVisited} accounts and {_nodesVisited} nodes: {Balance}");
         }
 
-        public void VisitCode(Keccak codeHash, TrieVisitContext trieVisitContext)
+        public void VisitCode(Hash256 codeHash, TrieVisitContext trieVisitContext)
         {
             _nodesVisited++;
         }

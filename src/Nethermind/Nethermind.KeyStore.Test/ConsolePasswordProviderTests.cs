@@ -21,13 +21,13 @@ namespace Nethermind.KeyStore.Test
                                             .OrReadFromConsole("Test1");
 
             Assert.IsTrue(consolePasswordProvider1 is FilePasswordProvider);
-            Assert.AreEqual("Test1", ((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider1.AlternativeProvider).Message, Is.EqualTo("Test1"));
 
             var consolePasswordProvider2 = consolePasswordProvider1
                                             .OrReadFromConsole("Test2");
 
             Assert.IsTrue(consolePasswordProvider2 is FilePasswordProvider);
-            Assert.AreEqual("Test2", ((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message);
+            Assert.That(((ConsolePasswordProvider)consolePasswordProvider2.AlternativeProvider).Message, Is.EqualTo("Test2"));
         }
 
         [Test]
@@ -45,7 +45,7 @@ namespace Nethermind.KeyStore.Test
             var passwordProvider = new ConsolePasswordProvider(new ConsoleUtils(consoleWrapper));
             var password = passwordProvider.GetPassword(Address.Zero);
             Assert.IsTrue(password.IsReadOnly());
-            Assert.AreEqual(test.ExpectedPassword, password.Unsecure());
+            Assert.That(password.Unsecure(), Is.EqualTo(test.ExpectedPassword));
         }
 
         public static IEnumerable<ConsolePasswordProviderTest> PasswordProviderTestCases

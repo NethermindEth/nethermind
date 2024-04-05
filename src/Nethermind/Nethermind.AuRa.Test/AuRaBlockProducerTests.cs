@@ -2,13 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
-using Castle.DynamicProxy.Generators.Emitters.SimpleAST;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
@@ -22,10 +19,8 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing;
-using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using Nethermind.State;
 using NSubstitute;
 using NSubstitute.ReceivedExtensions;
@@ -43,7 +38,7 @@ namespace Nethermind.AuRa.Test
             public ISealer Sealer { get; }
             public IBlockTree BlockTree { get; }
             public IBlockProcessingQueue BlockProcessingQueue { get; }
-            public IStateProvider StateProvider { get; }
+            public IWorldState StateProvider { get; }
             public ITimestamper Timestamper { get; }
             public IAuRaStepCalculator AuRaStepCalculator { get; }
             public Address NodeAddress { get; }
@@ -58,12 +53,12 @@ namespace Nethermind.AuRa.Test
                 Sealer = Substitute.For<ISealer>();
                 BlockTree = Substitute.For<IBlockTree>();
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>();
-                StateProvider = Substitute.For<IStateProvider>();
+                StateProvider = Substitute.For<IWorldState>();
                 Timestamper = Substitute.For<ITimestamper>();
                 AuRaStepCalculator = Substitute.For<IAuRaStepCalculator>();
                 NodeAddress = TestItem.AddressA;
                 TransactionSource.GetTransactions(Arg.Any<BlockHeader>(), Arg.Any<long>()).Returns(Array.Empty<Transaction>());
-                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(true);
+                Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(true);
                 Sealer.SealBlock(Arg.Any<Block>(), Arg.Any<CancellationToken>()).Returns(c => Task.FromResult(c.Arg<Block>()));
                 Sealer.Address.Returns(TestItem.AddressA);
                 BlockProcessingQueue.IsEmpty.Returns(true);
@@ -76,6 +71,7 @@ namespace Nethermind.AuRa.Test
                     block.TrySetTransactions(TransactionSource.GetTransactions(BlockTree.Head!.Header, block.GasLimit).ToArray());
                     return block;
                 });
+                StateProvider.HasStateForRoot(Arg.Any<Hash256>()).Returns(x => true);
                 InitProducer();
             }
 
@@ -156,7 +152,7 @@ namespace Nethermind.AuRa.Test
         public async Task Does_not_produce_block_when_cannot_seal()
         {
             Context context = new();
-            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(false);
+            context.Sealer.CanSeal(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(false);
             (await StartStop(context)).ShouldProduceBlocks(Quantity.None());
         }
 
@@ -228,12 +224,13 @@ namespace Nethermind.AuRa.Test
                 });
 
             await context.AuRaBlockProducer.Start();
-            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+            await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
             context.BlockTree.ClearReceivedCalls();
+            await Task.Delay(context.StepDelay);
+            processedEvent.Reset();
 
             try
             {
-                await Task.Delay(context.StepDelay);
                 if (processingQueueEmpty)
                 {
                     context.BlockProcessingQueue.ProcessingQueueEmpty += Raise.Event();
@@ -243,9 +240,10 @@ namespace Nethermind.AuRa.Test
                 {
                     context.BlockTree.NewBestSuggestedBlock += Raise.EventWith(new BlockEventArgs(Build.A.Block.TestObject));
                     context.BlockTree.ClearReceivedCalls();
+                    processedEvent.Reset();
                 }
 
-                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier, CancellationToken.None);
+                await processedEvent.WaitOneAsync(context.StepDelay * stepDelayMultiplier * 5, CancellationToken.None);
 
             }
             finally

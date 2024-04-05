@@ -57,13 +57,13 @@ namespace Nethermind.Consensus.Ethash
             }
         }
 
-        private ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 2, 50);
+        private readonly ArrayPool<Bucket> _arrayPool = ArrayPool<Bucket>.Create(1024 * 1024 * 2, 50);
 
         private Bucket[] Data { get; set; }
 
         public uint Size { get; set; }
 
-        public EthashCache(uint cacheSize, byte[] seed)
+        public EthashCache(uint cacheSize, ReadOnlySpan<byte> seed)
         {
             uint cachePageCount = cacheSize / Ethash.HashBytes;
             Size = cachePageCount * Ethash.HashBytes;

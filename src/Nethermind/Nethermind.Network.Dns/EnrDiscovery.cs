@@ -1,12 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers.Text;
 using System.Net;
 using DnsClient;
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Enr;
 using Nethermind.Stats.Model;
@@ -59,7 +57,7 @@ public class EnrDiscovery : INodeSource
         }
     }
 
-    private Node? CreateNode(NodeRecord nodeRecord)
+    private static Node? CreateNode(NodeRecord nodeRecord)
     {
         CompressedPublicKey? compressedPublicKey = nodeRecord.GetObj<CompressedPublicKey>(EnrContentKey.Secp256K1);
         IPAddress? ipAddress = nodeRecord.GetObj<IPAddress>(EnrContentKey.Ip);

@@ -4,11 +4,9 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
 using Nethermind.Abi;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -22,7 +20,7 @@ namespace Nethermind.Consensus.AuRa.Contracts.DataStore
         private readonly IDataContract<T> _dataContract;
         private readonly IReceiptFinder _receiptFinder;
         private readonly IBlockTree _blockTree;
-        private Keccak _lastHash;
+        private Hash256 _lastHash;
         private readonly object _lock = new object();
         private readonly ILogger _logger;
 

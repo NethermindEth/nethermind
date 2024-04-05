@@ -5,11 +5,9 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Security;
-using System.Text;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
@@ -79,8 +77,8 @@ namespace Nethermind.KeyStore.Test
             try
             {
                 (PrivateKey key, Result result) = test.Store.GetKey(new Address(item.Address), securePassword);
-                Assert.AreEqual(ResultType.Success, result.ResultType, item.Address + " " + result.Error);
-                Assert.AreEqual(key.Address.ToString(false, false), item.Address);
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), item.Address + " " + result.Error);
+                Assert.That(item.Address, Is.EqualTo(key.Address.ToString(false, false)));
             }
             finally
             {
@@ -111,9 +109,9 @@ namespace Nethermind.KeyStore.Test
             try
             {
                 string[] files = test.Store.FindKeyFiles(address);
-                Assert.AreEqual(1, files.Length);
+                Assert.That(files.Length, Is.EqualTo(1));
                 string text = File.ReadAllText(files[0]);
-                Assert.AreEqual(keyJson, text, "same json");
+                Assert.That(text, Is.EqualTo(keyJson), "same json");
             }
             finally
             {
@@ -139,22 +137,22 @@ namespace Nethermind.KeyStore.Test
             {
                 Result result;
                 (key1, result) = test.Store.GenerateKey(test.TestPasswordSecured);
-                Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 1");
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "generate key 1");
 
                 (key2, result) = test.Store.GenerateKey(test.TestPasswordSecured);
-                Assert.AreEqual(ResultType.Success, result.ResultType, "generate key 2");
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "generate key 2");
 
                 (IReadOnlyCollection<Address> addresses, Result getAllResult) = test.Store.GetKeyAddresses();
-                Assert.AreEqual(ResultType.Success, getAllResult.ResultType, "get key");
+                Assert.That(getAllResult.ResultType, Is.EqualTo(ResultType.Success), "get key");
                 Assert.IsTrue(addresses.Count() >= 2);
                 Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key1.Address)), "key 1 not null");
                 Assert.IsNotNull(addresses.FirstOrDefault(x => x.Equals(key2.Address)), "key 2 not null");
 
                 result = test.Store.DeleteKey(key1.Address);
-                Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 1");
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "delete key 1");
 
                 result = test.Store.DeleteKey(key2.Address);
-                Assert.AreEqual(ResultType.Success, result.ResultType, "delete key 2");
+                Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "delete key 2");
             }
             finally
             {
@@ -167,17 +165,17 @@ namespace Nethermind.KeyStore.Test
         {
             TestContext test = new TestContext();
             (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
+            Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
             (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
+            Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
             Assert.IsTrue(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes));
 
             Result result = test.Store.DeleteKey(key.Item1.Address);
-            Assert.AreEqual(ResultType.Success, result.ResultType);
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
 
             (PrivateKey, Result) deletedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Failure, deletedKey.Item2.ResultType);
+            Assert.That(deletedKey.Item2.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
         [Test]
@@ -185,17 +183,17 @@ namespace Nethermind.KeyStore.Test
         {
             TestContext test = new TestContext();
             (PrivateKey, Result) key = test.Store.GenerateKey(test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, key.Item2.ResultType);
+            Assert.That(key.Item2.ResultType, Is.EqualTo(ResultType.Success));
 
             (PrivateKey, Result) persistedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, persistedKey.Item2.ResultType);
+            Assert.That(persistedKey.Item2.ResultType, Is.EqualTo(ResultType.Success));
             Assert.IsTrue(Bytes.AreEqual(key.Item1.KeyBytes, persistedKey.Item1.KeyBytes));
 
             Result result = test.Store.DeleteKey(key.Item1.Address);
-            Assert.AreEqual(ResultType.Success, result.ResultType);
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success));
 
             (PrivateKey, Result) deletedKey = test.Store.GetKey(key.Item1.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Failure, deletedKey.Item2.ResultType);
+            Assert.That(deletedKey.Item2.ResultType, Is.EqualTo(ResultType.Failure));
         }
 
         [Test]
@@ -204,20 +202,20 @@ namespace Nethermind.KeyStore.Test
             TestContext test = new TestContext();
             //generate key
             (PrivateKey key, Result storeResult) = test.Store.GenerateKey(test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, storeResult.ResultType, "generate result");
+            Assert.That(storeResult.ResultType, Is.EqualTo(ResultType.Success), "generate result");
 
             (KeyStoreItem keyData, Result result) = test.Store.GetKeyData(key.Address);
-            Assert.AreEqual(ResultType.Success, result.ResultType, "load result");
+            Assert.That(result.ResultType, Is.EqualTo(ResultType.Success), "load result");
 
             Result deleteResult = test.Store.DeleteKey(key.Address);
-            Assert.AreEqual(ResultType.Success, deleteResult.ResultType, "delete result");
+            Assert.That(deleteResult.ResultType, Is.EqualTo(ResultType.Success), "delete result");
 
             keyData.Version = 0;
             test.Store.StoreKey(key.Address, keyData);
 
             (_, Result loadResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Failure, loadResult.ResultType, "bad load result");
-            Assert.AreEqual("KeyStore version mismatch", loadResult.Error);
+            Assert.That(loadResult.ResultType, Is.EqualTo(ResultType.Failure), "bad load result");
+            Assert.That(loadResult.Error, Is.EqualTo("KeyStore version mismatch"));
 
             test.Store.DeleteKey(key.Address);
         }
@@ -227,18 +225,18 @@ namespace Nethermind.KeyStore.Test
         {
             TestContext test = new TestContext();
             (PrivateKey key, Result generateResult) = test.Store.GenerateKey(test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, generateResult.ResultType);
+            Assert.That(generateResult.ResultType, Is.EqualTo(ResultType.Success));
 
             (PrivateKey keyRestored, Result getResult) = test.Store.GetKey(key.Address, test.TestPasswordSecured);
-            Assert.AreEqual(ResultType.Success, getResult.ResultType);
+            Assert.That(getResult.ResultType, Is.EqualTo(ResultType.Success));
             Assert.IsTrue(Bytes.AreEqual(key.KeyBytes, keyRestored.KeyBytes));
 
             (PrivateKey _, Result wrongResult) = test.Store.GetKey(key.Address, test.WrongPasswordSecured);
-            Assert.AreEqual(ResultType.Failure, wrongResult.ResultType);
-            Assert.AreEqual("Incorrect MAC", wrongResult.Error);
+            Assert.That(wrongResult.ResultType, Is.EqualTo(ResultType.Failure));
+            Assert.That(wrongResult.Error, Is.EqualTo("Incorrect MAC"));
 
             Result deleteResult = test.Store.DeleteKey(key.Address);
-            Assert.AreEqual(ResultType.Success, deleteResult.ResultType);
+            Assert.That(deleteResult.ResultType, Is.EqualTo(ResultType.Success));
         }
 
         [Test]

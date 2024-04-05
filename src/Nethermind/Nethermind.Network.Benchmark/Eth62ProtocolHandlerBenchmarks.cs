@@ -6,11 +6,11 @@ using BenchmarkDotNet.Attributes;
 using DotNetty.Buffers;
 using DotNetty.Transport.Channels;
 using Nethermind.Blockchain;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -53,10 +53,11 @@ namespace Nethermind.Network.Benchmarks
             NodeStatsManager stats = new NodeStatsManager(TimerFactory.Default, LimboLogs.Instance);
             var ecdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             var tree = Build.A.BlockTree().TestObject;
-            var stateProvider = new StateProvider(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
+            var stateProvider = new WorldState(new TrieStore(new MemDb(), LimboLogs.Instance), new MemDb(), LimboLogs.Instance);
             var specProvider = MainnetSpecProvider.Instance;
             TxPool.TxPool txPool = new TxPool.TxPool(
                 ecdsa,
+                new BlobTxStorage(),
                 new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(MainnetSpecProvider.Instance), tree, stateProvider),
                 new TxPoolConfig(),
                 new TxValidator(TestBlockchainIds.ChainId),
@@ -65,7 +66,7 @@ namespace Nethermind.Network.Benchmarks
             ISyncServer syncSrv = Substitute.For<ISyncServer>();
             BlockHeader head = Build.A.BlockHeader.WithNumber(1).TestObject;
             syncSrv.Head.Returns(head);
-            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, txPool, ShouldGossip.Instance, LimboLogs.Instance);
+            _handler = new Eth62ProtocolHandler(session, _ser, stats, syncSrv, RunImmediatelyScheduler.Instance, txPool, Consensus.ShouldGossip.Instance, LimboLogs.Instance);
             _handler.DisableTxFiltering();
 
             StatusMessage statusMessage = new StatusMessage();
@@ -81,7 +82,7 @@ namespace Nethermind.Network.Benchmarks
             _handler.HandleMessage(_zeroPacket);
 
             Transaction tx = Build.A.Transaction.SignedAndResolved(ecdsa, TestItem.PrivateKeyA).TestObject;
-            _txMsg = new TransactionsMessage(new[] { tx });
+            _txMsg = new TransactionsMessage(new[] { tx }.ToPooledList());
         }
 
         [GlobalCleanup]

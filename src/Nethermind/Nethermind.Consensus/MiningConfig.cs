@@ -65,10 +65,7 @@ public class MiningConfig : IMiningConfig
         get
         {
             // Lazt initalisation due to the awaiting of interface defaults application on assembly
-            if (_blocksConfig is null)
-            {
-                _blocksConfig = new BlocksConfig();
-            }
+            _blocksConfig ??= new BlocksConfig();
 
             return _blocksConfig;
         }

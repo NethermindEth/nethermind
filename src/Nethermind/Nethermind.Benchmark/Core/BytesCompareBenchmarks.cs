@@ -1,10 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -18,11 +15,11 @@ namespace Nethermind.Benchmarks.Core
 
         private (byte[] A, byte[] B)[] _scenarios = new[]
         {
-            (Keccak.Zero.Bytes, Keccak.Zero.Bytes),
-            (Keccak.Zero.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.EmptyTreeHash.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.OfAnEmptyString.Bytes, Keccak.EmptyTreeHash.Bytes),
-            (Keccak.OfAnEmptyString.Bytes, Keccak.EmptyTreeHash.Bytes),
+            (Keccak.Zero.BytesToArray(), Keccak.Zero.BytesToArray()),
+            (Keccak.Zero.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.EmptyTreeHash.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
+            (Keccak.OfAnEmptyString.BytesToArray(), Keccak.EmptyTreeHash.BytesToArray()),
             (TestItem.AddressA.Bytes, TestItem.AddressB.Bytes),
         };
 

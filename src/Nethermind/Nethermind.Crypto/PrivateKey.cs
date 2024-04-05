@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Crypto
 {
@@ -28,12 +27,9 @@ namespace Nethermind.Crypto
 
         public PrivateKey(byte[] keyBytes)
         {
-            if (keyBytes is null)
-            {
-                throw new ArgumentNullException(nameof(keyBytes));
-            }
+            ArgumentNullException.ThrowIfNull(keyBytes);
 
-            if (!Proxy.VerifyPrivateKey(keyBytes))
+            if (!SecP256k1.VerifyPrivateKey(keyBytes))
             {
                 throw new ArgumentException("provided value is not a valid private key", nameof(keyBytes));
             }
@@ -63,7 +59,7 @@ namespace Nethermind.Crypto
 
         public override bool Equals(object obj)
         {
-            if (ReferenceEquals(null, obj))
+            if (obj is null)
             {
                 return false;
             }
@@ -88,12 +84,12 @@ namespace Nethermind.Crypto
 
         private PublicKey ComputePublicKey()
         {
-            return new(Proxy.GetPublicKey(KeyBytes, false));
+            return new(SecP256k1.GetPublicKey(KeyBytes, false));
         }
 
         private CompressedPublicKey ComputeCompressedPublicKey()
         {
-            return new(Proxy.GetPublicKey(KeyBytes, true));
+            return new(SecP256k1.GetPublicKey(KeyBytes, true));
         }
 
         public override string ToString()

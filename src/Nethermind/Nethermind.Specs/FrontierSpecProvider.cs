@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -32,7 +31,7 @@ namespace Nethermind.Specs
 
         public ulong NetworkId => Core.BlockchainIds.Mainnet;
         public ulong ChainId => NetworkId;
-        public Keccak GenesisHash => KnownHashes.MainnetGenesis;
+        public static Hash256 GenesisHash => KnownHashes.MainnetGenesis;
         public ForkActivation[] TransitionActivations { get; } = { (ForkActivation)0 };
 
         private FrontierSpecProvider()

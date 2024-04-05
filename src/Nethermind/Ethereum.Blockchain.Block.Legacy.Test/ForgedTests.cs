@@ -15,7 +15,7 @@ namespace Ethereum.Blockchain.Block.Legacy.Test
         [TestCaseSource(nameof(LoadTests))]
         public async Task Test(BlockchainTest test)
         {
-            await RunTest(test);
+            await RunTest(test, null, false);
         }
         public static IEnumerable<BlockchainTest> LoadTests()
         {

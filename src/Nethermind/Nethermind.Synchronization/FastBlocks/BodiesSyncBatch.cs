@@ -5,14 +5,15 @@ using Nethermind.Core;
 
 namespace Nethermind.Synchronization.FastBlocks
 {
-    public class BodiesSyncBatch : FastBlocksBatch
+    public class BodiesSyncBatch(BlockInfo[] infos) : FastBlocksBatch
     {
-        public BodiesSyncBatch(BlockInfo[] infos)
-        {
-            Infos = infos;
-        }
+        public BlockInfo?[] Infos { get; } = infos;
+        public OwnedBlockBodies? Response { get; set; }
 
-        public BlockInfo?[] Infos { get; }
-        public BlockBody?[]? Response { get; set; }
+        public override void Dispose()
+        {
+            base.Dispose();
+            Response?.Dispose();
+        }
     }
 }

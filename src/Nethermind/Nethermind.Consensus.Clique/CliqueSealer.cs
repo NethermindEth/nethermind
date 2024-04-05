@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Wallet;
 
 [assembly: InternalsVisibleTo("Nethermind.Clique.Test")]
 
@@ -64,19 +63,19 @@ namespace Nethermind.Consensus.Clique
             }
 
             // Sign all the things!
-            Keccak headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
+            Hash256 headerHash = SnapshotManager.CalculateCliqueHeaderHash(header);
             Signature signature = _signer.Sign(headerHash);
             // Copy signature bytes (R and S)
             byte[] signatureBytes = signature.Bytes;
             Array.Copy(signatureBytes, 0, header.ExtraData, header.ExtraData.Length - Clique.ExtraSealLength, signatureBytes.Length);
             // Copy signature's recovery id (V)
             byte recoveryId = signature.RecoveryId;
-            header.ExtraData[header.ExtraData.Length - 1] = recoveryId;
+            header.ExtraData[^1] = recoveryId;
 
             return block;
         }
 
-        public bool CanSeal(long blockNumber, Keccak parentHash)
+        public bool CanSeal(long blockNumber, Hash256 parentHash)
         {
             Snapshot snapshot = _snapshotManager.GetOrCreateSnapshot(blockNumber - 1, parentHash);
             if (!_signer.CanSign)

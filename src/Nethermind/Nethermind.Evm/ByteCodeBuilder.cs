@@ -295,7 +295,7 @@ namespace Nethermind.Evm
             return StoreDataInMemory(position, Bytes.FromHexString(hexString));
         }
 
-        private Prepare StoreDataInMemory(int position, byte[] data)
+        public Prepare StoreDataInMemory(int position, byte[] data)
         {
             for (int i = 0; i < data.Length; i += 32)
             {
@@ -308,7 +308,7 @@ namespace Nethermind.Evm
         }
 
         /// <summary>
-        /// Take the data already on stack and store it in memory 
+        /// Take the data already on stack and store it in memory
         /// at specified position
         /// </summary>
         /// <param name="position">Memory position</param>

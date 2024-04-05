@@ -23,6 +23,7 @@ using NSubstitute;
 namespace Nethermind.Mev.Test
 {
     [TestFixture]
+    [Parallelizable(ParallelScope.None)] // Metrics are global variables. Dont run with other tests.
     public class MetricsTests
     {
         [Test]
@@ -59,7 +60,7 @@ namespace Nethermind.Mev.Test
         public void Should_count_valid_megabundles()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressB);
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(TestItem.AddressB);
 
             TestBundlePool bundlePool = CreateTestBundlePool(ecdsa);
 
@@ -110,7 +111,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(2);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]
@@ -146,7 +147,7 @@ namespace Nethermind.Mev.Test
 
             deltaBundlesReceived.Should().Be(4);
             deltaValidBundlesReceived.Should().Be(1);
-            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle 
+            deltaBundlesSimulated.Should().Be(0); // should not simulate invalid bundle
         }
 
         [Test]

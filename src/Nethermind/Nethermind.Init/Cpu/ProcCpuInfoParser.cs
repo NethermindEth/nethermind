@@ -10,7 +10,7 @@ using System.Text.RegularExpressions;
 
 namespace Nethermind.Init.Cpu;
 
-internal static class ProcCpuInfoParser
+internal static partial class ProcCpuInfoParser
 {
     internal static CpuInfo ParseOutput(string? content)
     {
@@ -53,18 +53,18 @@ internal static class ProcCpuInfoParser
 
         return new CpuInfo(
             processorModelNames.Count > 0 ? string.Join(", ", processorModelNames) : "",
-            processorsToPhysicalCoreCount.Count > 0 ? processorsToPhysicalCoreCount.Count : (int?)null,
-            processorsToPhysicalCoreCount.Count > 0 ? processorsToPhysicalCoreCount.Values.Sum() : (int?)null,
-            logicalCoreCount > 0 ? logicalCoreCount : (int?)null,
-            nominalFrequency > 0 ? nominalFrequency : (Frequency?)null,
-            minFrequency > 0 ? minFrequency : (Frequency?)null,
-            maxFrequency > 0 ? maxFrequency : (Frequency?)null);
+            processorsToPhysicalCoreCount.Count > 0 ? processorsToPhysicalCoreCount.Count : null,
+            processorsToPhysicalCoreCount.Count > 0 ? processorsToPhysicalCoreCount.Values.Sum() : null,
+            logicalCoreCount > 0 ? logicalCoreCount : null,
+            nominalFrequency > 0 ? nominalFrequency : null,
+            minFrequency > 0 ? minFrequency : null,
+            maxFrequency > 0 ? maxFrequency : null);
     }
 
     internal static Frequency ParseFrequencyFromBrandString(string brandString)
     {
         const string pattern = "(\\d.\\d+)GHz";
-        var matches = Regex.Matches(brandString, pattern, RegexOptions.IgnoreCase);
+        var matches = MatchRegex().Matches(brandString);
         if (matches.Count > 0 && matches[0].Groups.Count > 1)
         {
             string match = Regex.Matches(brandString, pattern, RegexOptions.IgnoreCase)[0].Groups[1].ToString();
@@ -73,4 +73,7 @@ internal static class ProcCpuInfoParser
 
         return 0d;
     }
+
+    [GeneratedRegex("(\\d.\\d+)GHz", RegexOptions.IgnoreCase, "en-US")]
+    private static partial Regex MatchRegex();
 }

@@ -6,7 +6,6 @@ using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -92,7 +91,7 @@ public class PingMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
     }
 
 
-    private (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
+    private static (int totalLength, int contentLength, int sourceAddressLength, int destinationAddressLength) GetLength(PingMsg msg)
     {
         int sourceAddressLength = GetIPEndPointLength(msg.SourceAddress);
         int destinationAddressLength = GetIPEndPointLength(msg.DestinationAddress);

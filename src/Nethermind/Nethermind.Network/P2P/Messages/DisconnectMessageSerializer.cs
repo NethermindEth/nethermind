@@ -3,7 +3,6 @@
 
 using System;
 using DotNetty.Buffers;
-using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Stats.Model;
 
@@ -14,14 +13,14 @@ namespace Nethermind.Network.P2P.Messages
         public void Serialize(IByteBuffer byteBuffer, DisconnectMessage msg)
         {
             int length = GetLength(msg, out int contentLength);
-            byteBuffer.EnsureWritable(length);
+            byteBuffer.EnsureWritable(length, force: true);
             NettyRlpStream rlpStream = new(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode((byte)msg.Reason);
         }
 
-        private int GetLength(DisconnectMessage message, out int contentLength)
+        private static int GetLength(DisconnectMessage message, out int contentLength)
         {
             contentLength = Rlp.LengthOf((byte)message.Reason);
 
@@ -29,24 +28,26 @@ namespace Nethermind.Network.P2P.Messages
         }
 
 
-        private byte[] breach1 = Bytes.FromHexString("0204c104");
-        private byte[] breach2 = Bytes.FromHexString("0204c180");
-
         public DisconnectMessage Deserialize(IByteBuffer msgBytes)
         {
             if (msgBytes.ReadableBytes == 1)
             {
-                return new DisconnectMessage((DisconnectReason)msgBytes.GetByte(0));
+                return new DisconnectMessage((EthDisconnectReason)msgBytes.GetByte(0));
+            }
+
+            if (msgBytes.ReadableBytes == 0)
+            {
+                // Sometimes 0x00 was sent, uncompressed, which interpreted as empty buffer by snappy.
+                return new DisconnectMessage(EthDisconnectReason.DisconnectRequested);
             }
 
             Span<byte> msg = msgBytes.ReadAllBytesAsSpan();
-            if (msg.SequenceEqual(breach1)
-                || msg.SequenceEqual(breach2))
+            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
+            if (!rlpStream.IsSequenceNext())
             {
-                return new DisconnectMessage(DisconnectReason.Other);
+                rlpStream = new Rlp.ValueDecoderContext(rlpStream.DecodeByteArraySpan());
             }
 
-            Rlp.ValueDecoderContext rlpStream = msg.AsRlpValueContext();
             rlpStream.ReadSequenceLength();
             int reason = rlpStream.DecodeInt();
             DisconnectMessage disconnectMessage = new DisconnectMessage(reason);

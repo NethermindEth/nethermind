@@ -36,14 +36,23 @@ namespace Nethermind.HealthChecks
                 if (_logger.IsTrace) _logger.Trace($"Checked health result. Healthy: {healthResult.Healthy}");
                 string description = FormatMessages(healthResult.Messages.Select(x => x.LongMessage));
                 if (healthResult.Healthy)
-                    return Task.FromResult(HealthCheckResult.Healthy(description));
+                    return Task.FromResult(HealthCheckResult.Healthy(description, CreateData(healthResult)));
 
-                return Task.FromResult(HealthCheckResult.Unhealthy(description));
+                return Task.FromResult(HealthCheckResult.Unhealthy(description, null, CreateData(healthResult)));
             }
             catch (Exception ex)
             {
                 return Task.FromResult(new HealthCheckResult(context.Registration.FailureStatus, exception: ex));
             }
+        }
+
+        private static IReadOnlyDictionary<string, object> CreateData(CheckHealthResult healthResult)
+        {
+            return new Dictionary<string, object>
+            {
+                { nameof(healthResult.IsSyncing), healthResult.IsSyncing },
+                { nameof(healthResult.Errors), healthResult.Errors }
+            };
         }
 
         private static string FormatMessages(IEnumerable<string> messages)

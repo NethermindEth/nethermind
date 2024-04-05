@@ -54,7 +54,7 @@ public class MergePeerAllocationStrategyTests
         IBlockTree _blockTree = Substitute.For<IBlockTree>();
         PeerInfo? info = mergePeerAllocationStrategy.Allocate(null, peers, _nodeStatsManager, _blockTree);
 
-        Assert.AreEqual(info, peers[1]); // peer with highest total difficulty
+        Assert.That(peers[1], Is.EqualTo(info)); // peer with highest total difficulty
     }
 
     [Test]
@@ -89,7 +89,7 @@ public class MergePeerAllocationStrategyTests
         IBlockTree _blockTree = Substitute.For<IBlockTree>();
         PeerInfo? info = mergePeerAllocationStrategy.Allocate(null, peers, _nodeStatsManager, _blockTree);
 
-        Assert.AreEqual(info, peers[2]); // peer with highest highest speed
+        Assert.That(peers[2], Is.EqualTo(info)); // peer with highest highest speed
     }
 
 }

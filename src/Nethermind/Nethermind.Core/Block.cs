@@ -58,29 +58,29 @@ public class Block
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
 
-    public Keccak? Hash => Header.Hash; // do not add setter here
+    public Hash256? Hash => Header.Hash; // do not add setter here
 
-    public Keccak? ParentHash => Header.ParentHash; // do not add setter here
+    public Hash256? ParentHash => Header.ParentHash; // do not add setter here
 
     public ulong Nonce => Header.Nonce; // do not add setter here
 
-    public Keccak? MixHash => Header.MixHash; // do not add setter here
+    public Hash256? MixHash => Header.MixHash; // do not add setter here
 
     public byte[]? ExtraData => Header.ExtraData; // do not add setter here
 
     public Bloom? Bloom => Header.Bloom; // do not add setter here
 
-    public Keccak? UnclesHash => Header.UnclesHash; // do not add setter here
+    public Hash256? UnclesHash => Header.UnclesHash; // do not add setter here
 
     public Address? Beneficiary => Header.Beneficiary; // do not add setter here
 
     public Address? Author => Header.Author; // do not add setter here
 
-    public Keccak? StateRoot => Header.StateRoot; // do not add setter here
+    public Hash256? StateRoot => Header.StateRoot; // do not add setter here
 
-    public Keccak? TxRoot => Header.TxRoot; // do not add setter here
+    public Hash256? TxRoot => Header.TxRoot; // do not add setter here
 
-    public Keccak? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
+    public Hash256? ReceiptsRoot => Header.ReceiptsRoot; // do not add setter here
 
     public long GasLimit => Header.GasLimit; // do not add setter here
 
@@ -98,13 +98,16 @@ public class Block
 
     public UInt256 BaseFeePerGas => Header.BaseFeePerGas; // do not add setter here
 
-    public UInt256? ExcessDataGas => Header.ExcessDataGas; // do not add setter here
+    public ulong? BlobGasUsed => Header.BlobGasUsed; // do not add setter here
+
+    public ulong? ExcessBlobGas => Header.ExcessBlobGas; // do not add setter here
 
     public bool IsPostMerge => Header.IsPostMerge; // do not add setter here
 
     public bool IsBodyMissing => Header.HasBody && Body.IsEmpty;
 
-    public Keccak? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
+    public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
+    public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     public override string ToString() => ToString(Format.Short);
 

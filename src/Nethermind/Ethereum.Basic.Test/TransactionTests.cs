@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -39,16 +41,16 @@ namespace Ethereum.Basic.Test
         {
             EthereumEcdsa ethereumEcdsa = new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance);
             Transaction decodedUnsigned = Rlp.Decode<Transaction>(test.Unsigned);
-            Assert.AreEqual(test.Value, decodedUnsigned.Value, "value");
-            Assert.AreEqual(test.GasPrice, decodedUnsigned.GasPrice, "gasPrice");
-            Assert.AreEqual(test.StartGas, decodedUnsigned.GasLimit, "gasLimit");
-            Assert.AreEqual(test.Data, decodedUnsigned.Data, "data");
-            Assert.AreEqual(test.To, decodedUnsigned.To, "to");
-            Assert.AreEqual(test.Nonce, decodedUnsigned.Nonce, "nonce");
+            Assert.That(decodedUnsigned.Value, Is.EqualTo(test.Value), "value");
+            Assert.That(decodedUnsigned.GasPrice, Is.EqualTo(test.GasPrice), "gasPrice");
+            Assert.That(decodedUnsigned.GasLimit, Is.EqualTo(test.StartGas), "gasLimit");
+            Assert.That(decodedUnsigned.Data.AsArray(), Is.EqualTo(test.Data), "data");
+            Assert.That(decodedUnsigned.To, Is.EqualTo(test.To), "to");
+            Assert.That(decodedUnsigned.Nonce, Is.EqualTo(test.Nonce), "nonce");
 
             Transaction decodedSigned = Rlp.Decode<Transaction>(test.Signed);
             ethereumEcdsa.Sign(test.PrivateKey, decodedUnsigned, false);
-            Assert.AreEqual(decodedSigned.Signature.R, decodedUnsigned.Signature.R, "R");
+            Assert.That(decodedUnsigned.Signature.R, Is.EqualTo(decodedSigned.Signature.R), "R");
             BigInteger expectedS = decodedSigned.Signature.S.ToUnsignedBigInteger();
             BigInteger actualS = decodedUnsigned.Signature.S.ToUnsignedBigInteger();
             BigInteger otherS = EthereumEcdsa.LowSTransform - actualS;
@@ -65,7 +67,7 @@ namespace Ethereum.Basic.Test
                 vToCompare = vToCompare == 27ul ? 28ul : 27ul;
             }
 
-            Assert.AreEqual(decodedSigned.Signature.V, vToCompare, "V");
+            Assert.That(vToCompare, Is.EqualTo(decodedSigned.Signature.V), "V");
         }
 
         private static TransactionTest Convert(TransactionTestJson testJson)

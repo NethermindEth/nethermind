@@ -44,7 +44,7 @@ namespace Nethermind.Core.Test.Caching
             }
 
             Account? account = cache.Get(_addresses[Capacity - 1].Bytes);
-            Assert.AreEqual(_accounts[Capacity - 1], account);
+            Assert.That(account, Is.EqualTo(_accounts[Capacity - 1]));
         }
 
         [Test]

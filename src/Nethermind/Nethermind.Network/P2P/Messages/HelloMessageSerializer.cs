@@ -15,7 +15,7 @@ namespace Nethermind.Network.P2P.Messages
         public void Serialize(IByteBuffer byteBuffer, HelloMessage msg)
         {
             (int totalLength, int innerLength) length = GetLength(msg);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(length.totalLength), force: true);
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(length.totalLength);
             stream.Encode(msg.P2PVersion);
@@ -35,7 +35,7 @@ namespace Nethermind.Network.P2P.Messages
             stream.Encode(msg.NodeId.Bytes);
         }
 
-        private (int, int) GetLength(HelloMessage msg)
+        private static (int, int) GetLength(HelloMessage msg)
         {
             int contentLength = 0;
             contentLength += Rlp.LengthOf(msg.P2PVersion);
@@ -61,13 +61,13 @@ namespace Nethermind.Network.P2P.Messages
             HelloMessage helloMessage = new();
             helloMessage.P2PVersion = rlpStream.DecodeByte();
             helloMessage.ClientId = string.Intern(rlpStream.DecodeString());
-            helloMessage.Capabilities = rlpStream.DecodeArray(ctx =>
+            helloMessage.Capabilities = rlpStream.DecodeArrayPoolList(ctx =>
             {
                 ctx.ReadSequenceLength();
                 string protocolCode = string.Intern(ctx.DecodeString());
                 int version = ctx.DecodeByte();
                 return new Capability(protocolCode, version);
-            }).ToList();
+            });
 
             helloMessage.ListenPort = rlpStream.DecodeInt();
 

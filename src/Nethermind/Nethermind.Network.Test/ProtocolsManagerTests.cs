@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Numerics;
 using System.Threading;
@@ -11,23 +10,27 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
+using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.ProtocolHandlers;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.Rlpx;
 using Nethermind.Specs;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
@@ -47,27 +50,27 @@ namespace Nethermind.Network.Test
 
         public class Context
         {
-            private int _localPort = 30312;
-            private int _remotePort = 30000;
-            private string _remoteHost = "35.0.0.1";
+            private readonly int _localPort = 30312;
+            private readonly int _remotePort = 30000;
+            private readonly string _remoteHost = "35.0.0.1";
             private ISession _currentSession;
-            private IDiscoveryApp _discoveryApp;
-            private IRlpxHost _rlpxHost;
-            private ProtocolsManager _manager;
-            private INodeStatsManager _nodeStatsManager;
-            private INetworkStorage _peerStorage;
-            private IProtocolValidator _protocolValidator;
-            private IMessageSerializationService _serializer;
-            private ISyncServer _syncServer;
-            private ISyncPeerPool _syncPeerPool;
-            private ITxPool _txPool;
-            private IPooledTxsRequestor _pooledTxsRequestor;
-            private IChannelHandlerContext _channelHandlerContext;
-            private IChannel _channel;
-            private IChannelPipeline _pipeline;
-            private IPacketSender _packetSender;
-            private IBlockTree _blockTree;
-            private IGossipPolicy _gossipPolicy;
+            private readonly IDiscoveryApp _discoveryApp;
+            private readonly IRlpxHost _rlpxHost;
+            private readonly ProtocolsManager _manager;
+            private readonly INodeStatsManager _nodeStatsManager;
+            private readonly INetworkStorage _peerStorage;
+            private readonly IProtocolValidator _protocolValidator;
+            private readonly IMessageSerializationService _serializer;
+            private readonly ISyncServer _syncServer;
+            private readonly ISyncPeerPool _syncPeerPool;
+            private readonly ITxPool _txPool;
+            private readonly IPooledTxsRequestor _pooledTxsRequestor;
+            private readonly IChannelHandlerContext _channelHandlerContext;
+            private readonly IChannel _channel;
+            private readonly IChannelPipeline _pipeline;
+            private readonly IPacketSender _packetSender;
+            private readonly IBlockTree _blockTree;
+            private readonly IGossipPolicy _gossipPolicy;
 
             public Context()
             {
@@ -103,6 +106,7 @@ namespace Nethermind.Network.Test
                 _manager = new ProtocolsManager(
                     _syncPeerPool,
                     _syncServer,
+                    RunImmediatelyScheduler.Instance,
                     _txPool,
                     _pooledTxsRequestor,
                     _discoveryApp,
@@ -113,6 +117,8 @@ namespace Nethermind.Network.Test
                     _peerStorage,
                     forkInfo,
                     _gossipPolicy,
+                    new NetworkConfig(),
+                    Substitute.For<ISnapServer>(),
                     LimboLogs.Instance);
 
                 _serializer.Register(new HelloMessageSerializer());
@@ -165,13 +171,13 @@ namespace Nethermind.Network.Test
 
             public Context VerifyDisconnected()
             {
-                Assert.AreEqual(SessionState.Disconnected, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Disconnected));
                 return this;
             }
 
             public Context ReceiveDisconnect()
             {
-                DisconnectMessage message = new(DisconnectReason.Other);
+                using DisconnectMessage message = new(EthDisconnectReason.Other);
                 IByteBuffer disconnectPacket = _serializer.ZeroSerialize(message);
 
                 // to account for AdaptivePacketType byte
@@ -188,13 +194,13 @@ namespace Nethermind.Network.Test
 
             public Context VerifyInitialized()
             {
-                Assert.AreEqual(SessionState.Initialized, _currentSession.State);
+                Assert.That(_currentSession.State, Is.EqualTo(SessionState.Initialized));
                 return this;
             }
 
             public Context VerifyCompatibilityValidationType(CompatibilityValidationType expectedType)
             {
-                Assert.AreEqual(expectedType, _nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation);
+                Assert.That(_nodeStatsManager.GetOrAdd(_currentSession.Node).FailedCompatibilityValidation, Is.EqualTo(expectedType));
                 return this;
             }
 
@@ -206,7 +212,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatus()
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = _blockTree.Genesis.Hash;
@@ -229,10 +235,10 @@ namespace Nethermind.Network.Test
             public Context VerifyEthInitialized()
             {
                 INodeStats stats = _nodeStatsManager.GetOrAdd(_currentSession.Node);
-                Assert.AreEqual(TestBlockchainIds.NetworkId, stats.EthNodeDetails.NetworkId);
-                Assert.AreEqual(_blockTree.Genesis.Hash, stats.EthNodeDetails.GenesisHash);
-                Assert.AreEqual(66, stats.EthNodeDetails.ProtocolVersion);
-                Assert.AreEqual(BigInteger.One, stats.EthNodeDetails.TotalDifficulty);
+                Assert.That(stats.EthNodeDetails.NetworkId, Is.EqualTo(TestBlockchainIds.NetworkId));
+                Assert.That(stats.EthNodeDetails.GenesisHash, Is.EqualTo(_blockTree.Genesis.Hash));
+                Assert.That(stats.EthNodeDetails.ProtocolVersion, Is.EqualTo(66));
+                Assert.That(stats.EthNodeDetails.TotalDifficulty, Is.EqualTo(BigInteger.One));
                 return this;
             }
 
@@ -256,8 +262,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHello(byte p2pVersion = 5)
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { new("eth", 66) };
+                using HelloMessage msg = new();
+                msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", 66) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = p2pVersion;
@@ -268,8 +274,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHelloNoEth()
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { };
+                using HelloMessage msg = new();
+                msg.Capabilities = ArrayPoolList<Capability>.Empty();
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
@@ -279,8 +285,8 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveHelloEth(int protocolVersion)
             {
-                HelloMessage msg = new();
-                msg.Capabilities = new List<Capability> { new("eth", protocolVersion) };
+                using HelloMessage msg = new();
+                msg.Capabilities = new ArrayPoolList<Capability>(1) { new("eth", protocolVersion) };
                 msg.NodeId = TestItem.PublicKeyB;
                 msg.ClientId = "other client v1";
                 msg.P2PVersion = 5;
@@ -296,7 +302,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatusWrongChain(ulong networkId)
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = networkId;
                 msg.GenesisHash = TestItem.KeccakA;
@@ -308,7 +314,7 @@ namespace Nethermind.Network.Test
 
             public Context ReceiveStatusWrongGenesis()
             {
-                StatusMessage msg = new();
+                using StatusMessage msg = new();
                 msg.TotalDifficulty = 1;
                 msg.NetworkId = TestBlockchainIds.NetworkId;
                 msg.GenesisHash = TestItem.KeccakB;

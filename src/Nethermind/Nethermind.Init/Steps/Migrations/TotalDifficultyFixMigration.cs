@@ -4,10 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
-using FastEnumUtility;
-using Nethermind.Api;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -24,9 +21,6 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
     private readonly IBlockTree _blockTree;
 
-    private Task? _fixTask;
-    private CancellationTokenSource? _cancellationTokenSource;
-
     public TotalDifficultyFixMigration(IChainLevelInfoRepository? chainLevelInfoRepository, IBlockTree? blockTree, ISyncConfig syncConfig, ILogManager logManager)
     {
         _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
@@ -35,28 +29,21 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
         _syncConfig = syncConfig;
     }
 
-    public async ValueTask DisposeAsync()
-    {
-        _cancellationTokenSource?.Cancel();
-        await (_fixTask ?? Task.CompletedTask);
-    }
-
-    public void Run()
+    public Task Run(CancellationToken cancellationToken)
     {
         if (_syncConfig.FixTotalDifficulty)
         {
-            _cancellationTokenSource = new CancellationTokenSource();
-            CancellationToken token = _cancellationTokenSource.Token;
-
-            _fixTask = Task.Run(() => RunMigration(_syncConfig.FixTotalDifficultyStartingBlock, _syncConfig.FixTotalDifficultyLastBlock, token), token)
-                .ContinueWith(x =>
-                    {
-                        if (x.IsFaulted && _logger.IsError)
-                        {
-                            _logger.Error($"Failed to finish TotalDifficultyFixMigration {x.Exception!.Message}");
-                        }
-                    });
+            try
+            {
+                RunMigration(_syncConfig.FixTotalDifficultyStartingBlock, _syncConfig.FixTotalDifficultyLastBlock, cancellationToken);
+            }
+            catch (Exception e)
+            {
+                _logger.Error($"Failed to finish TotalDifficultyFixMigration {e.Message}");
+            }
         }
+
+        return Task.CompletedTask;
     }
 
     private void RunMigration(long startingBlock, long? lastBlock, CancellationToken cancellationToken)
@@ -103,7 +90,7 @@ public class TotalDifficultyFixMigration : IDatabaseMigration
     UInt256? FindParentTd(BlockHeader blockHeader, long level)
     {
         if (blockHeader.ParentHash is null) return null;
-        Keccak? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;
+        Hash256? parentHash = _blockTree.FindHeader(blockHeader.ParentHash)?.Hash;
         if (parentHash is null) return null;
         ChainLevelInfo levelInfo = _chainLevelInfoRepository.LoadLevel(level - 1)!;
         foreach (BlockInfo blockInfo in levelInfo.BlockInfos)

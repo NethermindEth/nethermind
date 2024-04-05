@@ -19,10 +19,9 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = new(null!);
             PeerInfo peer2 = new(null!);
 
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -41,11 +40,11 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
 
             var result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
 
-            Assert.AreEqual(SyncResponseHandlingResult.LesserQuality, result);
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer2);
             result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
-            Assert.AreEqual(SyncResponseHandlingResult.LesserQuality, result);
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
         }
 
         [Test]
@@ -54,10 +53,9 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = new(null!);
             PeerInfo peer2 = new(null!);
 
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -76,11 +74,11 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
 
             var result = feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
 
-            Assert.AreEqual(SyncResponseHandlingResult.LesserQuality, result);
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.LesserQuality));
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
             result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
-            Assert.AreEqual(SyncResponseHandlingResult.OK, result);
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
         }
 
         [Test]
@@ -89,10 +87,9 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             PeerInfo peer1 = new(null!);
             PeerInfo peer2 = new(null!);
 
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer2);
             feed.AnalyzeResponsePerPeer(AddRangeResult.OK, peer1);
@@ -104,7 +101,7 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
             feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
             feed.AnalyzeResponsePerPeer(AddRangeResult.ExpiredRootHash, peer1);
             var result = feed.AnalyzeResponsePerPeer(AddRangeResult.DifferentRootHash, peer1);
-            Assert.AreEqual(SyncResponseHandlingResult.OK, result);
+            Assert.That(result, Is.EqualTo(SyncResponseHandlingResult.OK));
 
             snapProvider.Received(1).UpdatePivot();
         }
@@ -114,10 +111,9 @@ namespace Nethermind.Synchronization.Test.SnapSync.SnapSyncFeed
         {
             PeerInfo peer1 = new(null!);
 
-            ISyncModeSelector selector = Substitute.For<ISyncModeSelector>();
             ISnapProvider snapProvider = Substitute.For<ISnapProvider>();
 
-            Synchronization.SnapSync.SnapSyncFeed feed = new(selector, snapProvider, LimboLogs.Instance);
+            Synchronization.SnapSync.SnapSyncFeed feed = new(snapProvider, LimboLogs.Instance);
 
             for (int i = 0; i < 200; i++)
             {

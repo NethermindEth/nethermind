@@ -6,12 +6,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
+using Nethermind.Trie;
 
 namespace Nethermind.Blockchain.Receipts
 {
     public static class ReceiptsExtensions
     {
-        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Keccak txHash)
+        public static TxReceipt ForTransaction(this TxReceipt[] receipts, Hash256 txHash)
             => receipts.FirstOrDefault(r => r.TxHash == txHash);
 
         public static void SetSkipStateAndStatusInRlp(this TxReceipt[] receipts, bool value)
@@ -20,33 +21,6 @@ namespace Nethermind.Blockchain.Receipts
             {
                 receipts[i].SkipStateAndStatusInRlp = value;
             }
-        }
-
-        public static Keccak GetReceiptsRoot(this TxReceipt[] txReceipts, IReceiptSpec receiptSpec, Keccak suggestedRoot)
-        {
-            Keccak SkipStateAndStatusReceiptsRoot()
-            {
-                txReceipts.SetSkipStateAndStatusInRlp(true);
-                try
-                {
-                    return new ReceiptTrie(receiptSpec, txReceipts).RootHash;
-                }
-                finally
-                {
-                    txReceipts.SetSkipStateAndStatusInRlp(false);
-                }
-            }
-
-            Keccak receiptsRoot = new ReceiptTrie(receiptSpec, txReceipts).RootHash;
-            if (!receiptSpec.ValidateReceipts && receiptsRoot != suggestedRoot)
-            {
-                var skipStateAndStatusReceiptsRoot = SkipStateAndStatusReceiptsRoot();
-                if (skipStateAndStatusReceiptsRoot == suggestedRoot)
-                {
-                    return skipStateAndStatusReceiptsRoot;
-                }
-            }
-            return receiptsRoot;
         }
 
         public static int GetBlockLogFirstIndex(this TxReceipt[] receipts, int receiptIndex)

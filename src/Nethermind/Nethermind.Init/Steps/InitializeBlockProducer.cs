@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -16,7 +15,7 @@ namespace Nethermind.Init.Steps
     [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
-        protected IApiWithBlockchain _api;
+        private readonly IApiWithBlockchain _api;
 
         public InitializeBlockProducer(INethermindApi api)
         {
@@ -25,7 +24,7 @@ namespace Nethermind.Init.Steps
 
         public async Task Execute(CancellationToken _)
         {
-            if (_api.BlockProductionPolicy.ShouldStartBlockProduction())
+            if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
             }
@@ -33,9 +32,9 @@ namespace Nethermind.Init.Steps
 
         protected virtual async Task<IBlockProducer> BuildProducer()
         {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(_api.DbProvider!,
+            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
+                _api.WorldStateManager!,
                 _api.BlockTree!,
-                _api.ReadOnlyTrieStore!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,
                 _api.RewardCalculatorSource!,

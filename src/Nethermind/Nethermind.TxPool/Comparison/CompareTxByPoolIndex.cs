@@ -15,13 +15,13 @@ namespace Nethermind.TxPool.Comparison
 
         private CompareTxByPoolIndex() { }
 
-        public int Compare(Transaction? x, Transaction? y)
+        public int Compare(Transaction? newTx, Transaction? oldTx)
         {
-            if (ReferenceEquals(x, y)) return 0;
-            if (ReferenceEquals(null, y)) return 1;
-            if (ReferenceEquals(null, x)) return -1;
+            if (ReferenceEquals(newTx, oldTx)) return TxComparisonResult.NotDecided;
+            if (oldTx is null) return TxComparisonResult.KeepOld;
+            if (newTx is null) return TxComparisonResult.TakeNew;
 
-            return x.PoolIndex.CompareTo(y.PoolIndex);
+            return newTx.PoolIndex.CompareTo(oldTx.PoolIndex);
         }
     }
 }

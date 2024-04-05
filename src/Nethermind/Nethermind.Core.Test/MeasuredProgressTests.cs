@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -14,21 +13,21 @@ namespace Nethermind.Core.Test
         public void Current_per_second_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(decimal.Zero, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(decimal.Zero));
         }
 
         [Test]
         public void Total_per_second_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(decimal.Zero, measuredProgress.TotalPerSecond);
+            Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(decimal.Zero));
         }
 
         [Test]
         public void Current_value_uninitialized()
         {
             MeasuredProgress measuredProgress = new();
-            Assert.AreEqual(0L, measuredProgress.CurrentValue);
+            Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
         }
 
         [Test]
@@ -36,7 +35,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.CurrentValue);
+            Assert.That(measuredProgress.CurrentValue, Is.EqualTo(0L));
         }
 
         [Test]
@@ -44,7 +43,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.TotalPerSecond);
+            Assert.That(measuredProgress.TotalPerSecond, Is.EqualTo(0L));
         }
 
         [Test]
@@ -52,7 +51,7 @@ namespace Nethermind.Core.Test
         {
             MeasuredProgress measuredProgress = new();
             measuredProgress.Update(0L);
-            Assert.AreEqual(0L, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0L));
         }
 
         [Test]
@@ -134,7 +133,7 @@ namespace Nethermind.Core.Test
             measuredProgress.SetMeasuringPoint();
             Assert.GreaterOrEqual(measuredProgress.TotalPerSecond, 6M);
             Assert.LessOrEqual(measuredProgress.TotalPerSecond, 15M);
-            Assert.AreEqual(0M, measuredProgress.CurrentPerSecond);
+            Assert.That(measuredProgress.CurrentPerSecond, Is.EqualTo(0M));
         }
 
         [Test]

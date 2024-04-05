@@ -4,14 +4,15 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using FastEnumUtility;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.ParityStyle
 {
-    public class ParityLikeTxTracer : ITxTracer
+    public class ParityLikeTxTracer : TxTracer
     {
         private readonly Transaction? _tx;
         private readonly ParityTraceTypes _parityTraceTypes;
@@ -34,13 +35,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _parityTraceTypes = parityTraceTypes;
 
             _tx = tx;
-            _trace = new ParityLikeTxTrace
-            {
-                TransactionHash = tx?.Hash,
-                TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx),
-                BlockNumber = block.Number,
-                BlockHash = block.Hash!
-            };
+            _trace = new ParityLikeTxTrace { TransactionHash = tx?.Hash, TransactionPosition = tx is null ? null : Array.IndexOf(block.Transactions!, tx), BlockNumber = block.Number, BlockHash = block.Hash! };
 
             if ((_parityTraceTypes & ParityTraceTypes.StateDiff) != 0)
             {
@@ -64,60 +59,53 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public bool IsTracingReceipt { get; }
-        public bool IsTracingActions { get; }
-        public bool IsTracingOpLevelStorage => false;
-        public bool IsTracingMemory => false;
-        public bool IsTracingInstructions { get; }
-        public bool IsTracingRefunds => false;
-        public bool IsTracingCode { get; }
-        public bool IsTracingStack => false;
-        public bool IsTracingState { get; }
-        public bool IsTracingStorage { get; }
-        public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => false;
-        public bool IsTracingFees => false;
+        public sealed override bool IsTracingActions { get; protected set; }
+        public sealed override bool IsTracingReceipt { get; protected set; }
+        public sealed override bool IsTracingInstructions { get; protected set; }
+        public sealed override bool IsTracingCode { get; protected set; }
+        public sealed override bool IsTracingState { get; protected set; }
+        public sealed override bool IsTracingStorage { get; protected set; }
 
         private static string GetCallType(ExecutionType executionType)
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "delegatecall";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "staticcall";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "callcode";
                 default:
                     throw new NotSupportedException($"Parity trace call type is undefined for {executionType}");
             }
         }
 
-        private string GetActionType(ExecutionType executionType)
+        private static string GetActionType(ExecutionType executionType)
         {
             switch (executionType)
             {
-                case ExecutionType.Transaction:
+                case ExecutionType.TRANSACTION:
                     return "call";
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create";
-                case ExecutionType.Call:
+                case ExecutionType.CALL:
                     return "call";
-                case ExecutionType.DelegateCall:
+                case ExecutionType.DELEGATECALL:
                     return "call";
-                case ExecutionType.StaticCall:
+                case ExecutionType.STATICCALL:
                     return "call";
-                case ExecutionType.CallCode:
+                case ExecutionType.CALLCODE:
                     return "call";
                 default:
                     return "call";
@@ -169,14 +157,17 @@ namespace Nethermind.Evm.Tracing.ParityStyle
         {
             if (_currentAction is not null)
             {
-                action.TraceAddress = new int[_currentAction.TraceAddress.Length + 1];
+                action.TraceAddress = new int[_currentAction!.TraceAddress!.Length + 1];
                 for (int i = 0; i < _currentAction.TraceAddress.Length; i++)
                 {
                     action.TraceAddress[i] = _currentAction.TraceAddress[i];
                 }
 
                 action.TraceAddress[_currentAction.TraceAddress.Length] = _currentAction.Subtraces.Count(st => st.IncludeInTrace);
-                _currentAction.Subtraces.Add(action);
+                if (action.IncludeInTrace)
+                {
+                    _currentAction.Subtraces.Add(action);
+                }
             }
             else
             {
@@ -224,26 +215,26 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentAction = _actionStack.Count == 0 ? null : _actionStack.Peek();
         }
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak stateRoot = null)
+        public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
                 throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress?.Length ?? 0}");
             }
 
-            if (_trace.Action.TraceAddress.Length == 0)
+            if (_trace.Action!.TraceAddress!.Length == 0)
             {
                 _trace.Output = output;
             }
 
-            _trace.Action.Result.Output = output;
+            _trace.Action!.Result!.Output = output;
         }
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak stateRoot = null)
+        public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         {
             if (_currentAction is not null)
             {
-                throw new InvalidOperationException($"Closing trace at level {_currentAction.TraceAddress.Length}");
+                throw new InvalidOperationException($"Closing trace at level {_currentAction!.TraceAddress!.Length}");
             }
 
             _trace.Output = output;
@@ -251,18 +242,20 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             // quick tx fail (before execution)
             if (_trace.Action is null)
             {
-                _trace.Action = new ParityTraceAction();
-                _trace.Action.From = _tx.SenderAddress;
-                _trace.Action.To = _tx.To;
-                _trace.Action.Value = _tx.Value;
-                _trace.Action.Input = _tx.Data;
-                _trace.Action.Gas = _tx.GasLimit;
-                _trace.Action.CallType = _tx.IsMessageCall ? "call" : "init";
-                _trace.Action.Error = error;
+                _trace.Action = new ParityTraceAction
+                {
+                    From = _tx!.SenderAddress,
+                    To = _tx.To,
+                    Value = _tx.Value,
+                    Input = _tx.Data.AsArray(),
+                    Gas = _tx.GasLimit,
+                    CallType = _tx.IsMessageCall ? "call" : "init",
+                    Error = error
+                };
             }
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
@@ -273,7 +266,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             _currentVmTrace.Ops.Add(operationTrace);
         }
 
-        public void ReportOperationError(EvmExceptionType error)
+        public override void ReportOperationError(EvmExceptionType error)
         {
             if (error != EvmExceptionType.InvalidJumpDestination &&
                 error != EvmExceptionType.NotEnoughBalance)
@@ -282,13 +275,13 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportOperationRemainingGas(long gas)
+        public override void ReportOperationRemainingGas(long gas)
         {
             if (!_gasAlreadySetForCurrentOp)
             {
                 _gasAlreadySetForCurrentOp = true;
 
-                _currentOperation.Cost = _currentOperation.Cost - (_treatGasParityStyle ? 0 : gas);
+                _currentOperation!.Cost -= (_treatGasParityStyle ? 0 : gas);
 
                 // based on Parity behaviour - adding stipend to the gas cost
                 if (_currentOperation.Cost == 7400)
@@ -303,119 +296,104 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
         {
             _currentPushList.Add(stackItem.ToArray());
         }
 
-        public void SetOperationStack(List<string> stackTrace) => throw new NotSupportedException();
-
-        public void SetOperationMemory(List<string> memoryTrace) => throw new NotSupportedException();
-
-        public void SetOperationMemorySize(ulong newSize) => throw new NotSupportedException();
-
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+        public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
         {
             if (data.Length != 0)
             {
-                _currentOperation.Memory = new ParityMemoryChangeTrace { Offset = offset, Data = data.ToArray() };
+                _currentOperation!.Memory = new ParityMemoryChangeTrace { Offset = offset, Data = data.ToArray() };
             }
         }
 
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
         {
-            _currentOperation.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
+            _currentOperation!.Store = new ParityStorageChangeTrace { Key = key.ToArray(), Value = value.ToArray() };
         }
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue) => throw new NotSupportedException();
-
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) => throw new NotSupportedException();
-
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+        public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
         {
             if (_trace.StateChanges is null)
             {
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Balance?.Before ?? before;
+                before = value.Balance?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Balance = new ParityStateChange<UInt256?>(before, after);
+            value.Balance = new ParityStateChange<UInt256?>(before, after);
         }
 
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
+        public override void ReportCodeChange(Address address, byte[] before, byte[] after)
         {
             if (_trace.StateChanges is null)
             {
                 throw new InvalidOperationException($"{nameof(ParityLikeTxTracer)} did not expect state change report.");
             }
 
-            if (!_trace.StateChanges.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Code?.Before ?? before;
+                before = value.Code?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Code = new ParityStateChange<byte[]>(before, after);
+            value.Code = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+        public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
         {
-            if (!_trace.StateChanges.ContainsKey(address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
             else
             {
-                before = _trace.StateChanges[address].Nonce?.Before ?? before;
+                before = value.Nonce?.Before ?? before;
             }
 
-            _trace.StateChanges[address].Nonce = new ParityStateChange<UInt256?>(before, after);
+            value.Nonce = new ParityStateChange<UInt256?>(before, after);
         }
 
-        public void ReportAccountRead(Address address)
+        public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
         {
-        }
-
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-        {
-            Dictionary<UInt256, ParityStateChange<byte[]>> storage = null;
-            if (!_trace.StateChanges.ContainsKey(storageCell.Address))
+            ref ParityAccountStateChange? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_trace.StateChanges, storageCell.Address, out bool exists);
+            if (!exists)
             {
-                _trace.StateChanges[storageCell.Address] = new ParityAccountStateChange();
+                value = new ParityAccountStateChange();
             }
 
-            storage = _trace.StateChanges[storageCell.Address].Storage ?? (_trace.StateChanges[storageCell.Address].Storage = new Dictionary<UInt256, ParityStateChange<byte[]>>());
-
-            if (storage.TryGetValue(storageCell.Index, out ParityStateChange<byte[]> value))
+            Dictionary<UInt256, ParityStateChange<byte[]>> storage = value.Storage ??= [];
+            ref ParityStateChange<byte[]>? change = ref CollectionsMarshal.GetValueRefOrAddDefault(storage, storageCell.Index, out exists);
+            if (exists)
             {
-                before = value.Before ?? before;
+                before = change.Before ?? before;
             }
 
-            storage[storageCell.Index] = new ParityStateChange<byte[]>(before, after);
+            change = new ParityStateChange<byte[]>(before, after);
         }
 
-        public void ReportStorageRead(in StorageCell storageCell)
+        public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
-        }
-
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-        {
-            ParityTraceAction action = new ParityTraceAction
+            ParityTraceAction action = new()
             {
                 IsPrecompiled = isPrecompileCall,
                 // ignore pre compile calls with Zero value that originates from contracts
-                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.Transaction && value.IsZero),
+                IncludeInTrace = !(isPrecompileCall && callType != ExecutionType.TRANSACTION && value.IsZero),
                 From = from,
                 To = to,
                 Value = value,
@@ -435,35 +413,30 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PushAction(action);
         }
 
-        private string? GetCreateMethod(ExecutionType callType)
+        private static string? GetCreateMethod(ExecutionType callType)
         {
             switch (callType)
             {
-                case ExecutionType.Create:
+                case ExecutionType.CREATE:
                     return "create";
-                case ExecutionType.Create2:
+                case ExecutionType.CREATE2:
                     return "create2";
                 default:
                     return null;
             }
         }
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
         {
-            ParityTraceAction action = new();
-            action.From = address;
-            action.To = refundAddress;
-            action.Value = balance;
-            action.Type = "suicide";
-
+            ParityTraceAction action = new() { From = address, To = refundAddress, Value = balance, Type = "suicide" };
             PushAction(action);
-            _currentAction.Result = null;
+            _currentAction!.Result = null;
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
         {
-            if (_currentAction.Result is null)
+            if (_currentAction!.Result is null)
             {
                 throw new InvalidOperationException(
                     $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
@@ -474,16 +447,16 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportActionError(EvmExceptionType evmExceptionType)
+        public override void ReportActionError(EvmExceptionType evmExceptionType)
         {
-            _currentAction.Result = null;
+            _currentAction!.Result = null;
             _currentAction.Error = GetErrorDescription(evmExceptionType);
             PopAction();
         }
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+        public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         {
-            if (_currentAction.Result is null)
+            if (_currentAction!.Result is null)
             {
                 throw new InvalidOperationException(
                     $"{nameof(ReportActionEnd)} called when result is not yet prepared.");
@@ -495,39 +468,15 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             PopAction();
         }
 
-        public void ReportBlockHash(Keccak blockHash)
+        public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
         {
-            throw new NotSupportedException();
+            // TODO: use memory pool?
+            _currentVmTrace.VmTrace.Code = byteCode.ToArray();
         }
 
-        public void ReportByteCode(byte[] byteCode)
+        public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
         {
-            _currentVmTrace.VmTrace.Code = byteCode;
-        }
-
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-        {
-            _currentOperation.Used = gasAvailable;
-        }
-
-        public void ReportRefund(long refund)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportExtraGasPressure(long extraGasPressure)
-        {
-            throw new NotSupportedException();
-        }
-
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-        {
-            throw new NotImplementedException();
-        }
-
-        public void ReportFees(UInt256 fees, UInt256 burntFees)
-        {
-            throw new NotImplementedException();
+            _currentOperation!.Used = gasAvailable;
         }
     }
 }

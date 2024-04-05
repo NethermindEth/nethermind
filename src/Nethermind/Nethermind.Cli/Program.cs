@@ -31,21 +31,21 @@ namespace Nethermind.Cli
             _ = app.HelpOption("-?|-h|--help");
 
             var colorSchemeOption = app.Option("-cs|--colorScheme <colorScheme>", "Color Scheme. Possible values: Basic|Dracula", CommandOptionType.SingleValue);
+            var nodeAddressOption = app.Option("-a|--address <address>", "Node Address", CommandOptionType.SingleValue);
 
             app.OnExecute(() =>
             {
                 ColorScheme? cs;
-                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) != null
+                ICliConsole cliConsole = colorSchemeOption.HasValue() && (cs = MapColorScheme(colorSchemeOption.Value())) is not null
                     ? new ColorfulCliConsole(cs)
                     : new CliConsole();
 
                 var historyManager = new StatementHistoryManager(cliConsole, new FileSystem());
-                ILogManager logManager = new OneLoggerLogManager(new CliLogger(cliConsole));
+                ILogManager logManager = new OneLoggerLogManager(new(new CliLogger(cliConsole)));
                 ICliEngine engine = new CliEngine(cliConsole);
                 INodeManager nodeManager = new NodeManager(engine, Serializer, cliConsole, logManager);
                 var moduleLoader = new CliModuleLoader(engine, nodeManager, cliConsole);
 
-                RegisterConverters();
                 engine.JintEngine.SetValue("serialize", new Action<JsValue>(v =>
                 {
                     string text = Serializer.Serialize(v.ToObject(), true);
@@ -55,7 +55,10 @@ namespace Nethermind.Cli
                 moduleLoader.DiscoverAndLoadModules();
                 ReadLine.AutoCompletionHandler = new AutoCompletionHandler(moduleLoader);
 
-                nodeManager.SwitchUri(new Uri("http://localhost:8545"));
+                string nodeAddress = nodeAddressOption.HasValue()
+                    ? nodeAddressOption.Value()
+                    : "http://localhost:8545";
+                nodeManager.SwitchUri(new Uri(nodeAddress));
                 historyManager.Init();
                 TestConnection(nodeManager, engine, cliConsole);
                 cliConsole.WriteLine();
@@ -164,17 +167,6 @@ namespace Nethermind.Cli
                 cliConsole.WriteLessImportant("null");
                 cliConsole.WriteLine();
             }
-        }
-
-        private static void RegisterConverters()
-        {
-            Serializer.RegisterConverter(new ParityTxTraceFromReplayConverter());
-            Serializer.RegisterConverter(new ParityAccountStateChangeConverter());
-            Serializer.RegisterConverter(new ParityTraceActionConverter());
-            Serializer.RegisterConverter(new ParityTraceResultConverter());
-            Serializer.RegisterConverter(new ParityVmOperationTraceConverter());
-            Serializer.RegisterConverter(new ParityVmTraceConverter());
-            Serializer.RegisterConverter(new TransactionForRpcWithTraceTypesConverter());
         }
 
         private static ColorScheme? MapColorScheme(string colorSchemeOption)

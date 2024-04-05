@@ -7,7 +7,6 @@ using BenchmarkDotNet.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Secp256k1;
 using Org.BouncyCastle.Crypto;
 using Org.BouncyCastle.Crypto.Agreement;
 using Org.BouncyCastle.Crypto.Parameters;
@@ -39,7 +38,7 @@ namespace Nethermind.Network.Benchmarks
         [Benchmark]
         public byte[] Current()
         {
-            byte[] result = Proxy.EcdhSerialized(ephemeral.Bytes, privateKey.KeyBytes);
+            byte[] result = SecP256k1.EcdhSerialized(ephemeral.Bytes, privateKey.KeyBytes);
             return result;
         }
 

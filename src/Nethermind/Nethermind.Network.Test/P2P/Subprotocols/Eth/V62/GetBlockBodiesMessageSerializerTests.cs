@@ -15,17 +15,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         public void Roundtrip()
         {
             GetBlockBodiesMessageSerializer serializer = new();
-            GetBlockBodiesMessage message = new(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
+            using GetBlockBodiesMessage message = new(Keccak.OfAnEmptySequenceRlp, Keccak.Zero, Keccak.EmptyTreeHash);
             byte[] bytes = serializer.Serialize(message);
             byte[] expectedBytes = Bytes.FromHexString("f863a01dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347a00000000000000000000000000000000000000000000000000000000000000000a056e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421");
 
             Assert.True(Bytes.AreEqual(bytes, expectedBytes), "bytes");
 
-            GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
-            Assert.AreEqual(message.BlockHashes.Count, deserialized.BlockHashes.Count, $"count");
+            using GetBlockBodiesMessage deserialized = serializer.Deserialize(bytes);
+            Assert.That(deserialized.BlockHashes.Count, Is.EqualTo(message.BlockHashes.Count), $"count");
             for (int i = 0; i < message.BlockHashes.Count; i++)
             {
-                Assert.AreEqual(message.BlockHashes[i], deserialized.BlockHashes[i], $"hash {i}");
+                Assert.That(deserialized.BlockHashes[i], Is.EqualTo(message.BlockHashes[i]), $"hash {i}");
             }
 
             SerializerTester.TestZero(serializer, message);
@@ -34,7 +34,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void To_string()
         {
-            GetBlockBodiesMessage newBlockMessage = new();
+            using GetBlockBodiesMessage newBlockMessage = new();
             _ = newBlockMessage.ToString();
         }
     }

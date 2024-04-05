@@ -9,7 +9,7 @@ namespace Ethereum.Test.Base
 {
     public class HalfBlockchainTestJson : BlockchainTestJson
     {
-        public new Keccak PostState { get; set; }
+        public new Hash256 PostState { get; set; }
     }
 
     public class BlockchainTestJson
@@ -17,7 +17,7 @@ namespace Ethereum.Test.Base
         public string? Network { get; set; }
         public IReleaseSpec? EthereumNetwork { get; set; }
         public IReleaseSpec? EthereumNetworkAfterTransition { get; set; }
-        public int TransitionBlockNumber { get; set; }
+        public ForkActivation? TransitionForkActivation { get; set; }
         public string? LastBlockHash { get; set; }
         public string? GenesisRlp { get; set; }
 
@@ -27,7 +27,7 @@ namespace Ethereum.Test.Base
         public Dictionary<string, AccountStateJson>? Pre { get; set; }
         public Dictionary<string, AccountStateJson>? PostState { get; set; }
 
-        public Keccak? PostStateHash { get; set; }
+        public Hash256? PostStateHash { get; set; }
 
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }

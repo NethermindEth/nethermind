@@ -14,7 +14,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             Rlp.Decoders[typeof(PendingValidators)] = new PendingValidatorsDecoder();
         }
 
-        public PendingValidators(long blockNumber, Keccak blockHash, Address[] addresses)
+        public PendingValidators(long blockNumber, Hash256 blockHash, Address[] addresses)
         {
             BlockNumber = blockNumber;
             BlockHash = blockHash;
@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         public Address[] Addresses { get; }
         public long BlockNumber { get; }
-        public Keccak BlockHash { get; }
+        public Hash256 BlockHash { get; }
         public bool AreFinalized { get; set; }
     }
 }

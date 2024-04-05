@@ -3,40 +3,56 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
-using System.Text;
-using System.Threading.Tasks;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.State.Snap
 {
-    public class StorageRange
+    public class StorageRange : IDisposable
     {
         public long? BlockNumber { get; set; }
 
         /// <summary>
         /// Root hash of the account trie to serve
         /// </summary>
-        public Keccak RootHash { get; set; }
+        public ValueHash256 RootHash { get; set; }
 
         /// <summary>
         /// Accounts of the storage tries to serve
         /// </summary>
-        public PathWithAccount[] Accounts { get; set; }
+        public IOwnedReadOnlyList<PathWithAccount> Accounts { get; set; }
 
         /// <summary>
         /// Account hash of the first to retrieve
         /// </summary>
-        public Keccak? StartingHash { get; set; }
+        public ValueHash256? StartingHash { get; set; }
 
         /// <summary>
         /// Account hash after which to stop serving data
         /// </summary>
-        public Keccak? LimitHash { get; set; }
+        public ValueHash256? LimitHash { get; set; }
+
+        public StorageRange Copy()
+        {
+            return new StorageRange()
+            {
+                BlockNumber = BlockNumber,
+                RootHash = RootHash,
+                Accounts = Accounts.ToPooledList(Accounts.Count),
+                StartingHash = StartingHash,
+                LimitHash = LimitHash,
+            };
+        }
 
         public override string ToString()
         {
             return $"StorageRange: ({BlockNumber}, {RootHash}, {StartingHash}, {LimitHash})";
+        }
+
+        public void Dispose()
+        {
+            Accounts?.Dispose();
         }
     }
 }

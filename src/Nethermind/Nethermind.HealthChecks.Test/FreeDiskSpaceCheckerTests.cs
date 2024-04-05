@@ -8,7 +8,7 @@ using NSubstitute;
 using NUnit.Framework;
 using Nethermind.Core.Extensions;
 using System.Threading.Tasks;
-using NSubstitute.ReceivedExtensions;
+using Nethermind.Config;
 
 namespace Nethermind.HealthChecks.Test
 {
@@ -19,7 +19,7 @@ namespace Nethermind.HealthChecks.Test
         [Test]
         [TestCase(1.5f, true)] //throw exception - min required 2.5% / available 1.5%
         [TestCase(2.5f, false)]
-        public void free_disk_check_ensure_free_on_startup_no_wait(float availableDiskSpacePercent, bool exceptionExpected)
+        public void free_disk_check_ensure_free_on_startup_no_wait(float availableDiskSpacePercent, bool exitExpected)
         {
             HealthChecksConfig hcConfig = new()
             {
@@ -27,12 +27,16 @@ namespace Nethermind.HealthChecks.Test
                 LowStorageSpaceShutdownThreshold = 1,
                 LowStorageSpaceWarningThreshold = 5
             };
-            FreeDiskSpaceChecker freeDiskSpaceChecker = new(hcConfig, LimboTraceLogger.Instance, GetDriveInfos(availableDiskSpacePercent), Core.Timers.TimerFactory.Default);
+            IProcessExitSource exitSource = Substitute.For<IProcessExitSource>();
+            FreeDiskSpaceChecker freeDiskSpaceChecker = new(
+                hcConfig,
+                GetDriveInfos(availableDiskSpacePercent),
+                Core.Timers.TimerFactory.Default,
+                exitSource,
+                LimboTraceLogger.Instance);
 
-            if (exceptionExpected)
-                Assert.Throws<NotEnoughDiskSpaceException>(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
-            else
-                freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
+            freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default);
+            exitSource.Received(exitExpected ? 1 : 0).Exit(ExitCodes.LowDiskSpace);
         }
 
         [Test]
@@ -47,20 +51,23 @@ namespace Nethermind.HealthChecks.Test
                 LowStorageSpaceShutdownThreshold = 1,
                 LowStorageSpaceWarningThreshold = 5
             };
-            var drives = GetDriveInfos(availableDiskSpacePercent);
+            IDriveInfo[] drives = GetDriveInfos(availableDiskSpacePercent);
             drives[0].AvailableFreeSpace.Returns(a => _freeSpaceBytes,
                                                     a => 3 * _freeSpaceBytes);
-            FreeDiskSpaceChecker freeDiskSpaceChecker = new(hcConfig, LimboTraceLogger.Instance, drives, Core.Timers.TimerFactory.Default, ts.TotalMinutes);
+            FreeDiskSpaceChecker freeDiskSpaceChecker = new(
+                hcConfig,
+                drives,
+                Core.Timers.TimerFactory.Default,
+                Substitute.For<IProcessExitSource>(),
+                LimboTraceLogger.Instance,
+                ts.TotalMinutes);
 
             Task t = Task.Run(() => freeDiskSpaceChecker.EnsureEnoughFreeSpaceOnStart(Core.Timers.TimerFactory.Default));
             bool completed = t.Wait((int)ts.TotalMilliseconds * 2);
 
             Assert.IsTrue(completed);
 
-            if (awaitsForFreeSpace)
-                _ = drives[0].Received(3).AvailableFreeSpace;
-            else
-                _ = drives[0].Received(1).AvailableFreeSpace;
+            _ = drives[0].Received(awaitsForFreeSpace ? 3 : 1).AvailableFreeSpace;
         }
 
         private static IDriveInfo[] GetDriveInfos(float availableDiskSpacePercent)

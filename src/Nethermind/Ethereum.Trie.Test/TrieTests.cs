@@ -5,12 +5,13 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -26,6 +27,9 @@ namespace Ethereum.Trie.Test
             TrieNode.AllowBranchValues = true;
             _db = new MemDb();
         }
+
+        [TearDown]
+        public void TearDown() => _db?.Dispose();
 
         private static IEnumerable<TrieTest> GetTestPermutations(IEnumerable<TrieTest> tests)
         {
@@ -152,7 +156,7 @@ namespace Ethereum.Trie.Test
             }
 
             patriciaTree.UpdateRootHash();
-            Assert.AreEqual(test.ExpectedRoot, patriciaTree.RootHash.ToString());
+            Assert.That(patriciaTree.RootHash.ToString(), Is.EqualTo(test.ExpectedRoot));
         }
 
         public string Surrounded(string text)
@@ -295,7 +299,7 @@ namespace Ethereum.Trie.Test
         public void Quick_empty()
         {
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
-            Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
+            Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 
         [Test]
@@ -304,7 +308,7 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1").Bytes, new byte[0]);
             patriciaTree.Commit(0);
-            Assert.AreEqual(PatriciaTree.EmptyTreeHash, patriciaTree.RootHash);
+            Assert.That(patriciaTree.RootHash, Is.EqualTo(PatriciaTree.EmptyTreeHash));
         }
 
         [Test]
@@ -313,9 +317,9 @@ namespace Ethereum.Trie.Test
             PatriciaTree patriciaTree = new PatriciaTree(_db, Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
             patriciaTree.Set(Keccak.Compute("1123").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1124").Bytes, new byte[] { 2 });
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1125").Bytes, new byte[0]);
-            Assert.AreEqual(rootBefore, patriciaTree.RootHash);
+            Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
 
         [Test]
@@ -325,10 +329,10 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4 }.ToPackedByteArray(), new byte[] { 1 });
             patriciaTree.Set(new Nibble[] { 1, 2, 3, 4, 5 }.ToPackedByteArray(), new byte[] { 2 });
             patriciaTree.UpdateRootHash();
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(new Nibble[] { 1, 2, 3 }.ToPackedByteArray(), new byte[] { });
             patriciaTree.UpdateRootHash();
-            Assert.AreEqual(rootBefore, patriciaTree.RootHash);
+            Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
 
         [Test]
@@ -338,19 +342,19 @@ namespace Ethereum.Trie.Test
             patriciaTree.Set(Keccak.Compute("1234567").Bytes, new byte[] { 1 });
             patriciaTree.Set(Keccak.Compute("1234501").Bytes, new byte[] { 2 });
             patriciaTree.UpdateRootHash();
-            Keccak rootBefore = patriciaTree.RootHash;
+            Hash256 rootBefore = patriciaTree.RootHash;
             patriciaTree.Set(Keccak.Compute("1234502").Bytes, new byte[0]);
             patriciaTree.UpdateRootHash();
-            Assert.AreEqual(rootBefore, patriciaTree.RootHash);
+            Assert.That(patriciaTree.RootHash, Is.EqualTo(rootBefore));
         }
 
         [Test]
         public void Lookup_in_empty_tree()
         {
             PatriciaTree tree = new PatriciaTree(new MemDb(), Keccak.EmptyTreeHash, false, true, NullLogManager.Instance);
-            Assert.AreEqual(tree.RootRef, null);
+            Assert.That(tree.RootRef, Is.Null);
             tree.Get(new byte[] { 1 });
-            Assert.AreEqual(tree.RootRef, null);
+            Assert.That(tree.RootRef, Is.Null);
         }
 
         public class TrieTestJson

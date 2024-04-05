@@ -14,26 +14,28 @@ namespace Nethermind.Facade.Proxy.Models
         public byte[] ExtraData { get; set; }
         public UInt256 GasLimit { get; set; }
         public UInt256 GasUsed { get; set; }
-        public Keccak Hash { get; set; }
+        public Hash256 Hash { get; set; }
         public Address Miner { get; set; }
-        public Keccak MixHash { get; set; }
+        public Hash256 MixHash { get; set; }
         public UInt256 Nonce { get; set; }
         public UInt256 Number { get; set; }
-        public Keccak ParentHash { get; set; }
-        public Keccak ReceiptsRoot { get; set; }
-        public Keccak Sha3Uncles { get; set; }
+        public Hash256 ParentHash { get; set; }
+        public Hash256 ReceiptsRoot { get; set; }
+        public Hash256 Sha3Uncles { get; set; }
         public UInt256 Size { get; set; }
-        public Keccak StateRoot { get; set; }
+        public Hash256 StateRoot { get; set; }
         public ulong Timestamp { get; set; }
+        public UInt256 BaseFeePerGas { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public List<T> Transactions { get; set; }
-        public Keccak TransactionsRoot { get; set; }
-        public UInt256? ExcessDataGas { get; set; }
+        public Hash256 TransactionsRoot { get; set; }
+        public ulong? BlobGasUsed { get; set; }
+        public ulong? ExcessBlobGas { get; set; }
 
         public Block ToBlock()
         {
             Block block = new(new BlockHeader(ParentHash, Sha3Uncles, Miner, Difficulty, (long)Number,
-                (long)GasLimit, Timestamp, ExtraData, ExcessDataGas));
+                (long)GasLimit, Timestamp, ExtraData));
 
             block.Header.StateRoot = StateRoot;
             block.Header.GasUsed = (long)GasUsed;

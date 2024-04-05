@@ -65,7 +65,7 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
         context.Flush();
     }
 
-    public async void SendMsg(DiscoveryMsg discoveryMsg)
+    public async Task SendMsg(DiscoveryMsg discoveryMsg)
     {
         IByteBuffer msgBuffer;
         try
@@ -153,7 +153,13 @@ public class NettyDiscoveryHandler : SimpleChannelInboundHandler<DatagramPacket>
             if (!ValidateMsg(msg, type, address, ctx, packet, size))
                 return;
 
-            _discoveryManager.OnIncomingMsg(msg);
+            // Explicitly run it on the default scheduler to prevent something down the line hanging netty task scheduler.
+            Task.Factory.StartNew(
+                () => _discoveryManager.OnIncomingMsg(msg),
+                CancellationToken.None,
+                TaskCreationOptions.RunContinuationsAsynchronously,
+                TaskScheduler.Default
+            );
         }
         catch (Exception e)
         {

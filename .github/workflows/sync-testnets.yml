@@ -1,0 +1,166 @@
+name: Sync Testnets
+
+on:
+  workflow_run:
+    workflows: ["Publish Docker image"]
+    branches: ["master"]
+    types:
+      - completed
+  workflow_dispatch:
+
+env:
+  DOTNET_SYSTEM_CONSOLE_ALLOW_ANSI_COLOR_REDIRECTION: "1"
+  TERM: xterm
+
+jobs:
+  testnet-sync:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - network: "holesky"
+            checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
+            el-client: "nethermind:nethermindeth/nethermind:master"
+            agent: ubuntu-latest
+          - network: "chiado"
+            checkpoint-sync-url: "http://139.144.26.89:4000/"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
+            el-client: "nethermind:nethermindeth/nethermind:master"
+            agent: sync-agent-80gb
+          - network: "sepolia"
+            checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
+            cl-client: "lighthouse:sigp/lighthouse:latest"
+            el-client: "nethermind:nethermindeth/nethermind:master"
+            agent: sync-agent-160gb
+    name: "Run sync of ${{ matrix.network }} testnet"
+    runs-on: ${{ matrix.agent }}
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          clean: true
+
+      - name: Configure settings
+        id: settings
+        run: |
+          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
+          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v2
+
+      - name: Installing requirements
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y make build-essential jq screen lshw dmidecode fio
+
+      - name: Setup Go environment
+        uses: actions/setup-go@v4.0.0
+        with:
+          go-version: '1.20'
+          check-latest: true
+          cache: true
+
+      - name: Install Sedge environment
+        run: |
+          echo "Downloading sedge sources..."
+          git clone https://github.com/NethermindEth/sedge.git sedge --branch core --single-branch
+          echo "Sources downloaded."
+          cd sedge
+          echo "Building sedge..."
+          make compile
+
+      - name: Run Sedge
+        working-directory: sedge
+        run: |
+          echo 'Generating sedge docker...'
+          ./build/sedge deps install
+          ./build/sedge generate --logging none -p $GITHUB_WORKSPACE/sedge \
+          full-node --map-all --no-mev-boost --no-validator --network ${{ matrix.network }} \
+          -c ${{ matrix.cl-client }} -e ${{ matrix.el-client }} \
+          --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
+          --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
+          --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+          --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
+          echo 'Running sedge...'
+          ./build/sedge run -p $GITHUB_WORKSPACE/sedge
+
+      - name: Wait for ${{ matrix.network }} to sync
+        id: wait
+        timeout-minutes: 180
+        run: |
+          set +e
+          
+          declare -A bad_logs
+          bad_logs["Corrupt"]=1
+          bad_logs["Exception"]=1
+
+          declare -A good_logs
+          good_logs["Synced Chain Head"]=0
+          good_logs["Processed"]=0
+
+          declare -A required_count
+          required_count["Synced Chain Head"]=20
+          required_count["Processed"]=20
+
+          counter=0
+          found_bad_log=false
+
+          echo "Starting Docker logs monitoring..."
+          docker logs -f sedge-execution-client | while read -r line; do
+            echo "$line"
+
+            if [[ $found_bad_log == true ]]; then
+              ((counter++))
+              if [ $counter -ge 100 ]; then
+                echo "Exiting after capturing extra logs due to error."
+                exit 1
+              else
+                continue
+              fi
+            fi
+
+            for bad_log in "${!bad_logs[@]}"; do
+              if [[ "$line" == *"$bad_log"* ]]; then
+                echo "Error: $bad_log found in Docker logs."
+                $found_bad_log=true
+                continue 2
+              fi
+            done
+
+            for good_log in "${!good_logs[@]}"; do
+              if [[ "$line" == *"$good_log"* ]]; then
+                ((good_logs["$good_log"]++))
+              fi
+            done
+
+            # Check if all good logs have reached the required count
+            all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+
+            if $all_reached_required_count; then
+              echo "All required logs found."
+              exit 0
+            fi
+          done
+          
+      - name: Get Consensus Logs
+        if: always()
+        run: |
+          docker logs sedge-consensus-client      
+
+      - name: Clean Up
+        if: always()
+        run: |
+          cd sedge
+          docker compose stop
+          cd ..
+          sudo rm -rf sedge
+          sudo rm -rf $GITHUB_WORKSPACE/sedge
+          docker system prune -a -f --volumes

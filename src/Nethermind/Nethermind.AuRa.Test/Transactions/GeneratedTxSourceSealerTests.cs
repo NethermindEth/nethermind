@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Consensus;
@@ -14,7 +13,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -34,7 +32,12 @@ namespace Nethermind.AuRa.Test.Transactions
             Address nodeAddress = TestItem.AddressA;
 
             UInt256 expectedNonce = 10;
-            stateReader.GetAccount(blockHeader.StateRoot, nodeAddress).Returns(Account.TotallyEmpty.WithChangedNonce(expectedNonce));
+            stateReader.TryGetAccount(blockHeader.StateRoot, nodeAddress, out Arg.Any<AccountStruct>())
+                .Returns(x =>
+                {
+                    x[2] = new AccountStruct(expectedNonce, UInt256.Zero);
+                    return true;
+                });
 
             ulong expectedTimeStamp = 100;
             timestamper.UnixTime.Returns(UnixTime.FromSeconds(expectedTimeStamp));

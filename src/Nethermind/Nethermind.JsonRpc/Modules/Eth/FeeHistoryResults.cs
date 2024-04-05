@@ -1,23 +1,44 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using Nethermind.Int256;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Collections;
 
-namespace Nethermind.JsonRpc.Modules.Eth
+namespace Nethermind.JsonRpc.Modules.Eth;
+
+public class FeeHistoryResults(
+    long oldestBlock,
+    ArrayPoolList<UInt256> baseFeePerGas,
+    ArrayPoolList<double> gasUsedRatio,
+    ArrayPoolList<UInt256> baseFeePerBlobGas,
+    ArrayPoolList<double> blobGasUsedRatio,
+    ArrayPoolList<ArrayPoolList<UInt256>>? reward = null)
+    : IDisposable
 {
-    public class FeeHistoryResults
-    {
-        public UInt256[]? BaseFeePerGas { get; }
-        public double[]? GasUsedRatio { get; }
-        public long OldestBlock { get; }
-        public UInt256[][]? Reward { get; }
+    public ArrayPoolList<UInt256> BaseFeePerGas { get; } = baseFeePerGas;
 
-        public FeeHistoryResults(long oldestBlock, UInt256[] baseFeePerGas, double[] gasUsedRatio, UInt256[][]? reward = null)
-        {
-            OldestBlock = oldestBlock;
-            Reward = reward;
-            BaseFeePerGas = baseFeePerGas;
-            GasUsedRatio = gasUsedRatio;
-        }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ArrayPoolList<UInt256> BaseFeePerBlobGas { get; } = baseFeePerBlobGas;
+
+    public ArrayPoolList<double> GasUsedRatio { get; } = gasUsedRatio;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ArrayPoolList<double> BlobGasUsedRatio { get; } = blobGasUsedRatio;
+
+    public long OldestBlock { get; } = oldestBlock;
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ArrayPoolList<ArrayPoolList<UInt256>>? Reward { get; } = reward;
+
+    public void Dispose()
+    {
+        BaseFeePerGas.Dispose();
+        BaseFeePerBlobGas.Dispose();
+        GasUsedRatio.Dispose();
+        BlobGasUsedRatio.Dispose();
+        Reward?.DisposeRecursive();
     }
 }

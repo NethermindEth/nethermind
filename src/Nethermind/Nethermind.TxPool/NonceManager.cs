@@ -1,8 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Concurrent;
+using NonBlocking;
 using System.Collections.Generic;
 using System.Threading;
 using Nethermind.Core;
@@ -12,7 +11,7 @@ namespace Nethermind.TxPool;
 
 public class NonceManager : INonceManager
 {
-    private readonly ConcurrentDictionary<Address, AddressNonceManager> _addressNonceManagers = new();
+    private readonly ConcurrentDictionary<AddressAsKey, AddressNonceManager> _addressNonceManagers = new();
     private readonly IAccountStateProvider _accounts;
 
     public NonceManager(IAccountStateProvider accounts)
@@ -24,7 +23,7 @@ public class NonceManager : INonceManager
     {
         AddressNonceManager addressNonceManager =
             _addressNonceManagers.GetOrAdd(address, _ => new AddressNonceManager());
-        return addressNonceManager.ReserveNonce(_accounts.GetAccount(address).Nonce, out reservedNonce);
+        return addressNonceManager.ReserveNonce(_accounts.GetNonce(address), out reservedNonce);
     }
 
     public NonceLocker TxWithNonceReceived(Address address, UInt256 nonce)

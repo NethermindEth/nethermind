@@ -39,11 +39,21 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
+    public bool Validate(BlockHeader header, BlockHeader? parent, bool isUncle, out string? error)
+    {
+        error = null;
+        return _result;
+    }
+
     public bool Validate(BlockHeader header, bool isUncle = false)
     {
         return _result;
     }
-
+    public bool Validate(BlockHeader header, bool isUncle, out string? error)
+    {
+        error = null;
+        return _result;
+    }
     public bool ValidateSuggestedBlock(Block block)
     {
         return _result;
@@ -73,6 +83,11 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
     {
         return _result;
     }
+    public bool IsWellFormed(Transaction transaction, IReleaseSpec releaseSpec, out string? errorMessage)
+    {
+        errorMessage = null;
+        return _result;
+    }
 
     public bool ValidateWithdrawals(Block block, out string? error)
     {
@@ -80,4 +95,23 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
 
         return _result;
     }
+
+    public bool ValidateOrphanedBlock(Block block, out string? error)
+    {
+        error = null;
+        return _result;
+    }
+
+    public bool ValidateSuggestedBlock(Block block, out string? error)
+    {
+        error = null;
+        return _result;
+    }
+
+    public bool ValidateProcessedBlock(Block processedBlock, TxReceipt[] receipts, Block suggestedBlock, out string? error)
+    {
+        error = null;
+        return _result;
+    }
+
 }

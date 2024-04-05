@@ -27,7 +27,7 @@ namespace Nethermind.Merge.Plugin.Test
             IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
             int destinationBlockNumber = 5000;
             long? currentBlockNumber = null;
-            Keccak? currentHash = null;
+            Hash256? currentHash = null;
             JsonRpcClient? client = new($"http://127.0.0.1:8545");
             do
             {
@@ -37,7 +37,7 @@ namespace Nethermind.Merge.Plugin.Test
                 BlockForRpcForTest? block = jsonSerializer.Deserialize<BlockForRpcForTest>(requestResponse.Result.ToString());
                 if (currentHash is not null)
                 {
-                    Assert.AreEqual(currentHash, block.Hash, $"incorrect block hash found {block}");
+                    Assert.That(block.Hash, Is.EqualTo(currentHash), $"incorrect block hash found {block}");
                 }
 
                 currentHash = block.ParentHash;

@@ -27,7 +27,7 @@ namespace Nethermind.Core
         // public const int LargeObjectOverhead = 32; // just guessing, 20 on 32bit
         public const int ArrayOverhead = 24;
 
-        private static BitArray _isPrime = ESieve(1024 * 1024); // 1MB in memory
+        private static readonly BitArray _isPrime = ESieve(1024 * 1024); // 1MB in memory
 
         public static int FindNextPrime(int number)
         {

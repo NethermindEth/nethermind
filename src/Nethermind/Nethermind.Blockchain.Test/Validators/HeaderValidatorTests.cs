@@ -12,15 +12,11 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
-using Nethermind.State.Repositories;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -29,13 +25,13 @@ namespace Nethermind.Blockchain.Test.Validators
     [TestFixture]
     public class HeaderValidatorTests
     {
-        private IHeaderValidator _validator;
-        private ISealValidator _ethash;
-        private TestLogger _testLogger;
-        private Block _parentBlock;
-        private Block _block;
-        private IBlockTree _blockTree;
-        private ISpecProvider _specProvider;
+        private IHeaderValidator _validator = null!;
+        private ISealValidator _ethash = null!;
+        private TestLogger _testLogger = null!;
+        private Block _parentBlock = null!;
+        private Block _block = null!;
+        private IBlockTree _blockTree = null!;
+        private ISpecProvider _specProvider = null!;
 
         [SetUp]
         public void Setup()
@@ -43,15 +39,17 @@ namespace Nethermind.Blockchain.Test.Validators
             EthashDifficultyCalculator calculator = new(new TestSingleReleaseSpecProvider(Frontier.Instance));
             _ethash = new EthashSealValidator(LimboLogs.Instance, calculator, new CryptoRandom(), new Ethash(LimboLogs.Instance), Timestamper.Default);
             _testLogger = new TestLogger();
-            MemDb blockInfoDb = new();
-            _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+            _blockTree = Build.A.BlockTree()
+                .WithSpecProvider(FrontierSpecProvider.Instance)
+                .WithoutSettingHead
+                .TestObject;
             _specProvider = new TestSingleReleaseSpecProvider(Byzantium.Instance);
 
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
             _parentBlock = Build.A.Block.WithDifficulty(1).TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithNonce(0).TestObject;
 
             _blockTree.SuggestBlock(_parentBlock);
@@ -207,14 +205,14 @@ namespace Nethermind.Blockchain.Test.Validators
                 Eip1559TransitionBlock = 5
             };
             TestSpecProvider specProvider = new(spec);
-            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, specProvider, new OneLoggerLogManager(new(_testLogger)));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                             .WithGasLimit(parentGasLimit)
                             .WithNumber(blockNumber)
                             .TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(gasLimit)
                 .WithNumber(_parentBlock.Number + 1)
                 .WithBaseFeePerGas(BaseFeeCalculator.Calculate(_parentBlock.Header, specProvider.GetSpec((ForkActivation)(_parentBlock.Number + 1))))
@@ -223,20 +221,20 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.Hash = _block.CalculateHash();
 
             bool result = _validator.Validate(_block.Header, _parentBlock.Header);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
         public void When_gas_limit_is_long_max_value()
         {
-            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(_testLogger));
+            _validator = new HeaderValidator(_blockTree, _ethash, _specProvider, new OneLoggerLogManager(new(_testLogger)));
             _parentBlock = Build.A.Block.WithDifficulty(1)
                 .WithGasLimit(long.MaxValue)
                 .WithNumber(5)
                 .TestObject;
             _block = Build.A.Block.WithParent(_parentBlock)
                 .WithDifficulty(131072)
-                .WithMixHash(new Keccak("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
+                .WithMixHash(new Hash256("0xd7db5fdd332d3a65d6ac9c4c530929369905734d3ef7a91e373e81d0f010b8e8"))
                 .WithGasLimit(long.MaxValue)
                 .WithNumber(_parentBlock.Number + 1)
                 .WithNonce(0).TestObject;
@@ -276,7 +274,7 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.SealEngineType = SealEngineType.None;
             _block.Header.Hash = _block.CalculateHash();
 
-            HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
+            HeaderValidator validator = new HeaderValidator(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
             bool result = validator.Validate(_block.Header);
             Assert.True(result);
         }
@@ -297,10 +295,10 @@ namespace Nethermind.Blockchain.Test.Validators
             _block.Header.Hash = _block.CalculateHash();
 
             {
-                MemDb blockInfoDb = new();
-                _blockTree = new BlockTree(new MemDb(), new MemDb(), blockInfoDb,
-                    new ChainLevelInfoRepository(blockInfoDb),
-                    FrontierSpecProvider.Instance, Substitute.For<IBloomStorage>(), LimboLogs.Instance);
+                _blockTree = Build.A.BlockTree()
+                    .WithSpecProvider(FrontierSpecProvider.Instance)
+                    .WithoutSettingHead
+                    .TestObject;
 
                 Block genesis = Build.A.Block.WithDifficulty((UInt256)genesisTd).TestObject;
                 _blockTree.SuggestBlock(genesis);
@@ -308,9 +306,9 @@ namespace Nethermind.Blockchain.Test.Validators
 
             _specProvider.UpdateMergeTransitionInfo(null, (UInt256?)ttd);
 
-            HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(_testLogger));
+            HeaderValidator validator = new(_blockTree, Always.Valid, _specProvider, new OneLoggerLogManager(new(_testLogger)));
             bool result = validator.Validate(_block.Header);
-            Assert.AreEqual(expectedResult, result);
+            Assert.That(result, Is.EqualTo(expectedResult));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -321,6 +319,17 @@ namespace Nethermind.Blockchain.Test.Validators
 
             bool result = _validator.Validate(_block.Header);
             Assert.False(result);
+        }
+
+        [Test]
+        public void Validate_HashIsWrong_ErrorMessageIsSet()
+        {
+            HeaderValidator sut = new HeaderValidator(_blockTree, Always.Valid, Substitute.For<ISpecProvider>(), new OneLoggerLogManager(new(_testLogger)));
+            _block.Header.Hash = Keccak.Zero;
+            string? error;
+            sut.Validate(_block.Header, false, out error);
+
+            Assert.That(error, Does.StartWith("InvalidHeaderHash"));
         }
     }
 }

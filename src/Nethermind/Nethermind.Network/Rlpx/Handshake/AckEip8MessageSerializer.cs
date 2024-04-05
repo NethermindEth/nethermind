@@ -3,7 +3,6 @@
 
 using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Rlpx.Handshake
@@ -29,7 +28,7 @@ namespace Nethermind.Network.Rlpx.Handshake
             totalLength += Rlp.LengthOf(msg.Nonce);
             totalLength += Rlp.LengthOf(msg.Version);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(totalLength));
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(totalLength);
             stream.Encode(msg.EphemeralPublicKey.Bytes);

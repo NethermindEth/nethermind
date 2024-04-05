@@ -3,20 +3,20 @@
 
 using DotNetty.Buffers;
 using Nethermind.AccountAbstraction.Data;
+using Nethermind.Core.Collections;
 using Nethermind.Network;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.AccountAbstraction.Network
 {
     public class UserOperationsMessageSerializer : IZeroInnerMessageSerializer<UserOperationsMessage>
     {
-        private UserOperationDecoder _decoder = new();
+        private readonly UserOperationDecoder _decoder = new();
 
         public void Serialize(IByteBuffer byteBuffer, UserOperationsMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             nettyRlpStream.StartSequence(contentLength);
@@ -29,7 +29,7 @@ namespace Nethermind.AccountAbstraction.Network
         public UserOperationsMessage Deserialize(IByteBuffer byteBuffer)
         {
             NettyRlpStream rlpStream = new(byteBuffer);
-            UserOperationWithEntryPoint[] uOps = DeserializeUOps(rlpStream);
+            ArrayPoolList<UserOperationWithEntryPoint> uOps = DeserializeUOps(rlpStream);
             return new UserOperationsMessage(uOps);
         }
 
@@ -44,9 +44,9 @@ namespace Nethermind.AccountAbstraction.Network
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private UserOperationWithEntryPoint[] DeserializeUOps(NettyRlpStream rlpStream)
+        private static ArrayPoolList<UserOperationWithEntryPoint> DeserializeUOps(NettyRlpStream rlpStream)
         {
-            return Rlp.DecodeArray<UserOperationWithEntryPoint>(rlpStream);
+            return Rlp.DecodeArrayPool<UserOperationWithEntryPoint>(rlpStream);
         }
     }
 }

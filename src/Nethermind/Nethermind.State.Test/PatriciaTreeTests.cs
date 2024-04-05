@@ -31,7 +31,7 @@ namespace Nethermind.Store.Test
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256)2, accountRestored.Balance);
+            Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
         }
 
         [Test]
@@ -48,7 +48,7 @@ namespace Nethermind.Store.Test
             stateTree.Commit(0);
 
             Account accountRestored = stateTree.Get(TestItem.AddressA);
-            Assert.AreEqual((UInt256)2, accountRestored.Balance);
+            Assert.That(accountRestored.Balance, Is.EqualTo((UInt256)2));
         }
 
         [Test]
@@ -60,7 +60,7 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
-            Keccak rootHash = stateTree.RootHash;
+            Hash256 rootHash = stateTree.RootHash;
             stateTree.RootHash = null;
 
             stateTree.RootHash = rootHash;
@@ -69,7 +69,7 @@ namespace Nethermind.Store.Test
             stateTree.Set(TestItem.AddressA, account);
             stateTree.Commit(0);
 
-            Assert.AreEqual(2, db.Keys.Count);
+            Assert.That(db.Keys.Count, Is.EqualTo(2));
         }
 
         [TestCase(true, false)]
@@ -83,16 +83,16 @@ namespace Nethermind.Store.Test
             StateTree stateTree = new(trieStore, LimboLogs.Instance);
             stateTree.Set(TestItem.AddressA, account);
             stateTree.UpdateRootHash();
-            Keccak stateRoot = stateTree.RootHash;
+            Hash256 stateRoot = stateTree.RootHash;
             stateTree.Commit(0, skipRoot);
 
             if (hasRoot)
             {
-                trieStore.LoadRlp(stateRoot).Length.Should().BeGreaterThan(0);
+                trieStore.LoadRlp(null, TreePath.Empty, stateRoot).Length.Should().BeGreaterThan(0);
             }
             else
             {
-                trieStore.Invoking(ts => ts.LoadRlp(stateRoot)).Should().Throw<TrieException>();
+                trieStore.Invoking(ts => ts.LoadRlp(null, TreePath.Empty, stateRoot)).Should().Throw<TrieException>();
             }
         }
     }

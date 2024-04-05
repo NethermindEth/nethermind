@@ -43,12 +43,14 @@ namespace Nethermind.JsonRpc.Modules
                 : new SearchResult<BlockHeader>(header);
         }
 
-        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter blockParameter, bool allowNulls = false)
+        public static SearchResult<Block> SearchForBlock(this IBlockFinder blockFinder, BlockParameter? blockParameter, bool allowNulls = false)
         {
+            blockParameter ??= BlockParameter.Latest;
+
             Block block;
             if (blockParameter.RequireCanonical)
             {
-                block = blockFinder.FindBlock(blockParameter.BlockHash, BlockTreeLookupOptions.RequireCanonical);
+                block = blockFinder.FindBlock(blockParameter.BlockHash!, BlockTreeLookupOptions.RequireCanonical);
                 if (block is null && !allowNulls)
                 {
                     BlockHeader? header = blockFinder.FindHeader(blockParameter.BlockHash);
@@ -95,7 +97,7 @@ namespace Nethermind.JsonRpc.Modules
                 bool isStartingBlockOnMainChain = blockFinder.IsMainChain(startingBlock.Object.Header);
                 if (!isFinalBlockOnMainChain || !isStartingBlockOnMainChain)
                 {
-                    Keccak? notCanonicalBlockHash = isFinalBlockOnMainChain
+                    Hash256? notCanonicalBlockHash = isFinalBlockOnMainChain
                         ? startingBlock.Object.Hash
                         : finalBlockHeader.Object.Hash;
                     yield return new SearchResult<Block>($"{notCanonicalBlockHash} block is not canonical", ErrorCodes.InvalidInput);

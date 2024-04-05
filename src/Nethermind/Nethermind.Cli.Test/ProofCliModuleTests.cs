@@ -19,7 +19,7 @@ namespace Nethermind.Cli.Test
 {
     public class ProofCliModuleTests
     {
-        private ICliConsole _cliConsole = Substitute.For<ICliConsole>();
+        private readonly ICliConsole _cliConsole = Substitute.For<ICliConsole>();
         private EthereumJsonSerializer _serializer;
         private IJsonRpcClient _jsonRpcClient;
         private CliEngine _engine;
@@ -42,7 +42,7 @@ namespace Nethermind.Cli.Test
         [TestCase(false)]
         public void Get_transaction_by_hash(bool includeHeader)
         {
-            Keccak txHash = TestItem.KeccakA;
+            Hash256 txHash = TestItem.KeccakA;
             JsonRpcSuccessResponse response = new()
             {
                 Id = "id1",
@@ -54,14 +54,14 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionByHash(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [TestCase(true)]
         [TestCase(false)]
         public void Get_transaction_receipt(bool includeHeader)
         {
-            Keccak txHash = TestItem.KeccakA;
+            Hash256 txHash = TestItem.KeccakA;
             JsonRpcSuccessResponse response = new()
             {
                 Id = "id1",
@@ -73,13 +73,13 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.getTransactionReceipt(\"{txHash}\", {(includeHeader ? "true" : "false")})");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [Test]
         public void Call()
         {
-            Keccak blockHash = TestItem.KeccakA;
+            Hash256 blockHash = TestItem.KeccakA;
             TransactionForRpc tx = new()
             {
                 From = TestItem.AddressA,
@@ -97,7 +97,7 @@ namespace Nethermind.Cli.Test
 
             JsValue value = _engine.Execute($"proof.call({_serializer.Serialize(tx)}, \"{blockHash}\")");
             Colorful.Console.WriteLine(_serializer.Serialize(value.ToObject(), true));
-            Assert.AreNotEqual(JsValue.Null, value);
+            Assert.That(value, Is.Not.EqualTo(JsValue.Null));
         }
 
         [Test]
@@ -105,7 +105,7 @@ namespace Nethermind.Cli.Test
         {
             _jsonRpcClient.Post<object>("eth_syncing").Returns(false);
             var result = _nodeManager.PostJint("eth_syncing").Result;
-            Assert.AreEqual(JsValue.False, result);
+            Assert.That(result, Is.EqualTo(JsValue.False));
         }
     }
 }

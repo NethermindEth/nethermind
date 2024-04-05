@@ -1,15 +1,15 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 
 namespace Nethermind.Abi
 {
     public class AbiSignature
     {
         private string? _toString;
-        private Keccak? _hash;
+        private Hash256? _hash;
 
         public AbiSignature(string name, params AbiType[] types)
         {
@@ -20,7 +20,7 @@ namespace Nethermind.Abi
         public string Name { get; }
         public AbiType[] Types { get; }
         public byte[] Address => GetAddress(Hash.Bytes);
-        public Keccak Hash => _hash ??= Keccak.Compute(ToString());
+        public Hash256 Hash => _hash ??= Keccak.Compute(ToString());
 
         public override string ToString()
         {
@@ -40,6 +40,6 @@ namespace Nethermind.Abi
             return _toString ??= ComputeString();
         }
 
-        public static byte[] GetAddress(byte[] bytes) => bytes.Slice(0, 4);
+        public static byte[] GetAddress(ReadOnlySpan<byte> bytes) => bytes.Slice(0, 4).ToArray();
     }
 }

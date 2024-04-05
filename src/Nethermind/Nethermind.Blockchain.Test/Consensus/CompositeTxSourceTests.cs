@@ -27,7 +27,7 @@ namespace Nethermind.Blockchain.Test.Consensus
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Throws_on_null_argument()
         {
-            Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null));
+            Assert.Throws<ArgumentNullException>(() => new CompositeTxSource(null!));
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]

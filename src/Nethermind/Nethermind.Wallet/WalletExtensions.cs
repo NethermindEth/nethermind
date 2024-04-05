@@ -34,14 +34,14 @@ namespace Nethermind.Wallet
 
         public static void Sign(this IWallet @this, Transaction tx, ulong chainId)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
+            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, chainId).Bytes);
             tx.Signature = @this.Sign(hash, tx.SenderAddress);
             if (tx.Signature is null)
             {
                 throw new CryptographicException($"Failed to sign tx {tx.Hash} using the {tx.SenderAddress} address.");
             }
 
-            tx.Signature.V = tx.Signature.V + 8 + 2 * chainId;
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * chainId : (ulong)(tx.Signature.RecoveryId + 27);
         }
     }
 }

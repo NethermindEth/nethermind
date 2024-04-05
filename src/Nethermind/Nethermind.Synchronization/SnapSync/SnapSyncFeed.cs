@@ -5,15 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Logging;
-using Nethermind.State.Snap;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Core.Crypto;
-using System.Collections.Concurrent;
-using System.Runtime.InteropServices;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -26,27 +20,24 @@ namespace Nethermind.Synchronization.SnapSync
 
         private const SnapSyncBatch EmptyBatch = null;
 
-        private readonly ISyncModeSelector _syncModeSelector;
         private readonly ISnapProvider _snapProvider;
 
         private readonly ILogger _logger;
+        private bool _disposed = false;
         public override bool IsMultiFeed => true;
         public override AllocationContexts Contexts => AllocationContexts.Snap;
 
-        public SnapSyncFeed(ISyncModeSelector syncModeSelector, ISnapProvider snapProvider, ILogManager logManager)
+        public SnapSyncFeed(ISnapProvider snapProvider, ILogManager logManager)
         {
-            _syncModeSelector = syncModeSelector;
             _snapProvider = snapProvider;
             _logger = logManager.GetClassLogger();
-
-            _syncModeSelector.Changed += SyncModeSelectorOnChanged;
         }
 
         public override Task<SnapSyncBatch?> PrepareRequest(CancellationToken token = default)
         {
             try
             {
-                (SnapSyncBatch request, bool finished) = _snapProvider.GetNextRequest();
+                bool finished = _snapProvider.IsFinished(out SnapSyncBatch request);
 
                 if (request is null)
                 {
@@ -77,35 +68,42 @@ namespace Nethermind.Synchronization.SnapSync
 
             AddRangeResult result = AddRangeResult.OK;
 
-            if (batch.AccountRangeResponse is not null)
+            try
             {
-                result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
-            }
-            else if (batch.StorageRangeResponse is not null)
-            {
-                result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
-            }
-            else if (batch.CodesResponse is not null)
-            {
-                _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
-            }
-            else if (batch.AccountsToRefreshResponse is not null)
-            {
-                _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
-            }
-            else
-            {
-                _snapProvider.RetryRequest(batch);
-
-                if (peer is null)
+                if (batch.AccountRangeResponse is not null)
                 {
-                    return SyncResponseHandlingResult.NotAssigned;
+                    result = _snapProvider.AddAccountRange(batch.AccountRangeRequest, batch.AccountRangeResponse);
+                }
+                else if (batch.StorageRangeResponse is not null)
+                {
+                    result = _snapProvider.AddStorageRange(batch.StorageRangeRequest, batch.StorageRangeResponse);
+                }
+                else if (batch.CodesResponse is not null)
+                {
+                    _snapProvider.AddCodes(batch.CodesRequest, batch.CodesResponse);
+                }
+                else if (batch.AccountsToRefreshResponse is not null)
+                {
+                    _snapProvider.RefreshAccounts(batch.AccountsToRefreshRequest, batch.AccountsToRefreshResponse);
                 }
                 else
                 {
-                    _logger.Trace($"SNAP - timeout {peer}");
-                    return SyncResponseHandlingResult.LesserQuality;
+                    _snapProvider.RetryRequest(batch);
+
+                    if (peer is null)
+                    {
+                        return SyncResponseHandlingResult.NotAssigned;
+                    }
+                    else
+                    {
+                        _logger.Trace($"SNAP - timeout {peer}");
+                        return SyncResponseHandlingResult.LesserQuality;
+                    }
                 }
+            }
+            finally
+            {
+                batch.Dispose();
             }
 
             return AnalyzeResponsePerPeer(result, peer);
@@ -199,14 +197,15 @@ namespace Nethermind.Synchronization.SnapSync
 
         public void Dispose()
         {
-            _syncModeSelector.Changed -= SyncModeSelectorOnChanged;
+            _disposed = true;
         }
 
-        private void SyncModeSelectorOnChanged(object? sender, SyncModeChangedEventArgs e)
+        public override void SyncModeSelectorOnChanged(SyncMode current)
         {
+            if (_disposed) return;
             if (CurrentState == SyncFeedState.Dormant)
             {
-                if ((e.Current & SyncMode.SnapSync) == SyncMode.SnapSync)
+                if ((current & SyncMode.SnapSync) == SyncMode.SnapSync)
                 {
                     if (_snapProvider.CanSync())
                     {
@@ -215,5 +214,13 @@ namespace Nethermind.Synchronization.SnapSync
                 }
             }
         }
+
+        public override void Finish()
+        {
+            _snapProvider.Dispose();
+            base.Finish();
+        }
+
+        public override bool IsFinished => _snapProvider.IsSnapGetRangesFinished();
     }
 }

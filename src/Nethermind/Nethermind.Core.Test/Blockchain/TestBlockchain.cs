@@ -10,6 +10,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
@@ -31,31 +32,33 @@ using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.State.Repositories;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
-using BlockTree = Nethermind.Blockchain.BlockTree;
 
 namespace Nethermind.Core.Test.Blockchain;
 
 public class TestBlockchain : IDisposable
 {
-    public const int DefaultTimeout = 4000;
+    public const int DefaultTimeout = 10000;
     public IStateReader StateReader { get; private set; } = null!;
     public IEthereumEcdsa EthereumEcdsa { get; private set; } = null!;
     public INonceManager NonceManager { get; private set; } = null!;
     public TransactionProcessor TxProcessor { get; set; } = null!;
-    public IStorageProvider Storage { get; set; } = null!;
     public IReceiptStorage ReceiptStorage { get; set; } = null!;
     public ITxPool TxPool { get; set; } = null!;
     public IDb CodeDb => DbProvider.CodeDb;
+    public IWorldStateManager WorldStateManager { get; set; } = null!;
     public IBlockProcessor BlockProcessor { get; set; } = null!;
+    public IBeaconBlockRootHandler BeaconBlockRootHandler { get; set; } = null!;
     public IBlockchainProcessor BlockchainProcessor { get; set; } = null!;
 
     public IBlockPreprocessorStep BlockPreprocessorStep { get; set; } = null!;
 
     public IBlockProcessingQueue BlockProcessingQueue { get; set; } = null!;
     public IBlockTree BlockTree { get; set; } = null!;
+
+    public Action<IWorldState>? InitialStateMutator { get; set; }
 
     public IBlockFinder BlockFinder
     {
@@ -65,7 +68,7 @@ public class TestBlockchain : IDisposable
 
     public ILogFinder LogFinder { get; private set; } = null!;
     public IJsonSerializer JsonSerializer { get; set; } = null!;
-    public IStateProvider State { get; set; } = null!;
+    public IWorldState State { get; set; } = null!;
     public IReadOnlyStateProvider ReadOnlyState { get; private set; } = null!;
     public IDb StateDb => DbProvider.StateDb;
     public TrieStore TrieStore { get; set; } = null!;
@@ -90,12 +93,14 @@ public class TestBlockchain : IDisposable
     public static Address AccountC = TestItem.AddressC;
     public SemaphoreSlim _resetEvent = null!;
     private ManualResetEvent _suggestedBlockResetEvent = null!;
-    private AutoResetEvent _oneAtATime = new(true);
+    private readonly AutoResetEvent _oneAtATime = new(true);
     private IBlockFinder _blockFinder = null!;
 
     public static readonly UInt256 InitialValue = 1000.Ether();
     private TrieStoreBoundaryWatcher _trieStoreWatcher = null!;
     public IHeaderValidator HeaderValidator { get; set; } = null!;
+
+    private ReceiptCanonicalityMonitor? _canonicalityMonitor;
 
     public IBlockValidator BlockValidator { get; set; } = null!;
     public BuildBlocksWhenRequested BlockProductionTrigger { get; } = new();
@@ -108,7 +113,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
@@ -116,30 +121,38 @@ public class TestBlockchain : IDisposable
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
         TrieStore = new TrieStore(StateDb, LogManager);
-        State = new StateProvider(TrieStore, DbProvider.CodeDb, LogManager);
+        State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
+
+        // Eip4788 precompile state account
+        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+        {
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
+        }
+
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
 
-        byte[] code = Bytes.FromHexString("0xabcd");
-        Keccak codeHash = Keccak.Compute(code);
-        State.UpdateCode(code);
-        State.UpdateCodeHash(TestItem.AddressA, codeHash, SpecProvider.GenesisSpec);
+        InitialStateMutator?.Invoke(State);
 
-        Storage = new StorageProvider(TrieStore, State, LogManager);
-        Storage.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-        Storage.Commit();
+        byte[] code = Bytes.FromHexString("0xabcd");
+        Hash256 codeHash = Keccak.Compute(code);
+        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+
+        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
 
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
+        ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
+        WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
         StateReader = new StateReader(ReadOnlyTrieStore, CodeDb, LogManager);
 
-        IDb blockDb = new MemDb();
-        IDb headerDb = new MemDb();
-        IDb blockInfoDb = new MemDb();
-        BlockTree = new BlockTree(blockDb, headerDb, blockInfoDb, new ChainLevelInfoRepository(blockInfoDb), SpecProvider, NullBloomStorage.Instance, LimboLogs.Instance);
+        BlockTree = Builders.Build.A.BlockTree()
+            .WithSpecProvider(SpecProvider)
+            .WithoutSettingHead
+            .TestObject;
+
         ReadOnlyState = new ChainHeadReadOnlyStateProvider(BlockTree, StateReader);
         TransactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockTree);
         TxPool = CreateTxPool();
@@ -149,15 +162,15 @@ public class TestBlockchain : IDisposable
 
         NonceManager = new NonceManager(chainHeadInfoProvider.AccountStateProvider);
 
-        _trieStoreWatcher = new TrieStoreBoundaryWatcher(TrieStore, BlockTree, LogManager);
+        _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
-        ReceiptStorage = new InMemoryReceiptStorage();
+        ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
         VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
-        TxProcessor = new TransactionProcessor(SpecProvider, State, Storage, virtualMachine, LogManager);
+        TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
 
-        new ReceiptCanonicalityMonitor(BlockTree, ReceiptStorage, LogManager);
+        _canonicalityMonitor ??= new ReceiptCanonicalityMonitor(ReceiptStorage, LogManager);
 
         BlockValidator = new BlockValidator(
             new TxValidator(SpecProvider.ChainId),
@@ -173,6 +186,7 @@ public class TestBlockchain : IDisposable
         BloomStorage bloomStorage = new(new BloomConfig(), new MemDb(), new InMemoryDictionaryFileStoreFactory());
         ReceiptsRecovery receiptsRecovery = new(new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance), SpecProvider);
         LogFinder = new LogFinder(BlockTree, ReceiptStorage, ReceiptStorage, bloomStorage, LimboLogs.Instance, receiptsRecovery);
+        BeaconBlockRootHandler = new BeaconBlockRootHandler();
         BlockProcessor = CreateBlockProcessor();
 
         BlockchainProcessor chainProcessor = new(BlockTree, BlockProcessor, BlockPreprocessorStep, StateReader, LogManager, Consensus.Processing.BlockchainProcessor.Options.Default);
@@ -188,7 +202,7 @@ public class TestBlockchain : IDisposable
 
         _resetEvent = new SemaphoreSlim(0);
         _suggestedBlockResetEvent = new ManualResetEvent(true);
-        BlockTree.NewHeadBlock += OnNewHeadBlock;
+        BlockTree.BlockAddedToMain += BlockAddedToMain;
         BlockProducer.BlockProduced += (s, e) =>
         {
             _suggestedBlockResetEvent.Set();
@@ -198,7 +212,10 @@ public class TestBlockchain : IDisposable
         BlockTree.SuggestBlock(genesis);
 
         await WaitAsync(_resetEvent, "Failed to process genesis in time.");
-        await AddBlocksOnStart();
+
+        if (addBlockOnStart)
+            await AddBlocksOnStart();
+
         return this;
     }
 
@@ -209,7 +226,7 @@ public class TestBlockchain : IDisposable
             : new OverridableSpecProvider(specProvider, s => new OverridableReleaseSpec(s) { IsEip3607Enabled = false });
     }
 
-    private void OnNewHeadBlock(object? sender, BlockEventArgs e)
+    private void BlockAddedToMain(object? sender, BlockEventArgs e)
     {
         _resetEvent.Release(1);
     }
@@ -237,9 +254,8 @@ public class TestBlockchain : IDisposable
         BlocksConfig blocksConfig = new();
 
         BlockProducerEnvFactory blockProducerEnvFactory = new(
-            DbProvider,
+            WorldStateManager,
             BlockTree,
-            ReadOnlyTrieStore,
             SpecProvider,
             BlockValidator,
             NoBlockRewards.Instance,
@@ -269,8 +285,9 @@ public class TestBlockchain : IDisposable
     protected virtual TxPool.TxPool CreateTxPool() =>
         new(
             EthereumEcdsa,
+            new BlobTxStorage(),
             new ChainHeadInfoProvider(new FixedForkActivationChainHeadSpecProvider(SpecProvider), BlockTree, ReadOnlyState),
-            new TxPoolConfig(),
+            new TxPoolConfig() { BlobsSupport = BlobsSupportMode.InMemory },
             new TxValidator(SpecProvider.ChainId),
             LogManager,
             TransactionComparerProvider.GetDefaultComparer());
@@ -296,12 +313,24 @@ public class TestBlockchain : IDisposable
             genesisBlockBuilder = GenesisBlockBuilder;
         }
 
-        genesisBlockBuilder.WithStateRoot(State.StateRoot);
-        if (SealEngineType == Nethermind.Core.SealEngineType.AuRa)
+        if (SealEngineType == Core.SealEngineType.AuRa)
         {
             genesisBlockBuilder.WithAura(0, new byte[65]);
         }
 
+        if (SpecProvider.GenesisSpec.IsEip4844Enabled)
+        {
+            genesisBlockBuilder.WithBlobGasUsed(0);
+            genesisBlockBuilder.WithExcessBlobGas(0);
+        }
+
+
+        if (SpecProvider.GenesisSpec.IsBeaconBlockRootAvailable)
+        {
+            genesisBlockBuilder.WithParentBeaconBlockRoot(Keccak.Zero);
+        }
+
+        genesisBlockBuilder.WithStateRoot(State.StateRoot);
         return genesisBlockBuilder.TestObject;
     }
 
@@ -319,7 +348,6 @@ public class TestBlockchain : IDisposable
             NoBlockRewards.Instance,
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
-            Storage,
             ReceiptStorage,
             NullWitnessCollector.Instance,
             LogManager);
@@ -358,8 +386,8 @@ public class TestBlockchain : IDisposable
     private async Task<AcceptTxResult[]> AddBlockInternal(params Transaction[] transactions)
     {
         // we want it to be last event, so lets re-register
-        BlockTree.NewHeadBlock -= OnNewHeadBlock;
-        BlockTree.NewHeadBlock += OnNewHeadBlock;
+        BlockTree.BlockAddedToMain -= BlockAddedToMain;
+        BlockTree.BlockAddedToMain += BlockAddedToMain;
 
         await WaitAsync(_oneAtATime, "Multiple block produced at once.");
         AcceptTxResult[] txResults = transactions.Select(t => TxPool.SubmitTx(t, TxHandlingOptions.None)).ToArray();
@@ -379,7 +407,7 @@ public class TestBlockchain : IDisposable
     public virtual void Dispose()
     {
         BlockProducer?.StopAsync();
-        if (DbProvider != null)
+        if (DbProvider is not null)
         {
             CodeDb?.Dispose();
             StateDb?.Dispose();

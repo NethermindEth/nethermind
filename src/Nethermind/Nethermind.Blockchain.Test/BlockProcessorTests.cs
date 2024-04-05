@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -26,7 +25,6 @@ using System.Threading;
 using FluentAssertions;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Evm.TransactionProcessing;
 
@@ -41,15 +39,14 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                GoerliSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -61,8 +58,8 @@ namespace Nethermind.Blockchain.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            Assert.AreEqual(1, processedBlocks.Length, "length");
-            Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
+            Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
+            Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -70,18 +67,17 @@ namespace Nethermind.Blockchain.Test
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            TrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance);
 
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             IWitnessCollector witnessCollector = Substitute.For<IWitnessCollector>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                GoerliSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 witnessCollector,
                 LimboLogs.Instance);
@@ -94,7 +90,7 @@ namespace Nethermind.Blockchain.Test
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
 
-            witnessCollector.Received(1).Persist(block.Hash);
+            witnessCollector.Received(1).Persist(block.Hash!);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -103,15 +99,14 @@ namespace Nethermind.Blockchain.Test
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             BlockProcessor processor = new(
-                RinkebySpecProvider.Instance,
+                GoerliSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 new RewardCalculator(MainnetSpecProvider.Instance),
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 LimboLogs.Instance);
@@ -144,23 +139,23 @@ namespace Nethermind.Blockchain.Test
         [TestCase(2000)]
         public async Task Process_long_running_branch(int blocksAmount)
         {
-            var address = TestItem.Addresses[0];
-            var spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
-            var testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
+            Address address = TestItem.Addresses[0];
+            TestSingleReleaseSpecProvider spec = new TestSingleReleaseSpecProvider(ConstantinopleFix.Instance);
+            TestRpcBlockchain testRpc = await TestRpcBlockchain.ForTest(SealEngineType.NethDev)
                 .Build(spec);
             testRpc.TestWallet.UnlockAccount(address, new SecureString());
             await testRpc.AddFunds(address, 1.Ether());
             await testRpc.AddBlock();
-            var suggestedBlockResetEvent = new SemaphoreSlim(0);
-            testRpc.BlockTree.NewHeadBlock += (s, e) =>
+            SemaphoreSlim suggestedBlockResetEvent = new SemaphoreSlim(0);
+            testRpc.BlockTree.NewHeadBlock += (_, _) =>
             {
                 suggestedBlockResetEvent.Release(1);
             };
 
-            var branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
+            int branchLength = blocksAmount + (int)testRpc.BlockTree.BestKnownNumber + 1;
             ((BlockTree)testRpc.BlockTree).AddBranch(branchLength, (int)testRpc.BlockTree.BestKnownNumber);
             (await suggestedBlockResetEvent.WaitAsync(TestBlockchain.DefaultTimeout * 10)).Should().BeTrue();
-            Assert.AreEqual(branchLength - 1, (int)testRpc.BlockTree.BestKnownNumber);
+            Assert.That((int)testRpc.BlockTree.BestKnownNumber, Is.EqualTo(branchLength - 1));
         }
     }
 }

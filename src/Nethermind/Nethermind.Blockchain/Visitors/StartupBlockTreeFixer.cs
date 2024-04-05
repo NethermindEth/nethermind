@@ -12,6 +12,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain.Visitors
 {
@@ -19,10 +20,10 @@ namespace Nethermind.Blockchain.Visitors
     {
         public const int DefaultBatchSize = 4000;
         private readonly IBlockTree _blockTree;
-        private readonly IDb _stateDb;
+        private readonly IStateReader _stateReader;
         private readonly ILogger _logger;
-        private long _startNumber;
-        private long _blocksToLoad;
+        private readonly long _startNumber;
+        private readonly long _blocksToLoad;
 
         private ChainLevelInfo _currentLevel;
         private long _currentLevelNumber;
@@ -42,13 +43,13 @@ namespace Nethermind.Blockchain.Visitors
         public StartupBlockTreeFixer(
             ISyncConfig syncConfig,
             IBlockTree blockTree,
-            IDb stateDb,
+            IStateReader stateReader,
             ILogger logger,
             long batchSize = DefaultBatchSize)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _stateDb = stateDb;
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _stateReader = stateReader;
+            _logger = logger;
 
             _batchSize = batchSize;
             long assumedHead = _blockTree.Head?.Number ?? 0;
@@ -138,7 +139,7 @@ namespace Nethermind.Blockchain.Visitors
             }
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken)
         {
             AssertNotVisitingAfterGap();
             _blocksCheckedInCurrentLevel++;
@@ -242,7 +243,7 @@ namespace Nethermind.Blockchain.Visitors
             {
                 BlockHeader? parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (parentHeader is null || parentHeader.StateRoot is null ||
-                    _stateDb.Get(parentHeader.StateRoot) is null)
+                    !_stateReader.HasStateForRoot(parentHeader.StateRoot))
                     return false;
             }
             else

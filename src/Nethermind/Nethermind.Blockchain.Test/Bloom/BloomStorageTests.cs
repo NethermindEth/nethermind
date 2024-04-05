@@ -8,10 +8,10 @@ using System.IO;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
+using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.Bloom
@@ -206,16 +206,6 @@ namespace Nethermind.Blockchain.Test.Bloom
             finally
             {
                 Directory.Delete(basePath, true);
-            }
-        }
-
-        private IEnumerable<(Core.Bloom Bloom, (long FromBlock, long ToBlock) CurrentIndices)> Unwind(IBloomEnumeration blooms)
-        {
-            foreach (Core.Bloom bloom in blooms)
-            {
-                (long FromBlock, long ToBlock) currentIndices = blooms.CurrentIndices;
-                yield return (bloom, currentIndices);
-                blooms.TryGetBlockNumber(out _);
             }
         }
     }

@@ -30,7 +30,7 @@ namespace Nethermind.Blockchain.Visitors
             long maxBlocksToLoad = long.MaxValue)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-            _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+            _logger = logger;
 
             _batchSize = batchSize;
             StartLevelInclusive = Math.Max(0L, startBlockNumber ?? (_blockTree.Head?.Number + 1) ?? 0L);
@@ -80,7 +80,7 @@ namespace Nethermind.Blockchain.Visitors
             return Task.FromResult(LevelVisitOutcome.None);
         }
 
-        Task<bool> IBlockTreeVisitor.VisitMissing(Keccak hash, CancellationToken cancellationToken)
+        Task<bool> IBlockTreeVisitor.VisitMissing(Hash256 hash, CancellationToken cancellationToken)
         {
             throw new InvalidDataException($"Block {hash} is missing from the database when loading blocks.");
         }

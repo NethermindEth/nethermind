@@ -18,24 +18,18 @@ public class MergeHeaderValidatorTests
 {
     private class Context
     {
-        private IPoSSwitcher? _poSSwitcher;
-        public IPoSSwitcher PoSSwitcher => _poSSwitcher ?? Substitute.For<IPoSSwitcher>();
+        public IPoSSwitcher PoSSwitcher => Substitute.For<IPoSSwitcher>();
+        public IHeaderValidator PreMergeHeaderValidator => Substitute.For<IHeaderValidator>();
 
-        private IHeaderValidator? _preMergeHeaderValidator;
-        public IHeaderValidator PreMergeHeaderValidator => _preMergeHeaderValidator ?? Substitute.For<IHeaderValidator>();
+        public IBlockTree BlockTree => Substitute.For<IBlockTree>();
 
-        private IBlockTree? _blockTree;
-        public IBlockTree BlockTree => _blockTree ?? Substitute.For<IBlockTree>();
+        public ISealValidator SealValidator => Substitute.For<ISealValidator>();
 
-        private ISealValidator? _sealValidator;
-        public ISealValidator SealValidator => _sealValidator ?? Substitute.For<ISealValidator>();
-
-        private MergeHeaderValidator? _mergeHeaderValidator = null;
-        public MergeHeaderValidator MergeHeaderValidator => _mergeHeaderValidator ?? new MergeHeaderValidator(
+        public MergeHeaderValidator MergeHeaderValidator => new(
             PoSSwitcher,
             PreMergeHeaderValidator,
             BlockTree,
-            RopstenSpecProvider.Instance,
+            MainnetSpecProvider.Instance,
             SealValidator,
             LimboLogs.Instance
         );

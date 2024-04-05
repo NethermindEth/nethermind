@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie
 {
@@ -14,7 +15,7 @@ namespace Nethermind.Trie
         private int _visitedNodes;
 
         public int Level { get; internal set; }
-        public bool IsStorage { get; internal set; }
+        public bool IsStorage { get; set; }
         public int? BranchChildIndex { get; internal set; }
         public bool ExpectAccounts { get; init; }
         public int VisitedNodes => _visitedNodes;
@@ -22,7 +23,7 @@ namespace Nethermind.Trie
         public int MaxDegreeOfParallelism
         {
             get => _maxDegreeOfParallelism;
-            internal init => _maxDegreeOfParallelism = value == 0 ? Environment.ProcessorCount : value;
+            internal init => _maxDegreeOfParallelism = VisitingOptions.AdjustMaxDegreeOfParallelism(value);
         }
 
         public SemaphoreSlim Semaphore
@@ -79,7 +80,7 @@ namespace Nethermind.Trie
 
         public bool IsStorage
         {
-            get => (_flags & StorageFlag) == StorageFlag;
+            readonly get => (_flags & StorageFlag) == StorageFlag;
             internal set
             {
                 if (value)
@@ -95,7 +96,7 @@ namespace Nethermind.Trie
 
         public bool ExpectAccounts
         {
-            get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
+            readonly get => (_flags & ExpectAccountsFlag) == ExpectAccountsFlag;
             internal set
             {
                 if (value)
@@ -111,10 +112,10 @@ namespace Nethermind.Trie
 
         public byte? BranchChildIndex
         {
-            get => _branchChildIndex == 255 ? null : _branchChildIndex;
+            readonly get => _branchChildIndex == 255 ? null : _branchChildIndex;
             internal set
             {
-                if (value == null)
+                if (value is null)
                 {
                     _branchChildIndex = 255;
                 }
@@ -125,7 +126,7 @@ namespace Nethermind.Trie
             }
         }
 
-        public TrieVisitContext ToVisitContext()
+        public readonly TrieVisitContext ToVisitContext()
         {
             return new TrieVisitContext()
             {

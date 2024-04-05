@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -10,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.AuRa.Transactions
@@ -47,7 +45,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
 
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissions(Transaction tx, BlockHeader parentHeader)
         {
-            var key = (parentHeader.Hash, SenderAddress: tx.SenderAddress);
+            var key = (parentHeader.Hash, tx.SenderAddress);
             return _cache.Permissions.TryGet(key, out var txCachedPermissions)
                 ? txCachedPermissions
                 : GetPermissionsFromContract(tx, parentHeader, key);
@@ -56,7 +54,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists) GetPermissionsFromContract(
             Transaction tx,
             BlockHeader parentHeader,
-            in (Keccak Hash, Address SenderAddress) key)
+            in (Hash256 Hash, Address SenderAddress) key)
         {
             ITransactionPermissionContract.TxPermissions txPermissions = ITransactionPermissionContract.TxPermissions.None;
             bool shouldCache = true;
@@ -94,7 +92,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private ITransactionPermissionContract? GetVersionedContract(BlockHeader blockHeader)
             => _contract.ResolveVersion(blockHeader);
 
-        private ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx, bool contractExists) =>
+        private static ITransactionPermissionContract.TxPermissions GetTxType(Transaction tx, bool contractExists) =>
             tx.IsContractCreation
                 ? ITransactionPermissionContract.TxPermissions.Create
                 : contractExists
@@ -105,8 +103,8 @@ namespace Nethermind.Consensus.AuRa.Transactions
         {
             public const int MaxCacheSize = 4096;
 
-            internal LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
-                new LruCache<(Keccak ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
+            internal LruCache<(Hash256 ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)> Permissions { get; } =
+                new LruCache<(Hash256 ParentHash, Address Sender), (ITransactionPermissionContract.TxPermissions Permissions, bool ContractExists)>(MaxCacheSize, "TxPermissions");
         }
     }
 }

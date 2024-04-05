@@ -34,7 +34,7 @@ namespace Nethermind.Mev.Source
         private readonly IBundleSimulator _simulator;
         private readonly BundleSortedPool _bundles;
         private readonly ConcurrentDictionary<Address, MevBundle> _megabundles = new();
-        private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
+        private readonly ConcurrentDictionary<long, ConcurrentDictionary<(MevBundle Bundle, Hash256 BlockHash), SimulatedMevBundleContext>> _simulatedBundles = new();
         private readonly ILogger _logger;
         private readonly IEthereumEcdsa _ecdsa;
         private readonly HashSet<Address> _trustedRelays;
@@ -188,7 +188,7 @@ namespace Nethermind.Mev.Source
             return false;
         }
 
-        private bool BundleInTimestampRange(MevBundle bundle, UInt256 minTimestamp, UInt256 maxTimestamp)
+        private static bool BundleInTimestampRange(MevBundle bundle, UInt256 minTimestamp, UInt256 maxTimestamp)
         {
             bool bundleIsInFuture = bundle.MinTimestamp != UInt256.Zero && minTimestamp < bundle.MinTimestamp;
             bool bundleIsTooOld = bundle.MaxTimestamp != UInt256.Zero && maxTimestamp > bundle.MaxTimestamp;
@@ -240,7 +240,7 @@ namespace Nethermind.Mev.Source
                 BundleTransaction tx = bundle.Transactions[i];
                 if (!tx.CanRevert)
                 {
-                    if (!_txValidator.IsWellFormed(tx, spec))
+                    if (!_txValidator.IsWellFormed(tx, spec, out _))
                     {
                         return false;
                     }
@@ -284,7 +284,7 @@ namespace Nethermind.Mev.Source
         protected virtual SimulatedMevBundleContext? SimulateBundle(MevBundle bundle, BlockHeader parent)
         {
             SimulatedMevBundleContext? context = null;
-            (MevBundle, Keccak) key = (bundle, parent.Hash!);
+            (MevBundle, Hash256) key = (bundle, parent.Hash!);
 
             Metrics.BundlesSimulated++;
 
@@ -296,7 +296,7 @@ namespace Nethermind.Mev.Source
                 return context = new(simulateTask, cancellationTokenSource);
             }
 
-            ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> AddContext(ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d)
+            ConcurrentDictionary<(MevBundle, Hash256), SimulatedMevBundleContext> AddContext(ConcurrentDictionary<(MevBundle, Hash256), SimulatedMevBundleContext> d)
             {
                 d.AddOrUpdate(key,
                     _ => CreateContext(),
@@ -307,7 +307,7 @@ namespace Nethermind.Mev.Source
             _simulatedBundles.AddOrUpdate(parent.Number,
                     _ =>
                     {
-                        ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext> d = new();
+                        ConcurrentDictionary<(MevBundle, Hash256), SimulatedMevBundleContext> d = new();
                         return AddContext(d);
                     },
                     (_, d) => AddContext(d));
@@ -348,7 +348,7 @@ namespace Nethermind.Mev.Source
 
         private void RemoveBundlesUpToBlock(long blockNumber)
         {
-            void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
+            static void StopSimulations(IEnumerable<SimulatedMevBundleContext> simulations)
             {
                 foreach (SimulatedMevBundleContext simulation in simulations)
                 {
@@ -372,7 +372,7 @@ namespace Nethermind.Mev.Source
             }
 
             var simulatedBundlesToRemove = _simulatedBundles.Where(b => b.Key <= blockNumber).ToList();
-            foreach (KeyValuePair<long, ConcurrentDictionary<(MevBundle, Keccak), SimulatedMevBundleContext>> simulatedBundleBucket in simulatedBundlesToRemove)
+            foreach (KeyValuePair<long, ConcurrentDictionary<(MevBundle, Hash256), SimulatedMevBundleContext>> simulatedBundleBucket in simulatedBundlesToRemove)
             {
                 StopSimulations(simulatedBundleBucket.Value.Values);
                 _simulatedBundles.TryRemove(simulatedBundleBucket.Key, out _);
@@ -400,11 +400,11 @@ namespace Nethermind.Mev.Source
 
         private void RemoveSimulation(MevBundle bundle)
         {
-            if (_simulatedBundles.TryGetValue(bundle.BlockNumber, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulations))
+            if (_simulatedBundles.TryGetValue(bundle.BlockNumber, out ConcurrentDictionary<(MevBundle Bundle, Hash256 BlockHash), SimulatedMevBundleContext>? simulations))
             {
-                IEnumerable<(MevBundle Bundle, Keccak BlockHash)> keys = simulations.Keys.Where(k => Equals(k.Bundle, bundle));
+                IEnumerable<(MevBundle Bundle, Hash256 BlockHash)> keys = simulations.Keys.Where(k => Equals(k.Bundle, bundle));
 
-                foreach ((MevBundle Bundle, Keccak BlockHash) key in keys)
+                foreach ((MevBundle Bundle, Hash256 BlockHash) key in keys)
                 {
                     if (simulations.TryRemove(key, out var simulation))
                     {
@@ -419,7 +419,7 @@ namespace Nethermind.Mev.Source
             }
         }
 
-        private void StopSimulation(SimulatedMevBundleContext simulation)
+        private static void StopSimulation(SimulatedMevBundleContext simulation)
         {
             if (!simulation.Task.IsCompleted)
             {
@@ -429,7 +429,7 @@ namespace Nethermind.Mev.Source
 
         private async Task<IEnumerable<SimulatedMevBundle>> GetSimulatedBundles(HashSet<MevBundle> bundles, BlockHeader parent, UInt256 timestamp, long gasLimit, CancellationToken token)
         {
-            if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Keccak BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
+            if (_simulatedBundles.TryGetValue(parent.Number, out ConcurrentDictionary<(MevBundle Bundle, Hash256 BlockHash), SimulatedMevBundleContext>? simulatedBundlesForBlock))
             {
                 IEnumerable<Task<SimulatedMevBundle>> resultTasks = simulatedBundlesForBlock
                     .Where(b => b.Key.BlockHash == parent.Hash)

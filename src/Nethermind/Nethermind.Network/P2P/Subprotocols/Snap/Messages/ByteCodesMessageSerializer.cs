@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -11,13 +12,13 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         public void Serialize(IByteBuffer byteBuffer, ByteCodesMessage message)
         {
             (int contentLength, int codesLength) = GetLength(message);
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
             rlpStream.StartSequence(codesLength);
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 rlpStream.Encode(message.Codes[i]);
             }
@@ -30,20 +31,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             long requestId = rlpStream.DecodeLong();
-            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
 
             return new ByteCodesMessage(result) { RequestId = requestId };
         }
 
-        public (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
+        public static (int contentLength, int codesLength) GetLength(ByteCodesMessage message)
         {
             int codesLength = 0;
-            for (int i = 0; i < message.Codes.Length; i++)
+            for (int i = 0; i < message.Codes.Count; i++)
             {
                 codesLength += Rlp.LengthOf(message.Codes[i]);
             }
 
-            return (codesLength + Rlp.LengthOf(message.RequestId), codesLength);
+            return (Rlp.LengthOfSequence(codesLength) + Rlp.LengthOf(message.RequestId), codesLength);
         }
     }
 }

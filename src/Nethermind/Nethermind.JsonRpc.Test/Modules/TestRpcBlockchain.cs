@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -13,7 +14,6 @@ using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Db;
 using Nethermind.Facade;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -25,16 +25,18 @@ using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.KeyStore;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
-using Newtonsoft.Json;
+
 using Nethermind.Config;
+using Nethermind.Synchronization.ParallelSync;
+using NSubstitute;
 
 namespace Nethermind.JsonRpc.Test.Modules
 {
     public class TestRpcBlockchain : TestBlockchain
     {
+        public IJsonRpcConfig RpcConfig { get; private set; } = new JsonRpcConfig();
         public IEthRpcModule EthRpcModule { get; private set; } = null!;
         public IBlockchainBridge Bridge { get; private set; } = null!;
         public ITxSealer TxSealer { get; private set; } = null!;
@@ -100,13 +102,19 @@ namespace Nethermind.JsonRpc.Test.Modules
                 return this;
             }
 
+            public Builder<T> WithConfig(IJsonRpcConfig config)
+            {
+                _blockchain.RpcConfig = config;
+                return this;
+            }
+
             public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
             }
         }
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
             specProvider ??= new TestSpecProvider(Berlin.Instance);
             await base.Build(specProvider, initialValues);
@@ -114,8 +122,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             IFilterManager filterManager = new FilterManager(filterStore, BlockProcessor, TxPool, LimboLogs.Instance);
 
             ReadOnlyTxProcessingEnv processingEnv = new(
-                new ReadOnlyDbProvider(DbProvider, false),
-                new TrieStore(DbProvider.StateDb, LimboLogs.Instance).AsReadOnly(),
+                WorldStateManager,
                 new ReadOnlyBlockTree(BlockTree),
                 SpecProvider,
                 LimboLogs.Instance);
@@ -130,34 +137,31 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxSealer = new TxSealer(txSigner, Timestamper);
             TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId, LogManager));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-            FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();
             EthRpcModule = new EthRpcModule(
-                new JsonRpcConfig(),
+                RpcConfig,
                 Bridge,
                 BlockFinder,
+                ReceiptFinder,
                 StateReader,
                 TxPool,
                 TxSender,
                 TestWallet,
-                ReceiptFinder,
                 LimboLogs.Instance,
                 SpecProvider,
                 GasPriceOracle,
-                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig, LogManager),
+                new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
+                    new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
                 FeeHistoryOracle);
 
             return this;
         }
 
-        public string TestEthRpc(string method, params string[] parameters)
-        {
-            return RpcTest.TestSerializedRequest(EthModuleFactory.Converters, EthRpcModule, method, parameters);
-        }
+        public Task<string> TestEthRpc(string method, params string[] parameters) =>
+            RpcTest.TestSerializedRequest(EthRpcModule, method, parameters);
 
-        public string TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule
-        {
-            return RpcTest.TestSerializedRequest(new JsonConverter[0], module, method, parameters);
-        }
+        public Task<string> TestSerializedRequest<T>(T module, string method, params string[] parameters) where T : class, IRpcModule =>
+            RpcTest.TestSerializedRequest(module, method, parameters);
     }
 }

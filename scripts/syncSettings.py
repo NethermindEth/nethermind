@@ -24,17 +24,7 @@ configs = {
         "blockReduced": 1000,
         "multiplierRequirement": 1000
     },
-    "goerli": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
     "gnosis": {
-        "url": "https://rpc.gnosischain.com",
-        "blockReduced": 8192,
-        "multiplierRequirement": 10000
-    },
-    "xdai": {
         "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
@@ -61,6 +51,16 @@ configs = {
     },
     "exosama": {
         "url": "https://rpc.exosama.com",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "joc-mainnet": {
+        "url": "https://rpc-1.japanopenchain.org:8545",
+        "blockReduced": 8192,
+        "multiplierRequirement": 10000
+    },
+    "joc-testnet": {
+        "url": "https://rpc-1.testnet.japanopenchain.org:8545",
         "blockReduced": 8192,
         "multiplierRequirement": 10000
     }

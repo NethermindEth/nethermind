@@ -173,10 +173,10 @@ internal readonly struct TimeInterval
 
     public string ToString(TimeUnit? timeUnit, CultureInfo cultureInfo, string format = "N4", UnitPresentation? unitPresentation = null)
     {
-        timeUnit = timeUnit ?? TimeUnit.GetBestTimeUnit(Nanoseconds);
-        cultureInfo = cultureInfo ?? DefaultCultureInfo.Instance;
-        format = format ?? "N4";
-        unitPresentation = unitPresentation ?? UnitPresentation.Default;
+        timeUnit ??= TimeUnit.GetBestTimeUnit(Nanoseconds);
+        cultureInfo ??= DefaultCultureInfo.Instance;
+        format ??= "N4";
+        unitPresentation ??= UnitPresentation.Default;
         double num = TimeUnit.Convert(Nanoseconds, TimeUnit.Nanosecond, timeUnit);
         if (unitPresentation.IsVisible)
         {

@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Security.Cryptography;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -20,6 +19,7 @@ namespace Nethermind.Serialization.Rlp
 
             if (rlpStream.IsNextItemNull())
             {
+                rlpStream.ReadByte();
                 return null;
             }
 
@@ -50,13 +50,13 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(RlpStream stream, ChainLevelInfo? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 stream.Encode(Rlp.OfEmptySequence);
                 return;
             }
 
-            if (item.BlockInfos.Any(t => t == null))
+            if (item.BlockInfos.Any(t => t is null))
             {
                 throw new InvalidOperationException($"{nameof(BlockInfo)} is null when encoding {nameof(ChainLevelInfo)}");
             }
@@ -109,9 +109,9 @@ namespace Nethermind.Serialization.Rlp
             throw new NotImplementedException();
         }
 
-        private int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+        private static int GetContentLength(ChainLevelInfo item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }
@@ -123,7 +123,7 @@ namespace Nethermind.Serialization.Rlp
 
         public int GetLength(ChainLevelInfo? item, RlpBehaviors rlpBehaviors)
         {
-            if (item == null)
+            if (item is null)
             {
                 return Rlp.OfEmptySequence.Length;
             }
@@ -132,7 +132,7 @@ namespace Nethermind.Serialization.Rlp
             return Rlp.LengthOfSequence(contLength);
         }
 
-        private int GetBlockInfoLength(BlockInfo[] item)
+        private static int GetBlockInfoLength(BlockInfo[] item)
         {
             int contentLength = 0;
             foreach (BlockInfo? blockInfo in item)

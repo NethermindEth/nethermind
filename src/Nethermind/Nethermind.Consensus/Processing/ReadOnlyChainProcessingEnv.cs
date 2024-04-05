@@ -5,7 +5,6 @@ using System;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
@@ -24,7 +23,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockProcessor BlockProcessor { get; }
         public IBlockchainProcessor ChainProcessor { get; }
         public IBlockProcessingQueue BlockProcessingQueue { get; }
-        public IStateProvider StateProvider => _txEnv.StateProvider;
+        public IWorldState StateProvider => _txEnv.StateProvider;
 
         public ReadOnlyChainProcessingEnv(
             ReadOnlyTxProcessingEnv txEnv,
@@ -32,7 +31,6 @@ namespace Nethermind.Consensus.Processing
             IBlockPreprocessorStep recoveryStep,
             IRewardCalculator rewardCalculator,
             IReceiptStorage receiptStorage,
-            IReadOnlyDbProvider dbProvider,
             ISpecProvider specProvider,
             ILogManager logManager,
             IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor = null)
@@ -48,14 +46,13 @@ namespace Nethermind.Consensus.Processing
                 rewardCalculator,
                 transactionsExecutor,
                 StateProvider,
-                _txEnv.StorageProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager);
 
             _blockProcessingQueue = new BlockchainProcessor(_txEnv.BlockTree, BlockProcessor, recoveryStep, _txEnv.StateReader, logManager, BlockchainProcessor.Options.NoReceipts);
             BlockProcessingQueue = _blockProcessingQueue;
-            ChainProcessor = new OneTimeChainProcessor(dbProvider, _blockProcessingQueue);
+            ChainProcessor = new OneTimeChainProcessor(txEnv.StateProvider, _blockProcessingQueue);
         }
 
         public void Dispose()

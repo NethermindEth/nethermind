@@ -104,10 +104,10 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private byte[] _addMacBuffer;
-        private byte[] _checkMacBuffer;
-        private byte[] _ingressAesBlockBuffer;
-        private byte[] _egressAesBlockBuffer;
+        private readonly byte[] _addMacBuffer;
+        private readonly byte[] _checkMacBuffer;
+        private readonly byte[] _ingressAesBlockBuffer;
+        private readonly byte[] _egressAesBlockBuffer;
 
         public bool CheckMac(byte[] mac, bool isHeader)
         {
@@ -207,7 +207,7 @@ namespace Nethermind.Network.Rlpx
             }
         }
 
-        private void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)
+        private static void DoFinalNoReset(KeccakHash mac, KeccakHash macCopy, byte[] output)
         {
             macCopy.ResetTo(mac);
             macCopy.UpdateFinalTo(output);

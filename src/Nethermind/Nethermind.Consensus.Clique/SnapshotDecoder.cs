@@ -1,9 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
-using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -20,7 +18,7 @@ namespace Nethermind.Consensus.Clique
             // Block number
             long number = (long)rlpStream.DecodeUInt256();
             // Hash
-            Keccak hash = rlpStream.DecodeKeccak();
+            Hash256 hash = rlpStream.DecodeKeccak();
             // Signers
             SortedList<Address, long> signers = DecodeSigners(rlpStream);
             // Votes
@@ -52,7 +50,7 @@ namespace Nethermind.Consensus.Clique
             return Rlp.LengthOfSequence(contentLength);
         }
 
-        private (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,
+        private static (int contentLength, int signersLength, int votesLength, int tallyLength) GetContentLength(Snapshot item,
             RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             int signersLength = GetSignersContentLength(item.Signers);
@@ -68,7 +66,7 @@ namespace Nethermind.Consensus.Clique
             return (contentLength, signersLength, votesLength, tallyLength);
         }
 
-        private SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
+        private static SortedList<Address, long> DecodeSigners(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
             SortedList<Address, long> signers = new SortedList<Address, long>(AddressComparer.Instance);
@@ -83,7 +81,7 @@ namespace Nethermind.Consensus.Clique
             return signers;
         }
 
-        private List<Vote> DecodeVotes(RlpStream rlpStream)
+        private static List<Vote> DecodeVotes(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
             List<Vote> votes = new List<Vote>();
@@ -100,7 +98,7 @@ namespace Nethermind.Consensus.Clique
             return votes;
         }
 
-        private Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
+        private static Dictionary<Address, Tally> DecodeTally(RlpStream rlpStream)
         {
             rlpStream.ReadSequenceLength();
             Dictionary<Address, Tally> tally = new Dictionary<Address, Tally>();
@@ -117,7 +115,7 @@ namespace Nethermind.Consensus.Clique
             return tally;
         }
 
-        private int GetSignersContentLength(SortedList<Address, long> signers)
+        private static int GetSignersContentLength(SortedList<Address, long> signers)
         {
             int signerCount = signers.Count;
             int contentLength = Rlp.LengthOf(signerCount);
@@ -131,7 +129,7 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private void EncodeSigners(RlpStream stream, SortedList<Address, long> signers, int contentLength)
+        private static void EncodeSigners(RlpStream stream, SortedList<Address, long> signers, int contentLength)
         {
             stream.StartSequence(contentLength);
             int signerCount = signers.Count;
@@ -145,7 +143,7 @@ namespace Nethermind.Consensus.Clique
             }
         }
 
-        private int GetVotesContentLength(List<Vote> votes)
+        private static int GetVotesContentLength(List<Vote> votes)
         {
             int voteCount = votes.Count;
             int contentLength = Rlp.LengthOf(voteCount);
@@ -160,7 +158,7 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private void EncodeVotes(RlpStream stream, List<Vote> votes, int contentLength)
+        private static void EncodeVotes(RlpStream stream, List<Vote> votes, int contentLength)
         {
             stream.StartSequence(contentLength);
             int voteCount = votes.Count;
@@ -176,7 +174,7 @@ namespace Nethermind.Consensus.Clique
             }
         }
 
-        private int GetTallyContentLength(Dictionary<Address, Tally> tally)
+        private static int GetTallyContentLength(Dictionary<Address, Tally> tally)
         {
             int tallyCount = tally.Count;
             int contentLength = Rlp.LengthOf(tallyCount);
@@ -191,7 +189,7 @@ namespace Nethermind.Consensus.Clique
             return contentLength;
         }
 
-        private void EncodeTally(RlpStream stream, Dictionary<Address, Tally> tally, int contentLength)
+        private static void EncodeTally(RlpStream stream, Dictionary<Address, Tally> tally, int contentLength)
         {
             stream.StartSequence(contentLength);
             int tallyCount = tally.Count;

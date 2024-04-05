@@ -1,0 +1,17 @@
+from ubuntu:22.04
+
+# Update the system and install necessary dependencies
+RUN apt-get update && \
+    apt-get upgrade -y && \
+    apt-get install -y htop nano git curl gnupg build-essential zip 7zip python3  doxygen graphviz
+
+# Install Node.js and npm
+RUN curl -fsSL https://deb.nodesource.com/setup_lts.x | bash - && \
+    apt-get install -y nodejs
+
+# Check the installed Node.js and npm versions
+RUN node -v && npm -v
+run npm install -g @context-labs/autodoc
+run git clone https://github.com/context-labs/autodoc.git
+
+COPY ./addDoxygenTagsToMdFiles.py /addDoxygenTagsToMdFiles.py

@@ -17,9 +17,9 @@ namespace Nethermind.Runner.Ethereum
 {
     public class EthereumRunner
     {
-        private INethermindApi _api;
+        private readonly INethermindApi _api;
 
-        private ILogger _logger;
+        private readonly ILogger _logger;
 
         public EthereumRunner(INethermindApi api)
         {
@@ -108,20 +108,6 @@ namespace Nethermind.Runner.Ethereum
             {
                 if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
                 return Task.CompletedTask;
-            }
-        }
-
-        private ValueTask Stop(Func<ValueTask?> stopAction, string description)
-        {
-            try
-            {
-                if (_logger.IsInfo) _logger.Info($"{description}...");
-                return stopAction() ?? default;
-            }
-            catch (Exception e)
-            {
-                if (_logger.IsError) _logger.Error($"{description} shutdown error.", e);
-                return default;
             }
         }
     }

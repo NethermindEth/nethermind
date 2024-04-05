@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public void Serialize(IByteBuffer byteBuffer, GetBlockBodiesMessage message)
         {
             int length = GetLength(message, out int contentLength);
-            byteBuffer.EnsureWritable(length, true);
+            byteBuffer.EnsureWritable(length);
             NettyRlpStream nettyRlpStream = new(byteBuffer);
 
             nettyRlpStream.StartSequence(contentLength);
@@ -41,7 +41,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public static GetBlockBodiesMessage Deserialize(RlpStream rlpStream)
         {
-            Keccak[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
+            Hash256[] hashes = rlpStream.DecodeArray(ctx => rlpStream.DecodeKeccak(), false);
             return new GetBlockBodiesMessage(hashes);
         }
     }

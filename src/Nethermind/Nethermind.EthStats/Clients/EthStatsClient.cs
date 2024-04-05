@@ -38,8 +38,7 @@ namespace Nethermind.EthStats.Clients
         internal string BuildUrl()
         {
             string websocketUrl = _urlFromConfig;
-            Uri? websocketUri;
-            if (!Uri.TryCreate(_urlFromConfig, UriKind.Absolute, out websocketUri))
+            if (!Uri.TryCreate(_urlFromConfig, UriKind.Absolute, out Uri? websocketUri))
             {
                 ThrowIncorrectUrl();
             }

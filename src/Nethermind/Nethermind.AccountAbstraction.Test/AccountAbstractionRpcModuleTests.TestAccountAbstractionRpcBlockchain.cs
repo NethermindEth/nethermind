@@ -21,7 +21,6 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Test;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -81,7 +80,7 @@ namespace Nethermind.AccountAbstraction.Test
 
             public IAccountAbstractionRpcModule AccountAbstractionRpcModule { get; set; } = Substitute.For<IAccountAbstractionRpcModule>();
             public ManualGasLimitCalculator GasLimitCalculator = new() { GasLimit = 10_000_000 };
-            private AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
+            private readonly AccountAbstractionConfig _accountAbstractionConfig = new AccountAbstractionConfig()
             {
                 Enabled = true,
                 EntryPointContractAddresses = "0xb0894727fe4ff102e1f1c8a16f38afc7b859f215,0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e",
@@ -100,9 +99,8 @@ namespace Nethermind.AccountAbstraction.Test
                 SpecProvider.UpdateMergeTransitionInfo(1, 0);
 
                 BlockProducerEnvFactory blockProducerEnvFactory = new BlockProducerEnvFactory(
-                    DbProvider,
+                    WorldStateManager,
                     BlockTree,
-                    ReadOnlyTrieStore,
                     SpecProvider,
                     BlockValidator,
                     NoBlockRewards.Instance,
@@ -190,14 +188,14 @@ namespace Nethermind.AccountAbstraction.Test
                     NoBlockRewards.Instance,
                     new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
                     State,
-                    Storage,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
                     LogManager);
 
+                AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));
+
                 var parser = new AbiDefinitionParser();
-                parser.RegisterAbiTypeFactory(new AbiTuple<UserOperationAbi>());
-                var json = parser.LoadContract(typeof(EntryPoint));
+                var json = AbiDefinitionParser.LoadContract(typeof(EntryPoint));
                 EntryPointContractAbi = parser.Parse(json);
 
                 foreach (Address entryPoint in entryPointContractAddresses)
@@ -214,7 +212,7 @@ namespace Nethermind.AccountAbstraction.Test
                     UserOperationSimulator[entryPoint] = new(
                         UserOperationTxBuilder[entryPoint],
                         ReadOnlyState,
-                        new ReadOnlyTxProcessingEnvFactory(DbProvider, ReadOnlyTrieStore, BlockTree, SpecProvider, LogManager),
+                        new ReadOnlyTxProcessingEnvFactory(WorldStateManager, BlockTree, SpecProvider, LogManager),
                         EntryPointContractAbi,
                         entryPoint!,
                         WhitelistedPayamsters,
@@ -253,7 +251,7 @@ namespace Nethermind.AccountAbstraction.Test
             }
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
-                UInt256? initialValues = null)
+                UInt256? initialValues = null, bool addBlockOnStart = true)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 IList<Address> entryPointContractAddresses = new List<Address>();
@@ -289,30 +287,26 @@ namespace Nethermind.AccountAbstraction.Test
 
             public void SendUserOperation(Address entryPoint, UserOperation userOperation)
             {
-                ResultWrapper<Keccak> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
-                resultOfUserOperation.GetResult().ResultType.Should().NotBe(ResultType.Failure, resultOfUserOperation.Result.Error);
-                resultOfUserOperation.GetData().Should().Be(userOperation.RequestId!);
+                ResultWrapper<Hash256> resultOfUserOperation = UserOperationPool[entryPoint].AddUserOperation(userOperation);
+                resultOfUserOperation.Result.Should().Be(Result.Success, resultOfUserOperation.Result.Error);
+                resultOfUserOperation.Data.Should().Be(userOperation.RequestId!);
             }
 
             public void SupportedEntryPoints()
             {
                 ResultWrapper<Address[]> resultOfEntryPoints = AccountAbstractionRpcModule.eth_supportedEntryPoints();
-                resultOfEntryPoints.GetResult().ResultType.Should()
-                    .NotBe(ResultType.Failure, resultOfEntryPoints.Result.Error);
+                resultOfEntryPoints.Result.Should().Be(Result.Success, resultOfEntryPoints.Result.Error);
                 IList<Address> entryPointContractAddresses = new List<Address>();
-                IList<string> _entryPointContractAddressesString =
-                    _accountAbstractionConfig.GetEntryPointAddresses().ToList();
-                foreach (string _addressString in _entryPointContractAddressesString)
+                IList<string> entryPointContractAddressesString = _accountAbstractionConfig.GetEntryPointAddresses().ToList();
+                foreach (string addressString in entryPointContractAddressesString)
                 {
-                    bool parsed = Address.TryParse(
-                        _addressString,
-                        out Address? entryPointContractAddress);
+                    Address.TryParse(addressString, out Address? entryPointContractAddress);
                     entryPointContractAddresses.Add(entryPointContractAddress!);
                 }
 
                 Address[] eps = entryPointContractAddresses.ToArray();
-                Address[] recieved_eps = (Address[])(resultOfEntryPoints.GetData()!);
-                Assert.AreEqual(eps, recieved_eps);
+                Address[] receivedEps = resultOfEntryPoints.Data;
+                Assert.That(receivedEps, Is.EqualTo(eps));
             }
         }
     }

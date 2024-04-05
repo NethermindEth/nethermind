@@ -4,18 +4,16 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.Proofs;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -102,9 +100,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<CallResultWithProof>.Success(callResultWithProof);
         }
 
-        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Keccak txHash, bool includeHeader)
+        public ResultWrapper<TransactionWithProof> proof_getTransactionByHash(Hash256 txHash, bool includeHeader)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
                 return ResultWrapper<TransactionWithProof>.Fail($"{txHash} receipt (transaction) could not be found", ErrorCodes.ResourceNotFound);
@@ -132,9 +130,9 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
 
-        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Keccak txHash, bool includeHeader)
+        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
         {
-            Keccak blockHash = _receiptFinder.FindBlockHash(txHash);
+            Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
             {
                 return ResultWrapper<ReceiptWithProof>.Fail($"{txHash} receipt could not be found", ErrorCodes.ResourceNotFound);
@@ -159,7 +157,8 @@ namespace Nethermind.JsonRpc.Modules.Proof
             Transaction? tx = txs.FirstOrDefault(x => x.Hash == txHash);
 
             int logIndexStart = _receiptFinder.Get(block).GetBlockLogFirstIndex(receipt.Index);
-            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), logIndexStart);
+
+            receiptWithProof.Receipt = new ReceiptForRpc(txHash, receipt, tx?.GetGasInfo(isEip1559Enabled, block.Header) ?? new(), logIndexStart);
             receiptWithProof.ReceiptProof = BuildReceiptProofs(block.Header, receipts, receipt.Index);
             receiptWithProof.TxProof = BuildTxProofs(txs, _specProvider.GetSpec(block.Header), receipt.Index);
 
@@ -171,7 +170,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<ReceiptWithProof>.Success(receiptWithProof);
         }
 
-        private AccountProof[] CollectAccountProofs(Keccak stateRoot, ProofTxTracer proofTxTracer)
+        private AccountProof[] CollectAccountProofs(Hash256 stateRoot, ProofTxTracer proofTxTracer)
         {
             List<AccountProof> accountProofs = new();
             foreach (Address address in proofTxTracer.Accounts)
@@ -190,7 +189,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private byte[][] CollectHeaderBytes(ProofTxTracer proofTxTracer, BlockHeader tracedBlockHeader)
         {
             List<BlockHeader> relevantHeaders = new() { tracedBlockHeader };
-            foreach (Keccak blockHash in proofTxTracer.BlockHashes)
+            foreach (Hash256 blockHash in proofTxTracer.BlockHashes)
             {
                 relevantHeaders.Add(_blockFinder.FindHeader(blockHash));
             }
@@ -199,14 +198,14 @@ namespace Nethermind.JsonRpc.Modules.Proof
                 .Select(h => _headerDecoder.Encode(h).Bytes).ToArray();
         }
 
-        private byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
+        private static byte[][] BuildTxProofs(Transaction[] txs, IReleaseSpec releaseSpec, int index)
         {
-            return new TxTrie(txs, true).BuildProof(index);
+            return TxTrie.CalculateProof(txs, index);
         }
 
         private byte[][] BuildReceiptProofs(BlockHeader blockHeader, TxReceipt[] receipts, int index)
         {
-            return new ReceiptTrie(_specProvider.GetSpec(blockHeader), receipts, true).BuildProof(index);
+            return ReceiptTrie<TxReceipt>.CalculateReceiptProofs(_specProvider.GetSpec(blockHeader), receipts, index, ReceiptMessageDecoder.Instance);
         }
     }
 }

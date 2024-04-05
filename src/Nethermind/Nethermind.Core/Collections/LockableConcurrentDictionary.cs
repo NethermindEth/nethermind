@@ -22,7 +22,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// <summary>
     /// Delegate that is equivalent of <see cref="ConcurrentDictionary{TKey,TValue}.ReleaseLocks"/>
     /// </summary>
-    private delegate void ReleaseLocks(ConcurrentDictionary<TKey, TValue> dictionary, int fromInclusive, int toExclusive);
+    private delegate void ReleaseLocks(ConcurrentDictionary<TKey, TValue> dictionary, int locksAcquired);
 
     /// <summary>
     /// Cached delegate of <see cref="ConcurrentDictionary{TKey,TValue}.AcquireLocks"/> to neglect reflection performance impact.
@@ -40,7 +40,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
     /// <exception cref="NotSupportedException">Thrown when private members of <see cref="ConcurrentDictionary{TKey,TValue}"/> changed and we cannot create delegates.</exception>
     static ConcurrentDictionaryLock()
     {
-        TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate
+        static TDelegate CreateDelegate<TType, TDelegate>(TType? target = default, string? methodName = null) where TDelegate : Delegate
         {
             Type type = typeof(TType);
             Type delegateType = typeof(TDelegate);
@@ -90,7 +90,7 @@ public static class ConcurrentDictionaryLock<TKey, TValue> where TKey : notnull
         // Duck typing
         public void Dispose()
         {
-            _releaseLocksMethod(_dictionary, 0, _locksAcquired);
+            _releaseLocksMethod(_dictionary, _locksAcquired);
         }
     }
 }
@@ -105,6 +105,11 @@ public static class ConcurrentDictionaryExtensions
     public static ConcurrentDictionaryLock<TKey, TValue>.Lock AcquireLock<TKey, TValue>(this ConcurrentDictionary<TKey, TValue> dictionary)
         where TKey : notnull =>
         ConcurrentDictionaryLock<TKey, TValue>.Acquire(dictionary);
+
+    public static void Increment<TKey>(this ConcurrentDictionary<TKey, long> dictionary, TKey key) where TKey : notnull
+    {
+        dictionary.AddOrUpdate(key, 1, (_, value) => value + 1);
+    }
 }
 
 

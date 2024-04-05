@@ -3,117 +3,111 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
-namespace Nethermind.Evm.Tracing
+namespace Nethermind.Evm.Tracing;
+
+public class NullTxTracer : TxTracer
 {
-    public class NullTxTracer : ITxTracer
-    {
-        public static ITxTracer Instance { get; } = new NullTxTracer();
+    public static ITxTracer Instance { get; } = new NullTxTracer();
 
-        private const string ErrorMessage = "Null tracer should never receive any calls.";
-        private NullTxTracer() { }
+    private const string ErrorMessage = "Null tracer should never receive any calls.";
+    private NullTxTracer() { }
 
-        public bool IsTracingReceipt => false;
-        public bool IsTracingActions => false;
-        public bool IsTracingOpLevelStorage => false;
-        public bool IsTracingMemory => false;
-        public bool IsTracingInstructions => false;
-        public bool IsTracingRefunds => false;
-        public bool IsTracingCode => false;
-        public bool IsTracingStack => false;
-        public bool IsTracingState => false;
-        public bool IsTracingStorage => false;
-        public bool IsTracingBlockHash => false;
-        public bool IsTracingAccess => false;
-        public bool IsTracingFees => false;
+    [DoesNotReturn]
+    [StackTraceHidden]
+    private static void ThrowInvalidOperationException() => throw new InvalidOperationException(ErrorMessage);
 
-        public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Keccak? stateRoot = null)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+        => ThrowInvalidOperationException();
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+        => ThrowInvalidOperationException();
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        => ThrowInvalidOperationException();
 
-        public void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Keccak? stateRoot = null)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportOperationError(EvmExceptionType error)
+        => ThrowInvalidOperationException();
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportOperationRemainingGas(long gas)
+        => ThrowInvalidOperationException();
 
-        public void ReportOperationError(EvmExceptionType error)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void SetOperationMemorySize(ulong newSize)
+        => ThrowInvalidOperationException();
 
-        public void ReportOperationRemainingGas(long gas)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
+        => ThrowInvalidOperationException();
 
-        public void SetOperationMemorySize(ulong newSize)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
+        => ThrowInvalidOperationException();
 
-        public void ReportMemoryChange(long offset, in ReadOnlySpan<byte> data)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportStorageChange(in ReadOnlySpan<byte> key, in ReadOnlySpan<byte> value)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void SetOperationStack(TraceStack stack)
+        => ThrowInvalidOperationException();
 
-        public void SetOperationStack(List<string> stackTrace)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportStackPush(in ReadOnlySpan<byte> stackItem)
+        => ThrowInvalidOperationException();
 
-        public void ReportStackPush(in ReadOnlySpan<byte> stackItem)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void SetOperationMemory(TraceMemory memoryTrace)
+        => ThrowInvalidOperationException();
 
-        public void SetOperationMemory(List<string> memoryTrace)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
+        => ThrowInvalidOperationException();
 
-        public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
+        => ThrowInvalidOperationException();
 
-        public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+        => ThrowInvalidOperationException();
 
-        public void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
+        => ThrowInvalidOperationException();
 
-        public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportCodeChange(Address address, byte[] before, byte[] after)
+        => ThrowInvalidOperationException();
 
-        public void ReportCodeChange(Address address, byte[] before, byte[] after)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportNonceChange(Address address, UInt256? before, UInt256? after)
+        => ThrowInvalidOperationException();
 
-        public void ReportNonceChange(Address address, UInt256? before, UInt256? after)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportAccountRead(Address address)
+        => ThrowInvalidOperationException();
 
-        public void ReportAccountRead(Address address)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
+        => ThrowInvalidOperationException();
 
-        public void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportStorageRead(in StorageCell storageCell)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportStorageRead(in StorageCell storageCell)
+        => ThrowInvalidOperationException();
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        => ThrowInvalidOperationException();
 
-        public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportActionError(EvmExceptionType exceptionType)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
+        => ThrowInvalidOperationException();
 
-        public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportBlockHash(Keccak blockHash)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportActionError(EvmExceptionType exceptionType)
+        => ThrowInvalidOperationException();
 
-        public void ReportByteCode(byte[] byteCode)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportRefund(long refund)
-            => throw new InvalidOperationException(ErrorMessage);
-        public void ReportExtraGasPressure(long extraGasPressure)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+        => ThrowInvalidOperationException();
+    public override void ReportBlockHash(Hash256 blockHash)
+        => ThrowInvalidOperationException();
+    public override void ReportByteCode(ReadOnlyMemory<byte> byteCode)
+        => ThrowInvalidOperationException();
 
-        public void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
-            => throw new InvalidOperationException(ErrorMessage);
+    public override void ReportGasUpdateForVmTrace(long refund, long gasAvailable)
+        => ThrowInvalidOperationException();
 
-        public void ReportFees(UInt256 fees, UInt256 burntFees)
-            => throw new InvalidOperationException(ErrorMessage);
-    }
+    public override void ReportRefund(long refund)
+        => ThrowInvalidOperationException();
+
+    public override void ReportExtraGasPressure(long extraGasPressure)
+        => ThrowInvalidOperationException();
+
+    public override void ReportAccess(IReadOnlySet<Address> accessedAddresses, IReadOnlySet<StorageCell> accessedStorageCells)
+        => ThrowInvalidOperationException();
+
+    public override void ReportFees(UInt256 fees, UInt256 burntFees)
+        => ThrowInvalidOperationException();
 }

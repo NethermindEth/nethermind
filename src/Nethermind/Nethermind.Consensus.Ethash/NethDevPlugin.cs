@@ -12,7 +12,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
@@ -43,9 +42,9 @@ namespace Nethermind.Consensus.Ethash
             {
                 return Task.FromResult((IBlockProducer)null);
             }
-            var (getFromApi, setInApi) = _nethermindApi!.ForProducer;
 
-            ReadOnlyDbProvider readOnlyDbProvider = getFromApi.DbProvider.AsReadOnly(false);
+            var (getFromApi, _) = _nethermindApi!.ForProducer;
+
             ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
 
             ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
@@ -64,10 +63,8 @@ namespace Nethermind.Consensus.Ethash
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-
             ReadOnlyTxProcessingEnv producerEnv = new(
-                readOnlyDbProvider,
-                getFromApi.ReadOnlyTrieStore,
+                _nethermindApi.WorldStateManager!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);
@@ -78,7 +75,6 @@ namespace Nethermind.Consensus.Ethash
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
                 producerEnv.StateProvider,
-                producerEnv.StorageProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
                 getFromApi.LogManager);

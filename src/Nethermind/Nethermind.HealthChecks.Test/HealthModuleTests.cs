@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using Nethermind.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
@@ -16,7 +17,9 @@ namespace Nethermind.HealthChecks.Test
             INodeHealthService nodeHealthService = Substitute.For<INodeHealthService>();
             nodeHealthService.CheckHealth().Returns(new CheckHealthResult()
             {
-                Healthy = false,
+                Healthy = true,
+                Errors = new List<string>(),
+                IsSyncing = true,
                 Messages = new List<(string, string)>()
                 {
                     {("Still syncing", "Syncing in progress")}
@@ -24,8 +27,10 @@ namespace Nethermind.HealthChecks.Test
             });
             IHealthRpcModule healthRpcModule = new HealthRpcModule(nodeHealthService);
             ResultWrapper<NodeStatusResult> nodeStatus = healthRpcModule.health_nodeStatus();
-            Assert.AreEqual(false, nodeStatus.Data.Healthy);
-            Assert.AreEqual("Still syncing", nodeStatus.Data.Messages[0]);
+            Assert.That(nodeStatus.Data.Healthy, Is.EqualTo(true));
+            Assert.That(nodeStatus.Data.Messages.First(), Is.EqualTo("Still syncing"));
+            Assert.That(nodeStatus.Data.IsSyncing, Is.EqualTo(true));
+            Assert.That(nodeStatus.Data.Errors, Is.Empty);
         }
     }
 }

@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Logging;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Sockets;
+using System.IO;
 
 namespace Nethermind.JsonRpc
 {
@@ -31,8 +33,8 @@ namespace Nethermind.JsonRpc
 
         private void BuildUrls(bool includeWebSockets)
         {
-            bool isAuthenticated = _jsonRpcConfig.EnabledModules.Any(m => m.ToLower() == "engine");
-            JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, isAuthenticated, _jsonRpcConfig.EnabledModules);
+            bool HasEngineApi = _jsonRpcConfig.EnabledModules.Any(m => m.Equals(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase));
+            JsonRpcUrl defaultUrl = new(Uri.UriSchemeHttp, _jsonRpcConfig.Host, _jsonRpcConfig.Port, RpcEndpoint.Http, HasEngineApi, _jsonRpcConfig.EnabledModules, HasEngineApi ? SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API : _jsonRpcConfig.MaxRequestBodySize);
             string environmentVariableUrl = Environment.GetEnvironmentVariable(NethermindUrlVariable);
             if (!string.IsNullOrWhiteSpace(environmentVariableUrl))
             {
@@ -81,11 +83,12 @@ namespace Nethermind.JsonRpc
             {
                 if (_logger.IsWarn) _logger.Warn("Json RPC EngineHost is set to null, " +
                     "please set it to 127.0.0.1 if your CL Client is on the same machine " +
-                    "or to 0.0.0.0 if your CL Client is on a seperate machine");
+                    "or to 0.0.0.0 if your CL Client is on a separate machine");
                 return;
             }
             JsonRpcUrl url = new(Uri.UriSchemeHttp, _jsonRpcConfig.EngineHost, _jsonRpcConfig.EnginePort.Value,
-                RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray());
+                RpcEndpoint.Http, true, _jsonRpcConfig.EngineEnabledModules.Append(ModuleType.Engine).ToArray(),
+                SocketClient<WebSocketMessageStream>.MAX_REQUEST_BODY_SIZE_FOR_ENGINE_API);
 
             if (ContainsKey(url.Port))
             {

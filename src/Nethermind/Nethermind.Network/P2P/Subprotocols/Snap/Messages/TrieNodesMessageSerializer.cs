@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
+using Nethermind.Core.Collections;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
@@ -12,14 +13,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
         {
             (int contentLength, int nodesLength) = GetLength(message);
 
-            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength), true);
+            byteBuffer.EnsureWritable(Rlp.LengthOfSequence(contentLength));
 
             NettyRlpStream rlpStream = new(byteBuffer);
 
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.RequestId);
             rlpStream.StartSequence(nodesLength);
-            for (int i = 0; i < message.Nodes.Length; i++)
+            for (int i = 0; i < message.Nodes.Count; i++)
             {
                 rlpStream.Encode(message.Nodes[i]);
             }
@@ -32,19 +33,19 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap.Messages
             rlpStream.ReadSequenceLength();
 
             long requestId = rlpStream.DecodeLong();
-            byte[][] result = rlpStream.DecodeArray(stream => stream.DecodeByteArray());
+            IOwnedReadOnlyList<byte[]> result = rlpStream.DecodeArrayPoolList(stream => stream.DecodeByteArray());
             return new TrieNodesMessage(result) { RequestId = requestId };
         }
 
-        public (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
+        public static (int contentLength, int nodesLength) GetLength(TrieNodesMessage message)
         {
             int nodesLength = 0;
-            for (int i = 0; i < message.Nodes.Length; i++)
+            for (int i = 0; i < message.Nodes.Count; i++)
             {
                 nodesLength += Rlp.LengthOf(message.Nodes[i]);
             }
 
-            return (nodesLength + Rlp.LengthOf(message.RequestId), nodesLength);
+            return (Rlp.LengthOfSequence(nodesLength) + Rlp.LengthOf(message.RequestId), nodesLength);
         }
     }
 }

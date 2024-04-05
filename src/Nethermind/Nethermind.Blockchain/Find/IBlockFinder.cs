@@ -9,27 +9,28 @@ namespace Nethermind.Blockchain.Find
 {
     public interface IBlockFinder
     {
-        Keccak HeadHash { get; }
+        Hash256 HeadHash { get; }
 
-        Keccak GenesisHash { get; }
+        Hash256 GenesisHash { get; }
 
-        Keccak? PendingHash { get; }
+        Hash256? PendingHash { get; }
 
-        Keccak? FinalizedHash { get; }
+        Hash256? FinalizedHash { get; }
 
-        Keccak? SafeHash { get; }
+        Hash256? SafeHash { get; }
 
         Block? Head { get; }
 
-        Block? FindBlock(Keccak blockHash, BlockTreeLookupOptions options);
+        Block? FindBlock(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         Block? FindBlock(long blockNumber, BlockTreeLookupOptions options);
 
-        BlockHeader? FindHeader(Keccak blockHash, BlockTreeLookupOptions options);
+        /// Find a header. blockNumber is optional, but specifying it can improve performance.
+        BlockHeader? FindHeader(Hash256 blockHash, BlockTreeLookupOptions options, long? blockNumber = null);
 
         BlockHeader? FindHeader(long blockNumber, BlockTreeLookupOptions options);
 
-        Keccak? FindBlockHash(long blockNumber);
+        Hash256? FindBlockHash(long blockNumber);
 
         /// <summary>
         /// Checks if the block is currently in the canonical chain
@@ -43,9 +44,9 @@ namespace Nethermind.Blockchain.Find
         /// </summary>
         /// <param name="blockHash">Hash of the block to check</param>
         /// <returns><value>True</value> if part of the canonical chain, otherwise <value>False</value></returns>
-        bool IsMainChain(Keccak blockHash);
+        bool IsMainChain(Hash256 blockHash);
 
-        public Block? FindBlock(Keccak blockHash) => FindBlock(blockHash, BlockTreeLookupOptions.None);
+        public Block? FindBlock(Hash256 blockHash, long? blockNumber = null) => FindBlock(blockHash, BlockTreeLookupOptions.None, blockNumber);
 
         public Block? FindBlock(long blockNumber) => FindBlock(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
@@ -63,7 +64,7 @@ namespace Nethermind.Blockchain.Find
 
         public Block? FindSafeBlock() => SafeHash is null ? null : FindBlock(SafeHash, BlockTreeLookupOptions.None);
 
-        public BlockHeader? FindHeader(Keccak blockHash) => FindHeader(blockHash, BlockTreeLookupOptions.None);
+        public BlockHeader? FindHeader(Hash256 blockHash, long? blockNumber = null) => FindHeader(blockHash, BlockTreeLookupOptions.None, blockNumber: blockNumber);
 
         public BlockHeader? FindHeader(long blockNumber) => FindHeader(blockNumber, BlockTreeLookupOptions.RequireCanonical);
 
@@ -101,8 +102,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash!,
-                    blockParameter.RequireCanonical
+                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
+                    ? FindLatestBlock()
+                    : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")

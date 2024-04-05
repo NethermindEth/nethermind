@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Consensus
@@ -22,10 +21,10 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key is not null;
 
-        public Signer(ulong chainId, PrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, PrivateKey? key, ILogManager logManager)
         {
             _chainId = chainId;
-            _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager.GetClassLogger<Signer>();
             SetSigner(key);
         }
 
@@ -36,18 +35,18 @@ namespace Nethermind.Consensus
             SetSigner(key);
         }
 
-        public Signature Sign(Keccak message)
+        public Signature Sign(Hash256 message)
         {
             if (!CanSign) throw new InvalidOperationException("Cannot sign without provided key.");
-            byte[] rs = Proxy.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
+            byte[] rs = SpanSecP256k1.SignCompact(message.Bytes, _key!.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
         public ValueTask Sign(Transaction tx)
         {
-            Keccak hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
+            Hash256 hash = Keccak.Compute(Rlp.Encode(tx, true, true, _chainId).Bytes);
             tx.Signature = Sign(hash);
-            tx.Signature.V = tx.Signature.V + 8 + 2 * _chainId;
+            tx.Signature.V = tx.Type == TxType.Legacy ? tx.Signature.V + 8 + 2 * _chainId : (ulong)(tx.Signature.RecoveryId + 27);
             return default;
         }
 

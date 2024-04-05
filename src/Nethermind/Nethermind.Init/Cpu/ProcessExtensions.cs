@@ -53,7 +53,7 @@ public static class ProcessExtensions
                 while (true)
                 {
                     var text = reader.ReadLine();
-                    if (text == null)
+                    if (text is null)
                         return;
 
                     if (int.TryParse(text, out int id) && !children.Contains(id))

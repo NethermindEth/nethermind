@@ -48,7 +48,7 @@ public class CompactStack<T>
         }
     }
 
-    private ObjectPool<Node> _nodePool;
+    private readonly ObjectPool<Node> _nodePool;
     private Node? _head = null;
 
     public CompactStack(ObjectPool<Node>? nodePool = null)
@@ -56,14 +56,11 @@ public class CompactStack<T>
         _nodePool = nodePool ?? new DefaultObjectPool<Node>(new ObjectPoolPolicy(64), 1);
     }
 
-    public bool IsEmpty => _head == null;
+    public bool IsEmpty => _head is null;
 
     public void Push(T item)
     {
-        if (_head == null)
-        {
-            _head = _nodePool.Get();
-        }
+        _head ??= _nodePool.Get();
 
         if (_head._count == _head._array.Length)
         {
@@ -78,7 +75,7 @@ public class CompactStack<T>
 
     public bool TryPop(out T? item)
     {
-        if (_head == null)
+        if (_head is null)
         {
             item = default;
             return false;
@@ -91,7 +88,7 @@ public class CompactStack<T>
         {
             Node? oldHead = _head;
             _head = oldHead._tail;
-            if (oldHead != null)
+            if (oldHead is not null)
             {
                 _nodePool.Return(oldHead);
             }

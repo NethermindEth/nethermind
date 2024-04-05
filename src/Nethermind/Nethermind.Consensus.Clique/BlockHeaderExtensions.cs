@@ -20,9 +20,8 @@ namespace Nethermind.Consensus.Clique
                 throw new Exception(string.Empty);
             }
 
-            Span<byte> signersData = blockHeader.ExtraData.AsSpan()
-                .Slice(Clique.ExtraVanityLength, blockHeader.ExtraData.Length - Clique.ExtraSealLength - Clique.ExtraVanityLength);
-            Address[] signers = new Address[signersData.Length / Address.ByteLength];
+            Span<byte> signersData = blockHeader.ExtraData.AsSpan(Clique.ExtraVanityLength, (blockHeader.ExtraData.Length - Clique.ExtraSealLength));
+            Address[] signers = new Address[signersData.Length / Address.Size];
             for (int i = 0; i < signers.Length; i++)
             {
                 signers[i] = new Address(signersData.Slice(i * 20, 20).ToArray());

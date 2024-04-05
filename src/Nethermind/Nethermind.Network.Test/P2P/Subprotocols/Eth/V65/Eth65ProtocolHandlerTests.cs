@@ -4,22 +4,27 @@
 using System;
 using System.Collections.Generic;
 using System.Net;
+using System.Threading;
+using System.Threading.Tasks;
+using DotNetty.Buffers;
 using FluentAssertions;
-using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
+using Nethermind.Network.Rlpx;
 using Nethermind.Network.Test.Builders;
-using Nethermind.Serialization.Rlp;
 using Nethermind.Stats;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
@@ -32,14 +37,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
     [TestFixture, Parallelizable(ParallelScope.Self)]
     public class Eth65ProtocolHandlerTests
     {
-        private ISession _session;
-        private IMessageSerializationService _svc;
-        private ISyncServer _syncManager;
-        private ITxPool _transactionPool;
-        private IPooledTxsRequestor _pooledTxsRequestor;
-        private ISpecProvider _specProvider;
-        private Block _genesisBlock;
-        private Eth65ProtocolHandler _handler;
+        private ISession _session = null!;
+        private IMessageSerializationService _svc = null!;
+        private ISyncServer _syncManager = null!;
+        private ITxPool _transactionPool = null!;
+        private IPooledTxsRequestor _pooledTxsRequestor = null!;
+        private ISpecProvider _specProvider = null!;
+        private Block _genesisBlock = null!;
+        private Eth65ProtocolHandler _handler = null!;
+        private ITxGossipPolicy _txGossipPolicy = null!;
 
         [SetUp]
         public void Setup()
@@ -59,23 +65,30 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
             _syncManager.Head.Returns(_genesisBlock.Header);
             _syncManager.Genesis.Returns(_genesisBlock.Header);
             ITimerFactory timerFactory = Substitute.For<ITimerFactory>();
+            _txGossipPolicy = Substitute.For<ITxGossipPolicy>();
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(true);
+            _txGossipPolicy.ShouldGossipTransaction(Arg.Any<Transaction>()).Returns(true);
             _handler = new Eth65ProtocolHandler(
                 _session,
                 _svc,
                 new NodeStatsManager(timerFactory, LimboLogs.Instance),
                 _syncManager,
+                RunImmediatelyScheduler.Instance,
                 _transactionPool,
                 _pooledTxsRequestor,
                 Policy.FullGossip,
                 new ForkInfo(_specProvider, _genesisBlock.Header.Hash!),
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                _txGossipPolicy);
             _handler.Init();
         }
 
         [TearDown]
         public void TearDown()
         {
-            _handler.Dispose();
+            _handler?.Dispose();
+            _session?.Dispose();
+            _syncManager?.Dispose();
         }
 
         [Test]
@@ -129,19 +142,19 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         }
 
         [Test]
-        public void should_send_requested_PooledTransactions_up_to_MaxPacketSize()
+        public async Task should_send_requested_PooledTransactions_up_to_MaxPacketSize()
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[1024]).SignedAndResolved().TestObject;
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = TransactionsMessage.MaxPacketSize / sizeOfOneTx;
-            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(TestItem.Keccaks);
-            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
+            using GetPooledTransactionsMessage request = new(TestItem.Keccaks.ToPooledList());
+            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
         }
 
@@ -153,20 +166,48 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [TestCase(100000)]
         [TestCase(102400)]
         [TestCase(222222)]
-        public void should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize(int dataSize)
+        public async Task should_send_single_requested_PooledTransaction_even_if_exceed_MaxPacketSize(int dataSize)
         {
             Transaction tx = Build.A.Transaction.WithData(new byte[dataSize]).SignedAndResolved().TestObject;
-            int sizeOfOneTx = tx.GetLength(new TxDecoder());
+            int sizeOfOneTx = tx.GetLength();
             int numberOfTxsInOneMsg = Math.Max(TransactionsMessage.MaxPacketSize / sizeOfOneTx, 1);
-            _transactionPool.TryGetPendingTransaction(Arg.Any<Keccak>(), out Arg.Any<Transaction>())
+            _transactionPool.TryGetPendingTransaction(Arg.Any<Hash256>(), out Arg.Any<Transaction>())
                 .Returns(x =>
                 {
                     x[1] = tx;
                     return true;
                 });
-            GetPooledTransactionsMessage request = new(new Keccak[2048]);
-            PooledTransactionsMessage response = _handler.FulfillPooledTransactionsRequest(request, new List<Transaction>());
+            using GetPooledTransactionsMessage request = new(new Hash256[2048].ToPooledList());
+            PooledTransactionsMessage response = await _handler.FulfillPooledTransactionsRequest(request, CancellationToken.None);
             response.Transactions.Count.Should().Be(numberOfTxsInOneMsg);
+        }
+
+        [Test]
+        public void should_handle_NewPooledTransactionHashesMessage([Values(true, false)] bool canGossipTransactions)
+        {
+            _txGossipPolicy.ShouldListenToGossipedTransactions.Returns(canGossipTransactions);
+            using NewPooledTransactionHashesMessage msg = new(new[] { TestItem.KeccakA, TestItem.KeccakB }.ToPooledList());
+
+            HandleIncomingStatusMessage();
+            HandleZeroMessage(msg, Eth65MessageCode.NewPooledTransactionHashes);
+
+            _pooledTxsRequestor.Received(canGossipTransactions ? 1 : 0).RequestTransactions(Arg.Any<Action<GetPooledTransactionsMessage>>(), Arg.Any<IReadOnlyList<Hash256>>());
+        }
+
+        private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
+        {
+            IByteBuffer getBlockHeadersPacket = _svc.ZeroSerialize(msg);
+            getBlockHeadersPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(getBlockHeadersPacket) { PacketType = (byte)messageCode });
+        }
+
+        private void HandleIncomingStatusMessage()
+        {
+            var statusMsg = new StatusMessage { GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
+
+            IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
+            statusPacket.ReadByte();
+            _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
         }
     }
 }

@@ -23,7 +23,7 @@ namespace Nethermind.Consensus.Ethash
         private readonly ITimestamper _timestamper;
         private readonly ILogger _logger;
 
-        private readonly LruCache<KeccakKey, bool> _sealCache = new(2048, 2048, "ethash seals");
+        private readonly LruCache<ValueHash256, bool> _sealCache = new(2048, 2048, "ethash seals");
         private const int SealValidationIntervalConstantComponent = 1024;
         private const long AllowedFutureBlockTimeSeconds = 15;
         private int _sealValidationInterval = SealValidationIntervalConstantComponent;
@@ -34,7 +34,7 @@ namespace Nethermind.Consensus.Ethash
             _cryptoRandom = cryptoRandom ?? throw new ArgumentNullException(nameof(cryptoRandom));
             _ethash = ethash ?? throw new ArgumentNullException(nameof(ethash));
             _timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             ResetValidationInterval();
         }

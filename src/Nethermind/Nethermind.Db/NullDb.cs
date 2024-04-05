@@ -21,10 +21,14 @@ namespace Nethermind.Db
 
         public string Name { get; } = "NullDb";
 
-        public byte[]? this[ReadOnlySpan<byte> key]
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            get => null;
-            set => throw new NotSupportedException();
+            return null;
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            throw new NotSupportedException();
         }
 
         public KeyValuePair<byte[], byte[]>[] this[byte[][] keys] => keys.Select(k => new KeyValuePair<byte[], byte[]>(k, null)).ToArray();
@@ -39,15 +43,15 @@ namespace Nethermind.Db
             return false;
         }
 
-        public IDb Innermost => this;
         public void Flush() { }
         public void Clear() { }
 
         public IEnumerable<KeyValuePair<byte[], byte[]>> GetAll(bool ordered = false) => Enumerable.Empty<KeyValuePair<byte[], byte[]>>();
 
+        public IEnumerable<byte[]> GetAllKeys(bool ordered = false) => Enumerable.Empty<byte[]>();
         public IEnumerable<byte[]> GetAllValues(bool ordered = false) => Enumerable.Empty<byte[]>();
 
-        public IBatch StartBatch()
+        public IWriteBatch StartWriteBatch()
         {
             throw new NotSupportedException();
         }

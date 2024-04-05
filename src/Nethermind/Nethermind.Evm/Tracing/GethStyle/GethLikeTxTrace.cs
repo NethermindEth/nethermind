@@ -1,27 +1,39 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Evm.Tracing.GethStyle.Custom;
 
-namespace Nethermind.Evm.Tracing.GethStyle
+namespace Nethermind.Evm.Tracing.GethStyle;
+
+[JsonConverter(typeof(GethLikeTxTraceConverter))]
+public class GethLikeTxTrace : IDisposable
 {
-    public class GethLikeTxTrace
+    private readonly IDisposable? _disposable;
+
+    public GethLikeTxTrace(IDisposable? disposable = null)
     {
-        public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
+        _disposable = disposable;
+    }
 
-        public GethLikeTxTrace()
-        {
-            Entries = new List<GethTxTraceEntry>();
-        }
+    public GethLikeTxTrace() { }
 
-        public long Gas { get; set; }
+    public Stack<Dictionary<string, string>> StoragesByDepth { get; } = new();
 
-        public bool Failed { get; set; }
+    public long Gas { get; set; }
 
-        public byte[] ReturnValue { get; set; }
+    public bool Failed { get; set; }
 
-        [JsonProperty(PropertyName = "structLogs")]
-        public List<GethTxTraceEntry> Entries { get; set; }
+    public byte[] ReturnValue { get; set; } = Array.Empty<byte>();
+
+    public List<GethTxTraceEntry> Entries { get; set; } = new();
+
+    public GethLikeCustomTrace? CustomTracerResult { get; set; }
+
+    public void Dispose()
+    {
+        _disposable?.Dispose();
     }
 }

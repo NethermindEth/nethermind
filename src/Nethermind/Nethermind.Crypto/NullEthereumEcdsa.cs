@@ -15,17 +15,17 @@ namespace Nethermind.Crypto
         {
         }
 
-        public Signature Sign(PrivateKey privateKey, Keccak message)
+        public Signature Sign(PrivateKey privateKey, Hash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public PublicKey RecoverPublicKey(Signature signature, Keccak message)
+        public PublicKey RecoverPublicKey(Signature signature, Hash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Keccak message)
+        public CompressedPublicKey RecoverCompressedPublicKey(Signature signature, Hash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
@@ -40,12 +40,12 @@ namespace Nethermind.Crypto
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Signature signature, Keccak message)
+        public Address RecoverAddress(Signature signature, Hash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }
 
-        public Address RecoverAddress(Span<byte> signatureBytes, Keccak message)
+        public Address RecoverAddress(Span<byte> signatureBytes, Hash256 message)
         {
             throw new InvalidOperationException($"{nameof(NullEthereumEcdsa)} does not expect any calls");
         }

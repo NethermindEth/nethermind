@@ -35,16 +35,16 @@ namespace Nethermind.Network.Test
         public static (EncryptionSecrets A, EncryptionSecrets B) GetSecretsPair()
         {
             EncryptionHandshake handshakeA = new();
-            handshakeA.InitiatorNonce = TestItem.KeccakA.Bytes;
-            handshakeA.RecipientNonce = TestItem.KeccakB.Bytes;
+            handshakeA.InitiatorNonce = TestItem.KeccakA.BytesToArray();
+            handshakeA.RecipientNonce = TestItem.KeccakB.BytesToArray();
             handshakeA.EphemeralPrivateKey = TestItem.PrivateKeyA;
             handshakeA.RemoteEphemeralPublicKey = TestItem.PrivateKeyB.PublicKey;
             handshakeA.AckPacket = new Packet(new byte[128]);
             handshakeA.AuthPacket = new Packet(new byte[128]);
 
             EncryptionHandshake handshakeB = new();
-            handshakeB.InitiatorNonce = TestItem.KeccakA.Bytes;
-            handshakeB.RecipientNonce = TestItem.KeccakB.Bytes;
+            handshakeB.InitiatorNonce = TestItem.KeccakA.BytesToArray();
+            handshakeB.RecipientNonce = TestItem.KeccakB.BytesToArray();
             handshakeB.EphemeralPrivateKey = TestItem.PrivateKeyB;
             handshakeB.RemoteEphemeralPublicKey = TestItem.PrivateKeyA.PublicKey;
             handshakeB.AckPacket = new Packet(new byte[128]);
@@ -53,8 +53,8 @@ namespace Nethermind.Network.Test
             HandshakeService.SetSecrets(handshakeA, HandshakeRole.Initiator);
             HandshakeService.SetSecrets(handshakeB, HandshakeRole.Recipient);
 
-            Assert.AreEqual(handshakeA.Secrets.AesSecret, handshakeB.Secrets.AesSecret, "aes");
-            Assert.AreEqual(handshakeA.Secrets.MacSecret, handshakeB.Secrets.MacSecret, "mac");
+            Assert.That(handshakeB.Secrets.AesSecret, Is.EqualTo(handshakeA.Secrets.AesSecret), "aes");
+            Assert.That(handshakeB.Secrets.MacSecret, Is.EqualTo(handshakeA.Secrets.MacSecret), "mac");
 
             KeccakHash aIngress = handshakeA.Secrets.IngressMac.Copy();
             KeccakHash bIngress = handshakeB.Secrets.IngressMac.Copy();
@@ -66,8 +66,8 @@ namespace Nethermind.Network.Test
             byte[] aEgressFinal = aEgress.Hash;
             byte[] bEgressFinal = bEgress.Hash;
 
-            Assert.AreEqual(aIngressFinal.ToHexString(), bEgressFinal.ToHexString());
-            Assert.AreEqual(aEgressFinal.ToHexString(), bIngressFinal.ToHexString());
+            Assert.That(bEgressFinal.ToHexString(), Is.EqualTo(aIngressFinal.ToHexString()));
+            Assert.That(bIngressFinal.ToHexString(), Is.EqualTo(aEgressFinal.ToHexString()));
 
             return (handshakeA.Secrets, handshakeB.Secrets);
         }

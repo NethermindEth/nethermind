@@ -3,14 +3,16 @@
 
 using System;
 using System.Diagnostics;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.FastSync
 {
     [DebuggerDisplay("{Level} {NodeDataType} {Hash}")]
     public class StateSyncItem
     {
-        public StateSyncItem(Keccak hash, byte[]? accountPathNibbles, byte[]? pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
+        public StateSyncItem(Hash256 hash, byte[]? accountPathNibbles, byte[]? pathNibbles, NodeDataType nodeType, int level = 0, uint rightness = 0)
         {
             Hash = hash;
             AccountPathNibbles = accountPathNibbles ?? Array.Empty<byte>();
@@ -20,17 +22,7 @@ namespace Nethermind.Synchronization.FastSync
             Rightness = rightness;
         }
 
-        public StateSyncItem(StateSyncItem original, NodeDataType nodeDataType)
-        {
-            Hash = original.Hash;
-            AccountPathNibbles = original.AccountPathNibbles;
-            PathNibbles = original.PathNibbles;
-            NodeDataType = nodeDataType;
-            Level = original.Level;
-            Rightness = original.Rightness;
-        }
-
-        public Keccak Hash { get; }
+        public Hash256 Hash { get; }
 
         /// <summary>
         /// Account part of the path if the item is a Storage node.
@@ -55,5 +47,16 @@ namespace Nethermind.Synchronization.FastSync
         public uint Rightness { get; }
 
         public bool IsRoot => Level == 0 && NodeDataType == NodeDataType.State;
+
+        private TreePath? _treePath = null;
+        public TreePath Path => _treePath ??= TreePath.FromNibble(PathNibbles);
+
+        private Hash256? _address = null;
+        public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? (_address ??= new Hash256(Nibbles.ToBytes(AccountPathNibbles))) : null;
+
+        private NodeKey? _key = null;
+        public NodeKey Key => _key ??= new(Address, Path, Hash);
+
+        public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
     }
 }

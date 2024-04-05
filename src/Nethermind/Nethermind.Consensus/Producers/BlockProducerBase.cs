@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
@@ -12,7 +11,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
@@ -41,10 +39,10 @@ namespace Nethermind.Consensus.Producers
         public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
-        private IStateProvider StateProvider { get; }
+        private IWorldState StateProvider { get; }
         private readonly IGasLimitCalculator _gasLimitCalculator;
         private readonly IDifficultyCalculator _difficultyCalculator;
-        private readonly ISpecProvider _specProvider;
+        protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
         private readonly IBlockProductionTrigger _trigger;
         private bool _isRunning;
@@ -62,7 +60,7 @@ namespace Nethermind.Consensus.Producers
             ISealer? sealer,
             IBlockTree? blockTree,
             IBlockProductionTrigger? trigger,
-            IStateProvider? stateProvider,
+            IWorldState? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
             ISpecProvider? specProvider,
@@ -196,7 +194,7 @@ namespace Nethermind.Consensus.Producers
                                 if (t.Result is not null)
                                 {
                                     if (Logger.IsInfo)
-                                        Logger.Info($"Sealed block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
+                                        Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
                                     _lastProducedBlockDateTime = DateTime.UtcNow;
                                     return t.Result;
@@ -205,18 +203,18 @@ namespace Nethermind.Consensus.Producers
                                 {
                                     if (Logger.IsInfo)
                                         Logger.Info(
-                                            $"Failed to seal block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
+                                            $"Failed to produce block {processedBlock.ToString(Block.Format.HashNumberDiffAndTx)} (null seal)");
                                     Metrics.FailedBlockSeals++;
                                 }
                             }
                             else if (t.IsFaulted)
                             {
-                                if (Logger.IsError) Logger.Error("Mining failed", t.Exception);
+                                if (Logger.IsError) Logger.Error("Producing failed", t.Exception);
                                 Metrics.FailedBlockSeals++;
                             }
                             else if (t.IsCanceled)
                             {
-                                if (Logger.IsInfo) Logger.Info($"Sealing block {processedBlock.Number} cancelled");
+                                if (Logger.IsInfo) Logger.Info($"Producing block {processedBlock.Number} cancelled");
                                 Metrics.FailedBlockSeals++;
                             }
 
@@ -235,16 +233,9 @@ namespace Nethermind.Consensus.Producers
         /// <param name="parentStateRoot">Parent block state</param>
         /// <returns>True if succeeded, false otherwise</returns>
         /// <remarks>Should be called inside <see cref="_producingBlockLock"/> lock.</remarks>
-        protected bool TrySetState(Keccak? parentStateRoot)
+        protected bool TrySetState(Hash256? parentStateRoot)
         {
-            bool HasState(Keccak stateRoot)
-            {
-                RootCheckVisitor visitor = new();
-                StateProvider.Accept(visitor, stateRoot);
-                return visitor.HasRoot;
-            }
-
-            if (parentStateRoot is not null && HasState(parentStateRoot))
+            if (parentStateRoot is not null && StateProvider.HasStateForRoot(parentStateRoot))
             {
                 StateProvider.StateRoot = parentStateRoot;
                 return true;
@@ -270,12 +261,6 @@ namespace Nethermind.Consensus.Producers
             return true;
         }
 
-        private IEnumerable<Transaction> GetTransactions(BlockHeader parent)
-        {
-            long gasLimit = _gasLimitCalculator.GetGasLimit(parent);
-            return _txSource.GetTransactions(parent, gasLimit);
-        }
-
         protected virtual BlockHeader PrepareBlockHeader(BlockHeader parent,
             PayloadAttributes? payloadAttributes = null)
         {
@@ -287,12 +272,13 @@ namespace Nethermind.Consensus.Producers
                 blockAuthor,
                 UInt256.Zero,
                 parent.Number + 1,
-                payloadAttributes?.GasLimit ?? _gasLimitCalculator.GetGasLimit(parent),
+                payloadAttributes?.GetGasLimit() ?? _gasLimitCalculator.GetGasLimit(parent),
                 timestamp,
                 _blocksConfig.GetExtraDataBytes())
             {
                 Author = blockAuthor,
-                MixHash = payloadAttributes?.PrevRandao
+                MixHash = payloadAttributes?.PrevRandao,
+                ParentBeaconBlockRoot = payloadAttributes?.ParentBeaconBlockRoot
             };
 
             UInt256 difficulty = _difficultyCalculator.Calculate(header, parent);
@@ -300,7 +286,9 @@ namespace Nethermind.Consensus.Producers
             header.TotalDifficulty = parent.TotalDifficulty + difficulty;
 
             if (Logger.IsDebug) Logger.Debug($"Setting total difficulty to {parent.TotalDifficulty} + {difficulty}.");
+
             header.BaseFeePerGas = BaseFeeCalculator.Calculate(parent, _specProvider.GetSpec(header));
+
             return header;
         }
 
@@ -308,13 +296,7 @@ namespace Nethermind.Consensus.Producers
         {
             BlockHeader header = PrepareBlockHeader(parent, payloadAttributes);
 
-            IEnumerable<Transaction> transactions = GetTransactions(parent);
-
-            if (_specProvider.GetSpec(header).IsEip4844Enabled)
-            {
-                // TODO: Calculate ExcessDataGas depending on parent ExcessDataGas and number of blobs in txs
-                header.ExcessDataGas = 0;
-            }
+            IEnumerable<Transaction> transactions = _txSource.GetTransactions(parent, header.GasLimit, payloadAttributes);
 
             return new BlockToProduce(header, transactions, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
         }

@@ -11,10 +11,11 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
-using ILogger = Nethermind.Logging.ILogger;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 
 namespace Nethermind.Runner.Ethereum.Api
 {
@@ -23,7 +24,7 @@ namespace Nethermind.Runner.Ethereum.Api
         private readonly IConfigProvider _configProvider;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Nethermind.Logging.ILogger _logger;
         private readonly IInitConfig _initConfig;
 
         public ApiBuilder(IConfigProvider configProvider, ILogManager logManager)
@@ -50,14 +51,12 @@ namespace Nethermind.Runner.Ethereum.Api
             string engine = chainSpec.SealEngineType;
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
-            INethermindApi nethermindApi = enginePlugin?.CreateApi() ?? new NethermindApi();
-            nethermindApi.ConfigProvider = _configProvider;
-            nethermindApi.EthereumJsonSerializer = _jsonSerializer;
-            nethermindApi.LogManager = _logManager;
+            INethermindApi nethermindApi =
+                enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
+                new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);
             nethermindApi.GasLimitCalculator = new FollowOtherMiners(nethermindApi.SpecProvider);
-            nethermindApi.ChainSpec = chainSpec;
 
             SetLoggerVariables(chainSpec);
 
@@ -82,7 +81,9 @@ namespace Nethermind.Runner.Ethereum.Api
             ThisNodeInfo.AddInfo("Chainspec    :", $"{chainSpecFile}");
 
             IChainSpecLoader loader = new ChainSpecLoader(ethereumJsonSerializer);
-            return loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
+            ChainSpec chainSpec = loader.LoadEmbeddedOrFromFile(chainSpecFile, _logger);
+            TransactionForRpc.DefaultChainId = chainSpec.ChainId;
+            return chainSpec;
         }
 
         private void SetLoggerVariables(ChainSpec chainSpec)

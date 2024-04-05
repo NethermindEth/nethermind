@@ -11,7 +11,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.KeyStore;
 using Nethermind.Logging;
-using Nethermind.Secp256k1;
 
 namespace Nethermind.Wallet
 {
@@ -28,7 +27,7 @@ namespace Nethermind.Wallet
         public DevKeyStoreWallet(IKeyStore keyStore, ILogManager logManager, bool createTestAccounts = true)
         {
             _keyStore = keyStore;
-            _logger = logManager.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
             if (createTestAccounts)
             {
@@ -87,12 +86,12 @@ namespace Nethermind.Wallet
 
         public bool IsUnlocked(Address address) => _unlockedAccounts.ContainsKey(address);
 
-        public Signature Sign(Keccak message, Address address, SecureString passphrase)
+        public Signature Sign(Hash256 message, Address address, SecureString passphrase)
         {
             PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
+            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
             {
-                key = _unlockedAccounts[address];
+                key = value;
             }
             else
             {
@@ -101,23 +100,23 @@ namespace Nethermind.Wallet
                 key = _keyStore.GetKey(address, passphrase).PrivateKey;
             }
 
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = SpanSecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
 
-        public Signature Sign(Keccak message, Address address)
+        public Signature Sign(Hash256 message, Address address)
         {
             PrivateKey key;
-            if (_unlockedAccounts.ContainsKey(address))
+            if (_unlockedAccounts.TryGetValue(address, out PrivateKey value))
             {
-                key = _unlockedAccounts[address];
+                key = value;
             }
             else
             {
                 throw new SecurityException("Can only sign without passphrase when account is unlocked.");
             }
 
-            var rs = Proxy.SignCompact(message.Bytes, key.KeyBytes, out int v);
+            var rs = SpanSecP256k1.SignCompact(message.Bytes, key.KeyBytes, out int v);
             return new Signature(rs, v);
         }
     }

@@ -21,7 +21,7 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.ReadSequenceLength();
             Address? address = rlpStream.DecodeAddress();
             long sequenceLength = rlpStream.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Hash256[] topics = new Hash256[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = rlpStream.DecodeKeccak();
@@ -43,7 +43,7 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.ReadSequenceLength();
             Address? address = decoderContext.DecodeAddress();
             long sequenceLength = decoderContext.ReadSequenceLength();
-            Keccak[] topics = new Keccak[sequenceLength / 33];
+            Hash256[] topics = new Hash256[sequenceLength / 33];
             for (int i = 0; i < topics.Length; i++)
             {
                 topics[i] = decoderContext.DecodeKeccak();
@@ -63,7 +63,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new Rlp(rlpStream.Data);
+            return new Rlp(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream rlpStream, LogEntry? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

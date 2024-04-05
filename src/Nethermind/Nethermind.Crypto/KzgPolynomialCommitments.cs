@@ -27,15 +27,17 @@ public static class KzgPolynomialCommitments
 
     private static Task? _initializeTask;
 
-    public static Task Initialize(ILogger? logger = null) => _initializeTask ??= Task.Run(() =>
+    public static bool IsInitialized => _ckzgSetup != IntPtr.Zero;
+
+    public static Task InitializeAsync(ILogger logger = default, string? setupFilePath = null) => _initializeTask ??= Task.Run(() =>
     {
         if (_ckzgSetup != IntPtr.Zero) return;
 
-        string trustedSetupTextFileLocation =
+        string trustedSetupTextFileLocation = setupFilePath ??
             Path.Combine(Path.GetDirectoryName(typeof(KzgPolynomialCommitments).Assembly.Location) ??
                          string.Empty, "kzg_trusted_setup.txt");
 
-        if (logger?.IsInfo == true)
+        if (logger.IsInfo)
             logger.Info($"Loading {nameof(Ckzg)} trusted setup from file {trustedSetupTextFileLocation}");
         _ckzgSetup = Ckzg.Ckzg.LoadTrustedSetup(trustedSetupTextFileLocation);
 
@@ -48,11 +50,11 @@ public static class KzgPolynomialCommitments
     /// <summary>
     ///
     /// </summary>
-    /// <param name="commitment">Commitment to calculate hash from</param>
+    /// <param name="commitment">Hash256 to calculate hash from</param>
     /// <param name="hashBuffer">Holds the output, can safely contain any data before the call.</param>
     /// <returns>Result of the attempt</returns>
     /// <exception cref="ArgumentException"></exception>
-    public static bool TryComputeCommitmentV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
+    public static bool TryComputeCommitmentHashV1(ReadOnlySpan<byte> commitment, Span<byte> hashBuffer)
     {
         if (commitment.Length != Ckzg.Ckzg.BytesPerCommitment)
         {
@@ -86,16 +88,37 @@ public static class KzgPolynomialCommitments
         }
     }
 
-    public static bool AreProofsValid(byte[] blobs, byte[] commitments, byte[] proofs)
+    public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
     {
+        byte[] flatBlobs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerBlob];
+        byte[] flatCommitments = new byte[blobs.Length * Ckzg.Ckzg.BytesPerCommitment];
+        byte[] flatProofs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerProof];
+
+        for (int i = 0; i < blobs.Length; i++)
+        {
+            Array.Copy(blobs[i], 0, flatBlobs, i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
+            Array.Copy(commitments[i], 0, flatCommitments, i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
+            Array.Copy(proofs[i], 0, flatProofs, i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof);
+        }
+
         try
         {
-            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(blobs, commitments, proofs, blobs.Length / Ckzg.Ckzg.BytesPerBlob,
+            return Ckzg.Ckzg.VerifyBlobKzgProofBatch(flatBlobs, flatCommitments, flatProofs, blobs.Length,
                 _ckzgSetup);
         }
         catch (Exception e) when (e is ArgumentException or ApplicationException or InsufficientMemoryException)
         {
             return false;
         }
+    }
+
+    /// <summary>
+    /// Method to genereate correct data for tests only, not safe
+    /// </summary>
+    public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
+    {
+        Ckzg.Ckzg.BlobToKzgCommitment(commitment, blob, _ckzgSetup);
+        Ckzg.Ckzg.ComputeBlobKzgProof(proof, blob, commitment, _ckzgSetup);
+        TryComputeCommitmentHashV1(commitment, hashV1);
     }
 }

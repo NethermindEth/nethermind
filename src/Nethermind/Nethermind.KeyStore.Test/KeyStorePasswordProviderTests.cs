@@ -11,7 +11,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.KeyStore.Config;
-using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -19,7 +18,7 @@ namespace Nethermind.KeyStore.Test
 {
     public class KeyStorePasswordProviderTests
     {
-        private static List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
+        private static readonly List<(string Name, string Content)> _files = new List<(string Name, string Content)>()
         {
             ("TestingPasswordProviderFileF1", "PF1"),
             ("TestingPasswordProviderFileF2", "P    F2"),
@@ -118,7 +117,7 @@ namespace Nethermind.KeyStore.Test
                 var actualPassword = passwordProvider.GetPassword(test.UnlockAccounts[index]);
                 var expectedPassword = test.ExpectedPasswords[index];
                 Assert.IsTrue(actualPassword.IsReadOnly());
-                Assert.AreEqual(expectedPassword, actualPassword.Unsecure());
+                Assert.That(actualPassword.Unsecure(), Is.EqualTo(expectedPassword));
             }
         }
 

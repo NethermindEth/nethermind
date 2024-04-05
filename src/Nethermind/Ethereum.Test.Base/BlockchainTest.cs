@@ -16,8 +16,8 @@ namespace Ethereum.Test.Base
         public string? Name { get; set; }
         public IReleaseSpec? Network { get; set; }
         public IReleaseSpec? NetworkAfterTransition { get; set; }
-        public long TransitionBlockNumber { get; set; }
-        public Keccak? LastBlockHash { get; set; }
+        public ForkActivation? TransitionForkActivation { get; set; }
+        public Hash256? LastBlockHash { get; set; }
         public Rlp? GenesisRlp { get; set; }
 
         public TestBlockJson[]? Blocks { get; set; }
@@ -25,7 +25,7 @@ namespace Ethereum.Test.Base
 
         public Dictionary<Address, AccountState>? Pre { get; set; }
         public Dictionary<Address, AccountState>? PostState { get; set; }
-        public Keccak? PostStateRoot { get; set; }
+        public Hash256? PostStateRoot { get; set; }
         public bool SealEngineUsed { get; set; }
         public string? LoadFailure { get; set; }
 

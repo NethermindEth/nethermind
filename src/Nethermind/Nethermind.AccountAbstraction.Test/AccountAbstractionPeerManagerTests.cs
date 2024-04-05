@@ -2,21 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
-using System.Threading;
-using System.Threading.Tasks;
-using Antlr4.Runtime.Misc;
-using FluentAssertions;
 using Nethermind.AccountAbstraction.Broadcaster;
 using Nethermind.AccountAbstraction.Data;
 using Nethermind.AccountAbstraction.Executor;
 using Nethermind.AccountAbstraction.Network;
 using Nethermind.AccountAbstraction.Source;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Filters;
-using Nethermind.Blockchain.Filters.Topics;
 using Nethermind.Blockchain.Find;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,9 +18,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 
 namespace Nethermind.AccountAbstraction.Test
@@ -36,16 +26,16 @@ namespace Nethermind.AccountAbstraction.Test
     [TestFixture]
     public class AccountAbstractionPeerManagerTests
     {
-        private IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
-        private IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
-        private IBlockTree _blockTree = Substitute.For<IBlockTree>();
-        private ILogger _logger = Substitute.For<ILogger>();
-        private ILogFinder _logFinder = Substitute.For<ILogFinder>();
-        private IStateProvider _stateProvider = Substitute.For<IStateProvider>();
-        private ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
+        private readonly IDictionary<Address, IUserOperationPool> _userOperationPools = new Dictionary<Address, IUserOperationPool>();
+        private readonly IUserOperationSimulator _simulator = Substitute.For<IUserOperationSimulator>();
+        private readonly IBlockTree _blockTree = Substitute.For<IBlockTree>();
+        private readonly ILogger _logger = new(Substitute.For<InterfaceLogger>());
+        private readonly ILogFinder _logFinder = Substitute.For<ILogFinder>();
+        private readonly IWorldState _stateProvider = Substitute.For<IWorldState>();
+        private readonly ISpecProvider _specProvider = Substitute.For<ISpecProvider>();
         private readonly ISigner _signer = Substitute.For<ISigner>();
         private readonly string[] _entryPointContractAddress = { "0x8595dd9e0438640b5e1254f9df579ac12a86865f", "0x96cc609c8f5458fb8a7da4d94b678e38ebf3d04e" };
-        private static Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
+        private static readonly Address _notAnAddress = new("0x373f2D08b1C195fF08B9AbEdE3C78575FAAC2aCf");
 
         [Test]
         public void should_add_peers()
@@ -128,7 +118,7 @@ namespace Nethermind.AccountAbstraction.Test
             _stateProvider.IsContract(_notAnAddress).Returns(false);
 
             _simulator.Simulate(Arg.Any<UserOperation>(), Arg.Any<BlockHeader>())
-                .ReturnsForAnyArgs(x => ResultWrapper<Keccak>.Success(Keccak.Zero));
+                .ReturnsForAnyArgs(x => ResultWrapper<Hash256>.Success(Keccak.Zero));
 
             _blockTree.Head.Returns(Core.Test.Builders.Build.A.Block.TestObject);
 

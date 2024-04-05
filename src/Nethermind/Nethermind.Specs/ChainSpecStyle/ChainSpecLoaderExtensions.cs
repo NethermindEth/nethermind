@@ -1,12 +1,10 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
 using System.IO;
-using System.Linq;
 using System.Reflection;
 using System.Text;
-using Microsoft.Extensions.Primitives;
 using Nethermind.Config;
 using Nethermind.Logging;
 
@@ -27,7 +25,6 @@ public static class ChainSpecLoaderExtensions
                 if (logger.IsInfo) logger.Info($"Did not find chainspec in embedded resources: {fileName}");
                 return chainSpecLoader.LoadFromFile(fileName, logger);
             }
-            using StreamReader reader = new(stream);
             fileName = fileName.GetApplicationResourcePath();
             if (File.Exists(fileName))
             {
@@ -37,7 +34,7 @@ public static class ChainSpecLoaderExtensions
             {
                 if (logger.IsInfo) logger.Info($"Loading chainspec from embedded resources: {fileName}");
             }
-            return chainSpecLoader.Load(reader.ReadToEnd());
+            return chainSpecLoader.Load(stream);
         }
         catch (Exception ex)
         {
@@ -65,6 +62,25 @@ public static class ChainSpecLoaderExtensions
 
     public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger logger)
     {
+        filePath = CheckEmbeddedChainSpec(filePath);
+        if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
+        return LoadFromFileInternal(chainSpecLoader, filePath);
+    }
+
+    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
+    {
+        filePath = CheckEmbeddedChainSpec(filePath);
+        return LoadFromFileInternal(chainSpecLoader, filePath);
+    }
+
+    private static ChainSpec LoadFromFileInternal(IChainSpecLoader chainSpecLoader, string filePath)
+    {
+        using FileStream fileStream = new(filePath, FileMode.Open, FileAccess.Read, FileShare.Read);
+        return chainSpecLoader.Load(fileStream);
+    }
+
+    private static string CheckEmbeddedChainSpec(string filePath)
+    {
         filePath = filePath.GetApplicationResourcePath();
         if (!File.Exists(filePath))
         {
@@ -82,12 +98,10 @@ public static class ChainSpecLoaderExtensions
             {
                 // do nothing - the lines above just give extra info and config is loaded at the beginning so unlikely we have any catastrophic errors here
             }
-            finally
-            {
-                throw new FileNotFoundException(missingChainspecFileMessage.ToString());
-            }
+
+            throw new FileNotFoundException(missingChainspecFileMessage.ToString());
         }
-        if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
-        return chainSpecLoader.Load(File.ReadAllText(filePath));
+
+        return filePath;
     }
 }

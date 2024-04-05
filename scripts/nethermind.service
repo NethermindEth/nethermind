@@ -11,7 +11,7 @@ User=nethermind
 Group=nethermind
 EnvironmentFile=/home/nethermind/.env
 WorkingDirectory=/home/nethermind
-ExecStart=/home/nethermind/build/Nethermind.Runner --datadir /home/nethermind/data
+ExecStart=/home/nethermind/build/nethermind -dd /home/nethermind/data
 Restart=on-failure
 LimitNOFILE=1000000
 

@@ -7,9 +7,9 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
+using Nethermind.State;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.State;
 using Nethermind.Trie;
 using NUnit.Framework;
 
@@ -49,8 +49,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)
@@ -79,8 +78,7 @@ namespace Nethermind.Evm.Test
             TestState.CreateAccount(expectedAddress, 1.Ether());
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -88,8 +86,8 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.GetAccount(expectedAddress).Should().NotBeNull();
-            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
+            TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
+            account.Balance.Should().Be(1.Ether());
             AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
@@ -108,19 +106,16 @@ namespace Nethermind.Evm.Test
             Address expectedAddress = ContractAddress.From(TestItem.AddressC, salt.PadLeft(32).AsSpan(), initCode.AsSpan());
 
             TestState.CreateAccount(expectedAddress, 1.Ether());
-            Storage.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
-            Storage.Commit();
-            Storage.CommitTrees(0);
+            TestState.Set(new StorageCell(expectedAddress, 1), new byte[] { 1, 2, 3, 4, 5 });
             TestState.Commit(Spec);
             TestState.CommitTree(0);
 
-            Keccak storageRoot = TestState.GetAccount(expectedAddress).StorageRoot;
+            ValueHash256 storageRoot = TestState.GetStorageRoot(expectedAddress);
             storageRoot.Should().NotBe(PatriciaTree.EmptyTreeHash);
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -128,17 +123,17 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            TestState.GetAccount(expectedAddress).Should().NotBeNull();
-            TestState.GetAccount(expectedAddress).Balance.Should().Be(1.Ether());
-            TestState.GetAccount(expectedAddress).StorageRoot.Should().Be(storageRoot);
+            TestState.TryGetAccount(expectedAddress, out AccountStruct account).Should().BeTrue();
+            account.Balance.Should().Be(1.Ether());
+            account.StorageRoot.Should().Be(storageRoot);
             AssertEip1014(expectedAddress, Array.Empty<byte>());
         }
 
         [Test]
         public void Test_out_of_gas_non_existing_account()
         {
-            byte[] salt = { 4, 5, 6 };
-            byte[] deployedCode = { 1, 2, 3 };
+            byte[] salt = [4, 5, 6];
+            byte[] deployedCode = [1, 2, 3];
 
             byte[] initCode = Prepare.EvmCode
                 .ForInitOf(deployedCode).Done;
@@ -151,8 +146,7 @@ namespace Nethermind.Evm.Test
             // TestState.CreateAccount(expectedAddress, 1.Ether()); <-- non-existing
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
 
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 32100)
@@ -185,8 +179,7 @@ namespace Nethermind.Evm.Test
                 .Create2(initCode, salt, 0).Done;
 
             TestState.CreateAccount(TestItem.AddressC, 1.Ether());
-            Keccak createCodeHash = TestState.UpdateCode(createCode);
-            TestState.UpdateCodeHash(TestItem.AddressC, createCodeHash, Spec);
+            TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
             byte[] code = Prepare.EvmCode
                 .Call(TestItem.AddressC, 50000)

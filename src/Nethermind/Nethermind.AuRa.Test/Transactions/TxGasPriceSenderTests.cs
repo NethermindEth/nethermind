@@ -26,7 +26,7 @@ namespace Nethermind.AuRa.Test.Transactions
             TxGasPriceSender txGasPriceSender = new(txSender, gasPriceOracle, percentDelta);
             Transaction transaction = Build.A.Transaction.WithGasPrice(0).TestObject;
             txGasPriceSender.SendTransaction(transaction, TxHandlingOptions.None);
-            Assert.AreEqual((UInt256)expectedGasPrice, transaction.GasPrice);
+            Assert.That(transaction.GasPrice, Is.EqualTo((UInt256)expectedGasPrice));
         }
     }
 }

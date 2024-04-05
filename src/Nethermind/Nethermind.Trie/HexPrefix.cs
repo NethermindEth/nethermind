@@ -19,7 +19,7 @@ namespace Nethermind.Trie
                 output[0] += (byte)(0x10 + path[0]);
             }
 
-            for (int i = 0; i < path.Length - 1; i = i + 2)
+            for (int i = 0; i < path.Length - 1; i += 2)
             {
                 output[i / 2 + 1] =
                     path.Length % 2 == 0

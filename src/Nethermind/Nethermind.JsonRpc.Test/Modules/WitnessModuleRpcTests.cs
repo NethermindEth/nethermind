@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
@@ -46,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         }
 
         [Test]
-        public void GetOneWitnessHash()
+        public async Task GetOneWitnessHash()
         {
             _blockFinder.FindHeader((BlockParameter)null!).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
@@ -55,26 +56,24 @@ namespace Nethermind.JsonRpc.Test.Modules
             _witnessRepository.Add(_block.Hash!);
             _witnessRepository.Persist(_block.Hash!);
 
-            string serialized = RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
+            string serialized = await RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", _block.CalculateHash().ToString());
             serialized.Should().Be(GetOneWitnessHashResponse);
         }
 
         [Test]
-        public void BlockNotFound()
+        public async Task BlockNotFound()
         {
-            string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x583");
+            string serialized = await RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x583");
             serialized.Should().Be(BlockNotFoundResponse);
         }
 
         [Test]
-        public void WitnessNotFound()
+        public async Task WitnessNotFound()
         {
             _blockFinder.FindHeader((BlockParameter)null!).ReturnsForAnyArgs(_block.Header);
             _blockFinder.Head.Returns(_block);
 
-            string serialized =
-                RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x1");
+            string serialized = await RpcTest.TestSerializedRequest<IWitnessRpcModule>(_witnessRpcModule, "get_witnesses", "0x1");
             serialized.Should().Be(WitnessNotFoundResponse);
 
         }

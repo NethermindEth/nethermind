@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Core.Test;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -34,6 +35,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
                 Substitute.For<IMessageSerializationService>(),
                 Substitute.For<INodeStatsManager>(),
                 Substitute.For<ISyncServer>(),
+                RunImmediatelyScheduler.Instance,
                 Substitute.For<ITxPool>(),
                 Substitute.For<IGossipPolicy>(),
                 LimboLogs.Instance);
@@ -41,6 +43,13 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _timestamper = Substitute.For<ITimestamper>();
             _timestamper.UtcNow.Returns(c => DateTime.UtcNow);
             _controller = new TxFloodController(_handler, _timestamper, LimboNoErrorLogger.Instance);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _handler?.Dispose();
+            _session?.Dispose();
         }
 
         [Test]
@@ -81,7 +90,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(false);
 
             _session.DidNotReceiveWithAnyArgs()
-                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, null);
+                .InitiateDisconnect(DisconnectReason.TxFlooding, null);
 
             for (int i = 0; i < 6000 - 601; i++)
             {
@@ -92,7 +101,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             _controller.Report(false);
 
             _session.Received()
-                .InitiateDisconnect(InitiateDisconnectReason.TxFlooding, Arg.Any<string>());
+                .InitiateDisconnect(DisconnectReason.TxFlooding, Arg.Any<string>());
         }
 
         [Test]

@@ -1,11 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Buffers;
 using System.IO.Compression;
-using Nethermind.Core.Collections;
+
+using Nethermind.Core.Resettables;
 using Nethermind.Evm.Tracing.ParityStyle;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 
@@ -13,25 +12,26 @@ namespace Nethermind.JsonRpc.TraceStore;
 
 public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 {
+    public const int DefaultDepth = 3200;
     private static readonly byte[] _emptyBytes = { 0 };
     private static readonly List<ParityLikeTxTrace> _emptyTraces = new();
 
-    private readonly ILogger? _logger;
+    private readonly ILogger _logger;
     private readonly IJsonSerializer _jsonSerializer;
     private readonly int _maxDepth;
     private readonly bool _verifySerialized;
 
-    public ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = 1024, bool verifySerialized = false)
+    public ParityLikeTraceSerializer(ILogManager logManager, int maxDepth = DefaultDepth, bool verifySerialized = false)
     {
-        _jsonSerializer = new EthereumJsonSerializer(maxDepth, new ParityTraceActionCreationConverter());
+        _jsonSerializer = new EthereumJsonSerializer(maxDepth);
         _maxDepth = maxDepth;
         _verifySerialized = verifySerialized;
-        _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>();
+        _logger = logManager?.GetClassLogger<ParityLikeTraceSerializer>() ?? default;
     }
 
     public unsafe List<ParityLikeTxTrace>? Deserialize(Span<byte> serialized)
     {
-        if (serialized.Length == 1) return _emptyTraces;
+        if (serialized.Length <= 1) return _emptyTraces;
 
         fixed (byte* pBuffer = &serialized[0])
         {
@@ -52,8 +52,8 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
 
         CheckDepth(traces);
 
-        using MemoryStream output = new();
-        using (GZipStream compressionStream = new(output, CompressionMode.Compress))
+        using MemoryStream output = RecyclableStream.GetStream("Parity");
+        using (GZipStream compressionStream = new(output, CompressionMode.Compress, leaveOpen: true))
         {
             _jsonSerializer.Serialize(compressionStream, traces);
         }
@@ -73,7 +73,7 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
                 {
                     ParityLikeTxTrace? trace = traces.FirstOrDefault();
                     string tracesWrittenToPath = Path.Combine(Path.GetTempPath(), $"{trace?.BlockNumber}-{trace?.BlockHash}.zip");
-                    if (_logger?.IsError == true) _logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
+                    if (_logger.IsError) _logger.Error($"Can't deserialize trace logs for block {trace?.BlockNumber} ({trace?.BlockHash}), size {result.Length}, dump: {tracesWrittenToPath}", e);
                     File.WriteAllBytes(tracesWrittenToPath, result);
                 }
             });
@@ -103,9 +103,9 @@ public class ParityLikeTraceSerializer : ITraceSerializer<ParityLikeTxTrace>
             throw new ArgumentException("Trace depth is too high");
         }
 
-        foreach (ParityTraceAction subAction in action.Subtraces)
+        for (var index = 0; index < action.Subtraces.Count; index++)
         {
-            CheckDepth(subAction, depth);
+            CheckDepth(action.Subtraces[index], depth);
         }
     }
 }

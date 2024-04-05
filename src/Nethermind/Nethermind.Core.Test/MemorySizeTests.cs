@@ -12,7 +12,7 @@ namespace Nethermind.Core.Test
         [TestCase(1023, 1024)]
         public void Span(int unaligned, int aligned)
         {
-            Assert.AreEqual(aligned, MemorySizes.Align(unaligned));
+            Assert.That(MemorySizes.Align(unaligned), Is.EqualTo(aligned));
         }
     }
 }

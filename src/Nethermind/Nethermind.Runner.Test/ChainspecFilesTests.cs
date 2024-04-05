@@ -7,7 +7,6 @@ using Nethermind.Logging;
 using NUnit.Framework;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Serialization.Json;
-using NSubstitute.ExceptionExtensions;
 
 namespace Nethermind.Runner.Test
 {
@@ -16,13 +15,13 @@ namespace Nethermind.Runner.Test
     public class ChainspecFilesTests
     {
 
-        private IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
-        private IChainSpecLoader _loader;
+        private readonly IJsonSerializer _jsonSerializer = new EthereumJsonSerializer();
+        private readonly IChainSpecLoader _loader;
         public ILogger _logger;
         public ChainspecFilesTests()
         {
             _loader = new ChainSpecLoader(_jsonSerializer);
-            _logger = NSubstitute.Substitute.For<ILogger>();
+            _logger = default;
         }
 
         [TestCase("foundation", 1UL)]

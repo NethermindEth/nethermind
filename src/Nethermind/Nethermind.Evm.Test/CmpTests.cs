@@ -1,40 +1,20 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Specs;
 using NUnit.Framework;
 
 namespace Nethermind.Evm.Test
 {
-    [TestFixture(true)]
-    [TestFixture(false)]
     [Parallelizable(ParallelScope.Self)]
     public class CmpTests : VirtualMachineTestsBase
     {
-        private readonly bool _simdDisabled;
         protected override long BlockNumber => MainnetSpecProvider.ConstantinopleFixBlockNumber;
-
-        private void AssertEip1014(Address address, byte[] code)
-        {
-            AssertCodeHash(address, Keccak.Compute(code));
-        }
-
-        public CmpTests(bool simdDisabled)
-        {
-            _simdDisabled = simdDisabled;
-        }
 
         [Test]
         public void Gt()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0ff");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
@@ -54,11 +34,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Lt()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] b = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
@@ -78,11 +53,6 @@ namespace Nethermind.Evm.Test
         [Test]
         public void Eq()
         {
-            if (_simdDisabled)
-            {
-                Machine.DisableSimdInstructions();
-            }
-
             byte[] a = Bytes.FromHexString("0xf0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0");
             byte[] b = Bytes.FromHexString("0x0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f0f");
             byte[] result = Bytes.FromHexString("0x0000000000000000000000000000000000000000000000000000000000000000");
@@ -97,11 +67,6 @@ namespace Nethermind.Evm.Test
 
             TestAllTracerWithOutput receipt = Execute(code);
             AssertCmp(receipt, result);
-        }
-
-        private void AssertCmp(TestAllTracerWithOutput receipt, string result)
-        {
-            AssertCmp(receipt, Bytes.FromHexString(result));
         }
 
         private void AssertCmp(TestAllTracerWithOutput receipt, byte[] result)

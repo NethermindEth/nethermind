@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rpc;
@@ -29,6 +28,13 @@ namespace Nethermind.Db.Test.Rpc
             _jsonRpcClient = Substitute.For<IJsonRpcClient>();
             _recordDb = new MemDb();
             _rpcDb = new RpcDb("Name", _jsonSerializer, _jsonRpcClient, LimboLogs.Instance, _recordDb);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _recordDb?.Dispose();
+            _rpcDb?.Dispose();
         }
 
         [Test]

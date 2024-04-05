@@ -6,7 +6,6 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Text;
 using System.Timers;
 using Nethermind.Logging;
@@ -23,7 +22,7 @@ namespace Nethermind.Core
         public static bool IsEnabled { get; set; }
 
         private static readonly ConcurrentDictionary<string, ConcurrentQueue<string>> _events = new();
-        private static ILogger? _logger;
+        private static ILogger _logger;
 
         public static void Start(ILogManager logManager)
         {
@@ -51,7 +50,7 @@ namespace Nethermind.Core
 
             string contents = stringBuilder.ToString();
             File.WriteAllText(NetworkDiagTracerPath, contents);
-            _logger?.Info(contents);
+            if (_logger.IsInfo) _logger.Info(contents);
         }
 
         private static void Add(IPEndPoint? farAddress, string line)

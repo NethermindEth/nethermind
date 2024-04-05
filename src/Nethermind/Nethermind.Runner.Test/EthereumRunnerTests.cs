@@ -5,18 +5,14 @@
 using System;
 using System.Collections;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
-using System.Linq;
-using System.Reflection;
+using System.Runtime.Loader;
 using System.Threading;
 using System.Threading.Tasks;
-using FluentAssertions;
 using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
-using Nethermind.Core;
 using Nethermind.Core.Test.IO;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.EthStats;
@@ -27,23 +23,28 @@ using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Runner.Ethereum;
 using Nethermind.Db.Blooms;
-using Nethermind.Logging.NLog;
 using Nethermind.Runner.Ethereum.Api;
 using Nethermind.TxPool;
-using NLog;
-using NLog.Config;
-using NLog.Targets;
 using NUnit.Framework;
 using LogLevel = NLog.LogLevel;
+using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Test
 {
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class EthereumRunnerTests
     {
-        private static readonly Lazy<ICollection> _cachedProviders = new(InitOnce);
+        static EthereumRunnerTests()
+        {
+            AssemblyLoadContext.Default.Resolving += (context, name) =>
+            {
+                return null;
+            };
+        }
 
-        public static ICollection InitOnce()
+        private static readonly Lazy<ICollection>? _cachedProviders = new(InitOnce);
+
+        private static ICollection InitOnce()
         {
             // by pre-caching configs providers we make the tests do lot less work
             ConcurrentQueue<(string, ConfigProvider)> result = new();
@@ -63,9 +64,8 @@ namespace Nethermind.Runner.Test
             get
             {
                 int index = 0;
-                foreach (var cachedProvider in _cachedProviders.Value)
+                foreach (var cachedProvider in _cachedProviders!.Value)
                 {
-
                     yield return new TestCaseData(cachedProvider, index);
                     index++;
                 }

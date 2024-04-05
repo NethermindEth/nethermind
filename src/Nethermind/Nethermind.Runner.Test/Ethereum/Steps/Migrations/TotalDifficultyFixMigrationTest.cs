@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
@@ -25,13 +26,13 @@ public class TotalDifficultyFixMigrationTest
     [TestCase(3, 3, 10)]
     [TestCase(3, 4, -1)]
     [TestCase(4, 1, -1)]
-    public void Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
+    public async Task Should_fix_td_when_broken(long? lastBlock, long brokenLevel, long expectedTd)
     {
         long numberOfBlocks = 10;
         long firstBlock = 3;
         // Setup headers
         BlockHeader[] headers = new BlockHeader[numberOfBlocks];
-        Dictionary<Keccak, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
         headers[0] = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
         for (int i = 1; i < numberOfBlocks; ++i)
         {
@@ -50,7 +51,7 @@ public class TotalDifficultyFixMigrationTest
 
         // Setup api
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Keccak>()).Returns(info => hashesToHeaders[(Keccak)info[0]]);
+        blockTree.FindHeader(Arg.Any<Hash256>()).Returns(info => hashesToHeaders[(Hash256)info[0]]);
         blockTree.BestKnownNumber.Returns(numberOfBlocks);
 
         IChainLevelInfoRepository chainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>();
@@ -71,8 +72,7 @@ public class TotalDifficultyFixMigrationTest
         levels[brokenLevel].BlockInfos[0].TotalDifficulty = 9999;
 
         // Run
-        migration.Run();
-        Thread.Sleep(300);
+        await migration.Run(CancellationToken.None);
 
         // Check level fixed
         for (long i = 0; i < numberOfBlocks; ++i)
@@ -89,9 +89,9 @@ public class TotalDifficultyFixMigrationTest
     }
 
     [Test]
-    public void should_fix_non_canonical()
+    public async Task should_fix_non_canonical()
     {
-        Dictionary<Keccak, BlockHeader> hashesToHeaders = new();
+        Dictionary<Hash256, BlockHeader> hashesToHeaders = new();
         BlockHeader g = Core.Test.Builders.Build.A.BlockHeader.WithDifficulty(1).TestObject;
 
         // Canonical
@@ -127,7 +127,7 @@ public class TotalDifficultyFixMigrationTest
 
         // Setup mocks
         IBlockTree blockTree = Substitute.For<IBlockTree>();
-        blockTree.FindHeader(Arg.Any<Keccak>()).Returns(info => hashesToHeaders[(Keccak)info[0]]);
+        blockTree.FindHeader(Arg.Any<Hash256>()).Returns(info => hashesToHeaders[(Hash256)info[0]]);
         blockTree.BestKnownNumber.Returns(5);
 
         ChainLevelInfo[] persistedLevels = new ChainLevelInfo[5];
@@ -146,8 +146,7 @@ public class TotalDifficultyFixMigrationTest
         TotalDifficultyFixMigration migration = new(chainLevelInfoRepository, blockTree, syncConfig, new TestLogManager());
 
         // Run
-        migration.Run();
-        Thread.Sleep(3000);
+        await migration.Run(CancellationToken.None);
 
         persistedLevels[0].Should().BeNull();
         persistedLevels[1].Should().BeNull();

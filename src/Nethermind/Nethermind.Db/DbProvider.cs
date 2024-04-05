@@ -5,6 +5,7 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using Nethermind.Core;
 
 namespace Nethermind.Db
 {
@@ -12,15 +13,11 @@ namespace Nethermind.Db
     {
         private readonly ConcurrentDictionary<string, IDb> _registeredDbs =
             new(StringComparer.InvariantCultureIgnoreCase);
-
-        public DbProvider(DbModeHint dbMode)
-        {
-            DbMode = dbMode;
-        }
-
-        public DbModeHint DbMode { get; }
+        private readonly ConcurrentDictionary<string, object> _registeredColumnDbs =
+            new(StringComparer.InvariantCultureIgnoreCase);
 
         public IDictionary<string, IDb> RegisteredDbs => _registeredDbs;
+        public IDictionary<string, object> RegisteredColumnDbs => _registeredColumnDbs;
 
         public void Dispose()
         {
@@ -37,7 +34,7 @@ namespace Nethermind.Db
                 throw new ArgumentException($"{dbName} database has not been registered in {nameof(DbProvider)}.");
             }
 
-            if (!(found is T result))
+            if (found is not T result)
             {
                 throw new IOException(
                     $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
@@ -54,6 +51,45 @@ namespace Nethermind.Db
             }
 
             _registeredDbs.TryAdd(dbName, db);
+        }
+
+        public IColumnsDb<T> GetColumnDb<T>(string dbName)
+        {
+            if (!_registeredColumnDbs.TryGetValue(dbName, out object found))
+            {
+                throw new ArgumentException($"{dbName} database has not been registered in {nameof(DbProvider)}.");
+            }
+
+            if (found is not IColumnsDb<T> result)
+            {
+                throw new IOException(
+                    $"An attempt was made to resolve DB {dbName} as {typeof(T)} while its type is {found.GetType()}.");
+            }
+
+            return result;
+        }
+
+        public void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db)
+        {
+            if (_registeredColumnDbs.ContainsKey(dbName))
+            {
+                throw new ArgumentException($"{dbName} has already registered.");
+            }
+
+            _registeredColumnDbs.TryAdd(dbName, db);
+        }
+
+        public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()
+        {
+            foreach (KeyValuePair<string, IDb> kv in _registeredDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, kv.Value);
+            }
+
+            foreach (KeyValuePair<string, object> kv in _registeredColumnDbs)
+            {
+                yield return new KeyValuePair<string, IDbMeta>(kv.Key, (IDbMeta)kv.Value);
+            }
         }
     }
 }

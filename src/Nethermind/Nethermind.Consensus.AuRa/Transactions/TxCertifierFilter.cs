@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using Nethermind.Abi;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.Transactions;
@@ -23,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
         private readonly ISpecProvider _specProvider;
         private readonly ResettableDictionary<Address, bool> _certifiedCache = new ResettableDictionary<Address, bool>(8);
         private readonly ILogger _logger;
-        private Keccak _cachedBlock;
+        private Hash256 _cachedBlock;
 
         public TxCertifierFilter(ICertifierContract certifierContract, ITxFilter notCertifiedFilter, ISpecProvider specProvider, ILogManager logManager)
         {
@@ -66,7 +65,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
             return false;
         }
 
-        private IDictionary<Address, bool> GetCache(Keccak blockHash)
+        private IDictionary<Address, bool> GetCache(Hash256 blockHash)
         {
             if (blockHash != _cachedBlock)
             {

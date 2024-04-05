@@ -14,9 +14,9 @@ namespace Nethermind.Crypto
     {
         private readonly KeccakHash _keccakHash;
 
-        public Keccak GetHash()
+        public Hash256 GetHash()
         {
-            return new Keccak(_keccakHash.Hash);
+            return new Hash256(_keccakHash.Hash);
         }
 
         public KeccakRlpStream()
@@ -25,7 +25,7 @@ namespace Nethermind.Crypto
             _keccakHash = keccakHash;
         }
 
-        public override void Write(Span<byte> bytesToWrite)
+        public override void Write(ReadOnlySpan<byte> bytesToWrite)
         {
             _keccakHash.Update(bytesToWrite);
         }

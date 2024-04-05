@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Timers;
@@ -27,12 +26,11 @@ namespace Nethermind.Api
         DisposableStack DisposeStack { get; }
 
         IAbiEncoder AbiEncoder { get; }
-        ChainSpec? ChainSpec { get; set; }
+        ChainSpec ChainSpec { get; set; }
         IConfigProvider ConfigProvider { get; set; }
         ICryptoRandom CryptoRandom { get; }
         IDbProvider? DbProvider { get; set; }
-        IRocksDbFactory? RocksDbFactory { get; set; }
-        IMemDbFactory? MemDbFactory { get; set; }
+        IDbFactory? DbFactory { get; set; }
         IEthereumEcdsa? EthereumEcdsa { get; set; }
         IJsonSerializer EthereumJsonSerializer { get; set; }
         IFileSystem FileSystem { get; set; }
@@ -42,11 +40,12 @@ namespace Nethermind.Api
         IReadOnlyList<INethermindPlugin> Plugins { get; }
         string SealEngineType { get; set; }
         ISpecProvider? SpecProvider { get; set; }
-        ISyncModeSelector? SyncModeSelector { get; set; }
+        ISyncModeSelector SyncModeSelector { get; set; }
         ISyncProgressResolver? SyncProgressResolver { get; set; }
         IBetterPeerStrategy? BetterPeerStrategy { get; set; }
         ITimestamper Timestamper { get; }
         ITimerFactory TimerFactory { get; }
+        IProcessExitSource? ProcessExit { get; set; }
 
         public IConsensusPlugin? GetConsensusPlugin() =>
             Plugins

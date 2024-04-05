@@ -10,17 +10,14 @@ namespace Nethermind.Db
     public abstract class RocksDbInitializer
     {
         private readonly IDbProvider _dbProvider;
-        protected IRocksDbFactory RocksDbFactory { get; }
-        protected IMemDbFactory MemDbFactory { get; }
-        protected bool PersistedDb => _dbProvider.DbMode == DbModeHint.Persisted;
+        protected IDbFactory DbFactory { get; }
 
         private readonly List<Action> _registrations = new();
 
-        protected RocksDbInitializer(IDbProvider? dbProvider, IRocksDbFactory? rocksDbFactory, IMemDbFactory? memDbFactory)
+        protected RocksDbInitializer(IDbProvider? dbProvider, IDbFactory? dbFactory)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            RocksDbFactory = rocksDbFactory ?? NullRocksDbFactory.Instance;
-            MemDbFactory = memDbFactory ?? NullMemDbFactory.Instance;
+            DbFactory = dbFactory ?? NullDbFactory.Instance;
         }
 
         protected void RegisterCustomDb(string dbName, Func<IDb> dbFunc)
@@ -34,20 +31,32 @@ namespace Nethermind.Db
             _registrations.Add(Action);
         }
 
-        protected void RegisterDb(RocksDbSettings settings) =>
+        protected void RegisterCustomColumnDb<T>(string dbName, Func<IColumnsDb<T>> dbFunc)
+        {
+            void Action()
+            {
+                IColumnsDb<T> db = dbFunc();
+                _dbProvider.RegisterColumnDb(dbName, db);
+            }
+
+            _registrations.Add(Action);
+        }
+
+        protected void RegisterDb(DbSettings settings) =>
             AddRegisterAction(settings.DbName, () => CreateDb(settings));
 
-        protected void RegisterColumnsDb<T>(RocksDbSettings settings) where T : struct, Enum =>
+        protected void RegisterColumnsDb<T>(DbSettings settings) where T : struct, Enum =>
             AddRegisterAction(settings.DbName, () => CreateColumnDb<T>(settings));
 
         private void AddRegisterAction(string dbName, Func<IDb> dbCreation) =>
             _registrations.Add(() => _dbProvider.RegisterDb(dbName, dbCreation()));
+        private void AddRegisterAction<T>(string dbName, Func<IColumnsDb<T>> dbCreation) =>
+            _registrations.Add(() => _dbProvider.RegisterColumnDb(dbName, dbCreation()));
 
-        private IDb CreateDb(RocksDbSettings settings) =>
-            PersistedDb ? RocksDbFactory.CreateDb(settings) : MemDbFactory.CreateDb(settings.DbName);
+        private IDb CreateDb(DbSettings settings) => DbFactory.CreateDb(settings);
 
-        private IDb CreateColumnDb<T>(RocksDbSettings settings) where T : struct, Enum =>
-            PersistedDb ? RocksDbFactory.CreateColumnsDb<T>(settings) : MemDbFactory.CreateColumnsDb<T>(settings.DbName);
+        private IColumnsDb<T> CreateColumnDb<T>(DbSettings settings) where T : struct, Enum =>
+            DbFactory.CreateColumnsDb<T>(settings);
 
         protected void InitAll()
         {
@@ -68,6 +77,6 @@ namespace Nethermind.Db
             await Task.WhenAll(allInitializers);
         }
 
-        protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName.Substring(1);
+        protected static string GetTitleDbName(string dbName) => char.ToUpper(dbName[0]) + dbName[1..];
     }
 }

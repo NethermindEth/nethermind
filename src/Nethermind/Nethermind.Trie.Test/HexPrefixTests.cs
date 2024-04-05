@@ -14,8 +14,8 @@ namespace Nethermind.Trie.Test
         public void Encode_gives_correct_output_when_one(bool flag, byte nibble1, byte byte1)
         {
             byte[] output = HexPrefix.ToBytes(new[] { nibble1 }, flag);
-            Assert.AreEqual(1, output.Length);
-            Assert.AreEqual(byte1, output[0]);
+            Assert.That(output.Length, Is.EqualTo(1));
+            Assert.That(output[0], Is.EqualTo(byte1));
         }
 
         [TestCase(false, (byte)3, (byte)7, (byte)13, (byte)19, (byte)125)]
@@ -25,9 +25,9 @@ namespace Nethermind.Trie.Test
         {
             byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2, nibble3 }, flag);
 
-            Assert.AreEqual(2, output.Length);
-            Assert.AreEqual(byte1, output[0]);
-            Assert.AreEqual(byte2, output[1]);
+            Assert.That(output.Length, Is.EqualTo(2));
+            Assert.That(output[0], Is.EqualTo(byte1));
+            Assert.That(output[1], Is.EqualTo(byte2));
         }
 
         [TestCase(false, (byte)3, (byte)7, (byte)0, (byte)55)]
@@ -36,9 +36,9 @@ namespace Nethermind.Trie.Test
         {
             byte[] output = HexPrefix.ToBytes(new[] { nibble1, nibble2 }, flag);
 
-            Assert.AreEqual(2, output.Length);
-            Assert.AreEqual(byte1, output[0]);
-            Assert.AreEqual(byte2, output[1]);
+            Assert.That(output.Length, Is.EqualTo(2));
+            Assert.That(output[0], Is.EqualTo(byte1));
+            Assert.That(output[1], Is.EqualTo(byte2));
         }
 
         [TestCase(false, (byte)3, (byte)7, (byte)0, (byte)55)]
@@ -47,10 +47,10 @@ namespace Nethermind.Trie.Test
             byte byte2)
         {
             (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
-            Assert.AreEqual(expectedFlag, isLeaf);
-            Assert.AreEqual(2, key.Length);
-            Assert.AreEqual(nibble1, key[0]);
-            Assert.AreEqual(nibble2, key[1]);
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(2));
+            Assert.That(key[0], Is.EqualTo(nibble1));
+            Assert.That(key[1], Is.EqualTo(nibble2));
         }
 
         [TestCase(false, (byte)3, (byte)19)]
@@ -59,9 +59,9 @@ namespace Nethermind.Trie.Test
         {
             (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1 });
 
-            Assert.AreEqual(expectedFlag, isLeaf);
-            Assert.AreEqual(1, key.Length);
-            Assert.AreEqual(nibble1, key[0]);
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(1));
+            Assert.That(key[0], Is.EqualTo(nibble1));
         }
 
         [TestCase(false, (byte)3, (byte)7, (byte)13, (byte)19, (byte)125)]
@@ -70,11 +70,11 @@ namespace Nethermind.Trie.Test
             byte byte1, byte byte2)
         {
             (byte[] key, bool isLeaf) = HexPrefix.FromBytes(new[] { byte1, byte2 });
-            Assert.AreEqual(expectedFlag, isLeaf);
-            Assert.AreEqual(3, key.Length);
-            Assert.AreEqual(nibble1, key[0]);
-            Assert.AreEqual(nibble2, key[1]);
-            Assert.AreEqual(nibble3, key[2]);
+            Assert.That(isLeaf, Is.EqualTo(expectedFlag));
+            Assert.That(key.Length, Is.EqualTo(3));
+            Assert.That(key[0], Is.EqualTo(nibble1));
+            Assert.That(key[1], Is.EqualTo(nibble2));
+            Assert.That(key[2], Is.EqualTo(nibble3));
         }
 
         // According to: https://ethereum.github.io/yellowpaper/paper.pdf#appendix.C

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
@@ -10,7 +11,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Exceptions;
 using Nethermind.Core.Extensions;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
@@ -18,6 +21,7 @@ using Nethermind.Logging;
 using NSubstitute;
 using NUnit.Framework;
 using RocksDbSharp;
+using IWriteBatch = Nethermind.Core.IWriteBatch;
 
 namespace Nethermind.Db.Test
 {
@@ -25,43 +29,53 @@ namespace Nethermind.Db.Test
     [Parallelizable(ParallelScope.None)]
     public class DbOnTheRocksTests
     {
-        [Test]
-        public void Smoke_test()
+        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+
+        [SetUp]
+        public void Setup()
         {
-            IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
-            db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
-            Assert.AreEqual(new byte[] { 4, 5, 6 }, db[new byte[] { 1, 2, 3 }]);
+            Directory.CreateDirectory(DbPath);
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            Directory.Delete(DbPath, true);
         }
 
         [Test]
-        public void Smoke_test_span()
+        public void WriteOptions_is_correct()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("blocks", GetRocksDbSettings("blocks", "Blocks"), config, LimboLogs.Instance);
-            byte[] key = new byte[] { 1, 2, 3 };
-            byte[] value = new byte[] { 4, 5, 6 };
-            db.PutSpan(key, value);
-            Span<byte> readSpan = db.GetSpan(key);
-            Assert.AreEqual(new byte[] { 4, 5, 6 }, readSpan.ToArray());
-            db.DangerousReleaseMemory(readSpan);
+            DbOnTheRocks db = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+
+            WriteOptions? options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority);
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeFalse();
+
+            options = db.WriteFlagsToWriteOptions(WriteFlags.LowPriority | WriteFlags.DisableWAL);
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeTrue();
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
+
+            options = db.WriteFlagsToWriteOptions(WriteFlags.DisableWAL);
+            Native.Instance.rocksdb_writeoptions_get_low_pri(options.Handle).Should().BeFalse();
+            Native.Instance.rocksdb_writeoptions_get_disable_WAL(options.Handle).Should().BeTrue();
         }
 
         [Test]
-        public void Can_get_all_on_empty()
+        public void Throws_whenMaxWriteBufferNumIs0()
         {
             IDbConfig config = new DbConfig();
-            DbOnTheRocks db = new("testIterator", GetRocksDbSettings("testIterator", "TestIterator"), config, LimboLogs.Instance);
-            try
+            DbSettings settings = new("Blocks", DbPath)
             {
-                // ReSharper disable once ReturnValueOfPureMethodIsNotUsed
-                _ = db.GetAll().ToList();
-            }
-            finally
-            {
-                db.Clear();
-                db.Dispose();
-            }
+                BlockCacheSize = (ulong)1.KiB(),
+                CacheIndexAndFilterBlocks = false,
+                WriteBufferNumber = 0,
+                WriteBufferSize = (ulong)1.KiB()
+            };
+
+            Action act = () => new DbOnTheRocks(DbPath, settings, config, LimboLogs.Instance);
+            act.Should().Throw<InvalidConfigurationException>();
         }
 
         [Test]
@@ -111,7 +125,7 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             DbOnTheRocks db = new("testDispose2", GetRocksDbSettings("testDispose2", "TestDispose2"), config, LimboLogs.Instance);
-            IBatch batch = db.StartBatch();
+            IWriteBatch writeBatch = db.StartWriteBatch();
             db.Dispose();
         }
 
@@ -169,7 +183,159 @@ namespace Nethermind.Db.Test
             file.Received().Delete(markerFile);
         }
 
-        private static RocksDbSettings GetRocksDbSettings(string dbPath, string dbName)
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
+        {
+            return new(dbName, dbPath)
+            {
+                BlockCacheSize = (ulong)1.KiB(),
+                CacheIndexAndFilterBlocks = false,
+                WriteBufferNumber = 4,
+                WriteBufferSize = (ulong)1.KiB()
+            };
+        }
+    }
+
+    [TestFixture(true)]
+    [TestFixture(false)]
+    [Parallelizable(ParallelScope.None)]
+    public class DbOnTheRocksDbTests
+    {
+        string DbPath => "testdb/" + TestContext.CurrentContext.Test.Name;
+        private IDb _db = null!;
+        IDisposable? _dbDisposable = null!;
+
+        private readonly bool _useColumnDb = false;
+
+        public DbOnTheRocksDbTests(bool useColumnDb)
+        {
+            _useColumnDb = useColumnDb;
+        }
+
+        [SetUp]
+        public void Setup()
+        {
+            if (Directory.Exists(DbPath))
+            {
+                Directory.Delete(DbPath, true);
+            }
+
+            Directory.CreateDirectory(DbPath);
+            if (_useColumnDb)
+            {
+                IDbConfig config = new DbConfig();
+                ColumnsDb<ReceiptsColumns> columnsDb = new(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config,
+                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
+                _dbDisposable = columnsDb;
+
+                _db = (ColumnDb)columnsDb.GetColumnDb(ReceiptsColumns.Blocks);
+            }
+            else
+            {
+                IDbConfig config = new DbConfig();
+                _db = new DbOnTheRocks(DbPath, GetRocksDbSettings(DbPath, "Blocks"), config, LimboLogs.Instance);
+                _dbDisposable = _db;
+            }
+        }
+
+        private long AllocatedSpan
+        {
+            get
+            {
+                if (_db is ColumnDb columnDb)
+                {
+                    return columnDb._mainDb._allocatedSpan;
+                }
+
+                return (_db as DbOnTheRocks)._allocatedSpan;
+            }
+        }
+
+        [TearDown]
+        public void TearDown()
+        {
+            _db?.Dispose();
+            _dbDisposable?.Dispose();
+        }
+
+        [Test]
+        public void Smoke_test()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(_db[new byte[] { 1, 2, 3 }], Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            _db.Set(new byte[] { 2, 3, 4 }, new byte[] { 5, 6, 7 }, WriteFlags.LowPriority);
+            Assert.That(_db[new byte[] { 2, 3, 4 }], Is.EqualTo(new byte[] { 5, 6, 7 }));
+        }
+
+        [Test]
+        public void Smoke_test_large_writes_with_nowal()
+        {
+            IWriteBatch writeBatch = _db.StartWriteBatch();
+
+            for (int i = 0; i < 1000; i++)
+            {
+                writeBatch.Set(i.ToBigEndianByteArray(), i.ToBigEndianByteArray(), WriteFlags.DisableWAL);
+            }
+
+            writeBatch.Dispose();
+
+            for (int i = 0; i < 1000; i++)
+            {
+                _db[i.ToBigEndianByteArray()].Should().BeEquivalentTo(i.ToBigEndianByteArray());
+            }
+        }
+
+        [Test]
+        public void Smoke_test_readahead()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            Assert.That(_db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
+        }
+
+        [Test]
+        public void Smoke_test_many_readahead()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            // Attempt to trigger auto dispose iterator on many usage
+            for (int i = 0; i < 1200000; i++)
+            {
+                Assert.That(_db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            }
+        }
+
+        [Test]
+        public void Smoke_test_span()
+        {
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            _db.PutSpan(key, value);
+            Span<byte> readSpan = _db.GetSpan(key);
+            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            AllocatedSpan.Should().Be(1);
+            _db.DangerousReleaseMemory(readSpan);
+            AllocatedSpan.Should().Be(0);
+        }
+
+        [Test]
+        public void Smoke_test_span_with_memory_manager()
+        {
+            byte[] key = new byte[] { 1, 2, 3 };
+            byte[] value = new byte[] { 4, 5, 6 };
+            _db.PutSpan(key, value);
+            Span<byte> readSpan = _db.GetSpan(key);
+            Assert.That(readSpan.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            IMemoryOwner<byte> manager = new DbSpanMemoryManager(_db, readSpan);
+            Memory<byte> theMemory = manager.Memory;
+            Assert.That(theMemory.ToArray(), Is.EqualTo(new byte[] { 4, 5, 6 }));
+
+            AllocatedSpan.Should().Be(1);
+            manager.Dispose();
+            AllocatedSpan.Should().Be(0);
+        }
+
+        private static DbSettings GetRocksDbSettings(string dbPath, string dbName)
         {
             return new(dbName, dbPath)
             {
@@ -181,46 +347,34 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
-        public void Test_columndb_put_and_get_span_correctly_store_value()
+        public void Can_get_all_on_empty()
         {
-            string path = Path.Join(Path.GetTempPath(), "test");
-            Directory.CreateDirectory(path);
-            try
-            {
-                IDbConfig config = new DbConfig();
-                using ColumnsDb<ReceiptsColumns> columnDb = new(path, GetRocksDbSettings("blocks", "Blocks"), config,
-                    LimboLogs.Instance, new List<ReceiptsColumns>() { ReceiptsColumns.Blocks });
-
-                using IDbWithSpan db = columnDb.GetColumnDb(ReceiptsColumns.Blocks);
-
-                Keccak key = Keccak.Compute("something");
-                Keccak value = Keccak.Compute("something");
-
-                db.KeyExists(key.Bytes).Should().BeFalse();
-                db.PutSpan(key.Bytes, value.Bytes);
-                db.KeyExists(key.Bytes).Should().BeTrue();
-                Span<byte> data = db.GetSpan(key.Bytes);
-                data.SequenceEqual(value.Bytes);
-                db.DangerousReleaseMemory(data);
-            }
-            finally
-            {
-                Directory.Delete(path, true);
-            }
+            _ = _db.GetAll().ToList();
         }
+
+        [Test]
+        public void Smoke_test_iterator()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+
+            KeyValuePair<byte[], byte[]>[] allValues = _db.GetAll().ToArray()!;
+            allValues[0].Key.Should().BeEquivalentTo(new byte[] { 1, 2, 3 });
+            allValues[0].Value.Should().BeEquivalentTo(new byte[] { 4, 5, 6 });
+        }
+
     }
 
     class CorruptedDbOnTheRocks : DbOnTheRocks
     {
         public CorruptedDbOnTheRocks(
             string basePath,
-            RocksDbSettings rocksDbSettings,
+            DbSettings dbSettings,
             IDbConfig dbConfig,
             ILogManager logManager,
             IList<string>? columnFamilies = null,
             RocksDbSharp.Native? rocksDbNative = null,
             IFileSystem? fileSystem = null
-        ) : base(basePath, rocksDbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
+        ) : base(basePath, dbSettings, dbConfig, logManager, columnFamilies, rocksDbNative, fileSystem)
         {
         }
 

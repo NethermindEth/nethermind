@@ -21,12 +21,12 @@ namespace Nethermind.Blockchain.Receipts
             _blockFinder = blockFinder ?? throw new ArgumentNullException(nameof(blockFinder));
         }
 
-        public Keccak FindBlockHash(Keccak txHash) => _receiptStorage.FindBlockHash(txHash);
+        public Hash256 FindBlockHash(Hash256 txHash) => _receiptStorage.FindBlockHash(txHash);
 
-        public TxReceipt[] Get(Block block)
+        public TxReceipt[] Get(Block block, bool recover = true)
         {
             var receipts = _receiptStorage.Get(block);
-            if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
+            if (recover && _receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
             {
                 _receiptStorage.Insert(block, receipts);
             }
@@ -34,11 +34,11 @@ namespace Nethermind.Blockchain.Receipts
             return receipts;
         }
 
-        public TxReceipt[] Get(Keccak blockHash)
+        public TxReceipt[] Get(Hash256 blockHash, bool recover = true)
         {
             var receipts = _receiptStorage.Get(blockHash);
 
-            if (_receiptsRecovery.NeedRecover(receipts))
+            if (recover && _receiptsRecovery.NeedRecover(receipts))
             {
                 var block = _blockFinder.FindBlock(blockHash, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
                 if (_receiptsRecovery.TryRecover(block, receipts) == ReceiptsRecoveryResult.NeedReinsert)
@@ -51,6 +51,6 @@ namespace Nethermind.Blockchain.Receipts
         }
 
         public bool CanGetReceiptsByHash(long blockNumber) => _receiptStorage.CanGetReceiptsByHash(blockNumber);
-        public bool TryGetReceiptsIterator(long blockNumber, Keccak blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
+        public bool TryGetReceiptsIterator(long blockNumber, Hash256 blockHash, out ReceiptsIterator iterator) => _receiptStorage.TryGetReceiptsIterator(blockNumber, blockHash, out iterator);
     }
 }

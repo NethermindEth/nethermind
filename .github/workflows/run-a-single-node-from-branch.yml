@@ -12,10 +12,16 @@ on:
           - mainnet
           - gnosis
           - sepolia
-          - goerli
           - chiado
+          - holesky
+          - op-mainnet
+          - op-sepolia
+          - base-mainnet
+          - base-sepolia
+          - energyweb
+          - volta
       cl_client:
-        description: "Select Consensus Layer Client to run node against"
+        description: "Select Consensus Layer Client to run node against (for Volta or Energyweb just set any - it will be omitted)"
         default: ""
         required: true
         type: choice
@@ -36,113 +42,229 @@ on:
         type: choice
         options:
           - default.json
+          - archiveSync.json
           - fastSync.json
           - fullSync.json
           - fuzzer.json
-      timeout:
-        description: "Timeout in hours before triggering the deletion of smoke test instances. Maximum time of node lifetime can be 72 hours."
-        default: "24"
-        required: true
+      non_validator_mode:
+        description: "If checked, node will be started in NonValidator mode (OldBodies and OldReceipts will not be synced)"
+        default: true
+        type: boolean
       additional_nethermind_flags:
-        description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
+        description: "Provide any additional flags to the Nethermind L1 node in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
         default: ""
         required: false
       additional_cl_flags:
         description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
         default: ""
         required: false
-      
+      additional_options:
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+      additional_optimism_options:
+        description: "Extra options to configure optimism node"
+        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+  workflow_call:
+    inputs:
+      smoke_tests_ref:
+        description: "Ref of the smoke tests repository to be used for smoke tests"
+        default: "main"
+        required: false
+        type: string
+      nethermind_repo_ref:
+        description: "Ref of the nethermind repo in case it is needed to be changed"
+        default: ""
+        required: false
+        type: string
+      custom_run_id:
+        description: "Run ID used for artifacts save"
+        default: ""
+        required: false
+        type: string
+      network:
+        description: "Select a network on which You want to run a node"
+        default: "mainnet"
+        required: false
+        type: string
+      cl_client:
+        description: "Select Consensus Layer Client to run node against"
+        default: "lighthouse"
+        required: false
+        type: string
+      cl_custom_image:
+        description: "In case of need to run non-default cl image (different than actually supported by Sedge) put it in there"
+        default: ""
+        required: false        
+        type: string
+      config:
+        description: "Select a config file which will be selected for tests."
+        default: "default.json"
+        required: false
+        type: string
+      non_validator_mode:
+        description: "If checked, node will be started in NonValidator mode (OldBodies and oldReceipts will not be synced)"
+        default: true
+        type: boolean
+      additional_nethermind_flags:
+        type: string
+        description: "Provide any additional flags to the Nethermind in space-separated format. Example: \"JsonRpc.Enabled=false Sync.SnapSync=false\"."
+        default: ""
+        required: false
+      additional_cl_flags:
+        type: string
+        description: "Provide any additional flags to the CL client in space-separated format. Example: \"clflag1=1 clflag2=2\"."
+        default: ""
+        required: false
+      additional_options:
+        type: string
+        description: "A Json property which allows to customize node even more"
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        required: false
+      additional_optimism_options:
+        type: string
+        description: "Extra options to configure optimism node"
+        default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+        required: false
+    outputs:
+      base_tag:
+        description: ""
+        value: ${{ jobs.create_docker_image.outputs.base_tag }}
+      run_id:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.run_id }}
+      rpc_url:
+        description: ""
+        value: ${{ jobs.trigger_node_and_vm_creation.outputs.rpc_url }}
+        
 jobs:
   create_docker_image:
     runs-on: ubuntu-latest
+    outputs:
+      base_tag: ${{ steps.set-base-tag.outputs.base_tag }}
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
+
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
 
-    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
-      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
+    - name: Set BASE_TAG
+      id: set-base-tag
+      env:
+        GITHUB_USERNAME: ${{ github.actor }}
+      run: |
+        BASE_TAG="${GITHUB_USERNAME:0:1}$(shuf -i 1000-9999 -n 1)"
+        echo "BASE_TAG=$BASE_TAG" >> $GITHUB_ENV
+        echo "base_tag=$BASE_TAG" >> $GITHUB_OUTPUT
+
+    - name: Creating a node with NodeName="DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}"
+      run: echo "NodeName='DevNode-${{ github.actor }}-${{ env.BASE_TAG }}-${{ env.CLEAN_REF }}-${{ inputs.network }}-${{ inputs.cl_client }}'"
+
+    - name: Extract dockerfile from additional_options
+      id: extract_dockerfile
+      run: |
+        echo "dockerfile=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile)" >> $GITHUB_OUTPUT
+        echo "build-config=$(echo '${{ inputs.additional_options }}' | jq -r .default_dockerfile_build_type | tr '[:upper:]' '[:lower:]')" >> $GITHUB_OUTPUT
+
+    - name: Set Repo and Org Variables
+      run: |
+        echo "ORG_NAME=${{ github.repository_owner }}" >> $GITHUB_ENV
+        echo "REPO_NAME=${{ github.event.repository.name }}" >> $GITHUB_ENV
+        
+    - name: Check if master branch and default additional_options
+      id: check_conditions
+      run: |
+        ref="${{ inputs.nethermind_repo_ref || github.ref }}"
+        if [ -z "$ref" ]; then
+          ref="${{ github.ref }}"
+        fi
+        # Append "refs/heads/" prefix if it's not already there
+        if [[ $ref != refs/heads/* ]]; then
+          ref="refs/heads/$ref"
+        fi
+
+        if 
+        [[ "$ref" == "refs/heads/master" ]] && 
+        [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
+        [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
+          echo "skip_docker_build=true" >> $GITHUB_OUTPUT
+        else
+          echo "skip_docker_build=false" >> $GITHUB_OUTPUT
+        fi
 
     - name: Trigger Docker Build Action with Cleaned Ref
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       uses: benc-uk/workflow-dispatch@v1
+      env:
+        ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
       with:
-          workflow: build-nethermind-docker-images.yml
+          workflow: publish-docker.yml
           ref: "${{ github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
-              "repo": "nethermindeth/nethermind",
               "tag": "${{ env.CLEAN_REF }}",
-              "dockerfile": "Dockerfile"
+              "dockerfile": "${{ steps.extract_dockerfile.outputs.dockerfile }}",
+              "build-config": "${{ steps.extract_dockerfile.outputs.build-config }}"
            }'
-    
+        
     - name: Wait for Docker Build Action to complete
+      if: steps.check_conditions.outputs.skip_docker_build != 'true'
       env:
         GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        WORKFLOW_ID: 'publish-docker.yml'
+        MAX_WAIT_MINUTES: '5'
+        INTERVAL: '5'
+        TIMEOUT: '10'
+        ORG_NAME: ${{ env.ORG_NAME }}
+        REPO_NAME: ${{ env.REPO_NAME }}
+        REF: ${{ github.ref }}
       run: |
-        # Replace `workflow_id` with the ID of the workflow you want to wait for.
-        workflow_id="8166053" #Id of Docker build workflow
-        
-        # Set the maximum waiting time (in minutes) and initialize the counter
-        max_wait_minutes=3
-        counter=0
-    
-        # Get the current time in ISO 8601 format
-        current_time=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
-    
-        # Wait for the workflow to be triggered
-        while true; do
-          run_id=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/NethermindEth/nethermind/actions/workflows/${workflow_id}/runs" | \
-            jq -r --arg ref "$(echo '${{ github.ref }}' | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
-            '.workflow_runs[] | select(.head_branch == $ref and .created_at >= $current_time) | .id')
-          if [ -n "$run_id" ]; then
-            break
-          fi
-        
-          # Increment the counter and check if the maximum waiting time is reached
-          counter=$((counter + 1))
-          if [ $((counter * 30)) -ge $((max_wait_minutes * 60)) ]; then
-            echo "Maximum waiting time for the workflow to be triggered has been reached. Exiting."
-            exit 1
-          fi
-        
-          echo "Waiting for the workflow to be triggered..."
-          sleep 30
-        done
-    
-        # Wait for the triggered workflow to complete and check its conclusion
-        while true; do
-          run_data=$(curl -s -H "Accept: application/vnd.github+json" -H "Authorization: token $GITHUB_TOKEN" \
-            "https://api.github.com/repos/NethermindEth/nethermind/actions/runs/$run_id")
-          status=$(echo "$run_data" | jq -r '.status')
-        
-          if [ "$status" = "completed" ]; then
-            conclusion=$(echo "$run_data" | jq -r '.conclusion')
-            if [ "$conclusion" != "success" ]; then
-              echo "The workflow has not completed successfully. Exiting."
-              exit 1
-            else
-              echo "The workflow completed successfully! Exiting."
-              break
-            fi
-          fi
-          echo "Waiting for the workflow to complete..."
-          sleep 30
-        done
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh
+      working-directory: ${{ github.workspace }}
           
   trigger_node_and_vm_creation:
     needs: create_docker_image
     runs-on: ubuntu-latest
     steps:
+    - name: Checkout repository
+      uses: actions/checkout@v4
+      with:
+        ref: ${{ inputs.nethermind_repo_ref }}
+
     - name: Prepare docker tag
       id: prepare_ref
       run: |
-        REF_NAME=${{ github.ref }}
+        REF_NAME=${{ inputs.nethermind_repo_ref || github.ref }}
         CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
+
         echo "CLEAN_REF=$CLEAN_REF" >> $GITHUB_ENV
+
+    - name: Extract Variables
+      id: extract_variables
+      run: |
+        echo "BASE_TAG=${{ needs.create_docker_image.outputs.base_tag }}" >> $GITHUB_ENV
+        echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
+        echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
+        echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+        echo "l1_nethermind_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
+        echo "op_node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_node_image)" >> $GITHUB_OUTPUT
+        echo "op_el_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_el_extra_flags)" >> $GITHUB_OUTPUT
+        echo "op_cl_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_cl_extra_flags)" >> $GITHUB_OUTPUT
+        echo "layer1_el_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_el_endpoint)" >> $GITHUB_OUTPUT
+        echo "layer1_cl_endpoint=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .layer1_cl_endpoint)" >> $GITHUB_OUTPUT
+        if [[ ${{ inputs.network }} == base-* ]] || [[ ${{ inputs.network }} == op-* ]]; then
+          echo "Forcing NON_VALIDATOR_MODE=false for OP chains"
+          echo "NON_VALIDATOR_MODE=false" >> $GITHUB_OUTPUT
+        else
+          echo "NON_VALIDATOR_MODE=${{ inputs.non_validator_mode }}" >> $GITHUB_OUTPUT
+        fi
 
     - name: Trigger Node creation Repo Action
       uses: benc-uk/workflow-dispatch@v1
@@ -153,12 +275,56 @@ jobs:
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
                      "github_username": "${{ github.actor }}",
+                     "base_tag": "${{ env.BASE_TAG }}",
                      "config_file": "${{ inputs.config }}",
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "cl_custom_image": "${{ inputs.cl_custom_image }}",
-                     "timeout": "${{ inputs.timeout }}",
-                     "additional_nethermind_flags": "${{ inputs.additional_nethermind_flags }}",
-                     "additional_cl_flags": "${{ inputs.additional_cl_flags }}"
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}",
+                     "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
                    }'
+
+    - name: Wait for creation of node
+      env:
+        GITHUB_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
+        WORKFLOW_ID: 'run-single-node.yml'
+        MAX_WAIT_MINUTES: '5'
+        INTERVAL: '5'
+        TIMEOUT: '20'
+        ORG_NAME: 'NethermindEth'
+        REPO_NAME: 'post-merge-smoke-tests'
+        REF: 'main'
+      run: |
+        chmod +x scripts/wait-for-workflow-completed.sh
+        ./scripts/wait-for-workflow-completed.sh | tee script-output.txt
+        run_id=$(grep -oP 'Run ID: \K\d+' script-output.txt)
+        echo "Run ID extracted is: $run_id"
+        echo "RUN_ID=$run_id" >> $GITHUB_ENV
+      working-directory: ${{ github.workspace }}
+
+    - name: Download machine specs artifact
+      run: |
+        ARTIFACT_ID=$(curl -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/runs/${{ env.RUN_ID }}/artifacts | jq '.artifacts[0].id')
+        curl -L -H "Accept: application/vnd.github.v3+json" -H "Authorization: token ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}" -o artifact.zip https://api.github.com/repos/NethermindEth/post-merge-smoke-tests/actions/artifacts/$ARTIFACT_ID/zip
+        unzip artifact.zip -d ./downloaded-artifacts/
+        
+    - name: Display machine specs content
+      run: |
+        FILE=$(ls downloaded-artifacts/machine-details | head -n 1)
+        cat "downloaded-artifacts/machine-details/$FILE" | tee spec-output.txt
+        rpc_url=$(grep -oP '\s{2,3}RPC URL: \K.+' spec-output.txt)
+        echo "RPC URL extracted is: $rpc_url"
+        echo "RPC_URL=$rpc_url" >> $GITHUB_ENV
+
+    - name: Save RPC URL to file
+      if: inputs.custom_run_id != ''
+      run: |
+        workflow_id=${{ inputs.custom_run_id }}
+        echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
+
+    - name: Upload RPC URL
+      uses: actions/upload-artifact@v3
+      if: inputs.custom_run_id != ''
+      with:
+        name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}
+        path: rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt

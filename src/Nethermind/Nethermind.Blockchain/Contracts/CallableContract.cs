@@ -66,7 +66,7 @@ namespace Nethermind.Blockchain.Contracts
 
             try
             {
-                _transactionProcessor.Execute(transaction, header, tracer);
+                _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
                 result = tracer.ReturnValue;
                 return tracer.StatusCode == StatusCode.Success;
             }
@@ -117,7 +117,7 @@ namespace Nethermind.Blockchain.Contracts
         /// Creates <see cref="Address.SystemUser"/> account if its not in current state.
         /// </summary>
         /// <param name="stateProvider">State provider.</param>
-        protected void EnsureSystemAccount(IStateProvider stateProvider)
+        protected static void EnsureSystemAccount(IWorldState stateProvider)
         {
             if (!stateProvider.AccountExists(Address.SystemUser))
             {

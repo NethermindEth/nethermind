@@ -3,7 +3,6 @@
 
 using System.IO;
 using System.Threading.Tasks;
-using Castle.Core.Internal;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -29,8 +28,7 @@ namespace Nethermind.AuRa.Test.Contract
                 ChainSpecLoader loader = new(new EthereumJsonSerializer());
                 string name = string.IsNullOrEmpty(testSuffix) ? $"{typeof(TTestClass).FullName}.json" : $"{typeof(TTestClass).FullName}.{testSuffix}.json";
                 using Stream? stream = typeof(TTestClass).Assembly.GetManifestResourceStream(name);
-                using StreamReader reader = new(stream ?? new MemoryStream());
-                ChainSpec chainSpec = loader.Load(reader.ReadToEnd());
+                ChainSpec chainSpec = loader.Load(stream);
                 ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
                 return (chainSpec, chainSpecBasedSpecProvider);
             }
@@ -45,7 +43,6 @@ namespace Nethermind.AuRa.Test.Contract
                     ChainSpec,
                     SpecProvider,
                     State,
-                    Storage,
                     TxProcessor)
                 .Load();
     }

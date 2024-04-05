@@ -7,10 +7,9 @@ using System.Threading.Tasks;
 using Nethermind.Logging;
 using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
-using System.Net.Http;
-using System.IO;
 using System.Net.Sockets;
 using Prometheus;
+using System.Runtime.InteropServices;
 
 namespace Nethermind.Monitoring
 {
@@ -20,6 +19,7 @@ namespace Nethermind.Monitoring
         private readonly ILogger _logger;
         private readonly Options _options;
 
+        private readonly string _exposeHost;
         private readonly int? _exposePort;
         private readonly string _nodeName;
         private readonly bool _pushEnabled;
@@ -30,12 +30,14 @@ namespace Nethermind.Monitoring
         {
             _metricsController = metricsController ?? throw new ArgumentNullException(nameof(metricsController));
 
+            string exposeHost = metricsConfig.ExposeHost;
             int? exposePort = metricsConfig.ExposePort;
             string nodeName = metricsConfig.NodeName;
             string pushGatewayUrl = metricsConfig.PushGatewayUrl;
             bool pushEnabled = metricsConfig.Enabled;
             int intervalSeconds = metricsConfig.IntervalSeconds;
 
+            _exposeHost = exposeHost;
             _exposePort = exposePort;
             _nodeName = string.IsNullOrWhiteSpace(nodeName)
                 ? throw new ArgumentNullException(nameof(nodeName))
@@ -82,11 +84,15 @@ namespace Nethermind.Monitoring
             }
             if (_exposePort is not null)
             {
-                IMetricServer metricServer = new KestrelMetricServer(_exposePort.Value);
-                metricServer.Start();
+                new NethermindKestrelMetricServer(_exposeHost, _exposePort.Value).Start();
             }
             await Task.Factory.StartNew(() => _metricsController.StartUpdating(), TaskCreationOptions.LongRunning);
             if (_logger.IsInfo) _logger.Info($"Started monitoring for the group: {_options.Group}, instance: {_options.Instance}");
+        }
+
+        public void AddMetricsUpdateAction(Action callback)
+        {
+            _metricsController.AddMetricsUpdateAction(callback);
         }
 
         public Task StopAsync()
@@ -106,7 +112,7 @@ namespace Nethermind.Monitoring
         {
             string group = GetValueFromVariableOrDefault("GROUP", "nethermind");
             string endpoint = _pushGatewayUrl.Split("/").LastOrDefault();
-            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains("-"))
+            if (!string.IsNullOrWhiteSpace(endpoint) && endpoint.Contains('-'))
             {
                 group = endpoint.Split("-")[0] ?? group;
             }

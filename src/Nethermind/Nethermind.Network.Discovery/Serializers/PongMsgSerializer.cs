@@ -5,7 +5,6 @@ using DotNetty.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
-using Nethermind.Network.P2P;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.Discovery.Serializers;
@@ -64,7 +63,7 @@ public class PongMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMessageSe
         return totalLength;
     }
 
-    private (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
+    private static (int totalLength, int contentLength, int farAddressLength) GetLength(PongMsg message)
     {
         if (message.FarAddress is null)
         {

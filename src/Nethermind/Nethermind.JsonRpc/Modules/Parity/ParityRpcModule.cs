@@ -11,7 +11,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
-using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.KeyStore;
 using Nethermind.Serialization.Rlp;
@@ -66,20 +65,7 @@ namespace Nethermind.JsonRpc.Modules.Parity
 
         public ResultWrapper<ReceiptForRpc[]> parity_getBlockReceipts(BlockParameter blockParameter)
         {
-            SearchResult<Block> searchResult = _blockFinder.SearchForBlock(blockParameter);
-            if (searchResult.IsError)
-            {
-                return ResultWrapper<ReceiptForRpc[]>.Fail(searchResult);
-            }
-
-            Block block = searchResult.Object;
-            TxReceipt[] receipts = _receiptFinder.Get(block) ?? new TxReceipt[block.Transactions.Length];
-            bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;
-            IEnumerable<ReceiptForRpc> result = receipts
-                .Zip(block.Transactions, (r, t) =>
-                    new ReceiptForRpc(t.Hash, r, t.CalculateEffectiveGasPrice(isEip1559Enabled, block.BaseFeePerGas), receipts.GetBlockLogFirstIndex(r.Index)));
-            ReceiptForRpc[] resultAsArray = result.ToArray();
-            return ResultWrapper<ReceiptForRpc[]>.Success(resultAsArray);
+            return _receiptFinder.GetBlockReceipts(blockParameter, _blockFinder, _specProvider);
         }
 
         public ResultWrapper<bool> parity_setEngineSigner(Address address, string password)

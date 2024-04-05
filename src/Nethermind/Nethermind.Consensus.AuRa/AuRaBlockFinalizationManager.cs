@@ -23,18 +23,17 @@ namespace Nethermind.Consensus.AuRa
         private readonly IBlockTree _blockTree;
         private readonly IChainLevelInfoRepository _chainLevelInfoRepository;
         private readonly ILogger _logger;
-        private readonly IBlockProcessor _blockProcessor;
+        private IBlockProcessor _blockProcessor;
         private readonly IValidatorStore _validatorStore;
         private readonly IValidSealerStrategy _validSealerStrategy;
         private readonly long _twoThirdsMajorityTransition;
         private long _lastFinalizedBlockLevel;
-        private Keccak _lastProcessedBlockHash = Keccak.EmptyTreeHash;
+        private Hash256 _lastProcessedBlockHash = Keccak.EmptyTreeHash;
         private readonly ValidationStampCollection _consecutiveValidatorsForNotYetFinalizedBlocks = new ValidationStampCollection();
 
         public AuRaBlockFinalizationManager(
             IBlockTree blockTree,
             IChainLevelInfoRepository chainLevelInfoRepository,
-            IBlockProcessor blockProcessor,
             IValidatorStore validatorStore,
             IValidSealerStrategy validSealerStrategy,
             ILogManager logManager,
@@ -43,14 +42,19 @@ namespace Nethermind.Consensus.AuRa
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _chainLevelInfoRepository = chainLevelInfoRepository ?? throw new ArgumentNullException(nameof(chainLevelInfoRepository));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
             _validatorStore = validatorStore ?? throw new ArgumentNullException(nameof(validatorStore));
             _validSealerStrategy = validSealerStrategy ?? throw new ArgumentNullException(nameof(validSealerStrategy));
             _twoThirdsMajorityTransition = twoThirdsMajorityTransition;
-            _blockProcessor.BlockProcessed += OnBlockProcessed;
-            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
             Initialize();
         }
+
+        public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+        {
+            _blockProcessor = blockProcessor ?? throw new ArgumentNullException(nameof(blockProcessor));
+            _blockProcessor.BlockProcessed += OnBlockProcessed;
+            _blockProcessor.BlocksProcessing += OnBlocksProcessing;
+        }
+
 
         private void Initialize()
         {
@@ -66,7 +70,7 @@ namespace Nethermind.Consensus.AuRa
 
             LastFinalizedBlockLevel = level;
 
-            // This is needed if processing was stopped between processing last block and running finalization logic 
+            // This is needed if processing was stopped between processing last block and running finalization logic
             if (hasHead)
             {
                 FinalizeBlocks(_blockTree.Head?.Header);
@@ -83,7 +87,7 @@ namespace Nethermind.Consensus.AuRa
             }
 
             // rerunning block
-            BlockHeader header = e.Blocks.First().Header;
+            BlockHeader header = e.Blocks[0].Header;
             if (_blockTree.WasProcessed(header.Number, header.Hash))
             {
                 using (var batch = _chainLevelInfoRepository.StartBatch())
@@ -226,7 +230,7 @@ namespace Nethermind.Consensus.AuRa
             return (chainLevelInfo, blockInfo);
         }
 
-        /* Simple, unoptimized method implementation for reference: 
+        /* Simple, unoptimized method implementation for reference:
         private IReadOnlyList<BlockHeader> GetFinalizedBlocks(BlockHeader block)
         {
             (ChainLevelInfo parentLevel, BlockInfo parentBlockInfo) GetBlockInfo(BlockHeader blockHeader)
@@ -240,11 +244,11 @@ namespace Nethermind.Consensus.AuRa
             var validators = new HashSet<Address>();
             var minSealersForFinalization = block.IsGenesis ? 1 : _auRaValidator.MinSealersForFinalization;
             var originalBlockSealer = block.Beneficiary;
-            
+
             using (var batch = _blockInfoRepository.StartBatch())
             {
                 var (chainLevel, blockInfo) = GetBlockInfo(block);
-                
+
                 while (!blockInfo.IsFinalized)
                 {
                     validators.Add(block.Beneficiary);
@@ -264,14 +268,14 @@ namespace Nethermind.Consensus.AuRa
             }
 
             finalizedBlocks.Reverse(); // we were adding from the last to earliest, going through parents
-            
+
             return finalizedBlocks;
         }
         */
 
         public event EventHandler<FinalizeEventArgs> BlocksFinalized;
 
-        public long GetLastLevelFinalizedBy(Keccak blockHash)
+        public long GetLastLevelFinalizedBy(Hash256 blockHash)
         {
             var block = _blockTree.FindHeader(blockHash, BlockTreeLookupOptions.None);
             var validators = new HashSet<Address>();

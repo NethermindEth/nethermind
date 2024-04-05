@@ -26,10 +26,10 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
 
         private void OnEvicted(object? sender, TxEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
-                JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
+                using JsonRpcResult result = CreateSubscriptionMessage(e.Transaction.Hash);
+                await JsonRpcDuplexClient.SendJsonRpcResult(result);
                 if (_logger.IsTrace)
                     _logger.Trace(
                         $"DroppedPendingTransactions subscription {Id} printed hash of DroppedPendingTransaction.");

@@ -53,7 +53,7 @@ namespace Nethermind.Evm.Test
                     .Op(Instruction.CALLDATACOPY)
                     .PushData("0x0200")
                     .PushData(0)
-                    .Op(Instruction.SHA3)
+                    .Op(Instruction.KECCAK256)
                     .Done;
 
             (Block block, Transaction transaction) = PrepareTx(

@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using Nethermind.Int256;
 
 namespace Nethermind.TxPool;
 
@@ -30,7 +29,7 @@ public ref struct NonceLocker
         }
     }
 
-    public void Accept()
+    public readonly void Accept()
     {
         _acceptAction();
     }

@@ -1,13 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Network.Config;
-
 namespace Nethermind.Network.Discovery;
 
 public class DiscoveryConfig : IDiscoveryConfig
 {
-    public int BucketSize { get; set; } = 12;
+    public int BucketSize { get; set; } = 16;
 
     public int BucketsCount { get; set; } = 256;
 
@@ -38,6 +36,10 @@ public class DiscoveryConfig : IDiscoveryConfig
     public int MaxNodeLifecycleManagersCount { get; set; } = 8000;
 
     public int NodeLifecycleManagersCleanupCount { get; set; } = 4000;
+
+    public float DropFullBucketNodeProbability { get; set; } = 0.05f;
+
+    public int MaxOutgoingMessagePerSecond { get; set; } = 100;
 
     public string Bootnodes { get; set; } = string.Empty;
 }

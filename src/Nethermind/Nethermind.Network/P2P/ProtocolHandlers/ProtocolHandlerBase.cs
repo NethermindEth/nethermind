@@ -22,7 +22,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         public bool IsPriority { get; set; }
         protected INodeStatsManager StatsManager { get; }
         private readonly IMessageSerializationService _serializer;
-        protected ISession Session { get; }
+        protected internal ISession Session { get; }
         protected long Counter;
 
         private readonly TaskCompletionSource<MessageBase> _initCompletionSource;
@@ -37,7 +37,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             _initCompletionSource = new TaskCompletionSource<MessageBase>();
         }
 
-        protected ILogger Logger { get; }
+        protected internal ILogger Logger { get; }
 
         protected abstract TimeSpan InitTimeout { get; }
 
@@ -77,7 +77,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
             }
         }
 
-        protected void Send<T>(T message) where T : P2PMessage
+        protected internal void Send<T>(T message) where T : P2PMessage
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
@@ -98,7 +98,7 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
                     Logger.Trace($"Disconnecting due to timeout for protocol init message ({Name}): {Session.RemoteNodeId}");
                 }
 
-                Session.InitiateDisconnect(InitiateDisconnectReason.ProtocolInitTimeout, "protocol init timeout");
+                Session.InitiateDisconnect(DisconnectReason.ProtocolInitTimeout, "protocol init timeout");
             }
             else
             {

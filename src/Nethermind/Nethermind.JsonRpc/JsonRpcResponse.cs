@@ -2,51 +2,84 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+
 using Nethermind.Serialization.Json;
-using Newtonsoft.Json;
+using System.Text.Json;
+using System.Text.Json.Serialization;
+using Nethermind.Core.Extensions;
+using Nethermind.JsonRpc.Modules.Subscribe;
+using Nethermind.Int256;
 
 namespace Nethermind.JsonRpc
 {
-    public class JsonRpcResponse : IDisposable
+    [JsonDerivedType(typeof(JsonRpcResponse))]
+    [JsonDerivedType(typeof(JsonRpcSuccessResponse))]
+    [JsonDerivedType(typeof(JsonRpcErrorResponse))]
+    [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
+    public class JsonRpcResponse(Action? action = null) : IDisposable
     {
-        private Action? _disposableAction;
-
-        public JsonRpcResponse(Action? disposableAction = null)
+        public void AddDisposable(Action disposableAction)
         {
-            _disposableAction = disposableAction;
+            if (action is null)
+            {
+                action = disposableAction;
+            }
+            else
+            {
+                action += disposableAction;
+            }
         }
 
-        [JsonProperty(PropertyName = "jsonrpc", Order = 0)]
+        [JsonPropertyName("jsonrpc")]
+        [JsonPropertyOrder(0)]
         public readonly string JsonRpc = "2.0";
 
         [JsonConverter(typeof(IdConverter))]
-        [JsonProperty(PropertyName = "id", Order = 2, NullValueHandling = NullValueHandling.Include)]
+        [JsonPropertyName("id")]
+        [JsonPropertyOrder(2)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Id { get; set; }
 
         [JsonIgnore]
         public string MethodName { get; set; }
 
-        public void Dispose()
+        public virtual void Dispose()
         {
-            _disposableAction?.Invoke();
-            _disposableAction = null;
+            action?.Invoke();
+            action = null;
         }
     }
 
     public class JsonRpcSuccessResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "result", NullValueHandling = NullValueHandling.Include, Order = 1)]
+        [JsonPropertyName("result")]
+        [JsonPropertyOrder(1)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public object? Result { get; set; }
+
+        [JsonConstructor]
+        public JsonRpcSuccessResponse() : base(null) { }
 
         public JsonRpcSuccessResponse(Action? disposableAction = null) : base(disposableAction)
         {
+        }
+
+        public override void Dispose()
+        {
+            Result.TryDispose();
+            base.Dispose();
         }
     }
 
     public class JsonRpcErrorResponse : JsonRpcResponse
     {
-        [JsonProperty(PropertyName = "error", NullValueHandling = NullValueHandling.Include, Order = 1)]
+        [JsonPropertyName("error")]
+        [JsonPropertyOrder(1)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public Error? Error { get; set; }
+
+        [JsonConstructor]
+        public JsonRpcErrorResponse() : base(null) { }
 
         public JsonRpcErrorResponse(Action? disposableAction = null) : base(disposableAction)
         {

@@ -15,6 +15,7 @@ using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.ProtocolHandlers;
 using Nethermind.Network.Rlpx.Handshake;
+using Nethermind.Stats.Model;
 
 namespace Nethermind.Network.Rlpx
 {
@@ -32,7 +33,7 @@ namespace Nethermind.Network.Rlpx
         private PublicKey RemoteId => _session.RemoteNodeId;
         private readonly TaskCompletionSource<object> _initCompletionSource;
         private IChannel _channel;
-        private TimeSpan _sendLatency;
+        private readonly TimeSpan _sendLatency;
 
         public NettyHandshakeHandler(
             IMessageSerializationService serializationService,
@@ -109,7 +110,9 @@ namespace Nethermind.Network.Rlpx
 
         public override void ExceptionCaught(IChannelHandlerContext context, Exception exception)
         {
-            string clientId = _session?.Node?.ToString("c") ?? $"unknown {_session?.RemoteHost}";
+            string clientId = $"unknown {_session?.RemoteHost}";
+            if (_session.RemoteNodeId is not null) clientId = _session?.Node?.ToString(Node.Format.Console);
+
             //In case of SocketException we log it as debug to avoid noise
             if (exception is SocketException)
             {
@@ -126,7 +129,7 @@ namespace Nethermind.Network.Rlpx
                 }
             }
 
-            base.ExceptionCaught(context, exception);
+            _ = context.DisconnectAsync();
         }
 
         protected override void ChannelRead0(IChannelHandlerContext context, IByteBuffer input)
@@ -160,11 +163,6 @@ namespace Nethermind.Network.Rlpx
             _initCompletionSource?.SetResult(input);
             _session.Handshake(_handshake.RemoteNodeId);
 
-            if (_role == HandshakeRole.Recipient)
-            {
-                if (_logger.IsTrace) _logger.Trace($"Registering {nameof(OneTimeLengthFieldBasedFrameDecoder)}  for {RemoteId} @ {context.Channel.RemoteAddress}");
-                context.Channel.Pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ReadTimeoutHandler)} for {RemoteId} @ {context.Channel.RemoteAddress}");
             context.Channel.Pipeline.AddLast(new ReadTimeoutHandler(TimeSpan.FromSeconds(30))); // read timeout instead of session monitoring
             if (_logger.IsTrace) _logger.Trace($"Registering {nameof(ZeroFrameDecoder)} for {RemoteId} @ {context.Channel.RemoteAddress}");

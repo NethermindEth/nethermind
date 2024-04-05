@@ -10,7 +10,7 @@ namespace Nethermind.Runner.Logging
     {
         private readonly Nethermind.Logging.ILogger _logger;
 
-        public CustomMicrosoftLogger(Nethermind.Logging.ILogger logger)
+        public CustomMicrosoftLogger(in Nethermind.Logging.ILogger logger)
         {
             _logger = logger;
         }
@@ -22,10 +22,7 @@ namespace Nethermind.Runner.Logging
                 return;
             }
 
-            if (formatter is null)
-            {
-                throw new ArgumentNullException(nameof(formatter));
-            }
+            ArgumentNullException.ThrowIfNull(formatter);
 
             var message = formatter(state, exception);
             switch (logLevel)

@@ -22,7 +22,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
         private PendingValidators _currentPendingValidators;
         private long? _lastProcessedBlockNumber = null;
-        private Keccak? _lastProcessedBlockHash = null;
+        private Hash256? _lastProcessedBlockHash = null;
         private IAuRaBlockFinalizationManager _blockFinalizationManager;
         internal IBlockTree BlockTree { get; }
         private readonly IReceiptFinder _receiptFinder;
@@ -135,7 +135,7 @@ namespace Nethermind.Consensus.AuRa.Validators
             (_lastProcessedBlockNumber, _lastProcessedBlockHash) = (block.Number, block.Hash);
         }
 
-        private PendingValidators TryGetInitChangeFromPastBlocks(Keccak blockHash)
+        private PendingValidators TryGetInitChangeFromPastBlocks(Hash256 blockHash)
         {
             PendingValidators pendingValidators = null;
             var lastFinalized = _blockFinalizationManager.GetLastLevelFinalizedBy(blockHash);
@@ -174,7 +174,7 @@ namespace Nethermind.Consensus.AuRa.Validators
 
                 // We are ignoring the signal if there are already pending validators.
                 // This replicates openethereum's behaviour which can be seen as a bug.
-                if (_currentPendingValidators == null && potentialValidators.Length > 0)
+                if (_currentPendingValidators is null && potentialValidators.Length > 0)
                 {
                     _currentPendingValidators = new PendingValidators(block.Number, block.Hash, potentialValidators);
                     if (!isProducingBlock)

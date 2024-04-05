@@ -17,7 +17,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
@@ -46,8 +45,8 @@ namespace Nethermind.AuRa.Test
                 new List<Block> { block },
                 ProcessingOptions.None,
                 NullBlockTracer.Instance);
-            Assert.AreEqual(1, processedBlocks.Length, "length");
-            Assert.AreEqual(block.Author, processedBlocks[0].Author, "author");
+            Assert.That(processedBlocks.Length, Is.EqualTo(1), "length");
+            Assert.That(processedBlocks[0].Author, Is.EqualTo(block.Author), "author");
         }
 
         [Test]
@@ -91,7 +90,7 @@ namespace Nethermind.AuRa.Test
         [Test]
         public void Should_rewrite_contracts()
         {
-            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Keccak stateRoot)
+            void Process(AuRaBlockProcessor auRaBlockProcessor, int blockNumber, Hash256 stateRoot)
             {
                 BlockHeader header = Build.A.BlockHeader.WithAuthor(TestItem.AddressD).WithNumber(blockNumber).TestObject;
                 Block block = Build.A.Block.WithHeader(header).TestObject;
@@ -122,7 +121,7 @@ namespace Nethermind.AuRa.Test
                 },
             };
 
-            (AuRaBlockProcessor processor, IStateProvider stateProvider) =
+            (AuRaBlockProcessor processor, IWorldState stateProvider) =
                 CreateProcessor(contractRewriter: new ContractRewriter(contractOverrides));
 
             stateProvider.CreateAccount(TestItem.AddressA, UInt256.One);
@@ -144,24 +143,24 @@ namespace Nethermind.AuRa.Test
             stateProvider.GetCode(TestItem.AddressB).Should().BeEquivalentTo(Bytes.FromHexString("0x654"));
         }
 
-        private (AuRaBlockProcessor Processor, IStateProvider StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
+        private (AuRaBlockProcessor Processor, IWorldState StateProvider) CreateProcessor(ITxFilter? txFilter = null, ContractRewriter? contractRewriter = null)
         {
             IDb stateDb = new MemDb();
             IDb codeDb = new MemDb();
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-            IStateProvider stateProvider = new StateProvider(trieStore, codeDb, LimboLogs.Instance);
+            IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                RinkebySpecProvider.Instance,
+                GoerliSpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
-                new StorageProvider(trieStore, stateProvider, LimboLogs.Instance),
                 NullReceiptStorage.Instance,
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                null,
                 txFilter,
                 contractRewriter: contractRewriter);
 

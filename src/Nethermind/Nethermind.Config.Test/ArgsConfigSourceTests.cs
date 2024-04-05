@@ -40,7 +40,7 @@ namespace Nethermind.Config.Test
             Dictionary<string, string> args = new();
             args.Add("A.a", valueString);
             ArgsConfigSource configSource = new(args);
-            Assert.AreEqual(parsedValue, configSource.GetValue(valueType, "a", "A").Value);
+            Assert.That(configSource.GetValue(valueType, "a", "A").Value, Is.EqualTo(parsedValue));
         }
     }
 }

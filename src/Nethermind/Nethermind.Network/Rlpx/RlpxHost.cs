@@ -6,14 +6,13 @@ using System.Net;
 using System.Net.Sockets;
 using System.Threading;
 using System.Threading.Tasks;
-using DotNetty.Buffers;
-using DotNetty.Codecs;
 using DotNetty.Common.Concurrency;
 using DotNetty.Handlers.Logging;
 using DotNetty.Transport.Bootstrapping;
 using DotNetty.Transport.Channels;
 using DotNetty.Transport.Channels.Sockets;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
@@ -21,7 +20,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.EventArg;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Stats.Model;
-using ILogger = Nethermind.Logging.ILogger;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 using LogLevel = DotNetty.Handlers.Logging.LogLevel;
 
 namespace Nethermind.Network.Rlpx
@@ -35,18 +34,23 @@ namespace Nethermind.Network.Rlpx
         private bool _isInitialized;
         public PublicKey LocalNodeId { get; }
         public int LocalPort { get; }
+        public string? LocalIp { get; set; }
         private readonly IHandshakeService _handshakeService;
         private readonly IMessageSerializationService _serializationService;
         private readonly ILogManager _logManager;
-        private readonly ILogger _logger;
+        private readonly Logging.ILogger _logger;
         private readonly ISessionMonitor _sessionMonitor;
         private readonly IDisconnectsAnalyzer _disconnectsAnalyzer;
-        private IEventExecutorGroup _group;
-        private TimeSpan _sendLatency;
+        private readonly IEventExecutorGroup _group;
+        private readonly TimeSpan _sendLatency;
+        private readonly TimeSpan _connectTimeout;
 
         public RlpxHost(IMessageSerializationService serializationService,
             PublicKey localNodeId,
+            int networkProcessingThread,
             int localPort,
+            string? localIp,
+            int connectTimeoutMs,
             IHandshakeService handshakeService,
             ISessionMonitor sessionMonitor,
             IDisconnectsAnalyzer disconnectsAnalyzer,
@@ -69,7 +73,14 @@ namespace Nethermind.Network.Rlpx
             //     new LoggerFilterOptions { MinLevel = Microsoft.Extensions.Logging.LogLevel.Warning });
             // InternalLoggerFactory.DefaultFactory = loggerFactory;
 
-            _group = new SingleThreadEventLoop();
+            if (networkProcessingThread <= 1)
+            {
+                _group = new SingleThreadEventLoop();
+            }
+            else
+            {
+                _group = new MultithreadEventLoopGroup(networkProcessingThread);
+            }
             _serializationService = serializationService ?? throw new ArgumentNullException(nameof(serializationService));
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger();
@@ -78,7 +89,9 @@ namespace Nethermind.Network.Rlpx
             _handshakeService = handshakeService ?? throw new ArgumentNullException(nameof(handshakeService));
             LocalNodeId = localNodeId ?? throw new ArgumentNullException(nameof(localNodeId));
             LocalPort = localPort;
+            LocalIp = localIp;
             _sendLatency = sendLatency;
+            _connectTimeout = TimeSpan.FromMilliseconds(connectTimeoutMs);
         }
 
         public async Task Init()
@@ -100,6 +113,11 @@ namespace Nethermind.Network.Rlpx
                     .Group(_bossGroup, _workerGroup)
                     .Channel<TcpServerSocketChannel>()
                     .ChildOption(ChannelOption.SoBacklog, 100)
+                    .ChildOption(ChannelOption.TcpNodelay, true)
+                    .ChildOption(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                    .ChildOption(ChannelOption.SoKeepalive, true)
+                    .ChildOption(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                    .ChildOption(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
                     .Handler(new LoggingHandler("BOSS", LogLevel.TRACE))
                     .ChildHandler(new ActionChannelInitializer<ISocketChannel>(ch =>
                     {
@@ -109,7 +127,11 @@ namespace Nethermind.Network.Rlpx
                         InitializeChannel(ch, session);
                     }));
 
-                _bootstrapChannel = await bootstrap.BindAsync(LocalPort).ContinueWith(t =>
+                Task<IChannel> openTask = LocalIp is null
+                    ? bootstrap.BindAsync(LocalPort)
+                    : bootstrap.BindAsync(IPAddress.Parse(LocalIp), LocalPort);
+
+                _bootstrapChannel = await openTask.ContinueWith(t =>
                 {
                     if (t.IsFaulted)
                     {
@@ -148,11 +170,16 @@ namespace Nethermind.Network.Rlpx
             if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} initiating OUT connection");
 
             Bootstrap clientBootstrap = new();
-            clientBootstrap.Group(_workerGroup);
-            clientBootstrap.Channel<TcpSocketChannel>();
-            clientBootstrap.Option(ChannelOption.TcpNodelay, true);
-            clientBootstrap.Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default);
-            clientBootstrap.Option(ChannelOption.ConnectTimeout, Timeouts.InitialConnection);
+            clientBootstrap
+                .Group(_workerGroup)
+                .Channel<TcpSocketChannel>()
+                .Option(ChannelOption.TcpNodelay, true)
+                .Option(ChannelOption.SoTimeout, (int)_connectTimeout.TotalMilliseconds)
+                .Option(ChannelOption.SoKeepalive, true)
+                .Option(ChannelOption.WriteBufferHighWaterMark, (int)3.MB())
+                .Option(ChannelOption.WriteBufferLowWaterMark, (int)1.MB())
+                .Option(ChannelOption.MessageSizeEstimator, DefaultMessageSizeEstimator.Default)
+                .Option(ChannelOption.ConnectTimeout, _connectTimeout);
             clientBootstrap.Handler(new ActionChannelInitializer<ISocketChannel>(ch =>
             {
                 Session session = new(LocalPort, node, ch, _disconnectsAnalyzer, _logManager);
@@ -161,10 +188,19 @@ namespace Nethermind.Network.Rlpx
 
             Task<IChannel> connectTask = clientBootstrap.ConnectAsync(node.Address);
             CancellationTokenSource delayCancellation = new();
-            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(Timeouts.InitialConnection.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
+            Task firstTask = await Task.WhenAny(connectTask, Task.Delay(_connectTimeout.Add(TimeSpan.FromSeconds(2)), delayCancellation.Token));
             if (firstTask != connectTask)
             {
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {node:s} OUT connection timed out");
+
+                _ = connectTask.ContinueWith(async c =>
+                {
+                    if (connectTask.IsCompletedSuccessfully)
+                    {
+                        await c.Result.DisconnectAsync();
+                    }
+                });
+
                 throw new NetworkingException($"Failed to connect to {node:s} (timeout)", NetworkExceptionType.Timeout);
             }
 
@@ -206,11 +242,7 @@ namespace Nethermind.Network.Rlpx
 
             IChannelPipeline pipeline = channel.Pipeline;
             pipeline.AddLast(new LoggingHandler(session.Direction.ToString().ToUpper(), LogLevel.TRACE));
-
-            if (session.Direction == ConnectionDirection.Out)
-            {
-                pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
-            }
+            pipeline.AddLast("enc-handshake-dec", new OneTimeLengthFieldBasedFrameDecoder());
             pipeline.AddLast("enc-handshake-handler", handshakeHandler);
 
             channel.CloseCompletion.ContinueWith(async x =>
@@ -221,7 +253,7 @@ namespace Nethermind.Network.Rlpx
                 await Task.Delay(TimeSpan.FromSeconds(1));
 
                 if (_logger.IsTrace) _logger.Trace($"|NetworkTrace| {session} channel disconnected");
-                session.MarkDisconnected(DisconnectReason.TcpSubSystemError, DisconnectType.Remote, "channel disconnected");
+                session.MarkDisconnected(DisconnectReason.ConnectionClosed, DisconnectType.Remote, "channel disconnected");
             });
         }
 

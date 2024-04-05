@@ -21,7 +21,7 @@ namespace Nethermind.Consensus.Producers
         public DevBlockProducer(
             ITxSource? txSource,
             IBlockchainProcessor? processor,
-            IStateProvider? stateProvider,
+            IWorldState? stateProvider,
             IBlockTree? blockTree,
             IBlockProductionTrigger? trigger,
             ITimestamper? timestamper,

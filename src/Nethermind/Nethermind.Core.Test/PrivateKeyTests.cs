@@ -61,7 +61,7 @@ namespace Nethermind.Core.Test
         {
             PrivateKey privateKey = new(hexString);
             string privateKeyString = privateKey.ToString();
-            Assert.AreEqual(hexString, privateKeyString);
+            Assert.That(privateKeyString, Is.EqualTo(hexString));
         }
 
         [TestCase("3a1076bf45ab87712ad64ccb3b10217737f7faacbf2872e88fdd9a537d8fe266", "0xc2d7cf95645d33006175b78989035c7c9061d3f9")]
@@ -70,7 +70,7 @@ namespace Nethermind.Core.Test
         {
             PrivateKey privateKey = new(privateKeyHex);
             Address address = privateKey.Address;
-            Assert.AreEqual(addressHex, address.ToString());
+            Assert.That(address.ToString(), Is.EqualTo(addressHex));
         }
 
         [Test]
@@ -79,7 +79,7 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = new(TestPrivateKeyHex);
             Address address1 = privateKey.Address;
             Address address2 = privateKey.Address;
-            Assert.AreSame(address1, address2);
+            Assert.That(address2, Is.SameAs(address1));
         }
 
         [Test]
@@ -88,7 +88,7 @@ namespace Nethermind.Core.Test
             PrivateKey privateKey = new(TestPrivateKeyHex);
             PublicKey a = privateKey.PublicKey;
             PublicKey b = privateKey.CompressedPublicKey.Decompress();
-            Assert.AreEqual(a, b);
+            Assert.That(b, Is.EqualTo(a));
         }
 
 

@@ -37,9 +37,9 @@ namespace Nethermind.Mining.Test
             }
         }
 
-        private Guid _guidA = Guid.NewGuid();
-        private Guid _guidB = Guid.NewGuid();
-        private Guid _guidC = Guid.NewGuid();
+        private readonly Guid _guidA = Guid.NewGuid();
+        private readonly Guid _guidB = Guid.NewGuid();
+        private readonly Guid _guidC = Guid.NewGuid();
 
         [Test]
         public async Task With_hint_returns_value()
@@ -85,7 +85,7 @@ namespace Nethermind.Mining.Test
 
             await Task.WhenAll(a, b, c);
 
-            Assert.AreEqual(5, hintBasedCache.CachedEpochsCount);
+            Assert.That(hintBasedCache.CachedEpochsCount, Is.EqualTo(5));
             for (uint i = (uint)(range / Ethash.EpochLength); i < (uint)((range + 120000) / Ethash.EpochLength); i++)
             {
                 Assert.NotNull(hintBasedCache.Get(i));

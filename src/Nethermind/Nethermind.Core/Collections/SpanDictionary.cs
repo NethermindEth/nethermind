@@ -39,10 +39,7 @@ namespace Nethermind.Core.Collections
 
         public SpanDictionary(int capacity, ISpanEqualityComparer<TKey> comparer)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
             if (capacity > 0)
             {
@@ -54,7 +51,7 @@ namespace Nethermind.Core.Collections
         }
 
         public SpanDictionary(IDictionary<TKey[], TValue> dictionary, ISpanEqualityComparer<TKey> comparer) :
-            this(dictionary != null ? dictionary.Count : 0, comparer)
+            this(dictionary is not null ? dictionary.Count : 0, comparer)
         {
             ArgumentNullException.ThrowIfNull(dictionary);
             AddRange(dictionary);
@@ -210,8 +207,8 @@ namespace Nethermind.Core.Collections
             int count = _count;
             if (count > 0)
             {
-                Debug.Assert(_buckets != null, "_buckets should be non-null");
-                Debug.Assert(_entries != null, "_entries should be non-null");
+                Debug.Assert(_buckets is not null, "_buckets should be non-null");
+                Debug.Assert(_entries is not null, "_entries should be non-null");
 
                 Array.Clear(_buckets);
 
@@ -231,11 +228,11 @@ namespace Nethermind.Core.Collections
         public bool ContainsValue(TValue value)
         {
             Entry[]? entries = _entries;
-            if (value == null)
+            if (value is null)
             {
                 for (int i = 0; i < _count; i++)
                 {
-                    if (entries![i].next >= -1 && entries[i].value == null)
+                    if (entries![i].next >= -1 && entries[i].value is null)
                     {
                         return true;
                     }
@@ -306,9 +303,9 @@ namespace Nethermind.Core.Collections
 
             info.AddValue(VersionName, _version);
             info.AddValue(ComparerName, Comparer, typeof(ISpanEqualityComparer<TKey>));
-            info.AddValue(HashSizeName, _buckets == null ? 0 : _buckets.Length); // This is the length of the bucket array
+            info.AddValue(HashSizeName, _buckets is null ? 0 : _buckets.Length); // This is the length of the bucket array
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
                 var array = new KeyValuePair<TKey[], TValue>[Count];
                 CopyTo(array, 0);
@@ -319,9 +316,9 @@ namespace Nethermind.Core.Collections
         internal ref TValue FindValue(ReadOnlySpan<TKey> key)
         {
             ref Entry entry = ref Unsafe.NullRef<Entry>();
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "expected entries to be != null");
+                Debug.Assert(_entries is not null, "expected entries to be not null");
                 ISpanEqualityComparer<TKey> comparer = _comparer;
                 uint hashCode = (uint)comparer.GetHashCode(key);
                 int i = GetBucket(hashCode);
@@ -355,13 +352,13 @@ namespace Nethermind.Core.Collections
 
             goto ReturnNotFound;
 
-ConcurrentOperation:
+        ConcurrentOperation:
             throw new InvalidOperationException("Concurrent operations not supported");
-ReturnFound:
+        ReturnFound:
             ref TValue value = ref entry.value;
-Return:
+        Return:
             return ref value;
-ReturnNotFound:
+        ReturnNotFound:
             value = ref Unsafe.NullRef<TValue>();
             goto Return;
         }
@@ -386,14 +383,14 @@ ReturnNotFound:
             // NOTE: this method is mirrored in CollectionsMarshal.GetValueRefOrAddDefault below.
             // If you make any changes here, make sure to keep that version in sync as well.
 
-            if (_buckets == null)
+            if (_buckets is null)
             {
                 Initialize(0);
             }
-            Debug.Assert(_buckets != null);
+            Debug.Assert(_buckets is not null);
 
             Entry[]? entries = _entries;
-            Debug.Assert(entries != null, "expected entries to be non-null");
+            Debug.Assert(entries is not null, "expected entries to be non-null");
 
             ISpanEqualityComparer<TKey> comparer = _comparer;
             uint hashCode = (uint)(comparer.GetHashCode(key));
@@ -485,14 +482,14 @@ ReturnNotFound:
 
                 ArgumentNullException.ThrowIfNull(key);
 
-                if (dictionary._buckets == null)
+                if (dictionary._buckets is null)
                 {
                     dictionary.Initialize(0);
                 }
-                Debug.Assert(dictionary._buckets != null);
+                Debug.Assert(dictionary._buckets is not null);
 
                 Entry[]? entries = dictionary._entries;
-                Debug.Assert(entries != null, "expected entries to be non-null");
+                Debug.Assert(entries is not null, "expected entries to be non-null");
 
                 ISpanEqualityComparer<TKey>? comparer = dictionary._comparer;
                 uint hashCode = (uint)(comparer?.GetHashCode(key) ?? key.GetHashCode());
@@ -501,7 +498,7 @@ ReturnNotFound:
                 ref int bucket = ref dictionary.GetBucket(hashCode);
                 int i = bucket - 1; // Value in _buckets is 1-based
 
-                if (comparer == null)
+                if (comparer is null)
                 {
                     if (typeof(TKey[]).IsValueType)
                     {
@@ -636,7 +633,7 @@ ReturnNotFound:
         {
             HashHelpers.SerializationInfoTable.TryGetValue(this, out SerializationInfo? siInfo);
 
-            if (siInfo == null)
+            if (siInfo is null)
             {
                 // We can return immediately if this function is called twice.
                 // Note we remove the serialization info from the table at the end of this method.
@@ -654,14 +651,14 @@ ReturnNotFound:
                 KeyValuePair<TKey[], TValue>[]? array = (KeyValuePair<TKey[], TValue>[]?)
                     siInfo.GetValue(KeyValuePairsName, typeof(KeyValuePair<TKey[], TValue>[]));
 
-                if (array == null)
+                if (array is null)
                 {
                     throw new SerializationException("The Keys for this Hashtable are missing.");
                 }
 
                 for (int i = 0; i < array.Length; i++)
                 {
-                    if (array[i].Key == null)
+                    if (array[i].Key is null)
                     {
                         throw new SerializationException("One of the serialized keys is null.");
                     }
@@ -684,7 +681,7 @@ ReturnNotFound:
         {
             // Value types never rehash
             Debug.Assert(!forceNewHashCodes || !typeof(TKey[]).IsValueType);
-            Debug.Assert(_entries != null, "_entries should be non-null");
+            Debug.Assert(_entries is not null, "_entries should be non-null");
             Debug.Assert(newSize >= _entries.Length);
 
             Entry[] entries = new Entry[newSize];
@@ -721,9 +718,9 @@ ReturnNotFound:
             // statement to copy the value for entry being removed into the output parameter.
             // Code has been intentionally duplicated for performance reasons.
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "entries should be non-null");
+                Debug.Assert(_entries is not null, "entries should be non-null");
                 uint collisionCount = 0;
                 uint hashCode = (uint)(_comparer.GetHashCode(key));
                 ref int bucket = ref GetBucket(hashCode);
@@ -786,9 +783,9 @@ ReturnNotFound:
 
             ArgumentNullException.ThrowIfNull(key);
 
-            if (_buckets != null)
+            if (_buckets is not null)
             {
-                Debug.Assert(_entries != null, "entries should be non-null");
+                Debug.Assert(_entries is not null, "entries should be non-null");
                 uint collisionCount = 0;
                 uint hashCode = (uint)(_comparer?.GetHashCode(key) ?? key.GetHashCode());
                 ref int bucket = ref GetBucket(hashCode);
@@ -915,8 +912,7 @@ ReturnNotFound:
             }
             else
             {
-                object[]? objects = array as object[];
-                if (objects == null)
+                if (array is not object[] objects)
                 {
                     throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                 }
@@ -947,12 +943,9 @@ ReturnNotFound:
         /// </summary>
         public int EnsureCapacity(int capacity)
         {
-            if (capacity < 0)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfNegative(capacity);
 
-            int currentCapacity = _entries == null ? 0 : _entries.Length;
+            int currentCapacity = _entries is null ? 0 : _entries.Length;
             if (currentCapacity >= capacity)
             {
                 return currentCapacity;
@@ -960,7 +953,7 @@ ReturnNotFound:
 
             _version++;
 
-            if (_buckets == null)
+            if (_buckets is null)
             {
                 return Initialize(capacity);
             }
@@ -993,10 +986,7 @@ ReturnNotFound:
         /// </remarks>
         public void TrimExcess(int capacity)
         {
-            if (capacity < Count)
-            {
-                throw new ArgumentOutOfRangeException(nameof(capacity));
-            }
+            ArgumentOutOfRangeException.ThrowIfLessThan(capacity, Count);
 
             int newSize = HashHelpers.GetPrime(capacity);
             Entry[]? oldEntries = _entries;
@@ -1205,11 +1195,11 @@ ReturnNotFound:
                 return false;
             }
 
-            public KeyValuePair<TKey[], TValue> Current => _current;
+            public readonly KeyValuePair<TKey[], TValue> Current => _current;
 
-            public void Dispose() { }
+            public readonly void Dispose() { }
 
-            object? IEnumerator.Current
+            readonly object? IEnumerator.Current
             {
                 get
                 {
@@ -1238,7 +1228,7 @@ ReturnNotFound:
                 _current = default;
             }
 
-            DictionaryEntry IDictionaryEnumerator.Entry
+            readonly DictionaryEntry IDictionaryEnumerator.Entry
             {
                 get
                 {
@@ -1251,7 +1241,7 @@ ReturnNotFound:
                 }
             }
 
-            object IDictionaryEnumerator.Key
+            readonly object IDictionaryEnumerator.Key
             {
                 get
                 {
@@ -1264,7 +1254,7 @@ ReturnNotFound:
                 }
             }
 
-            object? IDictionaryEnumerator.Value
+            readonly object? IDictionaryEnumerator.Value
             {
                 get
                 {
@@ -1365,8 +1355,7 @@ ReturnNotFound:
                 }
                 else
                 {
-                    object[]? objects = array as object[];
-                    if (objects == null)
+                    if (array is not object[] objects)
                     {
                         throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                     }
@@ -1406,7 +1395,7 @@ ReturnNotFound:
                     _currentKey = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1431,9 +1420,9 @@ ReturnNotFound:
                     return false;
                 }
 
-                public TKey[] Current => _currentKey!;
+                public readonly TKey[] Current => _currentKey!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {
@@ -1543,8 +1532,7 @@ ReturnNotFound:
                 }
                 else
                 {
-                    object[]? objects = array as object[];
-                    if (objects == null)
+                    if (array is not object[] objects)
                     {
                         throw new ArgumentException("Target array type is not compatible with the type of items in the collection.");
                     }
@@ -1584,7 +1572,7 @@ ReturnNotFound:
                     _currentValue = default;
                 }
 
-                public void Dispose() { }
+                public readonly void Dispose() { }
 
                 public bool MoveNext()
                 {
@@ -1608,9 +1596,9 @@ ReturnNotFound:
                     return false;
                 }
 
-                public TValue Current => _currentValue!;
+                public readonly TValue Current => _currentValue!;
 
-                object? IEnumerator.Current
+                readonly object? IEnumerator.Current
                 {
                     get
                     {

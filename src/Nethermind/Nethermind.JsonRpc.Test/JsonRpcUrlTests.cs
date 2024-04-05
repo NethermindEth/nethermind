@@ -17,10 +17,10 @@ namespace Nethermind.JsonRpc.Test
         public void Parse_success(string packedUrlValue, string expectedScheme, string expectedHost, int expectedPort, RpcEndpoint expectedRpcEndpoint, string[] expectedEnabledModules)
         {
             JsonRpcUrl url = JsonRpcUrl.Parse(packedUrlValue);
-            Assert.AreEqual(expectedScheme, url.Scheme);
-            Assert.AreEqual(expectedHost, url.Host);
-            Assert.AreEqual(expectedPort, url.Port);
-            Assert.AreEqual(expectedRpcEndpoint, url.RpcEndpoint);
+            Assert.That(url.Scheme, Is.EqualTo(expectedScheme));
+            Assert.That(url.Host, Is.EqualTo(expectedHost));
+            Assert.That(url.Port, Is.EqualTo(expectedPort));
+            Assert.That(url.RpcEndpoint, Is.EqualTo(expectedRpcEndpoint));
             CollectionAssert.AreEqual(expectedEnabledModules, url.EnabledModules, StringComparer.InvariantCultureIgnoreCase);
         }
 
@@ -35,7 +35,7 @@ namespace Nethermind.JsonRpc.Test
         [TestCase("http://127.0.0.1:1234|a|a", typeof(FormatException))]
         [TestCase("http://127.0.0.1:1234|ipc|a", typeof(FormatException))]
         [TestCase("http://127.0.0.1:1234|http|", typeof(FormatException))]
-        public void Parse_fail(string packedUrlValue, Type expectedExceptionType) =>
-            Assert.Throws(expectedExceptionType, () => JsonRpcUrl.Parse(packedUrlValue));
+        public void Parse_fail(string? packedUrlValue, Type expectedExceptionType) =>
+            Assert.Throws(expectedExceptionType, () => JsonRpcUrl.Parse(packedUrlValue!));
     }
 }

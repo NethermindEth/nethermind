@@ -11,7 +11,8 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
+using System.Text.Json.Serialization;
+using System.Runtime.CompilerServices;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -25,6 +26,7 @@ public class BlockForRpc
 
     }
 
+    [SkipLocalsInit]
     public BlockForRpc(Block block, bool includeFullTransactionData, ISpecProvider specProvider)
     {
         _isAuRaBlock = block.Header.AuRaSignature is not null;
@@ -58,7 +60,13 @@ public class BlockForRpc
 
             if (spec.IsEip4844Enabled)
             {
-                ExcessDataGas = block.Header.ExcessDataGas;
+                BlobGasUsed = block.Header.BlobGasUsed;
+                ExcessBlobGas = block.Header.ExcessBlobGas;
+            }
+
+            if (spec.IsEip4788Enabled)
+            {
+                ParentBeaconBlockRoot = block.ParentBeaconBlockRoot;
             }
         }
 
@@ -83,31 +91,31 @@ public class BlockForRpc
     public long GasLimit { get; set; }
     public long GasUsed { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-    public Keccak Hash { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+    public Hash256 Hash { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public Bloom LogsBloom { get; set; }
     public Address Miner { get; set; }
-    public Keccak MixHash { get; set; }
+    public Hash256 MixHash { get; set; }
 
     public bool ShouldSerializeMixHash() => !_isAuRaBlock && MixHash is not null;
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public byte[] Nonce { get; set; }
 
     public bool ShouldSerializeNonce() => !_isAuRaBlock;
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
     public long? Number { get; set; }
-    public Keccak ParentHash { get; set; }
-    public Keccak ReceiptsRoot { get; set; }
-    public Keccak Sha3Uncles { get; set; }
+    public Hash256 ParentHash { get; set; }
+    public Hash256 ReceiptsRoot { get; set; }
+    public Hash256 Sha3Uncles { get; set; }
     public byte[] Signature { get; set; }
     public bool ShouldSerializeSignature() => _isAuRaBlock;
     public long Size { get; set; }
-    public Keccak StateRoot { get; set; }
-    [JsonConverter(typeof(NullableLongConverter), NumberConversion.Raw)]
+    public Hash256 StateRoot { get; set; }
+    [JsonConverter(typeof(NullableRawLongConverter))]
     public long? Step { get; set; }
     public bool ShouldSerializeStep() => _isAuRaBlock;
     public UInt256 TotalDifficulty { get; set; }
@@ -115,15 +123,21 @@ public class BlockForRpc
 
     public UInt256? BaseFeePerGas { get; set; }
     public IEnumerable<object> Transactions { get; set; }
-    public Keccak TransactionsRoot { get; set; }
-    public IEnumerable<Keccak> Uncles { get; set; }
+    public Hash256 TransactionsRoot { get; set; }
+    public IEnumerable<Hash256> Uncles { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IEnumerable<Withdrawal>? Withdrawals { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public Keccak? WithdrawalsRoot { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? WithdrawalsRoot { get; set; }
 
-    [JsonProperty(NullValueHandling = NullValueHandling.Ignore)]
-    public UInt256? ExcessDataGas { get; set; }
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? BlobGasUsed { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public ulong? ExcessBlobGas { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? ParentBeaconBlockRoot { get; set; }
 }

@@ -7,6 +7,8 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Numerics;
+using System.Text.Json.Serialization;
+
 using Ethereum.Test.Base;
 using Nethermind.Consensus.Ethash;
 using Nethermind.Core;
@@ -15,7 +17,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Newtonsoft.Json;
 using NUnit.Framework;
 
 namespace Ethereum.PoW.Test
@@ -44,56 +45,56 @@ namespace Ethereum.PoW.Test
             return new EthashTest(
                 name,
                 nonceValue,
-                new Keccak(testJson.MixHash),
+                new Hash256(testJson.MixHash),
                 Bytes.FromHexString(testJson.Header),
-                new Keccak(testJson.Seed),
+                new Hash256(testJson.Seed),
                 testJson.CacheSize,
                 testJson.FullSize,
-                new Keccak(testJson.HeaderHash),
-                new Keccak(testJson.CacheHash),
-                new Keccak(testJson.Result));
+                new Hash256(testJson.HeaderHash),
+                new Hash256(testJson.CacheHash),
+                new Hash256(testJson.Result));
         }
 
         [TestCaseSource(nameof(LoadTests))]
         public void Test(EthashTest test)
         {
             BlockHeader blockHeader = Rlp.Decode<BlockHeader>(new Rlp(test.Header));
-            Assert.AreEqual(test.Nonce, blockHeader.Nonce, "header nonce vs test nonce");
-            Assert.AreEqual(test.MixHash.Bytes, blockHeader.MixHash.Bytes, "header mix hash vs test mix hash");
+            Assert.That(blockHeader.Nonce, Is.EqualTo(test.Nonce), "header nonce vs test nonce");
+            Assert.That(Bytes.AreEqual(blockHeader.MixHash.Bytes, test.MixHash.Bytes), Is.True, "header mix hash vs test mix hash");
 
-            Keccak headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
-            Assert.AreEqual(test.HeaderHash, headerHash, "header hash");
+            Hash256 headerHash = Keccak.Compute(Rlp.Encode(blockHeader, RlpBehaviors.ForSealing).Bytes);
+            Assert.That(headerHash, Is.EqualTo(test.HeaderHash), "header hash");
 
             // seed is correct
             Ethash ethash = new Ethash(LimboLogs.Instance);
             uint epoch = Ethash.GetEpoch(blockHeader.Number);
-            Assert.AreEqual(test.Seed, Ethash.GetSeedHash(epoch), "seed");
+            Assert.That(Ethash.GetSeedHash(epoch), Is.EqualTo(test.Seed), "seed");
 
             uint cacheSize = Ethash.GetCacheSize(Ethash.GetEpoch(blockHeader.Number));
-            Assert.AreEqual((ulong)test.CacheSize, cacheSize, "cache size requested");
+            Assert.That(cacheSize, Is.EqualTo((ulong)test.CacheSize), "cache size requested");
 
             IEthashDataSet cache = new EthashCache(cacheSize, test.Seed.Bytes);
-            Assert.AreEqual((ulong)test.CacheSize, (ulong)cache.Size, "cache size returned");
+            Assert.That((ulong)cache.Size, Is.EqualTo((ulong)test.CacheSize), "cache size returned");
 
             // below we confirm that headerAndNonceHashed is calculated correctly
             // & that the method for calculating the result from mix hash is correct
             byte[] nonceBytes = new byte[8];
             BinaryPrimitives.WriteUInt64LittleEndian(nonceBytes, test.Nonce);
             byte[] headerAndNonceHashed = Keccak512.Compute(Bytes.Concat(headerHash.Bytes, nonceBytes)).Bytes;
-            byte[] resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
-            Assert.AreEqual(resultHalfTest, test.Result.Bytes, "half test");
+            Span<byte> resultHalfTest = Keccak.Compute(Bytes.Concat(headerAndNonceHashed, test.MixHash.Bytes)).Bytes;
+            Assert.That(Bytes.AreEqual(test.Result.Bytes, resultHalfTest), Is.True, "half test");
 
             // here we confirm that the whole mix hash calculation is fine
-            (byte[] mixHash, byte[] result, bool success) = ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
-            Assert.AreEqual(test.MixHash.Bytes, mixHash, "mix hash");
-            Assert.AreEqual(test.Result.Bytes, result, "result");
+            (byte[] mixHash, ValueHash256 result, bool success) = Ethash.Hashimoto((ulong)test.FullSize, cache, headerHash, blockHeader.MixHash, test.Nonce);
+            Assert.That(Bytes.AreEqual(mixHash, test.MixHash.Bytes), Is.True, "mix hash");
+            Assert.That(Bytes.AreEqual(result.Bytes, test.Result.Bytes), Is.True, "result");
 
             // not that the test's result value suggests that the result of the PoW operation is not below difficulty / block is invalid...
             // Assert.True(ethash.Validate(blockHeader), "validation");
             // seems it is just testing the nonce and mix hash but not difficulty
 
             ulong dataSetSize = Ethash.GetDataSize(epoch);
-            Assert.AreEqual((ulong)test.FullSize, dataSetSize, "data size requested");
+            Assert.That(dataSetSize, Is.EqualTo((ulong)test.FullSize), "data size requested");
         }
 
         private class EthashTestJson
@@ -103,16 +104,16 @@ namespace Ethereum.PoW.Test
             public string Header { get; set; }
             public string Seed { get; set; }
 
-            [JsonProperty("cache_size")]
+            [JsonPropertyName("cache_size")]
             public int CacheSize { get; set; }
 
-            [JsonProperty("full_size")]
+            [JsonPropertyName("full_size")]
             public int FullSize { get; set; }
 
-            [JsonProperty("header_hash")]
+            [JsonPropertyName("header_hash")]
             public string HeaderHash { get; set; }
 
-            [JsonProperty("cache_hash")]
+            [JsonPropertyName("cache_hash")]
             public string CacheHash { get; set; }
 
             public string Result { get; set; }
@@ -123,14 +124,14 @@ namespace Ethereum.PoW.Test
             public EthashTest(
                 string name,
                 ulong nonce,
-                Keccak mixHash,
+                Hash256 mixHash,
                 byte[] header,
-                Keccak seed,
+                Hash256 seed,
                 BigInteger cacheSize,
                 BigInteger fullSize,
-                Keccak headerHash,
-                Keccak cacheHash,
-                Keccak result)
+                Hash256 headerHash,
+                Hash256 cacheHash,
+                Hash256 result)
             {
                 Name = name;
                 Nonce = nonce;
@@ -146,14 +147,14 @@ namespace Ethereum.PoW.Test
 
             public string Name { get; }
             public ulong Nonce { get; }
-            public Keccak MixHash { get; }
+            public Hash256 MixHash { get; }
             public byte[] Header { get; }
-            public Keccak Seed { get; }
+            public Hash256 Seed { get; }
             public BigInteger CacheSize { get; }
             public BigInteger FullSize { get; }
-            public Keccak HeaderHash { get; }
-            public Keccak CacheHash { get; }
-            public Keccak Result { get; }
+            public Hash256 HeaderHash { get; }
+            public Hash256 CacheHash { get; }
+            public Hash256 Result { get; }
 
             public override string ToString() => Name;
         }

@@ -13,14 +13,14 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
         [Test]
         public void Ctor_with_nulls()
         {
-            var message = new BlockBodiesMessage(new[] { Build.A.Block.TestObject, null, Build.A.Block.TestObject });
-            Assert.AreEqual(3, message.Bodies.Length);
+            using BlockBodiesMessage message = new([Build.A.Block.TestObject, null, Build.A.Block.TestObject]);
+            Assert.That(message.Bodies.Bodies.Length, Is.EqualTo(3));
         }
 
         [Test]
         public void To_string()
         {
-            BlockBodiesMessage newBlockMessage = new();
+            using BlockBodiesMessage newBlockMessage = new();
             _ = newBlockMessage.ToString();
         }
     }

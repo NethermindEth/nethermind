@@ -9,7 +9,9 @@ using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Int256;
 using Nethermind.Stats.Model;
@@ -18,6 +20,7 @@ namespace Nethermind.Synchronization.Test
 {
     public class SyncPeerMock : ISyncPeer
     {
+        public string Name => "Mock";
         private readonly IBlockTree _remoteTree;
         private readonly ISyncServer? _remoteSyncServer;
         private readonly TaskCompletionSource _closeTaskCompletionSource = new();
@@ -63,21 +66,21 @@ namespace Nethermind.Synchronization.Test
 
         public Node Node { get; }
 
-        public Node LocalNode { get; }
+        private Node LocalNode { get; }
+        public byte ProtocolVersion { get; } = default;
+        public string ProtocolCode { get; } = null!;
         public string ClientId => Node.ClientId;
-        public Keccak HeadHash { get; set; }
+        public Hash256 HeadHash { get; set; }
         public long HeadNumber { get; set; }
         public UInt256 TotalDifficulty { get; set; }
         public bool IsInitialized { get; set; }
         public bool IsPriority { get; set; }
-        public byte ProtocolVersion { get; }
-        public string ProtocolCode { get; }
 
-        public void Disconnect(InitiateDisconnectReason reason, string details)
+        public void Disconnect(DisconnectReason reason, string details)
         {
         }
 
-        public Task<BlockBody[]> GetBlockBodies(IReadOnlyList<Keccak> blockHashes, CancellationToken token)
+        public Task<OwnedBlockBodies> GetBlockBodies(IReadOnlyList<Hash256> blockHashes, CancellationToken token)
         {
             BlockBody[] result = new BlockBody[blockHashes.Count];
             for (int i = 0; i < blockHashes.Count; i++)
@@ -86,16 +89,16 @@ namespace Nethermind.Synchronization.Test
                 result[i] = new BlockBody(block?.Transactions, block?.Uncles);
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult(new OwnedBlockBodies(result));
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(Keccak blockHash, int maxBlocks, int skip, CancellationToken token)
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(Hash256 blockHash, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
+            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(blockHash, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
-                return Task.FromResult(result);
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
             }
 
             for (int i = 0; i < maxBlocks; i++)
@@ -103,16 +106,16 @@ namespace Nethermind.Synchronization.Test
                 result[i] = _remoteTree.FindHeader(firstNumber.Value + i + skip, BlockTreeLookupOptions.RequireCanonical)!;
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>?>(result);
         }
 
-        public Task<BlockHeader[]> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
+        public Task<IOwnedReadOnlyList<BlockHeader>?> GetBlockHeaders(long number, int maxBlocks, int skip, CancellationToken token)
         {
-            BlockHeader[] result = new BlockHeader[maxBlocks];
+            ArrayPoolList<BlockHeader> result = new ArrayPoolList<BlockHeader>(maxBlocks, maxBlocks);
             long? firstNumber = _remoteTree.FindHeader(number, BlockTreeLookupOptions.RequireCanonical)?.Number;
             if (!firstNumber.HasValue)
             {
-                return Task.FromResult(result);
+                return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
             }
 
             for (int i = 0; i < maxBlocks; i++)
@@ -128,10 +131,10 @@ namespace Nethermind.Synchronization.Test
                 }
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult<IOwnedReadOnlyList<BlockHeader>>(result)!;
         }
 
-        public Task<BlockHeader?> GetHeadBlockHeader(Keccak? hash, CancellationToken token)
+        public Task<BlockHeader?> GetHeadBlockHeader(Hash256? hash, CancellationToken token)
         {
             return Task.FromResult(_remoteTree.Head?.Header);
         }
@@ -155,7 +158,7 @@ namespace Nethermind.Synchronization.Test
             _sendQueue.Add(() => _remoteSyncServer?.AddNewBlock(block, this));
         }
 
-        private void HintNewBlock(Keccak blockHash, long number)
+        private void HintNewBlock(Hash256 blockHash, long number)
         {
             _sendQueue.Add(() => _remoteSyncServer?.HintBlock(blockHash, number, this));
         }
@@ -164,18 +167,18 @@ namespace Nethermind.Synchronization.Test
 
         public void SendNewTransactions(IEnumerable<Transaction> txs, bool sendFullTx) { }
 
-        public Task<TxReceipt[][]> GetReceipts(IReadOnlyList<Keccak> blockHash, CancellationToken token)
+        public Task<IOwnedReadOnlyList<TxReceipt[]?>> GetReceipts(IReadOnlyList<Hash256> blockHash, CancellationToken token)
         {
-            TxReceipt[][] result = new TxReceipt[blockHash.Count][];
+            TxReceipt[]?[] result = new TxReceipt[blockHash.Count][];
             for (int i = 0; i < blockHash.Count; i++)
             {
                 result[i] = _remoteSyncServer?.GetReceipts(blockHash[i])!;
             }
 
-            return Task.FromResult(result);
+            return Task.FromResult<IOwnedReadOnlyList<TxReceipt[]?>>(result.ToPooledList());
         }
 
-        public Task<byte[][]> GetNodeData(IReadOnlyList<Keccak> hashes, CancellationToken token) => Task.FromResult(_remoteSyncServer?.GetNodeData(hashes))!;
+        public Task<IOwnedReadOnlyList<byte[]>> GetNodeData(IReadOnlyList<Hash256> hashes, CancellationToken token) => Task.FromResult(_remoteSyncServer?.GetNodeData(hashes, token))!;
 
         public void RegisterSatelliteProtocol<T>(string protocol, T protocolHandler) where T : class
         {

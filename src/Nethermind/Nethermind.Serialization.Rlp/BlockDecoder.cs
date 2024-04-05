@@ -1,8 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 
 namespace Nethermind.Serialization.Rlp
@@ -36,7 +37,7 @@ namespace Nethermind.Serialization.Rlp
             List<Transaction> transactions = new();
             while (rlpStream.Position < transactionsCheck)
             {
-                transactions.Add(Rlp.Decode<Transaction>(rlpStream));
+                transactions.Add(Rlp.Decode<Transaction>(rlpStream, rlpBehaviors));
             }
 
             rlpStream.Check(transactionsCheck);
@@ -53,18 +54,31 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal> withdrawals = null;
 
-            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (rlpStream.Position != blockCheck)
             {
-                int withdrawalsLength = rlpStream.ReadSequenceLength();
-                int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
-                withdrawals = new();
-
-                while (rlpStream.Position < withdrawalsCheck)
+                bool lengthWasRead = true;
+                try
                 {
-                    withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                    rlpStream.PeekNextRlpLength();
+                }
+                catch
+                {
+                    lengthWasRead = false;
                 }
 
-                rlpStream.Check(withdrawalsCheck);
+                if (lengthWasRead)
+                {
+                    int withdrawalsLength = rlpStream.ReadSequenceLength();
+                    int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
+                    withdrawals = new();
+
+                    while (rlpStream.Position < withdrawalsCheck)
+                    {
+                        withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                    }
+
+                    rlpStream.Check(withdrawalsCheck);
+                }
             }
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
@@ -86,7 +100,7 @@ namespace Nethermind.Serialization.Rlp
             contentLength += Rlp.LengthOfSequence(unclesLength);
 
             int? withdrawalsLength = null;
-            if (item.Header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (item.Withdrawals is not null)
             {
                 withdrawalsLength = GetWithdrawalsLength(item, rlpBehaviors);
 
@@ -162,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
             List<Transaction> transactions = new();
             while (decoderContext.Position < transactionsCheck)
             {
-                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext));
+                transactions.Add(Rlp.Decode<Transaction>(ref decoderContext, rlpBehaviors));
             }
 
             decoderContext.Check(transactionsCheck);
@@ -179,7 +193,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal> withdrawals = null;
 
-            if (header.Timestamp >= HeaderDecoder.WithdrawalTimestamp)
+            if (decoderContext.Position != blockCheck)
             {
                 int withdrawalsLength = decoderContext.ReadSequenceLength();
                 int withdrawalsCheck = decoderContext.Position + withdrawalsLength;
@@ -210,7 +224,7 @@ namespace Nethermind.Serialization.Rlp
 
             RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
             Encode(rlpStream, item, rlpBehaviors);
-            return new(rlpStream.Data);
+            return new(rlpStream.Data.ToArray());
         }
 
         public void Encode(RlpStream stream, Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -245,6 +259,40 @@ namespace Nethermind.Serialization.Rlp
                     stream.Encode(item.Withdrawals[i]);
                 }
             }
+        }
+
+        public static ReceiptRecoveryBlock? DecodeToReceiptRecoveryBlock(MemoryManager<byte>? memoryManager, Memory<byte> memory, RlpBehaviors rlpBehaviors)
+        {
+            Rlp.ValueDecoderContext decoderContext = new Rlp.ValueDecoderContext(memory, true);
+
+            if (decoderContext.IsNextItemNull())
+            {
+                decoderContext.ReadByte();
+                return null;
+            }
+
+            int sequenceLength = decoderContext.ReadSequenceLength();
+            int blockCheck = decoderContext.Position + sequenceLength;
+
+            BlockHeader header = Rlp.Decode<BlockHeader>(ref decoderContext);
+
+            int contentLength = decoderContext.ReadSequenceLength();
+            int transactionCount = decoderContext.PeekNumberOfItemsRemaining(decoderContext.Position + contentLength);
+
+            Memory<byte> transactionMemory = decoderContext.ReadMemory(contentLength);
+
+            decoderContext.SkipItem(); // Skip uncles
+
+            if (decoderContext.Position != blockCheck)
+            {
+                decoderContext.SkipItem(); // Skip withdrawals
+            }
+            if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
+            {
+                decoderContext.Check(blockCheck);
+            }
+
+            return new ReceiptRecoveryBlock(memoryManager, header, transactionMemory, transactionCount);
         }
     }
 }

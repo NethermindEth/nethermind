@@ -3,11 +3,10 @@
 
 using System;
 using System.Diagnostics.CodeAnalysis;
-using System.Threading;
 
 namespace Nethermind.JsonRpc
 {
-    public readonly struct JsonRpcResult
+    public readonly struct JsonRpcResult : IDisposable
     {
         [MemberNotNullWhen(true, nameof(BatchedResponses))]
         [MemberNotNullWhen(false, nameof(SingleResponse))]
@@ -55,6 +54,12 @@ namespace Nethermind.JsonRpc
             {
                 Response?.Dispose();
             }
+        }
+
+        public void Dispose()
+        {
+            SingleResponse?.Dispose();
+            BatchedResponses?.Dispose();
         }
     }
 }

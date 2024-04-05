@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
@@ -26,7 +26,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             int totalLength = GetLength(message, out int contentLength);
 
-            byteBuffer.EnsureWritable(totalLength, true);
+            byteBuffer.EnsureWritable(totalLength);
             NettyRlpStream stream = new(byteBuffer);
             stream.StartSequence(contentLength);
 
@@ -75,8 +75,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
-            TxReceipt[][] data = rlpStream.DecodeArray(itemContext =>
-                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? new TxReceipt[0], true);
+            ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(itemContext =>
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? Array.Empty<TxReceipt>(), true);
             ReceiptsMessage message = new(data);
 
             return message;
@@ -86,7 +86,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         {
             contentLength = 0;
 
-            for (int i = 0; i < message.TxReceipts.Length; i++)
+            for (int i = 0; i < message.TxReceipts.Count; i++)
             {
                 TxReceipt?[]? txReceipts = message.TxReceipts[i];
                 if (txReceipts is null)

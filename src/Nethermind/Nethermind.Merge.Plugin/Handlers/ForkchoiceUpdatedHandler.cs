@@ -3,14 +3,18 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.JsonRpc;
 using Nethermind.Logging;
@@ -18,6 +22,9 @@ using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
+using Nethermind.Synchronization;
+using Nethermind.Synchronization.Peers;
+using Nethermind.Synchronization.Peers.AllocationStrategies;
 
 namespace Nethermind.Merge.Plugin.Handlers;
 
@@ -42,6 +49,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     private readonly IBeaconPivot _beaconPivot;
     private readonly ILogger _logger;
     private readonly IPeerRefresher _peerRefresher;
+    private readonly ISpecProvider _specProvider;
+    private readonly bool _simulateBlockProduction;
+    private readonly ulong _secondsPerSlot;
+    private readonly ISyncPeerPool _syncPeerPool;
 
     public ForkchoiceUpdatedHandler(
         IBlockTree blockTree,
@@ -54,7 +65,11 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         IMergeSyncController mergeSyncController,
         IBeaconPivot beaconPivot,
         IPeerRefresher peerRefresher,
-        ILogManager logManager)
+        ISpecProvider specProvider,
+        ISyncPeerPool syncPeerPool,
+        ILogManager logManager,
+        ulong secondsPerSlot,
+        bool simulateBlockProduction = false)
     {
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _manualBlockFinalizationManager = manualBlockFinalizationManager ?? throw new ArgumentNullException(nameof(manualBlockFinalizationManager));
@@ -66,66 +81,99 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         _mergeSyncController = mergeSyncController;
         _beaconPivot = beaconPivot;
         _peerRefresher = peerRefresher;
+        _specProvider = specProvider;
+        _syncPeerPool = syncPeerPool;
+        _simulateBlockProduction = simulateBlockProduction;
+        _secondsPerSlot = secondsPerSlot;
         _logger = logManager.GetClassLogger();
     }
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+    public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
-        string requestStr = $"{forkchoiceState} {payloadAttributes}";
-        if (_logger.IsInfo) _logger.Info($"Received: {requestStr}");
+        Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
+        return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
+            ?? ValidateAttributes(payloadAttributes, version)
+            ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+    }
 
-        if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Keccak? lastValidHash))
+    private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+    {
+        using var handle = Thread.CurrentThread.BoostPriority();
+
+        if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
-            if (_logger.IsInfo) _logger.Info($" FCU - Invalid - {requestStr} {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
+            if (_logger.IsInfo) _logger.Info($"Received Invalid {forkchoiceState} {payloadAttributes} - {forkchoiceState.HeadBlockHash} is known to be a part of an invalid chain.");
             return ForkchoiceUpdatedV1Result.Invalid(lastValidHash);
         }
 
-        Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
         if (newHeadBlock is null) // if a head is unknown we are syncing
         {
+            string simpleRequestStr = payloadAttributes is null ? forkchoiceState.ToString() : $"{forkchoiceState} {payloadAttributes}";
+            if (_logger.IsInfo) _logger.Info($"Received {simpleRequestStr}");
+
+            BlockHeader? headBlockHeader = null;
+
             if (_blockCacheService.BlockCache.TryGetValue(forkchoiceState.HeadBlockHash, out Block? block))
             {
-                StartNewBeaconHeaderSync(forkchoiceState, block, requestStr);
-            }
-            else if (_logger.IsInfo)
-            {
-                _logger.Info($"Syncing... Unknown forkchoiceState head hash... Request: {requestStr}.");
+                headBlockHeader = block.Header;
             }
 
+            if (headBlockHeader is null)
+            {
+                if (_logger.IsDebug) _logger.Debug($"Attempting to fetch header from peer: {simpleRequestStr}.");
+                headBlockHeader = await _syncPeerPool.FetchHeaderFromPeer(forkchoiceState.HeadBlockHash);
+            }
+
+            if (headBlockHeader is not null)
+            {
+                StartNewBeaconHeaderSync(forkchoiceState, headBlockHeader, simpleRequestStr);
+                return ForkchoiceUpdatedV1Result.Syncing;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Syncing Unknown ForkChoiceState head hash Request: {simpleRequestStr}.");
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
         BlockInfo? blockInfo = _blockTree.GetInfo(newHeadBlock.Number, newHeadBlock.GetOrCalculateHash()).Info;
+        BlockHeader? safeBlockHeader = ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
+        BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
+        string requestStr = payloadAttributes is null
+            ? forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)
+            : $"{forkchoiceState.ToString(newHeadBlock.Number, safeBlockHeader?.Number, finalizedHeader?.Number)} {payloadAttributes}";
+
+        if (_logger.IsInfo) _logger.Info($"Received {requestStr}");
+
         if (blockInfo is null)
         {
             if (_logger.IsWarn) { _logger.Warn($"Block info for: {requestStr} wasn't found."); }
             return ForkchoiceUpdatedV1Result.Syncing;
         }
+
         if (!blockInfo.WasProcessed)
         {
-            BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!);
+            BlockHeader? blockParent = _blockTree.FindHeader(newHeadBlock.ParentHash!, blockNumber: newHeadBlock.Number - 1);
             if (blockParent is null)
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
+                if (_logger.IsInfo) _logger.Info($"Parent of block {newHeadBlock} not available. Starting new beacon header. sync.");
 
-                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
+                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
             if (_beaconPivot.ShouldForceStartNewSync)
             {
-                if (_logger.IsInfo)
-                    _logger.Info($"Force starting new sync.");
+                if (_logger.IsInfo) _logger.Info("Force starting new sync.");
 
-                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!, requestStr);
+                StartNewBeaconHeaderSync(forkchoiceState, newHeadBlock!.Header, requestStr);
 
                 return ForkchoiceUpdatedV1Result.Syncing;
             }
 
-            if (!blockInfo.IsBeaconMainChain && blockInfo.IsBeaconInfo)
+            if (blockInfo is { IsBeaconMainChain: false, IsBeaconInfo: true })
+            {
                 ReorgBeaconChainDuringSync(newHeadBlock!, blockInfo);
+            }
 
             int processingQueueCount = _processingQueue.Count;
             if (processingQueueCount == 0)
@@ -134,27 +182,25 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
                 _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
                 _mergeSyncController.StopBeaconModeControl();
 
-                if (_logger.IsInfo) { _logger.Info($"Syncing beacon headers... Request: {requestStr}."); }
+                if (_logger.IsInfo) _logger.Info($"Syncing beacon headers, Request: {requestStr}");
             }
             else
             {
-                if (_logger.IsInfo) { _logger.Info($"Processing {_processingQueue.Count} blocks... Request: {requestStr}."); }
+                if (_logger.IsInfo) _logger.Info($"Processing {_processingQueue.Count} blocks, Request: {requestStr}");
             }
 
             _beaconPivot.ProcessDestination ??= newHeadBlock!.Header;
             return ForkchoiceUpdatedV1Result.Syncing;
         }
 
-        if (_logger.IsInfo) _logger.Info($"FCU - block {newHeadBlock} was processed.");
+        if (_logger.IsDebug) _logger.Debug($"ForkChoiceUpdate: block {newHeadBlock} was processed.");
 
-        BlockHeader? finalizedHeader = ValidateBlockHash(forkchoiceState.FinalizedBlockHash, out string? finalizationErrorMsg);
         if (finalizationErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid finalized block hash {finalizationErrorMsg}. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Error(finalizationErrorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
-        ValidateBlockHash(forkchoiceState.SafeBlockHash, out string? safeBlockErrorMsg);
         if (safeBlockErrorMsg is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid safe block hash {finalizationErrorMsg}. Request: {requestStr}.");
@@ -179,7 +225,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (_blockTree.IsOnMainChainBehindHead(newHeadBlock))
         {
-            if (_logger.IsInfo) _logger.Info($"Valid. ForkchoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
+            if (_logger.IsInfo) _logger.Info($"Valid. ForkChoiceUpdated ignored - already in canonical chain. Request: {requestStr}.");
             return ForkchoiceUpdatedV1Result.Valid(null, forkchoiceState.HeadBlockHash);
         }
 
@@ -192,20 +238,19 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
         if (IsInconsistent(forkchoiceState.FinalizedBlockHash))
         {
-            string errorMsg = $"Inconsistent forkchoiceState - finalized block hash. Request: {requestStr}";
+            string errorMsg = $"Inconsistent ForkChoiceState - finalized block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         if (IsInconsistent(forkchoiceState.SafeBlockHash))
         {
-            string errorMsg = $"Inconsistent forkchoiceState - safe block hash. Request: {requestStr}";
+            string errorMsg = $"Inconsistent ForkChoiceState - safe block hash. Request: {requestStr}";
             if (_logger.IsWarn) _logger.Warn(errorMsg);
             return ForkchoiceUpdatedV1Result.Error(errorMsg, MergeErrorCodes.InvalidForkchoiceState);
         }
 
         bool nonZeroFinalizedBlockHash = forkchoiceState.FinalizedBlockHash != Keccak.Zero;
-        // bool nonZeroSafeBlockHash = forkchoiceState.SafeBlockHash != Keccak.Zero;
         if (nonZeroFinalizedBlockHash)
         {
             _manualBlockFinalizationManager.MarkFinalized(newHeadBlock.Header, finalizedHeader!);
@@ -214,49 +259,79 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (shouldUpdateHead)
         {
             _poSSwitcher.ForkchoiceUpdated(newHeadBlock.Header, forkchoiceState.FinalizedBlockHash);
-            if (_logger.IsInfo) _logger.Info($"Block {forkchoiceState.HeadBlockHash} was set as head.");
+            if (_logger.IsInfo) _logger.Info($"Synced Chain Head to {newHeadBlock.ToString(Block.Format.Short)}");
         }
 
+        return null;
+    }
+
+    private ResultWrapper<ForkchoiceUpdatedV1Result> StartBuildingPayload(Block newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
+    {
         string? payloadId = null;
+
+        if (_simulateBlockProduction)
+        {
+            payloadAttributes ??= new PayloadAttributes()
+            {
+                Timestamp = newHeadBlock.Timestamp + _secondsPerSlot,
+                ParentBeaconBlockRoot = newHeadBlock.ParentHash, // it doesn't matter
+                PrevRandao = newHeadBlock.ParentHash ?? Keccak.Zero, // it doesn't matter
+                Withdrawals = Array.Empty<Withdrawal>(),
+                SuggestedFeeRecipient = Address.Zero
+            };
+        }
+
         if (payloadAttributes is not null)
         {
             if (newHeadBlock.Timestamp >= payloadAttributes.Timestamp)
             {
-                var error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
+                string error = $"Payload timestamp {payloadAttributes.Timestamp} must be greater than block timestamp {newHeadBlock.Timestamp}.";
 
                 if (_logger.IsWarn) _logger.Warn($"Invalid payload attributes: {error}");
 
                 return ForkchoiceUpdatedV1Result.Error(error, MergeErrorCodes.InvalidPayloadAttributes);
             }
 
-            payloadAttributes.GasLimit = null;
             payloadId = _payloadPreparationService.StartPreparingPayload(newHeadBlock.Header, payloadAttributes);
         }
-
-        if (_logger.IsInfo) _logger.Info($"Valid. Request: {requestStr}.");
 
         _blockTree.ForkChoiceUpdated(forkchoiceState.FinalizedBlockHash, forkchoiceState.SafeBlockHash);
         return ForkchoiceUpdatedV1Result.Valid(payloadId, forkchoiceState.HeadBlockHash);
     }
 
-    private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, Block block, string requestStr)
+    private ResultWrapper<ForkchoiceUpdatedV1Result>? ValidateAttributes(PayloadAttributes? payloadAttributes, int version)
     {
-        _mergeSyncController.InitBeaconHeaderSync(block.Header);
-        _beaconPivot.ProcessDestination = block.Header;
-        _peerRefresher.RefreshPeers(block.Hash!, block.ParentHash!, forkchoiceState.FinalizedBlockHash);
-        _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
-
-        if (_logger.IsInfo) _logger.Info($"Start a new sync process... Request: {requestStr}.");
+        string? error = null;
+        return payloadAttributes?.Validate(_specProvider, version, out error) switch
+        {
+            PayloadAttributesValidationResult.InvalidParams =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
+            PayloadAttributesValidationResult.InvalidPayloadAttributes =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.InvalidPayloadAttributes),
+            PayloadAttributesValidationResult.UnsupportedFork =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.UnsupportedFork),
+            _ => null,
+        };
     }
 
-    private bool IsInconsistent(Keccak blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
+    private void StartNewBeaconHeaderSync(ForkchoiceStateV1 forkchoiceState, BlockHeader blockHeader, string requestStr)
+    {
+        _mergeSyncController.InitBeaconHeaderSync(blockHeader);
+        _beaconPivot.ProcessDestination = blockHeader;
+        _peerRefresher.RefreshPeers(blockHeader.Hash!, blockHeader.ParentHash!, forkchoiceState.FinalizedBlockHash);
+        _blockCacheService.FinalizedHash = forkchoiceState.FinalizedBlockHash;
 
-    private Block? GetBlock(Keccak headBlockHash)
+        if (_logger.IsInfo) _logger.Info($"Start a new sync process, Request: {requestStr}.");
+    }
+
+    private bool IsInconsistent(Hash256 blockHash) => blockHash != Keccak.Zero && !_blockTree.IsMainChain(blockHash);
+
+    private Block? GetBlock(Hash256 headBlockHash)
     {
         Block? block = _blockTree.FindBlock(headBlockHash, BlockTreeLookupOptions.DoNotCreateLevelIfMissing);
         if (block is null)
         {
-            if (_logger.IsInfo) _logger.Info($"Syncing... Block {headBlockHash} not found.");
+            if (_logger.IsInfo) _logger.Info($"Syncing, Block {headBlockHash} not found.");
         }
 
         return block;
@@ -279,7 +354,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         return branchOfBlocks;
     }
 
-    private BlockHeader? ValidateBlockHash(Keccak blockHash, out string? errorMessage, bool skipZeroHash = true)
+    private BlockHeader? ValidateBlockHash(Hash256 blockHash, out string? errorMessage, bool skipZeroHash = true)
     {
         errorMessage = null;
         if (skipZeroHash && blockHash == Keccak.Zero)
@@ -291,7 +366,6 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         if (blockHeader is null)
         {
             errorMessage = $"Block {blockHash} not found.";
-            if (_logger.IsWarn) _logger.Warn(errorMessage);
         }
         return blockHeader;
     }

@@ -11,6 +11,7 @@ using Nethermind.Consensus.Validators;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Mev.Execution
@@ -22,13 +23,11 @@ namespace Nethermind.Mev.Execution
         private readonly ILogManager _logManager;
         private readonly ProcessingOptions _processingOptions;
         private readonly IReadOnlyBlockTree _blockTree;
-        private readonly ReadOnlyDbProvider _dbProvider;
-        private readonly IReadOnlyTrieStore _trieStore;
+        private readonly IWorldStateManager _worldStateManager;
 
         public TracerFactory(
-            IDbProvider dbProvider,
             IBlockTree blockTree,
-            IReadOnlyTrieStore trieStore,
+            IWorldStateManager worldStateManager,
             IBlockPreprocessorStep recoveryStep,
             ISpecProvider specProvider,
             ILogManager logManager,
@@ -38,23 +37,22 @@ namespace Nethermind.Mev.Execution
             _processingOptions = processingOptions;
             _recoveryStep = recoveryStep ?? throw new ArgumentNullException(nameof(recoveryStep));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _dbProvider = dbProvider.AsReadOnly(false);
+            _worldStateManager = worldStateManager ?? throw new ArgumentNullException(nameof(worldStateManager));
             _blockTree = blockTree.AsReadOnly();
-            _trieStore = trieStore;
         }
 
         public ITracer Create()
         {
             ReadOnlyTxProcessingEnv txProcessingEnv = new(
-                _dbProvider, _trieStore, _blockTree, _specProvider, _logManager);
+                _worldStateManager, _blockTree, _specProvider, _logManager);
 
             ReadOnlyChainProcessingEnv chainProcessingEnv = new(
-                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _dbProvider, _specProvider, _logManager);
+                txProcessingEnv, Always.Valid, _recoveryStep, NoBlockRewards.Instance, new InMemoryReceiptStorage(), _specProvider, _logManager);
 
             return CreateTracer(txProcessingEnv, chainProcessingEnv);
         }
 
         protected virtual ITracer CreateTracer(ReadOnlyTxProcessingEnv txProcessingEnv, ReadOnlyChainProcessingEnv chainProcessingEnv) =>
-            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, _processingOptions);
+            new Tracer(txProcessingEnv.StateProvider, chainProcessingEnv.ChainProcessor, chainProcessingEnv.ChainProcessor, _processingOptions);
     }
 }

@@ -39,12 +39,22 @@ namespace Nethermind.Specs.Test
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip3541Enabled.Should().Be(isEnabled);
         }
 
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
-        [TestCase(MainnetSpecProvider.GrayGlacierBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.ShanghaiBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, true)]
         public void Cancun_eips(long blockNumber, ulong timestamp, bool isEnabled)
         {
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip1153Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4844Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip5656Enabled.Should().Be(isEnabled);
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip4788Enabled.Should().Be(isEnabled);
+            if (isEnabled)
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress.Should().NotBeNull();
+            }
+            else
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip4788ContractAddress.Should().BeNull();
+            }
         }
 
         [Test]

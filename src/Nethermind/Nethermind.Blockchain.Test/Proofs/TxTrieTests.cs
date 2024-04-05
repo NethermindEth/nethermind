@@ -29,17 +29,15 @@ namespace Nethermind.Blockchain.Test.Proofs
         public void Can_calculate_root()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
-            TxTrie txTrie = new(block.Transactions);
+            Hash256 rootHash = TxTrie.CalculateRoot(block.Transactions);
 
             if (_releaseSpec == Berlin.Instance)
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
             else
             {
-                Assert.AreEqual("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5",
-                    txTrie.RootHash.ToString());
+                Assert.That(rootHash.ToString(), Is.EqualTo("0x29cc403075ed3d1d6af940d577125cc378ee5a26f7746cbaf87f1cf4a38258b5"));
             }
         }
 
@@ -60,7 +58,7 @@ namespace Nethermind.Blockchain.Test.Proofs
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject, Build.A.Transaction.TestObject).TestObject;
             TxTrie txTrie = new(block.Transactions, true);
             byte[][] proof = txTrie.BuildProof(0);
-            Assert.AreEqual(2, proof.Length);
+            Assert.That(proof.Length, Is.EqualTo(2));
 
             txTrie.UpdateRootHash();
             VerifyProof(proof, txTrie.RootHash);
@@ -80,11 +78,11 @@ namespace Nethermind.Blockchain.Test.Proofs
             }
         }
 
-        private static void VerifyProof(byte[][] proof, Keccak txRoot)
+        private static void VerifyProof(byte[][] proof, Hash256 txRoot)
         {
             for (int i = proof.Length; i > 0; i--)
             {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                Hash256 proofHash = Keccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
                     if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))

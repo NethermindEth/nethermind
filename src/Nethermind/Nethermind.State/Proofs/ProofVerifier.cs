@@ -2,12 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State.Proofs
 {
@@ -17,7 +18,7 @@ namespace Nethermind.State.Proofs
         /// Verifies one proof - address path from the bottom to the root.
         /// </summary>
         /// <returns>The Value of the bottom most proof node. For example an Account.</returns>
-        public static byte[]? VerifyOneProof(byte[][] proof, Keccak root)
+        public static CappedArray<byte> VerifyOneProof(byte[][] proof, Hash256 root)
         {
             if (proof.Length == 0)
             {
@@ -26,7 +27,7 @@ namespace Nethermind.State.Proofs
 
             for (int i = proof.Length; i > 0; i--)
             {
-                Keccak proofHash = Keccak.Compute(proof[i - 1]);
+                Hash256 proofHash = Keccak.Compute(proof[i - 1]);
                 if (i > 1)
                 {
                     if (!new Rlp(proof[i - 2]).ToString(false).Contains(proofHash.ToString(false)))
@@ -44,7 +45,7 @@ namespace Nethermind.State.Proofs
             }
 
             TrieNode trieNode = new(NodeType.Unknown, proof.Last());
-            trieNode.ResolveNode(null);
+            trieNode.ResolveNode(null, TreePath.Empty);
 
             return trieNode.Value;
         }

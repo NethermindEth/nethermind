@@ -30,15 +30,15 @@ namespace Nethermind.Evm
                 _maxCallStackDepth = maxCallStackDepth;
             }
 
-            private readonly ConcurrentStack<byte[]> _dataStackPool = new();
-            private readonly ConcurrentStack<int[]> _returnStackPool = new();
+            private readonly Stack<byte[]> _dataStackPool = new(32);
+            private readonly Stack<int[]> _returnStackPool = new(32);
 
             private int _dataStackPoolDepth;
             private int _returnStackPoolDepth;
 
             /// <summary>
             /// The word 'return' acts here once as a verb 'to return stack to the pool' and once as a part of the
-            /// compound noun 'return stack' which is a stack of subroutine return values.  
+            /// compound noun 'return stack' which is a stack of subroutine return values.
             /// </summary>
             /// <param name="dataStack"></param>
             /// <param name="returnStack"></param>
@@ -55,7 +55,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _dataStackPoolDepth);
+                _dataStackPoolDepth++;
                 if (_dataStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
@@ -71,7 +71,7 @@ namespace Nethermind.Evm
                     return result;
                 }
 
-                Interlocked.Increment(ref _returnStackPoolDepth);
+                _returnStackPoolDepth++;
                 if (_returnStackPoolDepth > _maxCallStackDepth)
                 {
                     EvmStack.ThrowEvmStackOverflowException();
@@ -104,12 +104,15 @@ namespace Nethermind.Evm
         // As we can add here from VM, we need it as ICollection
         public ICollection<Address> DestroyList => _destroyList;
         // As we can add here from VM, we need it as ICollection
+        public ICollection<AddressAsKey> CreateList => _createList;
+        // As we can add here from VM, we need it as ICollection
         public ICollection<LogEntry> Logs => _logs;
 
         private readonly JournalSet<Address> _accessedAddresses;
         private readonly JournalSet<StorageCell> _accessedStorageCells;
         private readonly JournalCollection<LogEntry> _logs;
         private readonly JournalSet<Address> _destroyList;
+        private readonly HashSet<AddressAsKey> _createList;
         private readonly int _accessedAddressesSnapshot;
         private readonly int _accessedStorageKeysSnapshot;
         private readonly int _destroyListSnapshot;
@@ -178,6 +181,7 @@ namespace Nethermind.Evm
                 _accessedAddresses = stateForAccessLists._accessedAddresses;
                 _accessedStorageCells = stateForAccessLists._accessedStorageCells;
                 _destroyList = stateForAccessLists._destroyList;
+                _createList = stateForAccessLists._createList;
                 _logs = stateForAccessLists._logs;
             }
             else
@@ -186,7 +190,12 @@ namespace Nethermind.Evm
                 _accessedAddresses = new JournalSet<Address>();
                 _accessedStorageCells = new JournalSet<StorageCell>();
                 _destroyList = new JournalSet<Address>();
+                _createList = new HashSet<AddressAsKey>();
                 _logs = new JournalCollection<LogEntry>();
+            }
+            if (executionType.IsAnyCreate())
+            {
+                _createList.Add(env.ExecutingAccount);
             }
 
             _accessedAddressesSnapshot = _accessedAddresses.TakeSnapshot();
@@ -202,14 +211,14 @@ namespace Nethermind.Evm
             {
                 switch (ExecutionType)
                 {
-                    case ExecutionType.StaticCall:
-                    case ExecutionType.Call:
-                    case ExecutionType.CallCode:
-                    case ExecutionType.Create:
-                    case ExecutionType.Create2:
-                    case ExecutionType.Transaction:
+                    case ExecutionType.STATICCALL:
+                    case ExecutionType.CALL:
+                    case ExecutionType.CALLCODE:
+                    case ExecutionType.CREATE:
+                    case ExecutionType.CREATE2:
+                    case ExecutionType.TRANSACTION:
                         return Env.Caller;
-                    case ExecutionType.DelegateCall:
+                    case ExecutionType.DELEGATECALL:
                         return Env.ExecutingAccount;
                     default:
                         throw new ArgumentOutOfRangeException();
@@ -221,7 +230,7 @@ namespace Nethermind.Evm
         public int ProgramCounter { get; set; }
         public long Refund { get; set; }
 
-        public Address To => Env.CodeSource;
+        public Address To => Env.CodeSource ?? Env.ExecutingAccount;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 
@@ -233,7 +242,9 @@ namespace Nethermind.Evm
         public bool IsContinuation { get; set; } // TODO: move to CallEnv
         public bool IsCreateOnPreExistingAccount { get; } // TODO: move to CallEnv
         public Snapshot Snapshot { get; } // TODO: move to CallEnv
-        public EvmPooledMemory? Memory { get; set; } // TODO: move to CallEnv
+
+        private EvmPooledMemory _memory;
+        public ref EvmPooledMemory Memory => ref _memory; // TODO: move to CallEnv
 
         public void Dispose()
         {
@@ -245,28 +256,27 @@ namespace Nethermind.Evm
                 ReturnStack = null;
             }
             Restore(); // we are trying to restore when disposing
-            Memory?.Dispose();
-            Memory = null;
+            Memory.Dispose();
+            Memory = default;
         }
 
         public void InitStacks()
         {
             if (DataStack is null)
             {
-                Memory = new EvmPooledMemory();
                 (DataStack, ReturnStack) = _stackPool.Value.RentStacks();
             }
         }
 
         public bool IsCold(Address? address) => !_accessedAddresses.Contains(address);
 
-        public bool IsCold(StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
+        public bool IsCold(in StorageCell storageCell) => !_accessedStorageCells.Contains(storageCell);
 
         public void WarmUp(AccessList? accessList)
         {
-            if (accessList is not null)
+            if (accessList?.IsEmpty == false)
             {
-                foreach ((Address address, IReadOnlySet<UInt256> storages) in accessList.Data)
+                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
                 {
                     WarmUp(address);
                     foreach (UInt256 storage in storages)
@@ -279,7 +289,7 @@ namespace Nethermind.Evm
 
         public void WarmUp(Address address) => _accessedAddresses.Add(address);
 
-        public void WarmUp(StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
+        public void WarmUp(in StorageCell storageCell) => _accessedStorageCells.Add(storageCell);
 
         public void CommitToParent(EvmState parentState)
         {

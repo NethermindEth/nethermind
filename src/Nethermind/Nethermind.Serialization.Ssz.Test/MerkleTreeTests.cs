@@ -17,7 +17,7 @@ namespace Nethermind.Serialization.Ssz.Test
     [TestFixture]
     public class MerkleTreeTests
     {
-        private Bytes32[] _testLeaves = new Bytes32[32];
+        private readonly Bytes32[] _testLeaves = new Bytes32[32];
         private const ulong _nodeIndexOfTheFirstLeaf = (1ul << MerkleTree.TreeHeight) - 1ul;
         private const ulong _lastNodeIndex = (1ul << (MerkleTree.TreeHeight + 1)) - 2ul;
         private const uint _lastLeafIndex = (uint)((1ul << MerkleTree.TreeHeight) - 1u);
@@ -34,7 +34,7 @@ namespace Nethermind.Serialization.Ssz.Test
             }
         }
 
-        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]> keyValueStore = null)
+        private MerkleTree BuildATree(IKeyValueStore<ulong, byte[]>? keyValueStore = null)
         {
             return new ShaMerkleTree(keyValueStore ?? new MemMerkleTreeStore());
         }
@@ -55,7 +55,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastNodeIndex + 1, null)]
         public void Can_calculate_leaf_index_from_node_index(ulong nodeIndex, uint? leafIndex)
         {
-            if (leafIndex == null)
+            if (leafIndex is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetLeafIndex(nodeIndex));
             }
@@ -81,7 +81,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastRow + 1, _lastLeafIndex, null)]
         public void Can_calculate_node_index_from_row_and_index_at_row(uint row, uint indexAtRow, ulong? nodeIndex)
         {
-            if (nodeIndex == null)
+            if (nodeIndex is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetNodeIndex(row, indexAtRow));
             }
@@ -107,7 +107,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastRow + 1, _lastNodeIndex + 1ul, null, Description = "first valid index at the level that does not exist")]
         public void Can_calculate_index_at_row_from_node_index(uint row, ulong nodeIndex, uint? indexAtRow)
         {
-            if (indexAtRow == null)
+            if (indexAtRow is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetIndexAtRow(row, nodeIndex));
             }
@@ -126,7 +126,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastNodeIndex + 1ul, null)]
         public void Can_calculate_node_row(ulong nodeIndex, uint? expectedRow)
         {
-            if (expectedRow == null)
+            if (expectedRow is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetRow(nodeIndex));
             }
@@ -147,7 +147,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastRow + 1, _lastLeafIndex, null)]
         public void Can_calculate_sibling_index(uint row, uint indexAtRow, uint? expectedSiblingIndex)
         {
-            if (expectedSiblingIndex == null)
+            if (expectedSiblingIndex is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetSiblingIndex(row, indexAtRow));
             }
@@ -169,7 +169,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(_lastNodeIndex + 1, null)]
         public void Can_calculate_parent_index(ulong nodeIndex, uint? parentIndex)
         {
-            if (parentIndex == null)
+            if (parentIndex is null)
             {
                 Assert.Throws<ArgumentOutOfRangeException>(() => MerkleTree.GetParentIndex(nodeIndex));
             }
@@ -222,7 +222,7 @@ namespace Nethermind.Serialization.Ssz.Test
         [TestCase(123u)]
         public void Can_restore_count_from_the_database(uint leafCount)
         {
-            MemMerkleTreeStore memDb = new MemMerkleTreeStore();
+            MemMerkleTreeStore? memDb = new MemMerkleTreeStore();
             MerkleTree baselineTree = BuildATree(memDb);
 
             for (int i = 0; i < leafCount; i++)

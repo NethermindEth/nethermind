@@ -3,12 +3,8 @@
 
 using System.Net;
 using System;
-using System.Collections.Generic;
-using Nethermind.JsonRpc;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.HealthChecks;
-using Nethermind.Monitoring.Metrics;
 using Nethermind.Monitoring.Config;
 using Nethermind.Network;
 
@@ -36,7 +32,7 @@ namespace Nethermind.HealthChecks.Test
                                               + "Hostname: `hostname`" + Environment.NewLine
                                               + "IP (external): `1.2.3.4`";
 
-            Assert.AreEqual(expected, healthChecksWebhookInfo.GetFullInfo());
+            Assert.That(healthChecksWebhookInfo.GetFullInfo(), Is.EqualTo(expected));
         }
     }
 }

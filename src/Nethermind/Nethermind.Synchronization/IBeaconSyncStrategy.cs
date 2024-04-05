@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Configuration;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -18,7 +17,9 @@ namespace Nethermind.Synchronization
         public bool ShouldBeInBeaconModeControl() => false;
 
         public bool IsBeaconSyncFinished(BlockHeader? blockHeader) => true;
+        public bool MergeTransitionFinished => false;
         public long? GetTargetBlockHeight() => null;
+        public Hash256? GetFinalizedHash() => null;
     }
 
     public interface IBeaconSyncStrategy
@@ -27,6 +28,9 @@ namespace Nethermind.Synchronization
         bool ShouldBeInBeaconModeControl();
         bool IsBeaconSyncFinished(BlockHeader? blockHeader);
 
+        public bool MergeTransitionFinished { get; }
+
         public long? GetTargetBlockHeight();
+        public Hash256? GetFinalizedHash();
     }
 }

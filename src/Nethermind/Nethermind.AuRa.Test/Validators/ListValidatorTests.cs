@@ -3,19 +3,14 @@
 
 using System;
 using System.Collections;
-using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
-using System.Runtime.Serialization.Formatters;
 using FluentAssertions;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
 using NSubstitute;
-using NSubstitute.ExceptionExtensions;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Validators
@@ -53,7 +48,7 @@ namespace Nethermind.AuRa.Test.Validators
 
         [TestCaseSource(nameof(ValidateTestCases))]
         public bool should_validate_correctly(Address address, long index) =>
-            _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index);
+            _validSealerStrategy.IsValidSealer(GetListValidator(TestItem.AddressA, TestItem.AddressB).Validators, address, index, out _);
 
         [TestCase(1)]
         [TestCase(2)]

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -18,7 +17,7 @@ using Nethermind.Serialization.Json;
 
 namespace Nethermind.Runner.Ethereum.Steps
 {
-    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules))]
+    [RunnerStepDependencies(typeof(InitializeNetwork), typeof(RegisterRpcModules), typeof(RegisterPluginRpcModules))]
     public class StartRpc : IStep
     {
         private readonly INethermindApi _api;
@@ -41,7 +40,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                 IRpcModuleProvider rpcModuleProvider = _api.RpcModuleProvider!;
                 JsonRpcService jsonRpcService = new(rpcModuleProvider, _api.LogManager, jsonRpcConfig);
 
-                IJsonSerializer jsonSerializer = CreateJsonSerializer(jsonRpcService);
+                IJsonSerializer jsonSerializer = new EthereumJsonSerializer();
                 IRpcAuthentication auth = jsonRpcConfig.UnsecureDevNoRpcAuthentication || !jsonRpcUrlCollection.Values.Any(u => u.IsAuthenticated)
                     ? NoAuthentication.Instance
                     : JwtAuthentication.FromFile(jsonRpcConfig.JwtSecretFile, _api.Timestamper, logger);
@@ -49,7 +48,6 @@ namespace Nethermind.Runner.Ethereum.Steps
 
                 JsonRpcProcessor jsonRpcProcessor = new(
                     jsonRpcService,
-                    jsonSerializer,
                     jsonRpcConfig,
                     _api.FileSystem,
                     _api.LogManager);
@@ -91,7 +89,7 @@ namespace Nethermind.Runner.Ethereum.Steps
                         logger.Error("Error during jsonRpc runner start", x.Exception);
                 }, cancellationToken);
 
-                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, jsonRpcService, _api.ConfigProvider,
+                JsonRpcIpcRunner jsonIpcRunner = new(jsonRpcProcessor, _api.ConfigProvider,
                     _api.LogManager, _api.JsonRpcLocalStats!, jsonSerializer, _api.FileSystem);
                 jsonIpcRunner.Start(cancellationToken);
 
@@ -105,13 +103,6 @@ namespace Nethermind.Runner.Ethereum.Steps
             {
                 if (logger.IsInfo) logger.Info("Json RPC is disabled");
             }
-        }
-
-        private IJsonSerializer CreateJsonSerializer(JsonRpcService jsonRpcService)
-        {
-            IJsonSerializer serializer = new EthereumJsonSerializer();
-            serializer.RegisterConverters(jsonRpcService.Converters);
-            return serializer;
         }
     }
 }

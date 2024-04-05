@@ -4,35 +4,39 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Comparison;
 
 namespace Nethermind.TxPool.Collections
 {
-    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueKeccak, Transaction, Address>
+    public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
     {
         private readonly List<Transaction> _transactionsToRemove = new();
+        protected int _poolCapacity;
+        private readonly ILogger _logger;
+
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
+            _poolCapacity = capacity;
+            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
         protected override IComparer<Transaction> GetGroupComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparerByNonce();
         protected override IComparer<Transaction> GetReplacementComparer(IComparer<Transaction> comparer) => comparer.GetReplacementComparer();
 
-        protected override Address MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
-        protected override ValueKeccak GetKey(Transaction value) => value.Hash!;
+        protected override AddressAsKey MapToGroup(Transaction value) => value.MapTxToGroup() ?? throw new ArgumentException("MapTxToGroup() returned null!");
+        protected override ValueHash256 GetKey(Transaction value) => value.Hash!;
 
-        protected override void UpdateGroup(Address groupKey, EnhancedSortedSet<Transaction> bucket, Func<Address, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
+        protected override void UpdateGroup(AddressAsKey groupKey, EnhancedSortedSet<Transaction> bucket, Func<AddressAsKey, IReadOnlySortedSet<Transaction>, IEnumerable<(Transaction Tx, Action<Transaction>? Change)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -66,19 +70,21 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdatePool(IAccountStateProvider accounts, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        public void UpdatePool(IAccountStateProvider accounts, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            foreach ((Address address, EnhancedSortedSet<Transaction> bucket) in _buckets)
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
+            EnsureCapacity();
+            foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
             {
                 Debug.Assert(bucket.Count > 0);
 
-                Account? account = accounts.GetAccount(address);
-                UpdateGroup(address, account, bucket, changingElements);
+                accounts.TryGetAccount(address, out AccountStruct account);
+                UpdateGroupNonLocked(address, account, bucket, changingElements);
             }
         }
 
-        private void UpdateGroup(Address groupKey, Account groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateGroupNonLocked(Address groupKey, AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -109,20 +115,23 @@ namespace Nethermind.TxPool.Collections
             ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
             {
-                TryRemove(txs[i].Hash!);
+                TryRemoveNonLocked(txs[i].Hash!, evicted: false, out _, out _);
             }
         }
 
-        [MethodImpl(MethodImplOptions.Synchronized)]
-        public void UpdateGroup(Address groupKey, Account groupValue, Func<Address, Account, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        public void UpdateGroup(Address groupKey, AccountStruct groupValue, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            if (groupKey is null) throw new ArgumentNullException(nameof(groupKey));
+            using McsLock.Disposable lockRelease = Lock.Acquire();
+
+            ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 
-                UpdateGroup(groupKey, groupValue, bucket, changingElements);
+                UpdateGroupNonLocked(groupKey, groupValue, bucket, changingElements);
             }
         }
+
+        protected override string ShortPoolName => "TxPool";
     }
 }

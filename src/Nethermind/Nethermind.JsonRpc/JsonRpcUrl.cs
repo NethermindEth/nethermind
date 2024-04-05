@@ -6,13 +6,14 @@ using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using FastEnumUtility;
+using Nethermind.Config;
 using Nethermind.JsonRpc.Modules;
 
 namespace Nethermind.JsonRpc
 {
     public class JsonRpcUrl : IEquatable<JsonRpcUrl>, ICloneable
     {
-        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules)
+        public JsonRpcUrl(string scheme, string host, int port, RpcEndpoint rpcEndpoint, bool isAuthenticated, string[] enabledModules, long? maxRequestBodySize = null)
         {
             Scheme = scheme;
             Host = host;
@@ -20,12 +21,12 @@ namespace Nethermind.JsonRpc
             RpcEndpoint = rpcEndpoint;
             EnabledModules = new HashSet<string>(enabledModules, StringComparer.InvariantCultureIgnoreCase);
             IsAuthenticated = isAuthenticated;
+            MaxRequestBodySize = maxRequestBodySize;
         }
 
         public static JsonRpcUrl Parse(string packedUrlValue)
         {
-            if (packedUrlValue is null)
-                throw new ArgumentNullException(nameof(packedUrlValue));
+            ArgumentNullException.ThrowIfNull(packedUrlValue);
 
             string[] parts = packedUrlValue.Split('|');
             if (parts.Length != 3 && parts.Length != 4)
@@ -34,7 +35,7 @@ namespace Nethermind.JsonRpc
             string url = parts[0];
             if (!Uri.TryCreate(url, UriKind.Absolute, out Uri? uri) ||
                 (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) ||
-                uri.Segments.Count() > 1 ||
+                uri.Segments.Length > 1 ||
                 uri.Port == 0)
                 throw new FormatException("First part must be a valid url with the format: scheme://host:port");
 
@@ -57,7 +58,7 @@ namespace Nethermind.JsonRpc
             if (enabledModules.Length == 0)
                 throw new FormatException("Third part must contain at least one module delimited by ';'");
 
-            bool isAuthenticated = enabledModules.Any(m => m.ToLower() == "engine");
+            bool isAuthenticated = enabledModules.Contains(ModuleType.Engine, StringComparison.InvariantCultureIgnoreCase);
 
             // Check if authentication disabled for this url
             if (parts.Length == 4)
@@ -75,6 +76,7 @@ namespace Nethermind.JsonRpc
             return result;
         }
 
+        public long? MaxRequestBodySize { get; }
         public bool IsAuthenticated { get; }
         public string Scheme { get; set; }
         public string Host { get; set; }

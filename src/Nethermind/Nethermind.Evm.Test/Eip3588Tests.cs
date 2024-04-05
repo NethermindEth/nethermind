@@ -1,28 +1,16 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using FluentAssertions;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.State;
-using Nethermind.Trie;
 using NUnit.Framework;
-using FluentAssertions.Execution;
-using Nethermind.Core.Specs;
-using NSubstitute;
-using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test
 {
     [TestFixture]
     public class Eip3855Tests : VirtualMachineTestsBase
     {
-        protected override long BlockNumber => MainnetSpecProvider.GrayGlacierBlockNumber;
+        protected override long BlockNumber => MainnetSpecProvider.ParisBlockNumber;
         protected override ulong Timestamp => MainnetSpecProvider.ShanghaiBlockTimestamp;
 
         private TestAllTracerWithOutput testBase(int repeat, bool isShanghai)
@@ -35,7 +23,7 @@ namespace Nethermind.Evm.Test
             }
 
             byte[] code = codeInitializer.Done;
-            TestAllTracerWithOutput receipt = Execute(BlockNumber, 1_000_000, code, timestamp: timestampParam);
+            TestAllTracerWithOutput receipt = Execute((BlockNumber, timestampParam), 1_000_000, code);
             return receipt;
         }
 

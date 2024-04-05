@@ -194,11 +194,11 @@ namespace Nethermind.Mev.Test
         }
 
         [Test]
-        public static async Task should_simulate_bundle_when_head_moves()
+        public static void should_simulate_bundle_when_head_moves()
         {
             SemaphoreSlim ss = new SemaphoreSlim(0);
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -210,18 +210,15 @@ namespace Nethermind.Mev.Test
                         TrustedRelays = $"{TestItem.AddressA},{TestItem.AddressB},{TestItem.AddressC}"
                     }, ecdsa: ecdsa);
 
-            async Task CheckSimulationsForBlock(int head, int numberOfSimulationsToReceive)
+            void CheckSimulationsForBlock(int head, int numberOfSimulationsToReceive)
             {
                 testContext.BlockTree.NewHeadBlock +=
                     Raise.EventWith(new BlockEventArgs(Build.A.Block.WithNumber(head).TestObject)); //4
-                for (int i = 0; i < numberOfSimulationsToReceive; i++)
-                {
-                    await ss.WaitAsync(TimeSpan.FromMilliseconds(10));
-                }
 
-                await testContext.Simulator.Received(numberOfSimulationsToReceive).Simulate(Arg.Any<MevBundle>(),
-                    Arg.Any<BlockHeader>(),
-                    Arg.Any<CancellationToken>());
+                Assert.That(() =>
+                    testContext.Simulator.ReceivedCalls().Count((c) => c.GetMethodInfo().Name == nameof(testContext.Simulator.Simulate)),
+                    Is.EqualTo(numberOfSimulationsToReceive).After(numberOfSimulationsToReceive * 500, 10));
+
                 testContext.Simulator.ClearReceivedCalls();
             }
 
@@ -231,12 +228,12 @@ namespace Nethermind.Mev.Test
 
             int head = 4;
 
-            await CheckSimulationsForBlock(head++, 1); //4 -> 5
-            await CheckSimulationsForBlock(head++, 1); //5 -> 6
-            await CheckSimulationsForBlock(head++, 0); //6 -> 7
-            await CheckSimulationsForBlock(head++, 0); //7 -> 8
-            await CheckSimulationsForBlock(head++, 4); //8 -> 9
-            await CheckSimulationsForBlock(head, 2);
+            CheckSimulationsForBlock(head++, 1); //4 -> 5
+            CheckSimulationsForBlock(head++, 1); //5 -> 6
+            CheckSimulationsForBlock(head++, 0); //6 -> 7
+            CheckSimulationsForBlock(head++, 0); //7 -> 8
+            CheckSimulationsForBlock(head++, 4); //8 -> 9
+            CheckSimulationsForBlock(head, 2);
         }
 
         [Test]
@@ -334,7 +331,7 @@ namespace Nethermind.Mev.Test
                 .Returns(Task.FromResult(successfulBundle));
 
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -416,7 +413,7 @@ namespace Nethermind.Mev.Test
         public void should_evict_megabundle_when_relay_sends_new_bundle()
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB
             );
@@ -444,7 +441,7 @@ namespace Nethermind.Mev.Test
         public static void should_retrieve_megabundles_by_timestamp(uint timestamp, int expectedCount)
         {
             var ecdsa = Substitute.For<IEthereumEcdsa>();
-            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(
+            ecdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(
                 TestItem.AddressA,
                 TestItem.AddressB,
                 TestItem.AddressC
@@ -512,7 +509,7 @@ namespace Nethermind.Mev.Test
                 }
                 else
                 {
-                    EthereumEcdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Keccak>()).Returns(TestItem.AddressA);
+                    EthereumEcdsa.RecoverAddress(Arg.Any<Signature>(), Arg.Any<Hash256>()).Returns(TestItem.AddressA);
                 }
 
                 BundlePool = new TestBundlePool(

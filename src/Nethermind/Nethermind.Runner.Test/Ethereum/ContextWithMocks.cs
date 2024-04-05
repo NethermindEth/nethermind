@@ -15,7 +15,6 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Db;
@@ -29,7 +28,6 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.KeyStore;
 using Nethermind.Monitoring;
-using Nethermind.Network.Discovery;
 using Nethermind.Network.Rlpx;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
@@ -45,16 +43,19 @@ using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using NSubstitute;
+using Nethermind.Blockchain.Blocks;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
     public static class Build
     {
-        public static NethermindApi ContextWithMocks() =>
-            new NethermindApi()
+        public static NethermindApi ContextWithMocks()
+        {
+            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
+                new ChainSpec())
             {
-                LogManager = LimboLogs.Instance,
                 Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
                 Wallet = Substitute.For<IWallet>(),
@@ -77,7 +78,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 Synchronizer = Substitute.For<ISynchronizer>(),
                 BlockchainProcessor = Substitute.For<IBlockchainProcessor>(),
                 BlockProducer = Substitute.For<IBlockProducer>(),
-                ConfigProvider = Substitute.For<IConfigProvider>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
                 FileSystem = Substitute.For<IFileSystem>(),
@@ -94,15 +94,12 @@ namespace Nethermind.Runner.Test.Ethereum
                 RlpxPeer = Substitute.For<IRlpxHost>(),
                 SealValidator = Substitute.For<ISealValidator>(),
                 SessionMonitor = Substitute.For<ISessionMonitor>(),
-                SnapProvider = Substitute.For<ISnapProvider>(),
-                StateProvider = Substitute.For<IStateProvider>(),
+                WorldState = Substitute.For<IWorldState>(),
                 StateReader = Substitute.For<IStateReader>(),
-                StorageProvider = Substitute.For<IStorageProvider>(),
                 TransactionProcessor = Substitute.For<ITransactionProcessor>(),
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),
-                EthereumJsonSerializer = Substitute.For<IJsonSerializer>(),
                 NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
                 SyncModeSelector = Substitute.For<ISyncModeSelector>(),
@@ -111,8 +108,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 WebSocketsManager = Substitute.For<IWebSocketsManager>(),
                 ChainLevelInfoRepository = Substitute.For<IChainLevelInfoRepository>(),
                 TrieStore = Substitute.For<ITrieStore>(),
-                ReadOnlyTrieStore = Substitute.For<IReadOnlyTrieStore>(),
-                ChainSpec = new ChainSpec(),
                 BlockProducerEnvFactory = Substitute.For<IBlockProducerEnvFactory>(),
                 TransactionComparerProvider = Substitute.For<ITransactionComparerProvider>(),
                 GasPriceOracle = Substitute.For<IGasPriceOracle>(),
@@ -124,7 +119,13 @@ namespace Nethermind.Runner.Test.Ethereum
                 SyncProgressResolver = Substitute.For<ISyncProgressResolver>(),
                 BetterPeerStrategy = Substitute.For<IBetterPeerStrategy>(),
                 ReceiptMonitor = Substitute.For<IReceiptMonitor>(),
-                WitnessRepository = Substitute.For<IWitnessRepository>()
+                WitnessRepository = Substitute.For<IWitnessRepository>(),
+                BadBlocksStore = Substitute.For<IBlockStore>()
             };
+
+            api.WorldStateManager = new ReadOnlyWorldStateManager(api.DbProvider, Substitute.For<IReadOnlyTrieStore>(), LimboLogs.Instance);
+            api.NodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.HalfPath, LimboLogs.Instance);
+            return api;
+        }
     }
 }

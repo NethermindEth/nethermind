@@ -3,9 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Blockchain;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Consensus.Processing

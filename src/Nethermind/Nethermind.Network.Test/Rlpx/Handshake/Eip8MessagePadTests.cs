@@ -21,8 +21,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Eip8MessagePad pad = new(testRandom);
             message = pad.Pad(message);
 
-            Assert.AreEqual(lengthBeforePadding + 100, message.Length, "incorrect length");
-            Assert.AreEqual(message[0], 1, "first byte touched");
+            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 100), "incorrect length");
+            Assert.That(message[0], Is.EqualTo(1), "first byte touched");
         }
 
         [Test]
@@ -36,8 +36,8 @@ namespace Nethermind.Network.Test.Rlpx.Handshake
             Eip8MessagePad pad = new(testRandom);
             message = pad.Pad(message);
 
-            Assert.AreEqual(lengthBeforePadding + 300, message.Length, "incorrect length");
-            Assert.AreEqual(message[0], 1, "first byte touched");
+            Assert.That(message.Length, Is.EqualTo(lengthBeforePadding + 300), "incorrect length");
+            Assert.That(message[0], Is.EqualTo(1), "first byte touched");
         }
     }
 }

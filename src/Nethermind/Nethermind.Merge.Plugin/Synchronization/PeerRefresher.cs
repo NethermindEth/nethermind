@@ -3,21 +3,19 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
-using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
-
-using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
+using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -27,7 +25,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
     private readonly IPeerDifficultyRefreshPool _syncPeerPool;
     private static readonly TimeSpan _minRefreshDelay = TimeSpan.FromSeconds(10);
     private DateTime _lastRefresh = DateTime.MinValue;
-    private (Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
+    private (Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash) _lastBlockhashes = (Keccak.Zero, Keccak.Zero, Keccak.Zero);
     private readonly ITimer _refreshTimer;
     private readonly ILogger _logger;
 
@@ -40,10 +38,10 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         _logger = logManager.GetClassLogger(GetType());
     }
 
-    public void RefreshPeers(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
+    public void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
         _lastBlockhashes = (headBlockhash, headParentBlockhash, finalizedBlockhash);
-        TimeSpan timePassed = DateTime.Now - _lastRefresh;
+        TimeSpan timePassed = DateTime.UtcNow - _lastRefresh;
         if (timePassed > _minRefreshDelay)
         {
             Refresh(headBlockhash, headParentBlockhash, finalizedBlockhash);
@@ -60,22 +58,20 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         Refresh(_lastBlockhashes.headBlockhash, _lastBlockhashes.headParentBlockhash, _lastBlockhashes.finalizedBlockhash);
     }
 
-    private void Refresh(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash)
+    private void Refresh(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash)
     {
-        _lastRefresh = DateTime.Now;
+        _lastRefresh = DateTime.UtcNow;
         foreach (PeerInfo peer in _syncPeerPool.AllPeers)
         {
-#pragma warning disable CS4014
-            StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
-#pragma warning restore CS4014
+            _ = StartPeerRefreshTask(peer.SyncPeer, headBlockhash, headParentBlockhash, finalizedBlockhash);
         }
     }
 
     private async Task StartPeerRefreshTask(
         ISyncPeer syncPeer,
-        Keccak headBlockhash,
-        Keccak headParentBlockhash,
-        Keccak finalizedBlockhash
+        Hash256 headBlockhash,
+        Hash256 headParentBlockhash,
+        Hash256 finalizedBlockhash
     )
     {
         using CancellationTokenSource delaySource = new(Timeouts.Eth);
@@ -91,13 +87,13 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
     internal async Task RefreshPeerForFcu(
         ISyncPeer syncPeer,
-        Keccak headBlockhash,
-        Keccak headParentBlockhash,
-        Keccak finalizedBlockhash,
+        Hash256 headBlockhash,
+        Hash256 headParentBlockhash,
+        Hash256 finalizedBlockhash,
         CancellationToken token)
     {
         // headBlockhash is obtained together with headParentBlockhash
-        Task<BlockHeader[]> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
+        Task<IOwnedReadOnlyList<BlockHeader>?> getHeadParentHeaderTask = syncPeer.GetBlockHeaders(headParentBlockhash, 2, 0, token);
         Task<BlockHeader?> getFinalizedHeaderTask = finalizedBlockhash == Keccak.Zero
             ? Task.FromResult<BlockHeader?>(null)
             : syncPeer.GetHeadBlockHeader(finalizedBlockhash, token);
@@ -106,10 +102,10 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         try
         {
-            BlockHeader[] headAndParentHeaders = await getHeadParentHeaderTask;
-            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders, out headBlockHeader, out headParentBlockHeader))
+            using IOwnedReadOnlyList<BlockHeader>? headAndParentHeaders = await getHeadParentHeaderTask;
+            if (!TryGetHeadAndParent(headBlockhash, headParentBlockhash, headAndParentHeaders!, out headBlockHeader, out headParentBlockHeader))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU unexpected response length");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: unexpected response length");
                 return;
             }
 
@@ -117,17 +113,17 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         }
         catch (AggregateException exception) when (exception.InnerException is OperationCanceledException)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception.InnerException);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: timeout", exception.InnerException);
             return;
         }
         catch (OperationCanceledException exception)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU timeout", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: timeout", exception);
             return;
         }
         catch (Exception exception)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU faulted", exception);
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: faulted", exception);
             return;
         }
 
@@ -135,7 +131,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
         if (finalizedBlockhash != Keccak.Zero && finalizedBlockHeader is null)
         {
-            _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU no finalized block header");
+            _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: no finalized block header");
             return;
         }
 
@@ -163,7 +159,7 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         {
             if (!HeaderValidator.ValidateHash(header))
             {
-                _syncPeerPool.ReportRefreshFailed(syncPeer, "FCU invalid header hash");
+                _syncPeerPool.ReportRefreshFailed(syncPeer, "ForkChoiceUpdate: invalid header hash");
                 return false;
             }
 
@@ -173,21 +169,21 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
         return true;
     }
 
-    private static bool TryGetHeadAndParent(Keccak headBlockhash, Keccak headParentBlockhash, BlockHeader[] headers, out BlockHeader? headBlockHeader, out BlockHeader? headParentBlockHeader)
+    private static bool TryGetHeadAndParent(Hash256 headBlockhash, Hash256 headParentBlockhash, IReadOnlyList<BlockHeader> headers, out BlockHeader? headBlockHeader, out BlockHeader? headParentBlockHeader)
     {
         headBlockHeader = null;
         headParentBlockHeader = null;
 
-        if (headers.Length > 2)
+        if (headers.Count > 2)
         {
             return false;
         }
 
-        if (headers.Length == 1 && headers[0].Hash == headParentBlockhash)
+        if (headers.Count == 1 && headers[0].Hash == headParentBlockhash)
         {
             headParentBlockHeader = headers[0];
         }
-        else if (headers.Length == 2)
+        else if (headers.Count == 2)
         {
             // Maybe the head is not the same as we expected. In that case, leave it as null
             if (headBlockhash == headers[1].Hash)
@@ -210,5 +206,5 @@ public class PeerRefresher : IPeerRefresher, IAsyncDisposable
 
 public interface IPeerRefresher
 {
-    void RefreshPeers(Keccak headBlockhash, Keccak headParentBlockhash, Keccak finalizedBlockhash);
+    void RefreshPeers(Hash256 headBlockhash, Hash256 headParentBlockhash, Hash256 finalizedBlockhash);
 }

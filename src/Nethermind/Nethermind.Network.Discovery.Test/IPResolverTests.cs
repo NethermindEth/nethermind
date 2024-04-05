@@ -31,7 +31,7 @@ namespace Nethermind.Network.Discovery.Test
             IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
             await ipResolver.Initialize();
             IPAddress address = ipResolver.ExternalIp;
-            Assert.AreEqual(IPAddress.Parse(ipOverride), address);
+            Assert.That(address, Is.EqualTo(IPAddress.Parse(ipOverride)));
         }
 
         [Test]
@@ -52,7 +52,7 @@ namespace Nethermind.Network.Discovery.Test
             IPResolver ipResolver = new(networkConfig, LimboLogs.Instance);
             await ipResolver.Initialize();
             IPAddress address = ipResolver.LocalIp;
-            Assert.AreEqual(IPAddress.Parse(ipOverride), address);
+            Assert.That(address, Is.EqualTo(IPAddress.Parse(ipOverride)));
         }
     }
 }

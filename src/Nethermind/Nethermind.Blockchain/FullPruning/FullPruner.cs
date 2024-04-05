@@ -2,16 +2,21 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.IO.Abstractions;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Events;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Utils;
 using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Blockchain.FullPruning
 {
@@ -21,34 +26,47 @@ namespace Nethermind.Blockchain.FullPruning
     public class FullPruner : IDisposable
     {
         private readonly IFullPruningDb _fullPruningDb;
+        private readonly INodeStorageFactory _nodeStorageFactory;
+        private readonly INodeStorage _nodeStorage;
         private readonly IPruningTrigger _pruningTrigger;
         private readonly IPruningConfig _pruningConfig;
         private readonly IBlockTree _blockTree;
         private readonly IStateReader _stateReader;
+        private readonly IProcessExitSource _processExitSource;
         private readonly ILogManager _logManager;
-        private IPruningContext? _currentPruning;
-        private int _waitingForBlockProcessed = 0;
-        private int _waitingForStateReady = 0;
-        private long _blockToWaitFor;
-        private long _stateToCopy;
+        private readonly IChainEstimations _chainEstimations;
+        private readonly IDriveInfo? _driveInfo;
+        private readonly IPruningTrieStore _trieStore;
         private readonly ILogger _logger;
         private readonly TimeSpan _minimumPruningDelay;
         private DateTime _lastPruning = DateTime.MinValue;
 
         public FullPruner(
             IFullPruningDb fullPruningDb,
+            INodeStorageFactory nodeStorageFactory,
+            INodeStorage mainNodeStorage,
             IPruningTrigger pruningTrigger,
             IPruningConfig pruningConfig,
             IBlockTree blockTree,
             IStateReader stateReader,
+            IProcessExitSource processExitSource,
+            IChainEstimations chainEstimations,
+            IDriveInfo? driveInfo,
+            IPruningTrieStore trieStore,
             ILogManager logManager)
         {
             _fullPruningDb = fullPruningDb;
+            _nodeStorageFactory = nodeStorageFactory;
+            _nodeStorage = mainNodeStorage;
             _pruningTrigger = pruningTrigger;
             _pruningConfig = pruningConfig;
             _blockTree = blockTree;
             _stateReader = stateReader;
+            _processExitSource = processExitSource;
             _logManager = logManager;
+            _chainEstimations = chainEstimations;
+            _trieStore = trieStore;
+            _driveInfo = driveInfo;
             _pruningTrigger.Prune += OnPrune;
             _logger = _logManager.GetClassLogger();
             _minimumPruningDelay = TimeSpan.FromHours(_pruningConfig.FullPruningMinimumDelayHours);
@@ -67,92 +85,134 @@ namespace Nethermind.Blockchain.FullPruning
             // Lets assume pruning is in progress
             e.Status = PruningStatus.InProgress;
 
-            if (DateTime.Now - _lastPruning < _minimumPruningDelay)
+            if (DateTime.UtcNow - _lastPruning < _minimumPruningDelay)
             {
                 e.Status = PruningStatus.Delayed;
             }
             // If we are already pruning, we don't need to do anything
             else if (CanStartNewPruning())
             {
-                // we mark that we are waiting for block (for thread safety)
-                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 1, 0) == 0)
+                // Check if we have enough disk space to run pruning
+                if (!HaveEnoughDiskSpaceToRun() && _pruningConfig.AvailableSpaceCheckEnabled)
                 {
-                    // we don't want to start pruning in the middle of block processing, lets wait for new head.
-                    _blockTree.OnUpdateMainChain += OnUpdateMainChain;
-                    e.Status = PruningStatus.Starting;
-                }
-            }
-        }
-
-        private void OnUpdateMainChain(object? sender, OnUpdateMainChainArgs e)
-        {
-            if (!e.WereProcessed) return;
-            if (CanStartNewPruning())
-            {
-                if (Interlocked.CompareExchange(ref _waitingForBlockProcessed, 0, 1) == 1)
-                {
-                    if (e.Blocks is not null && e.Blocks.Count > 0)
-                    {
-                        if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext pruningContext))
-                        {
-                            SetCurrentPruning(pruningContext);
-                            if (Interlocked.CompareExchange(ref _waitingForStateReady, 1, 0) == 0)
-                            {
-                                Block lastBlock = e.Blocks[^1];
-                                _blockToWaitFor = lastBlock.Number;
-                                _stateToCopy = long.MaxValue;
-                                if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: waiting for state {lastBlock.Number} to be ready.");
-                            }
-                        }
-                    }
-                }
-            }
-            else if (_waitingForStateReady == 1)
-            {
-                if (_blockTree.BestPersistedState >= _blockToWaitFor && _currentPruning is not null)
-                {
-                    if (_stateToCopy == long.MaxValue)
-                    {
-                        _stateToCopy = _blockTree.BestPersistedState.Value;
-                    }
-
-                    long blockToPruneAfter = _stateToCopy + Reorganization.MaxDepth;
-                    if (_blockTree.Head?.Number > blockToPruneAfter)
-                    {
-                        BlockHeader? header = _blockTree.FindHeader(_stateToCopy);
-                        if (header is not null && Interlocked.CompareExchange(ref _waitingForStateReady, 0, 1) == 1)
-                        {
-                            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {_stateToCopy} with root {header.StateRoot}.");
-                            Task.Run(() => RunPruning(_currentPruning, header.StateRoot!));
-                            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
-                        }
-                    }
-                    else
-                    {
-                        if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for block: {blockToPruneAfter} in order to support reorganizations.");
-                    }
+                    e.Status = PruningStatus.NotEnoughDiskSpace;
                 }
                 else
                 {
-                    if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {_blockToWaitFor} in order to not lose any cached state.");
+                    e.Status = PruningStatus.Starting;
+
+                    _ = RunFullPruning(_processExitSource.Token);
                 }
-            }
-            else
-            {
-                _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             }
         }
 
-        private void SetCurrentPruning(IPruningContext pruningContext)
+        private async Task WaitForMainChainChange(Func<OnUpdateMainChainArgs, bool> handler, CancellationToken cancellationToken)
         {
-            IPruningContext? oldPruning = Interlocked.Exchange(ref _currentPruning, pruningContext);
-            if (oldPruning is not null)
+            await Wait.ForEventCondition<OnUpdateMainChainArgs>(
+                cancellationToken,
+                (h) => _blockTree.OnUpdateMainChain += h,
+                (h) => _blockTree.OnUpdateMainChain -= h,
+                (e) => e.WereProcessed && handler(e));
+        }
+
+        protected virtual async Task RunFullPruning(CancellationToken cancellationToken)
+        {
+            IPruningContext? pruningContext = null;
+
+            // we don't want to start pruning in the middle of block processing, lets wait for new head.
+            await WaitForMainChainChange((e) =>
             {
-                Task.Run(() => oldPruning.Dispose());
+                if (_fullPruningDb.TryStartPruning(_pruningConfig.Mode.IsMemory(), out IPruningContext fromDbPruningContext))
+                {
+                    pruningContext = fromDbPruningContext;
+                }
+
+                return true;
+            }, cancellationToken);
+
+            if (pruningContext is null) return;
+
+            try
+            {
+                await RunFullPruning(pruningContext, cancellationToken);
             }
+            catch (Exception e)
+            {
+                if (_logger.IsError) _logger.Error("full pruning failed. ", e);
+            }
+            finally
+            {
+                pruningContext.Dispose();
+            }
+        }
+
+        private async Task RunFullPruning(IPruningContext pruningContext, CancellationToken cancellationToken)
+        {
+            _trieStore.PersistCache(cancellationToken);
+
+            long blockToWaitFor = 0;
+            await WaitForMainChainChange((e) =>
+            {
+                if (e.Blocks.Count == 0) return false;
+
+                blockToWaitFor = e.Blocks[^1].Number;
+                if (_logger.IsInfo)
+                    _logger.Info($"Full Pruning Ready to start: waiting for state {blockToWaitFor} to be ready.");
+                return true;
+            }, cancellationToken);
+
+            await WaitForMainChainChange((e) =>
+            {
+                if (_blockTree.BestPersistedState >= blockToWaitFor) return true;
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for state: Current best saved finalized state {_blockTree.BestPersistedState}, waiting for state {blockToWaitFor} in order to not lose any cached state.");
+                return false;
+            }, cancellationToken);
+
+            long stateToCopy = _blockTree.BestPersistedState.Value;
+            long blockToPruneAfter = stateToCopy + Reorganization.MaxDepth;
+
+            await WaitForMainChainChange((e) =>
+            {
+                if (_blockTree.Head?.Number > blockToPruneAfter) return true;
+                if (_logger.IsInfo) _logger.Info($"Full Pruning Waiting for block: {blockToPruneAfter} in order to support reorganizations.");
+                return false;
+            }, cancellationToken);
+
+            BlockHeader? header = _blockTree.FindHeader(stateToCopy);
+            if (header is null)
+            {
+                if (_logger.IsError) _logger.Info($"Header for the state is missing");
+                return;
+            }
+
+            if (_logger.IsInfo) _logger.Info($"Full Pruning Ready to start: pruning garbage before state {stateToCopy} with root {header.StateRoot}");
+            await CopyTrie(pruningContext, header.StateRoot!, cancellationToken);
         }
 
         private bool CanStartNewPruning() => _fullPruningDb.CanStartPruning;
+
+        private const long ChainSizeThresholdFactor = 130;
+
+        private bool HaveEnoughDiskSpaceToRun()
+        {
+            long? currentChainSize = _chainEstimations.PruningSize;
+            if (currentChainSize is null)
+            {
+                if (_logger.IsInfo) _logger.Info("Full Pruning: Chain size estimation is unavailable.");
+                return true;
+            }
+
+            long available = _driveInfo?.AvailableFreeSpace ?? 0;
+            long required = currentChainSize.Value * ChainSizeThresholdFactor / 100;
+            if (available < required)
+            {
+                if (_logger.IsWarn)
+                    _logger.Warn(
+                        $"Not enough disk space to run full pruning. Required {required / 1.GB()} GB. Have {available / 1.GB()} GB");
+                return false;
+            }
+            return true;
+        }
 
         private void HandlePruningFinished(object? sender, PruningEventArgs e)
         {
@@ -161,58 +221,94 @@ namespace Nethermind.Blockchain.FullPruning
                 case FullPruningCompletionBehavior.AlwaysShutdown:
                 case FullPruningCompletionBehavior.ShutdownOnSuccess when e.Success:
                     if (_logger.IsInfo) _logger.Info($"Full Pruning completed {(e.Success ? "successfully" : "unsuccessfully")}, shutting down as requested in the configuration.");
-                    Task.Run(() => Environment.Exit(0));
+                    _processExitSource.Exit(ExitCodes.Ok);
                     break;
             }
         }
 
-        protected virtual void RunPruning(IPruningContext pruning, Keccak statRoot)
+        private async Task CopyTrie(IPruningContext pruning, Hash256 stateRoot, CancellationToken cancellationToken)
         {
+            INodeStorage.KeyScheme originalKeyScheme = _nodeStorage.Scheme;
+            ICopyTreeVisitor visitor = null;
+
             try
             {
                 pruning.MarkStart();
-                using CopyTreeVisitor copyTreeVisitor = new(pruning, _logManager);
+
+                WriteFlags writeFlags = WriteFlags.DisableWAL;
+                if (!_pruningConfig.FullPruningDisableLowPriorityWrites)
+                {
+                    writeFlags |= WriteFlags.LowPriority;
+                }
+
+                INodeStorage targetNodeStorage = _nodeStorageFactory.WrapKeyValueStore(pruning, usePreferredKeyScheme: true);
+
+                if (originalKeyScheme == INodeStorage.KeyScheme.HalfPath && targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash)
+                {
+                    // Because of write on read duplication, we can't move from HalfPath to Hash scheme as some of the
+                    // read key which are in HalfPath may be written to the new db. This cause a problem as Hash
+                    // scheme can be started with some code not tracking path, which will be unable to read these HalfPath
+                    // keys.
+                    if (_logger.IsWarn) _logger.Warn($"Full pruning from from HalfPath key to Hash key is not supported. Switching to HalfPath key scheme.");
+                    targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
+                }
+
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,
                     FullScanMemoryBudget = ((long)_pruningConfig.FullPruningMemoryBudgetMb).MiB(),
                 };
-                _stateReader.RunTreeVisitor(copyTreeVisitor, statRoot, visitingOptions);
+                if (_logger.IsInfo) _logger.Info($"Full pruning started with MaxDegreeOfParallelism: {visitingOptions.MaxDegreeOfParallelism} and FullScanMemoryBudget: {visitingOptions.FullScanMemoryBudget}");
 
-                if (!pruning.CancellationTokenSource.IsCancellationRequested)
+                visitor = targetNodeStorage.Scheme == INodeStorage.KeyScheme.Hash
+                    ? CopyTree<NoopTreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken)
+                    : CopyTree<TreePathContextWithStorage>(stateRoot, targetNodeStorage, writeFlags, visitingOptions, cancellationToken);
+
+                if (!cancellationToken.IsCancellationRequested)
                 {
-                    void CommitOnNewBLock(object o, OnUpdateMainChainArgs e)
+                    visitor.Finish();
+
+                    _nodeStorage.Scheme = targetNodeStorage.Scheme;
+                    // Note: This does means that during full pruning some of the key copied will be of old key scheme.
+                    await WaitForMainChainChange((e) =>
                     {
-                        if (!e.WereProcessed) return;
-                        _blockTree.OnUpdateMainChain -= CommitOnNewBLock;
-                        // ReSharper disable AccessToDisposedClosure
+                        // The db swap happens here. We do it within the event handler of main chain change to block
+                        // so that it does not happen during block processing.
                         pruning.Commit();
-                        _lastPruning = DateTime.Now;
-                        pruning.Dispose();
-                        // ReSharper restore AccessToDisposedClosure
-                    }
+                        return true;
+                    }, cancellationToken);
 
-                    _blockTree.OnUpdateMainChain += CommitOnNewBLock;
-                    copyTreeVisitor.Finish();
-                }
-                else
-                {
-                    pruning.Dispose();
+                    _lastPruning = DateTime.UtcNow;
                 }
             }
             catch (Exception e)
             {
                 _logger.Error("Error during pruning. ", e);
-                pruning.Dispose();
+                _nodeStorage.Scheme = originalKeyScheme;
                 throw;
             }
+            finally
+            {
+                visitor?.Dispose();
+            }
+        }
+
+        private ICopyTreeVisitor CopyTree<TContext>(
+            Hash256 stateRoot,
+            INodeStorage targetNodeStorage,
+            WriteFlags writeFlags,
+            VisitingOptions visitingOptions,
+            CancellationToken cancellationToken
+        ) where TContext : struct, ITreePathContextWithStorage, INodeContext<TContext>
+        {
+            CopyTreeVisitor<TContext> copyTreeVisitor = new(targetNodeStorage, writeFlags, _logManager, cancellationToken);
+            _stateReader.RunTreeVisitor(copyTreeVisitor, stateRoot, visitingOptions);
+            return copyTreeVisitor;
         }
 
         public void Dispose()
         {
-            _blockTree.OnUpdateMainChain -= OnUpdateMainChain;
             _pruningTrigger.Prune -= OnPrune;
-            _currentPruning?.Dispose();
             _fullPruningDb.PruningFinished -= HandlePruningFinished;
         }
     }

@@ -3,7 +3,6 @@
 
 using System;
 using BenchmarkDotNet.Attributes;
-using BenchmarkDotNet.Jobs;
 
 namespace Nethermind.Benchmarks.Evm
 {

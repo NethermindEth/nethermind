@@ -7,7 +7,7 @@ using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
-using Nethermind.Network.P2P.Subprotocols.Eth.V65;
+using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V65.Messages;
 using Nethermind.TxPool;
 using NSubstitute;
@@ -20,20 +20,20 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         private readonly ITxPool _txPool = Substitute.For<ITxPool>();
         private readonly Action<GetPooledTransactionsMessage> _doNothing = Substitute.For<Action<GetPooledTransactionsMessage>>();
         private IPooledTxsRequestor _requestor;
-        private IReadOnlyList<Keccak> _request;
-        private IList<Keccak> _expected;
-        private IReadOnlyList<Keccak> _response;
+        private IReadOnlyList<Hash256> _request;
+        private IList<Hash256> _expected;
+        private IReadOnlyList<Hash256> _response;
 
 
         [Test]
         public void filter_properly_newPooledTxHashes()
         {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Keccak> { TestItem.KeccakA, TestItem.KeccakD });
+            _response = new List<Hash256>();
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig());
+            _requestor.RequestTransactions(_doNothing, new List<Hash256> { TestItem.KeccakA, TestItem.KeccakD });
 
-            _request = new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _expected = new List<Keccak> { TestItem.KeccakB, TestItem.KeccakC };
+            _request = new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _expected = new List<Hash256> { TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);
         }
@@ -41,11 +41,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_already_pending_hashes()
         {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(_doNothing, new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC });
+            _response = new List<Hash256>();
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig());
+            _requestor.RequestTransactions(_doNothing, new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC });
 
-            _request = new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _request = new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEmpty();
         }
@@ -53,11 +53,11 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void filter_properly_discovered_hashes()
         {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
+            _response = new List<Hash256>();
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig());
 
-            _request = new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
-            _expected = new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _request = new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
+            _expected = new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB, TestItem.KeccakC };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);
         }
@@ -65,22 +65,22 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V65
         [Test]
         public void can_handle_empty_argument()
         {
-            _response = new List<Keccak>();
-            _requestor = new PooledTxsRequestor(_txPool);
-            _requestor.RequestTransactions(Send, new List<Keccak>());
+            _response = new List<Hash256>();
+            _requestor = new PooledTxsRequestor(_txPool, new TxPoolConfig());
+            _requestor.RequestTransactions(Send, new List<Hash256>());
             _response.Should().BeEmpty();
         }
 
         [Test]
         public void filter_properly_hashes_present_in_hashCache()
         {
-            _response = new List<Keccak>();
+            _response = new List<Hash256>();
             ITxPool txPool = Substitute.For<ITxPool>();
-            txPool.IsKnown(Arg.Any<Keccak>()).Returns(true);
-            _requestor = new PooledTxsRequestor(txPool);
+            txPool.IsKnown(Arg.Any<Hash256>()).Returns(true);
+            _requestor = new PooledTxsRequestor(txPool, new TxPoolConfig());
 
-            _request = new List<Keccak> { TestItem.KeccakA, TestItem.KeccakB };
-            _expected = new List<Keccak> { };
+            _request = new List<Hash256> { TestItem.KeccakA, TestItem.KeccakB };
+            _expected = new List<Hash256> { };
             _requestor.RequestTransactions(Send, _request);
             _response.Should().BeEquivalentTo(_expected);
         }

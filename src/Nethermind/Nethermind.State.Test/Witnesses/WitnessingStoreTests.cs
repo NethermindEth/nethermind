@@ -3,7 +3,6 @@
 
 using System;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
@@ -12,7 +11,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Witnesses;
 using Nethermind.Trie;
-using NSubstitute;
 using NUnit.Framework;
 
 namespace Nethermind.Store.Test.Witnesses
@@ -42,9 +40,9 @@ namespace Nethermind.Store.Test.Witnesses
         }
 
         [Test]
-        public void Collects_on_reads_when_cached_underneath()
+        public void Collects_on_reads_2()
         {
-            Context context = new(2);
+            Context context = new();
             context.Wrapped[Key1] = Value1;
             context.Wrapped[Key2] = Value2;
             context.Wrapped[Key3] = Value3;
@@ -65,9 +63,9 @@ namespace Nethermind.Store.Test.Witnesses
         }
 
         [Test]
-        public void Collects_on_reads_when_cached_underneath_and_previously_populated()
+        public void Collects_on_reads_and_previously_populated()
         {
-            Context context = new(3);
+            Context context = new();
 
             using IDisposable tracker = context.WitnessCollector.TrackOnThisThread();
             context.Database[Key1] = Value1;
@@ -115,19 +113,13 @@ namespace Nethermind.Store.Test.Witnesses
                 WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
                 Database = new WitnessingStore(Wrapped, WitnessCollector);
             }
-
-            public Context(int cacheSize)
-            {
-                WitnessCollector = new WitnessCollector(new MemDb(), LimboLogs.Instance);
-                Database = new WitnessingStore(new CachingStore(Wrapped, cacheSize), WitnessCollector);
-            }
         }
 
-        private static readonly byte[] Key1 = TestItem.KeccakA.Bytes;
+        private static readonly byte[] Key1 = TestItem.KeccakA.BytesToArray();
 
-        private static readonly byte[] Key2 = TestItem.KeccakB.Bytes;
+        private static readonly byte[] Key2 = TestItem.KeccakB.BytesToArray();
 
-        private static readonly byte[] Key3 = TestItem.KeccakC.Bytes;
+        private static readonly byte[] Key3 = TestItem.KeccakC.BytesToArray();
 
         private static readonly byte[] Value1 = { 1 };
 

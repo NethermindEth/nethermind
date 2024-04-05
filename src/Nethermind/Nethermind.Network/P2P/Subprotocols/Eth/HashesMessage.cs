@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Network.P2P.Messages;
 
@@ -10,16 +11,22 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth
 {
     public abstract class HashesMessage : P2PMessage
     {
-        protected HashesMessage(IReadOnlyList<Keccak> hashes)
+        protected HashesMessage(IOwnedReadOnlyList<Hash256> hashes)
         {
             Hashes = hashes ?? throw new ArgumentNullException(nameof(hashes));
         }
 
-        public IReadOnlyList<Keccak> Hashes { get; }
+        public IOwnedReadOnlyList<Hash256> Hashes { get; }
 
         public override string ToString()
         {
             return $"{GetType().Name}({Hashes.Count})";
+        }
+
+        public override void Dispose()
+        {
+            base.Dispose();
+            Hashes.Dispose();
         }
     }
 }

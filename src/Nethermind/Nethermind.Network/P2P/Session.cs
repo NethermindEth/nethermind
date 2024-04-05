@@ -73,6 +73,7 @@ namespace Nethermind.Network.P2P
         }
 
         public bool IsClosing => State > SessionState.Initialized;
+        private bool IsClosed => State > SessionState.DisconnectingProtocols;
         public bool IsNetworkIdMatched { get; set; }
         public int LocalPort { get; set; }
         public PublicKey? RemoteNodeId { get; set; }
@@ -154,6 +155,8 @@ namespace Nethermind.Network.P2P
 
         public IPingSender PingSender { get; set; }
 
+        private (DisconnectReason, string?)? _disconnectAfterInitialized = null;
+
         public void ReceiveMessage(ZeroPacket zeroPacket)
         {
             Interlocked.Add(ref Metrics.P2PBytesReceived, zeroPacket.Content.ReadableBytes);
@@ -174,6 +177,8 @@ namespace Nethermind.Network.P2P
             int dynamicMessageCode = zeroPacket.PacketType;
             (string? protocol, int messageId) = _resolver.ResolveProtocol(zeroPacket.PacketType);
             zeroPacket.Protocol = protocol;
+
+            RecordIncomingMessageMetric(zeroPacket.Protocol, messageId, zeroPacket.Content.ReadableBytes);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {zeroPacket.Content.ReadableBytes} " +
@@ -209,7 +214,9 @@ namespace Nethermind.Network.P2P
                     throw new InvalidOperationException($"{nameof(DeliverMessage)} called {this}");
                 }
 
-                if (IsClosing)
+                // Must allow sending out packet when `DisconnectingProtocols` so that we can send out disconnect reason
+                // and hello (part of protocol)
+                if (IsClosed)
                 {
                     return 1;
                 }
@@ -219,7 +226,11 @@ namespace Nethermind.Network.P2P
 
             message.AdaptivePacketType = _resolver.ResolveAdaptiveId(message.Protocol, message.PacketType);
             int size = _packetSender.Enqueue(message);
+
+            RecordOutgoingMessageMetric(message, size);
+
             Interlocked.Add(ref Metrics.P2PBytesSent, size);
+
             return size;
         }
 
@@ -243,6 +254,8 @@ namespace Nethermind.Network.P2P
             int dynamicMessageCode = packet.PacketType;
             (string protocol, int messageId) = _resolver.ResolveProtocol(packet.PacketType);
             packet.Protocol = protocol;
+
+            RecordIncomingMessageMetric(protocol, messageId, packet.Data.Length);
 
             if (_logger.IsTrace)
                 _logger.Trace($"{this} received a message of length {packet.Data.Length} " +
@@ -274,8 +287,8 @@ namespace Nethermind.Network.P2P
         {
             if (_logger.IsTrace) _logger.Trace($"{nameof(Init)} called on {this}");
 
-            if (context is null) throw new ArgumentNullException(nameof(context));
-            if (packetSender is null) throw new ArgumentNullException(nameof(packetSender));
+            ArgumentNullException.ThrowIfNull(context);
+            ArgumentNullException.ThrowIfNull(packetSender);
 
             P2PVersion = p2PVersion;
             lock (_sessionStateLock)
@@ -296,6 +309,15 @@ namespace Nethermind.Network.P2P
             }
 
             Initialized?.Invoke(this, EventArgs.Empty);
+
+            // Disconnect may send disconnect reason message. But the hello message must be sent first, which is done
+            // during Initialized event.
+            // https://github.com/ethereum/devp2p/blob/master/rlpx.md#user-content-hello-0x00
+            if (_disconnectAfterInitialized is not null)
+            {
+                InitiateDisconnect(_disconnectAfterInitialized.Value.Item1, _disconnectAfterInitialized.Value.Item2);
+                _disconnectAfterInitialized = null;
+            }
         }
 
         public void Handshake(PublicKey? handshakeRemoteNodeId)
@@ -337,28 +359,28 @@ namespace Nethermind.Network.P2P
             HandshakeComplete?.Invoke(this, EventArgs.Empty);
         }
 
-        public void InitiateDisconnect(InitiateDisconnectReason initiateDisconnectReason, string? details = null)
+        public void InitiateDisconnect(DisconnectReason disconnectReason, string? details = null)
         {
-            DisconnectReason disconnectReason = initiateDisconnectReason.ToDisconnectReason();
+            EthDisconnectReason ethDisconnectReason = disconnectReason.ToEthDisconnectReason();
 
             bool ShouldDisconnectStaticNode()
             {
-                switch (disconnectReason)
+                switch (ethDisconnectReason)
                 {
-                    case DisconnectReason.DisconnectRequested:
-                    case DisconnectReason.TcpSubSystemError:
-                    case DisconnectReason.UselessPeer:
-                    case DisconnectReason.TooManyPeers:
-                    case DisconnectReason.Other:
+                    case EthDisconnectReason.DisconnectRequested:
+                    case EthDisconnectReason.TcpSubSystemError:
+                    case EthDisconnectReason.UselessPeer:
+                    case EthDisconnectReason.TooManyPeers:
+                    case EthDisconnectReason.Other:
                         return false;
-                    case DisconnectReason.ReceiveMessageTimeout:
-                    case DisconnectReason.BreachOfProtocol:
-                    case DisconnectReason.AlreadyConnected:
-                    case DisconnectReason.IncompatibleP2PVersion:
-                    case DisconnectReason.NullNodeIdentityReceived:
-                    case DisconnectReason.ClientQuitting:
-                    case DisconnectReason.UnexpectedIdentity:
-                    case DisconnectReason.IdentitySameAsSelf:
+                    case EthDisconnectReason.ReceiveMessageTimeout:
+                    case EthDisconnectReason.BreachOfProtocol:
+                    case EthDisconnectReason.AlreadyConnected:
+                    case EthDisconnectReason.IncompatibleP2PVersion:
+                    case EthDisconnectReason.NullNodeIdentityReceived:
+                    case EthDisconnectReason.ClientQuitting:
+                    case EthDisconnectReason.UnexpectedIdentity:
+                    case EthDisconnectReason.IdentitySameAsSelf:
                         return true;
                     default:
                         return true;
@@ -378,19 +400,27 @@ namespace Nethermind.Network.P2P
                     return;
                 }
 
+                if (State <= SessionState.HandshakeComplete)
+                {
+                    if (_disconnectAfterInitialized is not null) return;
+
+                    _disconnectAfterInitialized = (disconnectReason, details);
+                    return;
+                }
+
                 State = SessionState.DisconnectingProtocols;
             }
 
-            if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {initiateDisconnectReason}, details: {details}");
+            if (_logger.IsDebug) _logger.Debug($"{this} initiating disconnect because {disconnectReason}, details: {details}");
             //Trigger disconnect on each protocol handler (if p2p is initialized it will send disconnect message to the peer)
-            if (_protocols.Any())
+            if (!_protocols.IsEmpty)
             {
                 foreach (IProtocolHandler protocolHandler in _protocols.Values)
                 {
                     try
                     {
                         if (_logger.IsTrace)
-                            _logger.Trace($"{this} disconnecting {protocolHandler.Name} {initiateDisconnectReason} ({details})");
+                            _logger.Trace($"{this} disconnecting {protocolHandler.Name} {disconnectReason} ({details})");
                         protocolHandler.DisconnectProtocol(disconnectReason, details);
                     }
                     catch (Exception e)
@@ -404,7 +434,7 @@ namespace Nethermind.Network.P2P
             MarkDisconnected(disconnectReason, DisconnectType.Local, details);
         }
 
-        private object _sessionStateLock = new();
+        private readonly object _sessionStateLock = new();
         public byte P2PVersion { get; private set; }
 
         private SessionState _state;
@@ -550,12 +580,13 @@ namespace Nethermind.Network.P2P
         private AdaptiveCodeResolver GetOrCreateResolver()
         {
             string key = string.Join(":", _protocols.Select(p => p.Key).OrderBy(x => x).ToArray());
-            if (!_resolvers.ContainsKey(key))
+            if (!_resolvers.TryGetValue(key, out AdaptiveCodeResolver? value))
             {
-                _resolvers[key] = new AdaptiveCodeResolver(_protocols);
+                value = new AdaptiveCodeResolver(_protocols);
+                _resolvers[key] = value;
             }
 
-            return _resolvers[key];
+            return value;
         }
 
         public override string ToString()
@@ -628,6 +659,43 @@ namespace Nethermind.Network.P2P
         public void StartTrackingSession()
         {
             _isTracked = true;
+        }
+
+        private void RecordOutgoingMessageMetric<T>(T message, int size) where T : P2PMessage
+        {
+            byte version = _protocols.TryGetValue(message.Protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+
+            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(message.Protocol, version), message.PacketType);
+            Metrics.OutgoingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            Metrics.OutgoingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+        }
+
+        private void RecordIncomingMessageMetric(string protocol, int packetType, int size)
+        {
+            if (protocol == null) return;
+            byte version = _protocols.TryGetValue(protocol, out IProtocolHandler? handler)
+                ? handler!.ProtocolVersion
+                : (byte)0;
+            P2PMessageKey metricKey = new P2PMessageKey(new VersionedProtocol(protocol, version), packetType);
+            Metrics.IncomingP2PMessages.AddOrUpdate(metricKey, 0, IncrementMetric);
+            Metrics.IncomingP2PMessageBytes.AddOrUpdate(metricKey, ZeroMetric, AddMetric, size);
+        }
+
+        private static long IncrementMetric(P2PMessageKey _, long value)
+        {
+            return value + 1;
+        }
+
+        private static long ZeroMetric(P2PMessageKey _, int i)
+        {
+            return 0;
+        }
+
+        private static long AddMetric(P2PMessageKey _, long value, int toAdd)
+        {
+            return value + toAdd;
         }
     }
 }

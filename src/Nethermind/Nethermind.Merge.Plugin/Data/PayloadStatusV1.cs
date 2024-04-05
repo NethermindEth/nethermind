@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Crypto;
-using Newtonsoft.Json;
+
+using System.Text.Json;
+using System.Text.Json.Serialization;
 
 namespace Nethermind.Merge.Plugin.Data
 {
@@ -17,10 +19,11 @@ namespace Nethermind.Merge.Plugin.Data
 
         public static readonly PayloadStatusV1 Accepted = new() { Status = PayloadStatus.Accepted };
 
-        public static PayloadStatusV1 Invalid(Keccak? latestValidHash) => new()
+        public static PayloadStatusV1 Invalid(Hash256? latestValidHash, string? validationError = null) => new()
         {
             Status = PayloadStatus.Invalid,
-            LatestValidHash = latestValidHash
+            LatestValidHash = latestValidHash,
+            ValidationError = validationError
         };
 
         /// <summary>
@@ -31,13 +34,13 @@ namespace Nethermind.Merge.Plugin.Data
         /// <summary>
         /// Hash of the most recent valid block in the branch defined by payload and its ancestors.
         /// </summary>
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
-        public Keccak? LatestValidHash { get; set; }
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
+        public Hash256? LatestValidHash { get; set; }
 
         /// <summary>
         /// Message providing additional details on the validation error if the payload is classified as <see cref="PayloadStatus.Invalid"/>.
         /// </summary>
-        [JsonProperty(NullValueHandling = NullValueHandling.Include)]
+        [JsonIgnore(Condition = JsonIgnoreCondition.Never)]
         public string? ValidationError { get; set; }
     }
 }

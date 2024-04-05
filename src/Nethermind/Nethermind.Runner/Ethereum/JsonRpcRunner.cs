@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -20,14 +19,14 @@ using Nethermind.Logging;
 using Nethermind.Runner.JsonRpc;
 using Nethermind.Runner.Logging;
 using Nethermind.Sockets;
-using ILogger = Nethermind.Logging.ILogger;
+using ILogger = Nethermind.Logging.InterfaceLogger;
 using LogLevel = Microsoft.Extensions.Logging.LogLevel;
 
 namespace Nethermind.Runner.Ethereum
 {
     public class JsonRpcRunner
     {
-        private readonly ILogger _logger;
+        private readonly Nethermind.Logging.ILogger _logger;
         private readonly IConfigProvider _configurationProvider;
         private readonly IRpcAuthentication _rpcAuthentication;
         private readonly ILogManager _logManager;
@@ -36,8 +35,8 @@ namespace Nethermind.Runner.Ethereum
         private readonly IWebSocketsManager _webSocketsManager;
         private readonly IJsonRpcConfig _jsonRpcConfig;
         private IWebHost? _webHost;
-        private IInitConfig _initConfig;
-        private INethermindApi _api;
+        private readonly IInitConfig _initConfig;
+        private readonly INethermindApi _api;
 
         public JsonRpcRunner(
             IJsonRpcProcessor jsonRpcProcessor,

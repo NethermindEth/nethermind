@@ -13,7 +13,7 @@ namespace Nethermind.Blockchain
     {
         [CounterMetric]
         [Description("Total MGas processed")]
-        public static decimal Mgas { get; set; }
+        public static double Mgas { get; set; }
 
         [CounterMetric]
         [Description("Total number of transactions processed")]
@@ -78,5 +78,13 @@ namespace Nethermind.Blockchain
         [Description("The estimated highest block available.")]
         [DataMember(Name = "ethereum_best_known_block_number")]
         public static long BestKnownBlockNumber { get; set; }
+
+        [GaugeMetric]
+        [Description("Number of invalid blocks.")]
+        public static long BadBlocks;
+
+        [GaugeMetric]
+        [Description("Number of invalid blocks with extra data set to 'Nethermind'.")]
+        public static long BadBlocksByNethermindNodes;
     }
 }

@@ -3,23 +3,25 @@
 
 using Nethermind.Config;
 
-namespace Nethermind.EthStats
+namespace Nethermind.EthStats;
+
+public interface IEthStatsConfig : IConfig
 {
-    public interface IEthStatsConfig : IConfig
-    {
-        [ConfigItem(Description = "If 'true' then EthStats publishing gets enabled.", DefaultValue = "false")]
-        bool Enabled { get; }
+    [ConfigItem(Description = "Whether to use Ethstats publishing.", DefaultValue = "false")]
+    bool Enabled { get; }
 
-        [ConfigItem(Description = "EthStats server wss://hostname:port/api/", DefaultValue = "ws://localhost:3000/api")]
-        string? Server { get; }
+    [ConfigItem(Description = "The Ethstats server URL.", DefaultValue = "ws://localhost:3000/api")]
+    string? Server { get; }
 
-        [ConfigItem(Description = "Node name displayed on the given ethstats server.", DefaultValue = "Nethermind")]
-        string? Name { get; }
+    [ConfigItem(Description = "The node name displayed on Ethstats.", DefaultValue = "Nethermind")]
+    string? Name { get; }
 
-        [ConfigItem(Description = "Password for publishing to a given ethstats server.", DefaultValue = "secret")]
-        string? Secret { get; }
+    [ConfigItem(Description = "The Ethstats secret.", DefaultValue = "secret")]
+    string? Secret { get; }
 
-        [ConfigItem(Description = "Node owner contact details displayed on the ethstats page.", DefaultValue = "hello@nethermind.io")]
-        string? Contact { get; }
-    }
+    [ConfigItem(Description = "The node owner contact details displayed on Ethstats.", DefaultValue = "hello@nethermind.io")]
+    string? Contact { get; }
+
+    [ConfigItem(Description = "The stats update interval, in seconds.", DefaultValue = "15")]
+    int SendInterval { get; }
 }

@@ -32,27 +32,34 @@ namespace Nethermind.State.Witnesses
 
         public byte[]? this[ReadOnlySpan<byte> key]
         {
-            get
-            {
-                if (key.Length != 32)
-                {
-                    throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
-                }
-
-                Touch(key);
-                return _wrapped[key];
-            }
-            set => _wrapped[key] = value;
+            get => Get(key);
+            set => Set(key, value);
         }
 
-        public IBatch StartBatch()
+        public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
-            return _wrapped.StartBatch();
+            if (key.Length != 32)
+            {
+                throw new NotSupportedException($"{nameof(WitnessingStore)} requires 32 bytes long keys.");
+            }
+
+            Touch(key);
+            return _wrapped.Get(key, flags);
+        }
+
+        public void Set(ReadOnlySpan<byte> key, byte[]? value, WriteFlags flags = WriteFlags.None)
+        {
+            _wrapped.Set(key, value, flags);
+        }
+
+        public IWriteBatch StartWriteBatch()
+        {
+            return _wrapped.StartWriteBatch();
         }
 
         public void Touch(ReadOnlySpan<byte> key)
         {
-            _witnessCollector.Add(new Keccak(key.ToArray()));
+            _witnessCollector.Add(new Hash256(key));
         }
     }
 }

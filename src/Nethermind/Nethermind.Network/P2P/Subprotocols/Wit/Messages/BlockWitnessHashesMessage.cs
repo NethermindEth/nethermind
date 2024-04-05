@@ -6,20 +6,14 @@ using Nethermind.Network.P2P.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Wit.Messages
 {
-    public class BlockWitnessHashesMessage : P2PMessage
+    public class BlockWitnessHashesMessage(long requestId, Hash256[] hashes) : P2PMessage
     {
         public override int PacketType { get; } = WitMessageCode.BlockWitnessHashes;
 
         public override string Protocol { get; } = "wit";
 
-        public long RequestId { get; }
+        public long RequestId { get; } = requestId;
 
-        public Keccak[] Hashes { get; }
-
-        public BlockWitnessHashesMessage(long requestId, Keccak[] hashes)
-        {
-            RequestId = requestId;
-            Hashes = hashes;
-        }
+        public Hash256[] Hashes { get; } = hashes;
     }
 }

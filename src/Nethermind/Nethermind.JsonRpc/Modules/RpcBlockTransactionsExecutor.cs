@@ -9,7 +9,7 @@ namespace Nethermind.JsonRpc.Modules
 {
     public class RpcBlockTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
     {
-        public RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IStateProvider stateProvider)
+        public RpcBlockTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider)
             : base(new TraceTransactionProcessorAdapter(transactionProcessor), stateProvider)
         {
         }

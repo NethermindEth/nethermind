@@ -15,7 +15,6 @@ namespace Nethermind.Synchronization.ParallelSync
         public abstract SyncResponseHandlingResult HandleResponse(T response, PeerInfo peer = null);
         public abstract bool IsMultiFeed { get; }
         public abstract AllocationContexts Contexts { get; }
-        public int FeedId { get; } = FeedIdProvider.AssignId();
         public SyncFeedState CurrentState { get; private set; }
         public event EventHandler<SyncFeedStateEventArgs>? StateChanged;
 
@@ -37,12 +36,14 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Activate() => ChangeState(SyncFeedState.Active);
 
-        public void Finish()
+        public virtual void Finish()
         {
             ChangeState(SyncFeedState.Finished);
             GC.Collect(2, GCCollectionMode.Aggressive, true, true);
         }
         public Task FeedTask => _taskCompletionSource.Task;
+        public abstract void SyncModeSelectorOnChanged(SyncMode current);
+        public abstract bool IsFinished { get; }
 
         public void FallAsleep() => ChangeState(SyncFeedState.Dormant);
     }

@@ -1,19 +1,21 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net7.0</TargetFramework>
     <IsPackable>false</IsPackable>
-    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="coverlet.msbuild">
+    <PackageReference Include="coverlet.collector">
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
       <PrivateAssets>all</PrivateAssets>
     </PackageReference>
     <PackageReference Include="FluentAssertions" />
     <PackageReference Include="NSubstitute" />
     <PackageReference Include="NUnit" />
+    <PackageReference Include="NUnit.Analyzers">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
     <PackageReference Include="NUnit3TestAdapter" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" />
   </ItemGroup>
@@ -42,12 +44,6 @@
     </Content>
     <Content Include="..\Chains\poacore.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\poacore.json</Link>
-    </Content>
-    <Content Include="..\Chains\rinkeby.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\rinkeby.json</Link>
-    </Content>
-    <Content Include="..\Chains\ropsten.json" CopyToOutputDirectory="PreserveNewest">
-      <Link>Chains\ropsten.json</Link>
     </Content>
     <Content Include="..\Chains\spaceneth.json" CopyToOutputDirectory="PreserveNewest">
       <Link>Chains\spaceneth.json</Link>

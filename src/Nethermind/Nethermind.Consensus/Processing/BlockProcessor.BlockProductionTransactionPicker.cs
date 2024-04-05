@@ -7,17 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
 using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Specs;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing
 {
     public partial class BlockProcessor
     {
-        protected class BlockProductionTransactionPicker
+        public class BlockProductionTransactionPicker : IBlockProductionTransactionPicker
         {
-            private readonly ISpecProvider _specProvider;
+            protected readonly ISpecProvider _specProvider;
 
             public BlockProductionTransactionPicker(ISpecProvider specProvider)
             {
@@ -26,7 +24,12 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<AddingTxEventArgs>? AddingTransaction;
 
-            public AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IStateProvider stateProvider)
+            protected void OnAddingTransaction(AddingTxEventArgs e)
+            {
+                AddingTransaction?.Invoke(this, e);
+            }
+
+            public virtual AddingTxEventArgs CanAddTransaction(Block block, Transaction currentTx, IReadOnlySet<Transaction> transactionsInBlock, IWorldState stateProvider)
             {
                 AddingTxEventArgs args = new(transactionsInBlock.Count, currentTx, block, transactionsInBlock);
 
@@ -77,11 +80,11 @@ namespace Nethermind.Consensus.Processing
                     return args;
                 }
 
-                AddingTransaction?.Invoke(this, args);
+                OnAddingTransaction(args);
                 return args;
             }
 
-            private bool HasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
+            private static bool HasEnoughFounds(Transaction transaction, in UInt256 senderBalance, AddingTxEventArgs e, Block block, IReleaseSpec releaseSpec)
             {
                 bool eip1559Enabled = releaseSpec.IsEip1559Enabled;
                 UInt256 transactionPotentialCost = transaction.CalculateTransactionPotentialCost(eip1559Enabled, block.BaseFeePerGas);
@@ -92,12 +95,24 @@ namespace Nethermind.Consensus.Processing
                     return false;
                 }
 
-                if (eip1559Enabled && !transaction.IsServiceTransaction && senderBalance < (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value)
+                if (!transaction.IsServiceTransaction && eip1559Enabled)
                 {
-                    e.Set(TxAction.Skip, $"MaxFeePerGas ({transaction.MaxFeePerGas}) times GasLimit {transaction.GasLimit} is higher than sender balance ({senderBalance})");
-                    return false;
-                }
+                    UInt256 maxFee = (UInt256)transaction.GasLimit * transaction.MaxFeePerGas + transaction.Value;
 
+                    if (senderBalance < maxFee)
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}");
+                        return false;
+                    }
+
+                    if (transaction.SupportsBlobs && (
+                        !BlobGasCalculator.TryCalculateBlobGasPrice(block.Header, transaction, out UInt256 blobGasPrice) ||
+                        senderBalance < (maxFee += blobGasPrice)))
+                    {
+                        e.Set(TxAction.Skip, $"{maxFee} is higher than sender balance ({senderBalance}), MaxFeePerGas: ({transaction.MaxFeePerGas}), GasLimit {transaction.GasLimit}, BlobGasPrice: {blobGasPrice}");
+                        return false;
+                    }
+                }
                 return true;
             }
         }

@@ -14,7 +14,7 @@ namespace Nethermind.Hive
     {
         private INethermindApi _api = null!;
         private IHiveConfig _hiveConfig = null!;
-        private ILogger _logger = null!;
+        private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
 
         public ValueTask DisposeAsync()
@@ -51,6 +51,8 @@ namespace Nethermind.Hive
                 if (_api.LogManager is null) throw new ArgumentNullException(nameof(_api.LogManager));
                 if (_api.FileSystem is null) throw new ArgumentNullException(nameof(_api.FileSystem));
                 if (_api.BlockValidator is null) throw new ArgumentNullException(nameof(_api.BlockValidator));
+
+                _api.TxGossipPolicy.Policies.Clear();
 
                 HiveRunner hiveRunner = new(
                     _api.BlockTree,

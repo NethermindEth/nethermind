@@ -8,6 +8,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -27,7 +28,7 @@ namespace Nethermind.AuRa.Test.Contract
         private readonly Address _contractAddress = Address.FromNumber(long.MaxValue);
         private IReadOnlyTransactionProcessor _transactionProcessor;
         private IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
-        private IStateProvider _stateProvider;
+        private IWorldState _stateProvider;
 
         [SetUp]
         public void SetUp()
@@ -36,9 +37,12 @@ namespace Nethermind.AuRa.Test.Contract
             _transactionProcessor = Substitute.For<IReadOnlyTransactionProcessor>();
             _readOnlyTxProcessorSource = Substitute.For<IReadOnlyTxProcessorSource>();
             _readOnlyTxProcessorSource.Build(TestItem.KeccakA).Returns(_transactionProcessor);
-            _stateProvider = Substitute.For<IStateProvider>();
+            _stateProvider = Substitute.For<IWorldState>();
             _stateProvider.StateRoot.Returns(TestItem.KeccakA);
         }
+
+        [TearDown]
+        public void TearDown() => _transactionProcessor?.Dispose();
 
         [Test]
         public void constructor_throws_ArgumentNullException_on_null_contractAddress()
@@ -61,7 +65,7 @@ namespace Nethermind.AuRa.Test.Contract
             {
                 Value = 0,
                 Data = new byte[] { 0x75, 0x28, 0x62, 0x11 },
-                Hash = new Keccak("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
+                Hash = new Hash256("0x0652461cead47b6e1436fc631debe06bde8bcdd2dad3b9d21df5cf092078c6d3"),
                 To = _contractAddress,
                 SenderAddress = Address.SystemUser,
                 GasLimit = Blockchain.Contracts.CallableContract.UnlimitedGas,
@@ -81,14 +85,14 @@ namespace Nethermind.AuRa.Test.Contract
             contract.FinalizeChange(_block.Header);
 
             _transactionProcessor.Received().Execute(
-                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), _block.Header, Arg.Any<ITxTracer>());
+                Arg.Is<Transaction>(t => IsEquivalentTo(expectation, t)), Arg.Is<BlockExecutionContext>(blkCtx => blkCtx.Header.Equals(_block.Header)), Arg.Any<ITxTracer>());
         }
 
-        private static bool IsEquivalentTo(object expected, object item)
+        private static bool IsEquivalentTo(Transaction expected, Transaction item)
         {
             try
             {
-                item.Should().BeEquivalentTo(expected);
+                item.EqualToTransaction(expected);
                 return true;
             }
             catch

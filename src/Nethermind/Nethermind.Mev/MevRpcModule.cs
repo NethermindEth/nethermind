@@ -10,7 +10,6 @@ using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Mev.Data;
@@ -109,14 +108,14 @@ namespace Nethermind.Mev
             return ResultWrapper<TxsResults>.Success(results);
         }
 
-        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Keccak>? revertingTxHashes = null)
+        private static BundleTransaction[] Decode(byte[][] transactions, ISet<Hash256>? revertingTxHashes = null)
         {
-            revertingTxHashes ??= new HashSet<Keccak>();
+            revertingTxHashes ??= new HashSet<Hash256>();
             BundleTransaction[] txs = new BundleTransaction[transactions.Length];
             for (int i = 0; i < transactions.Length; i++)
             {
                 BundleTransaction bundleTransaction = Rlp.Decode<BundleTransaction>(transactions[i], RlpBehaviors.SkipTypedWrapping);
-                Keccak transactionHash = bundleTransaction.Hash!;
+                Hash256 transactionHash = bundleTransaction.Hash!;
                 bundleTransaction.CanRevert = revertingTxHashes.Contains(transactionHash);
                 revertingTxHashes.Remove(transactionHash);
 
@@ -135,10 +134,8 @@ namespace Nethermind.Mev
 
         private bool HasStateForBlock(BlockHeader header)
         {
-            RootCheckVisitor rootCheckVisitor = new();
             if (header.StateRoot is null) return false;
-            _stateReader.RunTreeVisitor(rootCheckVisitor, header.StateRoot!);
-            return rootCheckVisitor.HasRoot;
+            return _stateReader.HasStateForRoot(header.StateRoot!);
         }
     }
 }

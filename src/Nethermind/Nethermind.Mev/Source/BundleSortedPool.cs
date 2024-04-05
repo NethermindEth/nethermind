@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Logging;
 using Nethermind.Mev.Data;
 using Nethermind.TxPool.Collections;

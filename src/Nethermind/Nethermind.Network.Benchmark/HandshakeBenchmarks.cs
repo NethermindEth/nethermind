@@ -76,7 +76,7 @@ namespace Nethermind.Network.Benchmarks
             }
         }
 
-        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Ropsten, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
+        private readonly IEthereumEcdsa _ecdsa = new EthereumEcdsa(BlockchainIds.Sepolia, LimboLogs.Instance); // TODO: separate general crypto signer from Ethereum transaction signing
 
         private IMessageSerializationService _messageSerializationService;
 

@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
@@ -608,7 +608,7 @@ namespace Nethermind.Core.Crypto
             return output;
         }
 
-        public static uint[] ComputeBytesToUint(byte[] input, int size)
+        public static uint[] ComputeBytesToUint(ReadOnlySpan<byte> input, int size)
         {
             uint[] output = new uint[size / sizeof(uint)];
             ComputeHash(input, MemoryMarshal.Cast<uint, byte>(output));
@@ -661,7 +661,7 @@ namespace Nethermind.Core.Crypto
             MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
         }
 
-        public void Update(Span<byte> input)
+        public void Update(ReadOnlySpan<byte> input)
         {
             if (_hash is not null)
             {
@@ -685,7 +685,7 @@ namespace Nethermind.Core.Crypto
             if (_remainderLength != 0)
             {
                 // Copy data to our remainder
-                Span<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
+                ReadOnlySpan<byte> remainderAdditive = input[..Math.Min(input.Length, _roundSize - _remainderLength)];
                 remainderAdditive.CopyTo(_remainderBuffer.AsSpan(_remainderLength));
 
                 // Increment the length
@@ -721,7 +721,7 @@ namespace Nethermind.Core.Crypto
             while (input.Length >= _roundSize)
             {
                 // Cast our input to ulongs.
-                Span<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
+                ReadOnlySpan<ulong> input64 = MemoryMarshal.Cast<byte, ulong>(input[.._roundSize]);
 
                 // Eliminate bounds check for state for the loop
                 _ = state[input64.Length];
@@ -863,32 +863,36 @@ namespace Nethermind.Core.Crypto
 
         private static class Pool
         {
-            private const int MaxPooled = 24;
-            private static ConcurrentQueue<byte[]> s_remainderCache = new();
-            public static byte[] RentRemainder() => s_remainderCache.TryDequeue(out byte[]? remainder) ? remainder : new byte[STATE_SIZE];
+            private const int MaxPooledPerThread = 4;
+            [ThreadStatic]
+            private static Queue<byte[]>? s_remainderCache;
+            public static byte[] RentRemainder() => s_remainderCache?.TryDequeue(out byte[]? remainder) ?? false ? remainder : new byte[STATE_SIZE];
             public static void ReturnRemainder(ref byte[] remainder)
             {
                 if (remainder.Length == 0) return;
 
-                if (s_remainderCache.Count <= MaxPooled)
+                var cache = (s_remainderCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     remainder.AsSpan().Clear();
-                    s_remainderCache.Enqueue(remainder);
+                    cache.Enqueue(remainder);
                 }
 
                 remainder = Array.Empty<byte>();
             }
 
-            private static ConcurrentQueue<ulong[]> s_stateCache = new();
-            public static ulong[] RentState() => s_stateCache.TryDequeue(out ulong[]? state) ? state : new ulong[STATE_SIZE / sizeof(ulong)];
+            [ThreadStatic]
+            private static Queue<ulong[]>? s_stateCache;
+            public static ulong[] RentState() => s_stateCache?.TryDequeue(out ulong[]? state) ?? false ? state : new ulong[STATE_SIZE / sizeof(ulong)];
             public static void ReturnState(ref ulong[] state)
             {
                 if (state.Length == 0) return;
 
-                if (s_stateCache.Count <= MaxPooled)
+                var cache = (s_stateCache ??= new());
+                if (cache.Count <= MaxPooledPerThread)
                 {
                     state.AsSpan().Clear();
-                    s_stateCache.Enqueue(state);
+                    cache.Enqueue(state);
                 }
 
                 state = Array.Empty<ulong>();

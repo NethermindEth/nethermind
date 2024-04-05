@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
 using Nethermind.Core;
-using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing
@@ -55,5 +55,10 @@ namespace Nethermind.Evm.Tracing
         /// Ends block trace <see cref="StartNewBlockTrace"/>.
         /// </summary>
         void EndBlockTrace();
+    }
+
+    public interface IBlockTracer<out TTrace> : IBlockTracer
+    {
+        IReadOnlyCollection<TTrace> BuildResult();
     }
 }

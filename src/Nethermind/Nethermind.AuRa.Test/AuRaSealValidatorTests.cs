@@ -5,14 +5,11 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Net;
-using System.Security;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
@@ -147,7 +144,7 @@ namespace Nethermind.AuRa.Test
         public (bool, object) validate_params(BlockHeader parentBlock, BlockHeader block, Action<AuRaParameters> modifyParameters, Repeat repeat, bool parentIsHead, bool isValidSealer)
         {
             _blockTree.Head.Returns(parentIsHead ? new Block(parentBlock) : new Block(Build.A.BlockHeader.WithNumber(parentBlock.Number - 1).TestObject));
-            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value).Returns(isValidSealer);
+            _validSealerStrategy.IsValidSealer(Arg.Any<IList<Address>>(), block.Beneficiary, block.AuRaStep.Value, out _).Returns(isValidSealer);
 
             object cause = null;
 
@@ -199,7 +196,7 @@ namespace Nethermind.AuRa.Test
                 .WithNumber(blockNumber)
                 .TestObject;
 
-            Keccak hash = block.CalculateHash(RlpBehaviors.ForSealing);
+            Hash256 hash = block.CalculateHash(RlpBehaviors.ForSealing);
             block.AuRaSignature = _wallet.Sign(hash, signedAddress).BytesWithRecovery;
             _ethereumEcdsa.RecoverAddress(Arg.Any<Signature>(), hash).Returns(recoveredAddress);
 

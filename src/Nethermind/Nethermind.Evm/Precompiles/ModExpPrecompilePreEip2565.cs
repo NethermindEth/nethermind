@@ -14,15 +14,15 @@ namespace Nethermind.Evm.Precompiles
     ///     https://github.com/ethereum/EIPs/blob/vbuterin-patch-2/EIPS/bigint_modexp.md
     /// </summary>
     [Obsolete("Pre-eip2565 implementation")]
-    public class ModExpPrecompilePreEip2565 : IPrecompile
+    public class ModExpPrecompilePreEip2565 : IPrecompile<ModExpPrecompilePreEip2565>
     {
-        public static IPrecompile Instance = new ModExpPrecompilePreEip2565();
+        public static ModExpPrecompilePreEip2565 Instance = new ModExpPrecompilePreEip2565();
 
         private ModExpPrecompilePreEip2565()
         {
         }
 
-        public Address Address { get; } = Address.FromNumber(5);
+        public static Address Address { get; } = Address.FromNumber(5);
 
         public long BaseGasCost(IReleaseSpec releaseSpec)
         {
@@ -34,10 +34,10 @@ namespace Nethermind.Evm.Precompiles
             try
             {
                 Span<byte> extendedInput = stackalloc byte[96];
-                inputData.Slice(0, Math.Min(96, inputData.Length)).Span
-                    .CopyTo(extendedInput.Slice(0, Math.Min(96, inputData.Length)));
+                inputData[..Math.Min(96, inputData.Length)].Span
+                    .CopyTo(extendedInput[..Math.Min(96, inputData.Length)]);
 
-                UInt256 baseLength = new(extendedInput.Slice(0, 32), true);
+                UInt256 baseLength = new(extendedInput[..32], true);
                 UInt256 expLength = new(extendedInput.Slice(32, 32), true);
                 UInt256 modulusLength = new(extendedInput.Slice(64, 32), true);
 

@@ -21,6 +21,7 @@ namespace Nethermind.State
         private static readonly int CacheSizeInt = (int)CacheSize;
 
         private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+        private static readonly byte[] _emptyBytes = { 0 };
 
         static StorageTree()
         {
@@ -29,17 +30,16 @@ namespace Nethermind.State
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).Bytes;
+                Cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
         }
 
-        public StorageTree(ITrieStore? trieStore, ILogManager? logManager)
-            : base(trieStore, Keccak.EmptyTreeHash, false, true, logManager)
+        public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
+            : this(trieStore, Keccak.EmptyTreeHash, logManager)
         {
-            TrieType = TrieType.Storage;
         }
 
-        public StorageTree(ITrieStore? trieStore, Keccak rootHash, ILogManager? logManager)
+        public StorageTree(IScopedTrieStore? trieStore, Hash256 rootHash, ILogManager? logManager)
             : base(trieStore, rootHash, false, true, logManager)
         {
             TrieType = TrieType.Storage;
@@ -59,17 +59,22 @@ namespace Nethermind.State
             KeccakHash.ComputeHashBytesToSpan(key, key);
         }
 
-
         [SkipLocalsInit]
-        public byte[] Get(in UInt256 index, Keccak? storageRoot = null)
+        public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(index, key);
 
-            byte[]? value = Get(key, storageRoot);
-            if (value is null)
+            return Get(key, storageRoot).ToArray();
+        }
+
+        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        {
+            ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
+
+            if (value.IsEmpty)
             {
-                return new byte[] { 0 };
+                return _emptyBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
@@ -84,12 +89,12 @@ namespace Nethermind.State
             SetInternal(key, value);
         }
 
-        public void Set(Keccak key, byte[] value, bool rlpEncode = true)
+        public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
         {
             SetInternal(key.Bytes, value, rlpEncode);
         }
 
-        private void SetInternal(Span<byte> rawKey, byte[] value, bool rlpEncode = true)
+        private void SetInternal(ReadOnlySpan<byte> rawKey, byte[] value, bool rlpEncode = true)
         {
             if (value.IsZero())
             {

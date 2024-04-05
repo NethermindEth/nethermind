@@ -33,7 +33,7 @@ namespace Nethermind.Serialization.Ssz.Test
         {
             var combined = new Span<byte>(new byte[64]);
             a.CopyTo(combined);
-            b.CopyTo(combined.Slice(32));
+            b.CopyTo(combined[32..]);
             return _hashAlgorithm.ComputeHash(combined.ToArray());
         }
 

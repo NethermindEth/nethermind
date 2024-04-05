@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Threading.Tasks;
+using System.Text.Json.Serialization;
+
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Facade.Eth;
-using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
@@ -38,9 +38,18 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
             if (_logger.IsTrace) _logger.Trace($"Syncing subscription {Id} will track NewHeadBlocks");
         }
 
+        private class SubscriptionSyncingResult
+        {
+            [JsonIgnore]
+            public bool? IsSyncing { get; set; }
+            public long? StartingBlock { get; set; }
+            public long? CurrentBlock { get; set; }
+            public long? HighestBlock { get; set; }
+        }
+
         private void OnConditionsChange(object? sender, BlockEventArgs e)
         {
-            ScheduleAction(() =>
+            ScheduleAction(async () =>
             {
                 SyncingResult syncingResult = _ethSyncingInfo.GetFullInfo();
                 bool isSyncing = syncingResult.IsSyncing;
@@ -62,11 +71,20 @@ namespace Nethermind.JsonRpc.Modules.Subscribe
                 }
                 else
                 {
-                    result = CreateSubscriptionMessage(syncingResult);
+                    result = CreateSubscriptionMessage(new SubscriptionSyncingResult()
+                    {
+                        IsSyncing = syncingResult.IsSyncing,
+                        StartingBlock = syncingResult.StartingBlock,
+                        CurrentBlock = syncingResult.CurrentBlock,
+                        HighestBlock = syncingResult.HighestBlock
+                    });
                 }
 
+                using (result)
+                {
+                    await JsonRpcDuplexClient.SendJsonRpcResult(result);
+                }
 
-                JsonRpcDuplexClient.SendJsonRpcResult(result);
                 _logger.Trace($"Syncing subscription {Id} printed SyncingResult object.");
             });
         }

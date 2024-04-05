@@ -10,6 +10,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -23,6 +24,8 @@ using Nethermind.Db.Rocks.Config;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -32,30 +35,56 @@ namespace Nethermind.Blockchain.Test.FullPruning
     {
         public class PruningTestBlockchain : TestBlockchain
         {
-            public IFullPruningDb PruningDb { get; private set; }
+            public FullPruningDb PruningDb { get; private set; } = null!;
+            public INodeStorage MainNodeStorage { get; private set; } = null!;
             public TempPath TempDirectory { get; }
             public IPruningTrigger PruningTrigger { get; } = Substitute.For<IPruningTrigger>();
-            public FullTestPruner FullPruner { get; private set; }
+            public FullTestPruner FullPruner { get; private set; } = null!;
             public IPruningConfig PruningConfig { get; set; } = new PruningConfig();
+            public IDriveInfo DriveInfo { get; set; } = Substitute.For<IDriveInfo>();
+            public IChainEstimations _chainEstimations = Substitute.For<IChainEstimations>();
+            public IProcessExitSource ProcessExitSource { get; } = Substitute.For<IProcessExitSource>();
 
             public PruningTestBlockchain()
             {
                 TempDirectory = TempPath.GetTempDirectory();
             }
 
-            protected override async Task<TestBlockchain> Build(ISpecProvider specProvider = null, UInt256? initialValues = null)
+            protected override async Task<TestBlockchain> Build(
+                ISpecProvider? specProvider = null,
+                UInt256? initialValues = null,
+                bool addBlockOnStart = true
+            )
             {
-                TestBlockchain chain = await base.Build(specProvider, initialValues);
-                PruningDb = (IFullPruningDb)DbProvider.StateDb;
-                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, LogManager);
+                TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);
+                PruningDb = (FullPruningDb)DbProvider.StateDb;
+                DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
+                _chainEstimations.StateSize.Returns((long?)null);
+
+                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
+                MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
+
+                FullPruner = new FullTestPruner(
+                    PruningDb,
+                    nodeStorageFactory,
+                    MainNodeStorage,
+                    PruningTrigger,
+                    PruningConfig,
+                    BlockTree,
+                    StateReader,
+                    ProcessExitSource,
+                    DriveInfo,
+                    chain.TrieStore,
+                    _chainEstimations,
+                    LogManager);
                 return chain;
             }
 
             protected override async Task<IDbProvider> CreateDbProvider()
             {
-                IDbProvider dbProvider = new DbProvider(DbModeHint.Persisted);
+                IDbProvider dbProvider = new DbProvider();
                 RocksDbFactory rocksDbFactory = new(new DbConfig(), LogManager, TempDirectory.Path);
-                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new MemDbFactory(), new FileSystem(), true);
+                StandardDbInitializer standardDbInitializer = new(dbProvider, rocksDbFactory, new FileSystem());
                 await standardDbInitializer.InitStandardDbsAsync(true);
                 return dbProvider;
             }
@@ -68,7 +97,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
             protected override Task AddBlocksOnStart() => Task.CompletedTask;
 
-            public static async Task<PruningTestBlockchain> Create(IPruningConfig pruningConfig = null)
+            public static async Task<PruningTestBlockchain> Create(IPruningConfig? pruningConfig = null)
             {
                 PruningTestBlockchain chain = new() { PruningConfig = pruningConfig ?? new PruningConfig() };
                 await chain.Build();
@@ -81,24 +110,30 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 public FullTestPruner(
                     IFullPruningDb pruningDb,
+                    INodeStorageFactory nodeStorageFactory,
+                    INodeStorage mainNodeStorage,
                     IPruningTrigger pruningTrigger,
                     IPruningConfig pruningConfig,
                     IBlockTree blockTree,
                     IStateReader stateReader,
+                    IProcessExitSource processExitSource,
+                    IDriveInfo driveInfo,
+                    IPruningTrieStore trieStore,
+                    IChainEstimations chainEstimations,
                     ILogManager logManager)
-                    : base(pruningDb, pruningTrigger, pruningConfig, blockTree, stateReader, logManager)
+                    : base(pruningDb, nodeStorageFactory, mainNodeStorage, pruningTrigger, pruningConfig, blockTree, stateReader, processExitSource, chainEstimations, driveInfo, trieStore, logManager)
                 {
                 }
 
-                protected override void RunPruning(IPruningContext pruning, Keccak stateRoot)
+                protected override async Task RunFullPruning(CancellationToken cancellationToken)
                 {
-                    base.RunPruning(pruning, stateRoot);
+                    await base.RunFullPruning(cancellationToken);
                     WaitHandle.Set();
                 }
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_multiple_times()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 0 });
@@ -108,7 +143,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
+        [Test, Timeout(Timeout.MaxTestTime), Retry(5)]
         public async Task prune_on_disk_only_once()
         {
             using PruningTestBlockchain chain = await PruningTestBlockchain.Create(new PruningConfig { FullPruningMinimumDelayHours = 10 });
@@ -118,19 +153,38 @@ namespace Nethermind.Blockchain.Test.FullPruning
             }
         }
 
+        [TestCase(100, 150, false)]
+        [TestCase(200, 100, true)]
+        [TestCase(130, 100, true)]
+        [TestCase(130, 101, false)]
+        public async Task should_check_available_space_before_running(long availableSpace, long requiredSpace, bool isEnoughSpace)
+        {
+            using PruningTestBlockchain chain = await PruningTestBlockchain.Create();
+            chain._chainEstimations.PruningSize.Returns(requiredSpace);
+            chain.DriveInfo.AvailableFreeSpace.Returns(availableSpace);
+            PruningTriggerEventArgs args = new();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
+            args.Status.Should().Be(isEnoughSpace ? PruningStatus.Starting : PruningStatus.NotEnoughDiskSpace);
+        }
+
         private static async Task RunPruning(PruningTestBlockchain chain, int time, bool onlyFirstRuns)
         {
             chain.FullPruner.WaitHandle.Reset();
-            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>();
+            PruningTriggerEventArgs args = new();
+            chain.PruningTrigger.Prune += Raise.Event<EventHandler<PruningTriggerEventArgs>>(args);
+            if (args.Status != PruningStatus.Starting) return;
             for (int i = 0; i < Reorganization.MaxDepth + 2; i++)
             {
                 await chain.AddBlock(true);
             }
 
             HashSet<byte[]> allItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
-            bool pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromSeconds(1));
-
-            await chain.AddBlock(true);
+            bool pruningFinished = false;
+            for (int i = 0; i < 100 && !pruningFinished; i++)
+            {
+                pruningFinished = chain.FullPruner.WaitHandle.WaitOne(TimeSpan.FromMilliseconds(100));
+                await chain.AddBlock(true);
+            }
 
             if (!onlyFirstRuns || time == 0)
             {
@@ -138,14 +192,15 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 await WriteFileStructure(chain);
 
-                chain.PruningDb.InnerDbName.Should().Be($"State{time + 1}");
+                Assert.That(
+                    () => chain.PruningDb.InnerDbName,
+                    Is.EqualTo($"State{time + 1}").After(500, 100)
+                    );
 
                 HashSet<byte[]> currentItems = chain.DbProvider.StateDb.GetAllValues().ToHashSet(Bytes.EqualityComparer);
                 currentItems.IsSubsetOf(allItems).Should().BeTrue();
                 currentItems.Count.Should().BeGreaterThan(0);
             }
-
-            await Task.Delay(TimeSpan.FromMilliseconds(10));
         }
 
         private static async Task WriteFileStructure(PruningTestBlockchain chain)

@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -51,7 +52,7 @@ namespace Nethermind.Merge.Plugin
             _manualBlockFinalizationManager.MarkFinalized(finalizingBlock, finalizedBlock);
         }
 
-        public long GetLastLevelFinalizedBy(Keccak blockHash)
+        public long GetLastLevelFinalizedBy(Hash256 blockHash)
         {
             if (_auRaBlockFinalizationManager is not null)
             {
@@ -73,6 +74,11 @@ namespace Nethermind.Merge.Plugin
                 $"{nameof(GetFinalizationLevel)} called when empty {nameof(_auRaBlockFinalizationManager)} is null.");
         }
 
+        public void SetMainBlockProcessor(IBlockProcessor blockProcessor)
+        {
+            _auRaBlockFinalizationManager!.SetMainBlockProcessor(blockProcessor);
+        }
+
         public void Dispose()
         {
             if (IsPostMerge && HasAuRaFinalizationManager)
@@ -81,7 +87,7 @@ namespace Nethermind.Merge.Plugin
             }
         }
 
-        public Keccak LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
+        public Hash256 LastFinalizedHash { get => _manualBlockFinalizationManager.LastFinalizedHash; }
 
         public long LastFinalizedBlockLevel
         {

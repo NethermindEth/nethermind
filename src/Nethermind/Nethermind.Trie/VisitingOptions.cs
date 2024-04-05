@@ -11,6 +11,7 @@ namespace Nethermind.Trie
     public class VisitingOptions
     {
         public static readonly VisitingOptions Default = new();
+        private readonly int _maxDegreeOfParallelism = 1;
 
         /// <summary>
         /// Should visit accounts.
@@ -20,7 +21,14 @@ namespace Nethermind.Trie
         /// <summary>
         /// Maximum number of threads that will be used to visit the trie.
         /// </summary>
-        public int MaxDegreeOfParallelism { get; init; } = 1;
+        public int MaxDegreeOfParallelism
+        {
+            get => _maxDegreeOfParallelism;
+            init
+            {
+                _maxDegreeOfParallelism = AdjustMaxDegreeOfParallelism(value);
+            }
+        }
 
         /// <summary>
         /// Specify memory budget to run a batched trie visitor. Significantly reduce read iops as memory budget
@@ -30,5 +38,13 @@ namespace Nethermind.Trie
         /// with slower SSD. Set to 0 to disable batched trie visitor.
         /// </summary>
         public long FullScanMemoryBudget { get; set; }
+
+        public static int AdjustMaxDegreeOfParallelism(int rawMaxDegreeOfParallelism) =>
+            rawMaxDegreeOfParallelism switch
+            {
+                0 => Math.Max(Environment.ProcessorCount / 4, 1),
+                <= -1 => Environment.ProcessorCount,
+                _ => rawMaxDegreeOfParallelism
+            };
     }
 }

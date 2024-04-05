@@ -6,7 +6,9 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Blockchain.Headers;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -48,8 +50,16 @@ namespace Nethermind.Init.Steps
             IChainLevelInfoRepository chainLevelInfoRepository =
                 _set.ChainLevelInfoRepository = new ChainLevelInfoRepository(_get.DbProvider!.BlockInfosDb);
 
+            IBlockStore blockStore = new BlockStore(_get.DbProvider.BlocksDb);
+            IHeaderStore headerStore = new HeaderStore(_get.DbProvider.HeadersDb, _get.DbProvider.BlockNumbersDb);
+            IBlockStore badBlockStore = _set.BadBlocksStore = new BlockStore(_get.DbProvider.BadBlocksDb, initConfig.BadBlocksStored);
+
             IBlockTree blockTree = _set.BlockTree = new BlockTree(
-                _get.DbProvider,
+                blockStore,
+                headerStore,
+                _get.DbProvider.BlockInfosDb,
+                _get.DbProvider.MetadataDb,
+                badBlockStore,
                 chainLevelInfoRepository,
                 _get.SpecProvider,
                 bloomStorage,
@@ -70,12 +80,13 @@ namespace Nethermind.Init.Steps
 
             IReceiptConfig receiptConfig = _set.Config<IReceiptConfig>();
             ReceiptsRecovery receiptsRecovery = new(_get.EthereumEcdsa, _get.SpecProvider, !receiptConfig.CompactReceiptStore);
-            IReceiptStorage receiptStorage = _set.ReceiptStorage = initConfig.StoreReceipts
+            IReceiptStorage receiptStorage = _set.ReceiptStorage = receiptConfig.StoreReceipts
                 ? new PersistentReceiptStorage(
                     _get.DbProvider.ReceiptsDb,
                     _get.SpecProvider!,
                     receiptsRecovery,
                     blockTree,
+                    blockStore,
                     receiptConfig,
                     new ReceiptArrayStorageDecoder(receiptConfig.CompactReceiptStore))
                 : NullReceiptStorage.Instance;
@@ -89,9 +100,14 @@ namespace Nethermind.Init.Steps
                 bloomStorage,
                 _get.LogManager,
                 new ReceiptsRecovery(_get.EthereumEcdsa, _get.SpecProvider),
-                1024);
+                receiptConfig.MaxBlockDepth);
 
             _set.LogFinder = logFinder;
+
+            if (initConfig.ExitOnBlockNumber is not null)
+            {
+                new ExitOnBlockNumberHandler(blockTree, _get.ProcessExit!, initConfig.ExitOnBlockNumber.Value, _get.LogManager);
+            }
 
             return Task.CompletedTask;
         }

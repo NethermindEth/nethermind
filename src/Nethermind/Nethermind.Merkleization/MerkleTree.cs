@@ -16,15 +16,13 @@ namespace Nethermind.Merkleization;
 public abstract class MerkleTree : IMerkleList
 {
     private const int LeafRow = 32;
-    private const int LeafLevel = 0;
     public const int TreeHeight = 32;
-    private const ulong FirstLeafIndexAsNodeIndex = MaxNodes / 2;
     private const ulong MaxNodes = (1ul << (TreeHeight + 1)) - 1ul;
     private const ulong MaxNodeIndex = MaxNodes - 1;
 
     private readonly IKeyValueStore<ulong, byte[]> _keyValueStore;
 
-    private static ulong _countKey = ulong.MaxValue;
+    private static readonly ulong _countKey = ulong.MaxValue;
 
     public readonly ref struct Index
     {
@@ -149,7 +147,7 @@ public abstract class MerkleTree : IMerkleList
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
 
         byte[]? countBytes = _keyValueStore[_countKey];
-        Count = countBytes == null ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(countBytes);
+        Count = countBytes is null ? 0 : BinaryPrimitives.ReadUInt32LittleEndian(countBytes);
     }
 
     private void StoreCountInTheDb()
@@ -164,15 +162,10 @@ public abstract class MerkleTree : IMerkleList
         _keyValueStore[index.NodeIndex] = hashBytes;
     }
 
-    private void SaveValue(in Index index, Bytes32 hash)
-    {
-        SaveValue(index, hash.AsSpan().ToArray());
-    }
-
     private Bytes32 LoadValue(in Index index)
     {
         byte[]? nodeHashBytes = _keyValueStore[index.NodeIndex];
-        if (nodeHashBytes == null)
+        if (nodeHashBytes is null)
         {
             return ZeroHashesInternal[LeafRow - index.Row];
         }
@@ -274,7 +267,7 @@ public abstract class MerkleTree : IMerkleList
         StoreCountInTheDb();
     }
 
-    private byte[] _countBytes = new byte[32];
+    private readonly byte[] _countBytes = new byte[32];
 
     /// <summary>
     /// Check if 'leaf' at 'index' verifies against the Merkle 'root' and 'branch'
@@ -301,7 +294,7 @@ public abstract class MerkleTree : IMerkleList
 
         // MixIn count
         Hash(value.AsSpan(), proof[^1].AsSpan(), value);
-        return value.AsSpan().SequenceEqual(Root.AsSpan());
+        return value.AsSpan().SequenceEqual(Root!.AsSpan());
     }
 
     public IList<Bytes32> GetProof(in uint leafIndex)
@@ -363,7 +356,7 @@ public abstract class MerkleTree : IMerkleList
         return new Index(nodeIndex).Parent().NodeIndex;
     }
 
-    public Root Root { get; set; }
+    public Root? Root { get; set; }
 
     protected abstract void Hash(ReadOnlySpan<byte> a, ReadOnlySpan<byte> b, Span<byte> target);
 }

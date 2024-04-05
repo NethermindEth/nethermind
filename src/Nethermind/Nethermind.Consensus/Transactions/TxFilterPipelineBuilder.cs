@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Config;
 using Nethermind.Core.Specs;
-using Nethermind.Int256;
 using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Transactions
@@ -18,7 +17,7 @@ namespace Nethermind.Consensus.Transactions
             ISpecProvider? specProvider,
             IBlocksConfig blocksConfig)
         {
-            if (specProvider is null) throw new ArgumentNullException(nameof(specProvider));
+            ArgumentNullException.ThrowIfNull(specProvider);
 
             return new TxFilterPipelineBuilder(logManager)
                 .WithMinGasPriceFilter(blocksConfig, specProvider)

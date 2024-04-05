@@ -31,13 +31,13 @@ namespace Nethermind.Clique.Test
                 {TestItem.AddressD, 4}
             });
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
+            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(snapshot);
             WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             for (int i = 0; i < 5; i++)
             {
-                Assert.AreEqual(100, randomizer.WiggleFor(header1));
+                Assert.That(randomizer.WiggleFor(header1), Is.EqualTo(100));
             }
         }
 
@@ -57,20 +57,20 @@ namespace Nethermind.Clique.Test
             });
 
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
+            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(snapshot);
             WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).TestObject;
             BlockHeader header2 = Build.A.BlockHeader.WithNumber(2).TestObject;
             BlockHeader header3 = Build.A.BlockHeader.WithNumber(3).TestObject;
             int wiggle = randomizer.WiggleFor(header1);
-            Assert.AreEqual(Consensus.Clique.Clique.WiggleTime / 2, wiggle);
+            Assert.That(wiggle, Is.EqualTo(Consensus.Clique.Clique.WiggleTime / 2));
 
             wiggle = randomizer.WiggleFor(header2);
-            Assert.AreEqual(Consensus.Clique.Clique.WiggleTime, wiggle);
+            Assert.That(wiggle, Is.EqualTo(Consensus.Clique.Clique.WiggleTime));
 
             wiggle = randomizer.WiggleFor(header3);
-            Assert.AreEqual(Consensus.Clique.Clique.WiggleTime * 2, wiggle);
+            Assert.That(wiggle, Is.EqualTo(Consensus.Clique.Clique.WiggleTime * 2));
         }
 
         [Test]
@@ -89,12 +89,12 @@ namespace Nethermind.Clique.Test
             });
 
             ISnapshotManager snapshotManager = Substitute.For<ISnapshotManager>();
-            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Keccak>()).Returns(snapshot);
+            snapshotManager.GetOrCreateSnapshot(Arg.Any<long>(), Arg.Any<Hash256>()).Returns(snapshot);
             WiggleRandomizer randomizer = new(cryptoRandom, snapshotManager);
 
             BlockHeader header1 = Build.A.BlockHeader.WithNumber(1).WithDifficulty(Consensus.Clique.Clique.DifficultyInTurn).TestObject;
             int wiggle = randomizer.WiggleFor(header1);
-            Assert.AreEqual(0, wiggle);
+            Assert.That(wiggle, Is.EqualTo(0));
         }
     }
 }
