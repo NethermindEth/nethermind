@@ -36,7 +36,7 @@ public class ShutterTxSource : ITxSource
     public Dto.DecryptionKeys? DecryptionKeys;
     public ulong? TxPointer; //todo: might not need local txPointer once Shutter updates?
     private bool _validatorsRegistered = false;
-    private Hash256 _lastHash = new("0x0");
+    private Hash256? _lastHash;
     private IEnumerable<Transaction> _transactionCache = [];
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
@@ -64,7 +64,7 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        if (parent.Hash == _lastHash)
+        if (_lastHash is not null && parent.Hash == _lastHash)
         {
             return _transactionCache;
         }
