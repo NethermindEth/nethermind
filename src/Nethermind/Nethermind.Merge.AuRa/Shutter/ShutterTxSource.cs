@@ -86,7 +86,9 @@ public class ShutterTxSource : ITxSource
 
         TxPointer = DecryptionKeys.Gnosis.TxPointer;
 
-        IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
+        // todo: change once keypers are aware of validator contract
+        // IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
+        IEnumerable<Transaction> transactions = sequencedTransactions.Select(x => DecryptSequencedTransaction(x, new()));
         if (_logger.IsInfo) _logger.Info("Decrypted Shutter transactions...");
 
         return transactions;
