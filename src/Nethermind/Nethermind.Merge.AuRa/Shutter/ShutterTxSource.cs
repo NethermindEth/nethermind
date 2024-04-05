@@ -37,7 +37,7 @@ public class ShutterTxSource : ITxSource
     public ulong? TxPointer; //todo: might not need local txPointer once Shutter updates?
     private bool _validatorsRegistered = false;
     private Hash256 _lastHash = new("0x0");
-    private IEnumerable<Transaction> _transactionCache;
+    private IEnumerable<Transaction> _transactionCache = [];
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
