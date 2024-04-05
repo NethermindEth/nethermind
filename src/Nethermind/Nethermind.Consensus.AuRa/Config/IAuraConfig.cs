@@ -70,7 +70,7 @@ public interface IAuraConfig : IConfig
     ulong ShutterValidatorRegistryMessageVersion { get; set; }
 
     [ConfigItem(Description = "Instance ID of Shutter keyper set.",
-        DefaultValue = "60")]
+        DefaultValue = "0")]
     ulong ShutterInstanceID { get; set; }
 
     [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
