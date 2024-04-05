@@ -21,6 +21,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
+using Nethermind.Core.Collections;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -31,7 +32,7 @@ using G1 = Bls.P1;
 public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
-    public ulong? TxPointer;
+    public ulong? TxPointer; //todo: might not need local txPointer once Shutter updates?
     private bool _validatorsRegistered = false;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
@@ -87,9 +88,12 @@ public class ShutterTxSource : ITxSource
         TxPointer = DecryptionKeys.Gnosis.TxPointer;
 
         // todo: change once keypers are aware of validator contract
+        // skip block decryption key, does it do anything?
         // IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
         IEnumerable<Transaction> transactions = sequencedTransactions.Select(x => DecryptSequencedTransaction(x, new()));
-        if (_logger.IsInfo) _logger.Info("Decrypted Shutter transactions...");
+        if (_logger.IsInfo) _logger.Info($"Decrypted {transactions.Count()} Shutter transactions...");
+
+        transactions.ForEach((tx) => _logger.Info(tx.ToShortString()));
 
         return transactions;
     }
