@@ -52,12 +52,4 @@ public class ExecutionPayloadV3 : ExecutionPayload
     /// </summary>
     [JsonRequired]
     public override ulong? ExcessBlobGas { get; set; }
-
-
-    /// <summary>
-    /// Gets or sets <see cref="Block.ParentBeaconBlockRoot"/> as defined in
-    /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
-    /// </summary>
-    [JsonRequired]
-    public override Hash256? ParentBeaconBlockRoot { get; set; }
 }
