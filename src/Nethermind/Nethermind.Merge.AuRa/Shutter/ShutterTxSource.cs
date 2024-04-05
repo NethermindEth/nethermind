@@ -30,6 +30,7 @@ using G1 = Bls.P1;
 public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
+    private bool _validatorsRegistered = false;
     private readonly ILogFinder? _logFinder;
     private readonly LogFilter? _logFilter;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
@@ -37,11 +38,10 @@ public class ShutterTxSource : ITxSource
     private readonly ISpecProvider _specProvider;
     private readonly IAuraConfig _auraConfig;
     private readonly ILogger _logger;
-    private readonly Address _validatorRegistryContractAddress;
-    private IEnumerable<(ulong, byte[])> _validatorsInfo;
-    private bool _validatorsRegistered = false;
-    private static readonly UInt256 EncryptedGasLimit = 21000 * 10; // todo: change
-    internal static readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
+    private readonly Address ValidatorRegistryContractAddress;
+    private readonly IEnumerable<(ulong, byte[])> ValidatorsInfo;
+    private readonly UInt256 EncryptedGasLimit;
+    private readonly AbiSignature TransactionSubmmitedSig = new AbiSignature(
         "TransactionSubmitted",
         [
             AbiType.UInt64, // eon
@@ -63,18 +63,19 @@ public class ShutterTxSource : ITxSource
         _auraConfig = auraConfig;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
-        _validatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
-        _validatorsInfo = validatorsInfo;
+        ValidatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
+        ValidatorsInfo = validatorsInfo;
+        EncryptedGasLimit = _auraConfig.ShutterEncryptedGasLimit;
     }
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
-        Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, _validatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
+        Contracts.ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
         if (!_validatorsRegistered)
         {
-            foreach ((ulong validatorIndex, byte[] validatorPubKey) in _validatorsInfo)
+            foreach ((ulong validatorIndex, byte[] validatorPubKey) in ValidatorsInfo)
             {
                 if (!validatorRegistryContract!.IsRegistered(parent, validatorIndex, validatorPubKey))
                 {
@@ -135,12 +136,10 @@ public class ShutterTxSource : ITxSource
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, int txPointer)
     {
         IEnumerable<TransactionSubmittedEvent> events = GetEvents();
-        // todo: use txpointer once correct
         events = events.Where(e => e.Eon == eon);
-        // events = events.Where(e => e.Eon == eon).Skip(txPointer);
         _logger.Info("tx pointer: " + txPointer);
         _logger.Info("this eon: " + events.Count());
-        events = events.Skip(10);
+        events = events.Skip(txPointer);
         _logger.Info("after skipping: " + events.Count());
 
         List<SequencedTransaction> txs = new List<SequencedTransaction>();

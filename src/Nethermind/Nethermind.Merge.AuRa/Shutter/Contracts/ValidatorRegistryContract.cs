@@ -79,9 +79,9 @@ public class ValidatorRegistryContract : CallableContract, IValidatorRegistryCon
             {
                 return false;
             }
-            else if (msg.Version != _auraConfig.ShutterVersion)
+            else if (msg.Version != _auraConfig.ShutterValidatorRegistryMessageVersion)
             {
-                if (_logger.IsWarn) _logger.Warn("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterVersion);
+                if (_logger.IsWarn) _logger.Warn("Registration message has wrong version (" + msg.Version + ") should be " + _auraConfig.ShutterValidatorRegistryMessageVersion);
                 continue;
             }
             else if (msg.ChainId != _specProvider.ChainId)

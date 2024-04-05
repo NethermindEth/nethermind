@@ -23,6 +23,10 @@ namespace Nethermind.Consensus.AuRa.Config
         public string[] ShutterKeyperP2PAddresses { get; set; }
         public int ShutterP2PPort { get; set; }
         public string ShutterValidatorInfoFile { get; set; }
-        public ulong ShutterVersion { get; set; }
+        public string ShutterP2PProtocolVersion { get; set; }
+        public string ShutterP2PAgentVersion { get; set; }
+        public ulong ShutterValidatorRegistryMessageVersion { get; set; }
+        public ulong ShutterInstanceID { get; set; }
+        public ulong ShutterEncryptedGasLimit { get; set; }
     }
 }

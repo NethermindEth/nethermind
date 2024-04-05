@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.AuRa.Config;
 
@@ -56,8 +57,23 @@ public interface IAuraConfig : IConfig
         DefaultValue = "null")]
     string ShutterValidatorInfoFile { get; set; }
 
-    [ConfigItem(Description = "The Shutter protocol version.",
-        DefaultValue = "0")]
-    ulong ShutterVersion { get; set; }
+    [ConfigItem(Description = "The Shutter P2P protocol version.",
+        DefaultValue = "/shutter/0.1.0")]
+    string ShutterP2PProtocolVersion { get; set; }
 
+    [ConfigItem(Description = "The Shutter P2P agent version.",
+        DefaultValue = "github.com/shutter-network/rolling-shutter/rolling-shutter")]
+    string ShutterP2PAgentVersion { get; set; }
+
+    [ConfigItem(Description = "The Shutter validator registry message version.",
+        DefaultValue = "0")]
+    ulong ShutterValidatorRegistryMessageVersion { get; set; }
+
+    [ConfigItem(Description = "Instance ID of Shutter keyper set.",
+        DefaultValue = "60")]
+    ulong ShutterInstanceID { get; set; }
+
+    [ConfigItem(Description = "The maximum amount of gas to use on Shutter transactions.",
+        DefaultValue = "17000000")]
+    ulong ShutterEncryptedGasLimit { get; set; }
 }

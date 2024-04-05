@@ -27,16 +27,14 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
-    public static readonly ulong InstanceID = 60;
-    // todo: get Threshold from contract
-    public static readonly int Threshhold = 0;
     private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogger _logger;
-    private readonly Address _keyBroadcastContractAddress;
-    private readonly Address _keyperSetManagerContractAddress;
+    private readonly Address KeyBroadcastContractAddress;
+    private readonly Address KeyperSetManagerContractAddress;
+    private readonly ulong InstanceID;
     private ulong _eon = 0;
 
     public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
@@ -46,15 +44,16 @@ public class ShutterP2P
         _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
         _abiEncoder = abiEncoder;
         _logger = logManager.GetClassLogger();
-        _keyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
-        _keyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
+        KeyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
+        KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
+        InstanceID = auraConfig.ShutterInstanceID;
 
         ServiceProvider serviceProvider = new ServiceCollection()
             .AddLibp2p(builder => builder)
             .AddSingleton(new IdentifyProtocolSettings
             {
-                ProtocolVersion = "/shutter/0.1.0",
-                AgentVersion = "github.com/shutter-network/rolling-shutter/rolling-shutter"
+                ProtocolVersion = auraConfig.ShutterP2PProtocolVersion,
+                AgentVersion = auraConfig.ShutterP2PAgentVersion
             })
             .BuildServiceProvider();
 
@@ -125,8 +124,8 @@ public class ShutterP2P
     internal void ProcessP2PMessage(byte[] msg)
     {
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
-        KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
-        KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
+        KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
+        KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
         if (!envelope.Message.TryUnpack(out Dto.DecryptionKeys decryptionKeys))
@@ -135,13 +134,13 @@ public class ShutterP2P
             return;
         }
 
-        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract!, out ulong eon, out Bls.P2 eonKey))
+        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract!, out ulong eon, out Bls.P2 eonKey, out int threshold))
         {
             if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
             return;
         }
 
-        if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, Threshhold))
+        if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, threshold))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysReceived(decryptionKeys);
@@ -209,9 +208,10 @@ public class ShutterP2P
         }
     }
 
-    internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey)
+    internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey, out int threshold)
     {
         eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header) - 1;
+        threshold = 0;
         byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
 
         // todo: remove once shutter fixes
