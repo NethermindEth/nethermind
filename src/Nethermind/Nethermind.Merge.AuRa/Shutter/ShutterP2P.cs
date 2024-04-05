@@ -70,11 +70,7 @@ public class ShutterP2P
         topic.OnMessage += (byte[] msg) =>
         {
             Interlocked.Increment(ref msgCount);
-
-            if (BlockTreeIsReady())
-            {
-                msgQueue.Enqueue(msg);
-            }
+            msgQueue.Enqueue(msg);
         };
 
         MyProto proto = new();
@@ -84,7 +80,6 @@ public class ShutterP2P
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
         long backoff = 10;
-        long tmp = 0;
         Task.Run(() =>
         {
             for (; ; )
@@ -92,27 +87,20 @@ public class ShutterP2P
                 try
                 {
                     Thread.Sleep(20);
-                    if (BlockTreeIsReady())
+                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+
+                    if (msgQueue.TryDequeue(out var msg))
                     {
-                        long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
-                        if (msgQueue.TryDequeue(out var msg))
-                        {
-                            ProcessP2PMessage(msg);
-                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                            backoff = 10;
-                        }
-                        else if (delta >= backoff)
-                        {
-                            if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
-                            ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
-                            lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                            backoff *= 2;
-                        }
-                        else if (tmp % 5000 == 0 & delta >= 5)
-                        {
-                            _logger.Info("No Shutter messages received for " + delta + "s");
-                        }
-                        Interlocked.Increment(ref tmp);
+                        ProcessP2PMessage(msg);
+                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        backoff = 10;
+                    }
+                    else if (delta >= backoff)
+                    {
+                        if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
+                        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
+                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
+                        backoff *= 2;
                     }
                 }
                 catch (Exception e)
@@ -136,8 +124,6 @@ public class ShutterP2P
 
     internal void ProcessP2PMessage(byte[] msg)
     {
-        if (_logger.IsInfo) _logger.Info("Processing Shutter decryption keys...");
-
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
         KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyBroadcastContractAddress);
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, _keyperSetManagerContractAddress);
@@ -221,21 +207,6 @@ public class ShutterP2P
         {
             proto.OnAddPeer?.Invoke([addr]);
         }
-    }
-
-    internal bool BlockTreeIsReady()
-    {
-        // todo: is this needed? hacky solution
-        // try
-        // {
-        //     var _ = _readOnlyBlockTree.Head!.StateRoot!;
-        // }
-        // catch (Exception)
-        // {
-        //     return false;
-        // }
-
-        return true;
     }
 
     internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey)
