@@ -174,28 +174,29 @@ public partial class EngineModuleTests
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
         var fcuState = new
         {
-            headBlockHash = Keccak.Zero.ToString(),
-            safeBlockHash = Keccak.Zero.ToString(),
-            finalizedBlockHash = Keccak.Zero.ToString()
+            headBlockHash = chain.BlockTree.HeadHash.ToString(),
+            safeBlockHash = chain.BlockTree.HeadHash.ToString(),
+            finalizedBlockHash = chain.BlockTree.HeadHash.ToString(),
         };
-        var payloadAttrs = new
+        var payloadAttributes = new
         {
             timestamp = "0x0",
             prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = Address.Zero.ToString(),
             withdrawals = Enumerable.Empty<Withdrawal>()
         };
-        string[] @params = new[]
-        {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        };
+        string[] @params =
+        [
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttributes)
+        ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV1", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(MergeErrorCodes.InvalidPayloadAttributes);
         errorResponse!.Error!.Message.Should().Be("PayloadAttributesV1 expected");
     }
 
@@ -204,7 +205,8 @@ public partial class EngineModuleTests
         IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -217,22 +219,23 @@ public partial class EngineModuleTests
         };
         var payloadAttrs = new
         {
-            timestamp = Timestamper.UnixTime.Seconds.ToHexString(true),
+            timestamp = chain.BlockTree.Head!.Timestamp + 1,
             prevRandao = Keccak.Zero.ToString(),
             suggestedFeeRecipient = TestItem.AddressA.ToString(),
             withdrawals = input.Withdrawals
         };
-        string[] @params = new[]
-        {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
-        };
+        string[] @params =
+        [
+            chain.JsonSerializer.Serialize(fcuState),
+            chain.JsonSerializer.Serialize(payloadAttrs)
+        ];
 
         string response = await RpcTest.TestSerializedRequest(rpcModule, "engine_forkchoiceUpdatedV2", @params);
         JsonRpcErrorResponse? errorResponse = chain.JsonSerializer.Deserialize<JsonRpcErrorResponse>(response);
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "PayloadAttributes"));
     }
 
@@ -570,7 +573,8 @@ public partial class EngineModuleTests
         IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int ErrorCode
         ) input)
     {
         using MergeTestBlockchain chain = await CreateBlockchain(input.Spec);
@@ -605,27 +609,30 @@ public partial class EngineModuleTests
 
         errorResponse.Should().NotBeNull();
         errorResponse!.Error.Should().NotBeNull();
-        errorResponse!.Error!.Code.Should().Be(ErrorCodes.InvalidParams);
+        errorResponse!.Error!.Code.Should().Be(input.ErrorCode);
         errorResponse!.Error!.Message.Should().Be(string.Format(input.ErrorMessage, "ExecutionPayload"));
     }
 
     protected static IEnumerable<(
-        IReleaseSpec spec,
+        IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string blockHash
+        string BlockHash,
+        int ErrorCode
         )> GetWithdrawalValidationValues()
     {
         yield return (
             Shanghai.Instance,
             "{0}V2 expected",
             null,
-            "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576");
+            "0x6817d4b48be0bc14f144cc242cdc47a5ccc40de34b9c3934acad45057369f576",
+            ErrorCodes.InvalidParams);
         yield return (
             London.Instance,
             "{0}V1 expected",
             Array.Empty<Withdrawal>(),
-            "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98");
+            "0xaa4aa15951a28e6adab430a795e36a84649bbafb1257eda23e38b9131cbd3b98",
+            ErrorCodes.InvalidParams);
     }
 
     [TestCaseSource(nameof(ZeroWithdrawalsTestCases))]

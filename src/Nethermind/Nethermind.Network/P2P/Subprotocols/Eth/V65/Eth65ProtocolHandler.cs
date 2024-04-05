@@ -123,7 +123,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
             using var message = msg;
             Metrics.Eth65GetPooledTransactionsReceived++;
 
-            Stopwatch stopwatch = Stopwatch.StartNew();
+            var stopwatch = Stopwatch.StartNew();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             stopwatch.Stop();
             if (Logger.IsTrace)
