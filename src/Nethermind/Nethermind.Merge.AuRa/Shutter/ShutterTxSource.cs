@@ -114,12 +114,21 @@ public class ShutterTxSource : ITxSource
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
 
-        if (!new G1(decryptionKey.Identity.ToArray()).is_equal(sequencedTransaction.Identity))
+        // todo: remove once Shutter swaps to BLS
+        // var identity = new G1(decryptionKey.Identity.ToArray());
+        // var key = new G1(decryptionKey.Key_.ToArray());
+        Bytes32 identityPrefix = new([0x23, 0xbb, 0xdd, 0x06, 0x95, 0xf3, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
+        Address sender = new("3834a349678eF446baE07e2AefFC01054184af00");
+        G1 identity = ShutterCrypto.ComputeIdentity(identityPrefix, sender);
+        UInt256 sk = 123456789;
+        G1 key = identity.dup().mult(sk.ToLittleEndian());
+
+        if (identity.is_equal(sequencedTransaction.Identity))
         {
             throw new Exception("Transaction identity did not match decryption key.");
         }
 
-        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, new G1(decryptionKey.Key_.ToArray()));
+        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, key);
         return Rlp.Decode<Transaction>(new Rlp(transaction), RlpBehaviors.AllowUnsigned);
     }
 
