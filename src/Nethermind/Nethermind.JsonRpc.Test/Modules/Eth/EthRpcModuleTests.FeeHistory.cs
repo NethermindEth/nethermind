@@ -10,6 +10,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
@@ -37,7 +38,7 @@ public partial class EthRpcModuleTests
     }
 
     [TestCaseSource(nameof(FeeHistoryBlobTestCases))]
-    public (UInt256[]?, double[]?) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
+    public (UInt256[], double[]) Eth_feeHistory_ShouldReturnCorrectBlobValues(ulong?[] excessBlobGas, ulong?[] blobGasUsed)
     {
         Block[] blocks = Enumerable.Range(0, excessBlobGas.Length)
          .Select((i) => Build.A.Block.WithHeader(
@@ -50,7 +51,8 @@ public partial class EthRpcModuleTests
              ).ToArray();
 
 
-        IBlockFinder blockFinder = Substitute.For<IBlockFinder>();
+        IBlockTree blockFinder = Substitute.For<IBlockTree>();
+        blockFinder.Head.Returns(Build.A.Block.WithNumber(excessBlobGas.Length - 1).TestObject);
         blockFinder.FindBlock(Arg.Any<BlockParameter>(), Arg.Any<bool>())
             .Returns(ci => blocks[(int)(((BlockParameter)ci[0]).BlockNumber ?? 0)]);
         blockFinder.FindBlock(Arg.Any<Hash256>(), Arg.Any<BlockTreeLookupOptions>(), Arg.Any<long?>())
@@ -60,11 +62,11 @@ public partial class EthRpcModuleTests
         ISpecProvider specProvider = new TestSingleReleaseSpecProvider(Cancun.Instance);
         FeeHistoryOracle oracle = new(blockFinder, receiptStorage, specProvider);
 
-        ResultWrapper<FeeHistoryResults> result = oracle
+        using ResultWrapper<FeeHistoryResults> result = oracle
             .GetFeeHistory(excessBlobGas.Length, new BlockParameter(blocks.Length - 1), [0.0, 1.0]);
 
         Assert.That(result.ErrorCode, Is.Zero);
-        return (result.Data.BaseFeePerBlobGas, result.Data.BlobGasUsedRatio);
+        return (result.Data.BaseFeePerBlobGas.ToArray(), result.Data.BlobGasUsedRatio.ToArray());
     }
 
     public static IEnumerable<TestCaseData> FeeHistoryBlobTestCases

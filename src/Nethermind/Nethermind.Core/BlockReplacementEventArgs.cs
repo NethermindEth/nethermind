@@ -3,13 +3,8 @@
 
 namespace Nethermind.Core
 {
-    public class BlockReplacementEventArgs : BlockEventArgs
+    public class BlockReplacementEventArgs(Block block, Block? previousBlock = null) : BlockEventArgs(block)
     {
-        public Block? PreviousBlock { get; }
-
-        public BlockReplacementEventArgs(Block block, Block? previousBlock = null) : base(block)
-        {
-            PreviousBlock = previousBlock;
-        }
+        public Block? PreviousBlock { get; } = previousBlock;
     }
 }

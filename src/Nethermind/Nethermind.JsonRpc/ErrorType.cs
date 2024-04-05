@@ -86,10 +86,5 @@ namespace Nethermind.JsonRpc
         /// Unknown block error
         /// </summary>
         public const int UnknownBlockError = -39001;
-
-        /// <summary>
-        /// Unsupported fork error
-        /// </summary>
-        public const int UnsupportedFork = -38005;
     }
 }

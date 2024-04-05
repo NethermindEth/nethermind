@@ -96,7 +96,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         if (GasLimit == 0)
         {
             error = "Gas Limit should not be zero";
-            return PayloadAttributesValidationResult.InvalidParams;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
         try
@@ -106,7 +106,7 @@ public class OptimismPayloadAttributes : PayloadAttributes
         catch (RlpException e)
         {
             error = $"Error decoding transactions: {e}";
-            return PayloadAttributesValidationResult.InvalidParams;
+            return PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
         return base.Validate(specProvider, apiVersion, out error);
     }
