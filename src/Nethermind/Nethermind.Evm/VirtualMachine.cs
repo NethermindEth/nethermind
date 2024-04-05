@@ -704,7 +704,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
                 vmState.WarmUp(in storageCell);
             }
-            else if (storageAccessType == StorageAccessType.SLOAD)
+            else
             {
                 // we do not charge for WARM_STORAGE_READ_COST in SSTORE scenario
                 result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
