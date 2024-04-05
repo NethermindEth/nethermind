@@ -105,7 +105,7 @@ public class ShutterTxSource : ITxSource
         UInt256 sk = 123456789;
         G1 key = identity.dup().mult(sk.ToLittleEndian());
 
-        if (identity.is_equal(sequencedTransaction.Identity))
+        if (!identity.is_equal(sequencedTransaction.Identity))
         {
             throw new Exception("Transaction identity did not match decryption key.");
         }
