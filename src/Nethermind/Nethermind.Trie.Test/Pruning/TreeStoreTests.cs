@@ -854,6 +854,39 @@ namespace Nethermind.Trie.Test.Pruning
         }
 
         [Test]
+        public async Task Will_Trigger_ReorgBoundaryEvent_On_Prune()
+        {
+            MemDb memDb = new();
+
+            using TrieStore fullTrieStore = CreateTrieStore(
+                kvStore: memDb,
+                pruningStrategy: new TestPruningStrategy(true, true, 2, 100000),
+                persistenceStrategy: No.Persistence);
+
+            long reorgBoundary = 0;
+            fullTrieStore.ReorgBoundaryReached += (sender, reached) => reorgBoundary = reached.BlockNumber;
+
+            IScopedTrieStore trieStore = fullTrieStore.GetTrieStore(null);
+
+            for (int i = 0; i < 64; i++)
+            {
+                TrieNode node = new(NodeType.Leaf, TestItem.Keccaks[i], new byte[2]);
+                trieStore.CommitNode(i, new NodeCommitInfo(node, TreePath.Empty));
+                trieStore.FinishBlockCommit(TrieType.State, i, node);
+
+                if (i > 4)
+                {
+                    Assert.That(() => reorgBoundary, Is.EqualTo(i-3).After(1000, 1));
+                }
+                else
+                {
+                    // Pruning is done in background
+                    await Task.Delay(TimeSpan.FromMilliseconds(100));
+                }
+            }
+        }
+
+        [Test]
         public async Task Will_Not_RemovePastKeys_OnSnapshot_DuringFullPruning()
         {
             MemDb memDb = new();
