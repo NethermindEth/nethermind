@@ -145,18 +145,21 @@ public class ShutterP2P
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysReceived(decryptionKeys);
         }
-        else
-        {
-            if (_logger.IsWarn) _logger.Warn("Invalid decryption keys received on P2P network.");
-        }
     }
 
     internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
     {
-        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceId: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer}");
+        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer}");
 
-        if (decryptionKeys.InstanceID != InstanceID || decryptionKeys.Eon != eon)
+        if (decryptionKeys.InstanceID != InstanceID)
         {
+            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: instanceID {decryptionKeys.InstanceID} did not match expected value {InstanceID}.");
+            return false;
+        }
+
+        if (decryptionKeys.Eon != eon)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: eon {decryptionKeys.Eon} did not match expected value {eon}.");
             return false;
         }
 
@@ -173,16 +176,19 @@ public class ShutterP2P
 
         if (decryptionKeys.Gnosis.SignerIndices.Distinct().Count() != signerIndicesCount)
         {
+            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: incorrect number of signer indices.");
             return false;
         }
 
         if (decryptionKeys.Gnosis.Signatures.Count() != signerIndicesCount)
         {
+            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: incorrect number of signatures.");
             return false;
         }
 
         if (signerIndicesCount != threshold)
         {
+            if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
             return false;
         }
 
@@ -211,6 +217,7 @@ public class ShutterP2P
     internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey, out int threshold)
     {
         eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header) - 1;
+        // todo: fetch from keyper set contract
         threshold = 0;
         byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
 
