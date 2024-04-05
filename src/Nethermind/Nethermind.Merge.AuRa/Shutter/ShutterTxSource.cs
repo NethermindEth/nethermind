@@ -22,6 +22,8 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
+using Nethermind.Libp2p.Core.Enums;
+using Nethermind.Core.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -34,6 +36,8 @@ public class ShutterTxSource : ITxSource
     public Dto.DecryptionKeys? DecryptionKeys;
     public ulong? TxPointer; //todo: might not need local txPointer once Shutter updates?
     private bool _validatorsRegistered = false;
+    private Hash256 _lastHash = new("0x0");
+    private IEnumerable<Transaction> _transactionCache;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
@@ -60,6 +64,11 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
+        if (parent.Hash == _lastHash)
+        {
+            return _transactionCache;
+        }
+
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
         ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
@@ -94,6 +103,9 @@ public class ShutterTxSource : ITxSource
         if (_logger.IsInfo) _logger.Info($"Decrypted {transactions.Count()} Shutter transactions...");
 
         transactions.ForEach((tx) => _logger.Info(tx.ToShortString()));
+
+        _lastHash = parent.Hash!;
+        _transactionCache = transactions;
 
         return transactions;
     }
