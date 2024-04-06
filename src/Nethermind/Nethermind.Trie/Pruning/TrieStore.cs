@@ -610,8 +610,6 @@ namespace Nethermind.Trie.Pruning
                     {
                         if (_logger.IsError) _logger.Error("Pruning failed with exception.", e);
                     }
-
-                    AnnounceReorgBoundaries();
                 });
             }
         }
@@ -672,6 +670,7 @@ namespace Nethermind.Trie.Pruning
                 Task deleteTask = Task.Run(() => RemovePastKeys(persistedHashes));
 
                 writeBatch.Dispose();
+                AnnounceReorgBoundaries();
                 deleteTask.Wait();
 
                 foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in _persistedLastSeens)
