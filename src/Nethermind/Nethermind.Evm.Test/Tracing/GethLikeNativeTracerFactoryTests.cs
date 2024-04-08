@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
@@ -15,11 +16,9 @@ public class GethLikeNativeTracerFactoryTests
     {
         var options = new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer };
 
-        // TODO: fix these tests
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(null, null, options);
 
-        // GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(null, null, options);
-
-        // Assert.True(nativeTracer is Native4ByteTracer);
+        Assert.True(nativeTracer is Native4ByteTracer);
     }
 
     [Test]
@@ -27,7 +26,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var options = new GethTraceOptions { Tracer = "nonExistentTracer" };
 
-        // Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options));
+        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(null, null, options));
     }
 
     [Test]

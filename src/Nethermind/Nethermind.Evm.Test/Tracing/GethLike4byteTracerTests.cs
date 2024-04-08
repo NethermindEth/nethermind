@@ -15,7 +15,7 @@ public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
 {
     [TestCaseSource(nameof(FourByteTracerTests))]
     public Dictionary<string, int>? four_byte_tracer_executes_correctly(byte[] code, byte[]? input) =>
-        (Dictionary<string, int>)ExecuteAndTrace(Native4ByteTracer.FourByteTracer, code, input).CustomTracerResult?.Value;
+        (Dictionary<string, int>)ExecuteAndTrace(Native4ByteTracer.FourByteTracer, code, null, null, input).CustomTracerResult?.Value;
 
     private static IEnumerable FourByteTracerTests
     {

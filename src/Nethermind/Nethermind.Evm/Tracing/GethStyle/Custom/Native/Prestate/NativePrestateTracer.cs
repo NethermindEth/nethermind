@@ -22,7 +22,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     public NativePrestateTracer(
         IWorldState worldState,
-        NativeTracerContext context,
+        NativeTracerContext? context,
         GethTraceOptions options) : base(worldState, options)
     {
         IsTracingRefunds = true;
@@ -31,7 +31,10 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         IsTracingStack = true;
 
         _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-        LookupInitialTransactionAccounts(context);
+        if (context is not null)
+        {
+            LookupInitialTransactionAccounts(context.Value);
+        }
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -129,7 +132,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void LookupInitialTransactionAccounts(NativeTracerContext context)
     {
-        Address from = context.From!;
+        Address from = context.From;
         LookupAccount(from);
 
         Address to = context.To;

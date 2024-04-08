@@ -9,6 +9,4 @@ public struct NativeTracerContext(Address? beneficiary)
     public Address From;
     public Address? To;
     public readonly Address? Beneficiary = beneficiary;
-    public bool IsContractCreation;
-    public bool IsSystem;
 }
