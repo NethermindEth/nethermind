@@ -18,6 +18,8 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestamp = 0x61b10dbc;
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
+    // todo: change timestamp and fork name
+    public const ulong BarnetTimestamp = 0x65ef4dbd;
 
     private GnosisSpecProvider() { }
 
@@ -34,7 +36,8 @@ public class GnosisSpecProvider : ISpecProvider
             {
                 null or < ShanghaiTimestamp => London.Instance,
                 < CancunTimestamp => Shanghai.Instance,
-                _ => Cancun.Instance
+                < BarnetTimestamp => Cancun.Instance,
+                _ => Barnet.Instance
             }
         };
     }

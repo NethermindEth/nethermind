@@ -563,7 +563,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     UInt256 fees = (UInt256)spentGas * premiumPerGas;
                     UInt256 burntFees = !tx.IsFree() ? (UInt256)spentGas * header.BaseFeePerGas : 0;
 
-                    if (tx.SupportsBlobs)
+                    if (tx.SupportsBlobs && spec.IsGnosisBlobFeeCollectionEnabled)
                     {
                         burntFees += blobBaseFee;
                     }
