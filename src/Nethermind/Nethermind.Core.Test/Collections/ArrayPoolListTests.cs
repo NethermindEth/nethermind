@@ -314,6 +314,20 @@ public class ArrayPoolListTests
         list.Count.Should().Be(1);
     }
 
+    [Test]
+    public void Dispose_recursive()
+    {
+        ArrayPoolList<ArrayPoolList<int>> list = new(8)
+        {
+            new ArrayPoolList<int>(8),
+            new ArrayPoolList<int>(8),
+            new ArrayPoolList<int>(8)
+        };
+
+        list.DisposeRecursive();
+        list.DisposeRecursive();
+    }
+
 #if DEBUG
     [Test]
     [Explicit("Crashes the test runner")]
