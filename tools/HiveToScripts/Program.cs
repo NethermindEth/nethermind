@@ -33,12 +33,19 @@ ConcurrentDictionary<string, TextWriter> fileDescriptors = new();
 
 if (Directory.Exists(outputDirectory))
 {
-    foreach (string f in Directory.EnumerateFiles(outputDirectory))
+    foreach (string f in Directory.EnumerateFiles(outputDirectory, "*", SearchOption.AllDirectories))
     {
         File.Delete(f);
     }
+    foreach (string d in Directory.EnumerateDirectories(outputDirectory, "*", SearchOption.AllDirectories).OrderBy(x => x.Length))
+    {
+        Directory.Delete(d);
+    }
 }
-Directory.CreateDirectory(outputDirectory);
+else
+{
+    Directory.CreateDirectory(outputDirectory);
+}
 
 Regex starter = new("^>>\\s+(\\(([a-f0-9]+)\\)\\s)?");
 
@@ -124,7 +131,7 @@ foreach (string simulatorFilePath in simulatorFilePaths)
         if (!createdFiles.Contains(cfgFilename))
         {
             createdFiles.Add(cfgFilename);
-            string elOutputFilenamePath = Directory.GetFiles(hiveLogsDirectory, $"client-{(container == "default" ? "" : container)}*.log", SearchOption.AllDirectories).Single();
+            string? elOutputFilenamePath = Directory.GetFiles(hiveLogsDirectory, $"client-{(container == "default" ? "" : container)}*.log", SearchOption.AllDirectories).SingleOrDefault();
             if (elOutputFilenamePath is not null)
             {
                 elOutputFilenamePath = Path.Combine(hiveLogsDirectory, elOutputFilenamePath);
