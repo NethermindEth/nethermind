@@ -93,7 +93,7 @@ public class GethLikePrestateTracerTests : GethLikeNativeTracerTestsBase
 
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
-        byte[] code =  Prepare.EvmCode
+        byte[] code = Prepare.EvmCode
             .DelegateCall(TestItem.AddressC, 50000)
             .Op(Instruction.STOP)
             .Done;
@@ -150,7 +150,7 @@ public class GethLikePrestateTracerTests : GethLikeNativeTracerTestsBase
         TestState.CreateAccount(TestItem.AddressC, 1.Ether());
         TestState.InsertCode(TestItem.AddressC, createCode, Spec);
 
-        byte[] code =  Prepare.EvmCode
+        byte[] code = Prepare.EvmCode
             .Call(TestItem.AddressC, 50000)
             .Done;
 
