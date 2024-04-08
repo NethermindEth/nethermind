@@ -24,7 +24,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test.FullPruning
 {
-    [Parallelizable(ParallelScope.All)]
+    [Parallelizable(ParallelScope.Self)]
     [TestFixture(INodeStorage.KeyScheme.HalfPath)]
     [TestFixture(INodeStorage.KeyScheme.Hash)]
     public class CopyTreeVisitorTests
