@@ -61,7 +61,7 @@ class ShutterCryptoTests
     [Test]
     public void Can_encrypt()
     {
-        Span<byte> msg = Convert.FromHexString("f86a8201f88504a817c800825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a010295a68cfc27a6647131a1cf6477bf43e615973f0b7e529bcef2dddf0b895f3a05a64529e0f44b2621e87c11ca9a2d638f3fa7994a8b043beed056d60e5608732");
+        Span<byte> msg = Convert.FromHexString("f86982023a849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a0b57537146400540097d65e12d4e2622959014465efead4a8798683a4e93ff5e0a0071b5309bf9f354bbc87814acec53ca5c0cdbfa5c7b6dd37558c933f50c7a65c");
 
         Bytes32 identityPrefix = new([0x23, 0xbb, 0xdd, 0x06, 0x95, 0xf3, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
         Address sender = new("3834a349678eF446baE07e2AefFC01054184af00");
