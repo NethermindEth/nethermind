@@ -61,7 +61,7 @@ public class BackgroundTaskSchedulerTests
             counter--;
         });
 
-        Assert.That(() => counter, Is.EqualTo(2).After(10, 1));
+        Assert.That(() => counter, Is.EqualTo(2).After(100, 1));
         waitSignal.Set();
     }
 

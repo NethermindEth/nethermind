@@ -175,7 +175,25 @@ public class Eth68ProtocolHandlerTests
 
         _handler.SendNewTransactions(txs, false);
 
-        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m => m.Hashes.Count == txCount));
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m =>
+            m.Hashes.Count == txCount &&
+            m.Sizes.Count == txCount &&
+            m.Types.Count == txCount));
+    }
+
+    [Test]
+    public void should_send_blob_tx_announcement_in_NewPooledTransactionHashesMessage68()
+    {
+        Transaction tx = Build.A.Transaction.WithNonce((UInt256)0).WithShardBlobTxTypeAndFields().SignedAndResolved().TestObject;
+
+        _handler.SendNewTransaction(tx);
+
+        _session.Received(1).DeliverMessage(Arg.Is<NewPooledTransactionHashesMessage68>(m =>
+            m.Hashes.Count == 1 &&
+            m.Sizes.Count == 1 &&
+            m.Types.Count == 1 &&
+            m.Hashes[0] == tx.Hash &&
+            (TxType)m.Types[0] == tx.Type));
     }
 
     [TestCase(NewPooledTransactionHashesMessage68.MaxCount - 1)]
