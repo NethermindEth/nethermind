@@ -150,6 +150,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
+            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
             _api.SpecProvider!,
             _api.BlockTree!,
             _api.ReceiptStorage!,
@@ -216,6 +217,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+            new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
             new NewPayloadHandler(
                 _api.BlockValidator,
                 _api.BlockTree,

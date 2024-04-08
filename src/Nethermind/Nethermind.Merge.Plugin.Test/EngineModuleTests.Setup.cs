@@ -93,6 +93,10 @@ public partial class EngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV4Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,

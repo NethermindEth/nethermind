@@ -73,11 +73,13 @@ public class BlockHeader
     public Hash256? WithdrawalsRoot { get; set; }
     public Hash256? ValidatorExitsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
+    public Hash256? DepositsRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
-                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash);
+                           || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
+                           || (DepositsRoot is not null && DepositsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
@@ -118,7 +120,10 @@ public class BlockHeader
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
-
+        if (DepositsRoot is not null)
+        {
+            builder.AppendLine($"{indent}DepositsRoot: {DepositsRoot}");
+        }
         return builder.ToString();
     }
 

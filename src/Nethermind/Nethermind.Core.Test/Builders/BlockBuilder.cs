@@ -215,6 +215,13 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
+        public BlockBuilder WithDepositRoot(Hash256? depositsRoot)
+        {
+            TestObjectInternal.Header.DepositsRoot = depositsRoot;
+
+            return this;
+        }
+
         public BlockBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Header.Bloom = bloom;
@@ -272,6 +279,28 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal.Header.WithdrawalsRoot = withdrawals is null
                 ? null
                 : new WithdrawalTrie(withdrawals).RootHash;
+
+            return this;
+        }
+
+        public BlockBuilder WithDeposits(int count)
+        {
+            var deposits = new Deposit[count];
+
+            for (var i = 0; i < count; i++)
+                deposits[i] = new();
+
+            return WithDeposits(deposits);
+        }
+
+        public BlockBuilder WithDeposits(params Deposit[]? deposits)
+        {
+            TestObjectInternal = TestObjectInternal
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedDeposits(deposits));
+
+            TestObjectInternal.Header.DepositsRoot = deposits is null
+                ? null
+                : new DepositTrie(deposits).RootHash;
 
             return this;
         }

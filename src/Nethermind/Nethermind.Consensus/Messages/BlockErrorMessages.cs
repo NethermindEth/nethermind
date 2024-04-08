@@ -116,4 +116,6 @@ public static class BlockErrorMessages
 
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
+    public static string InvalidDepositsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+       $"InvalidDepositsRoot: expected {expected}, got {actual}";
 }

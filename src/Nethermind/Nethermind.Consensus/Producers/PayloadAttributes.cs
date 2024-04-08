@@ -5,7 +5,6 @@ using System.Buffers.Binary;
 using System;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -26,6 +25,8 @@ public class PayloadAttributes
 
     public Withdrawal[]? Withdrawals { get; set; }
 
+    public Deposit[]? Deposits { get; set; }
+
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
     public virtual long? GetGasLimit() => null;
@@ -42,6 +43,11 @@ public class PayloadAttributes
         if (Withdrawals is not null)
         {
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Length}");
+        }
+
+        if (Deposits is not null)
+        {
+            sb.Append($", {nameof(Deposits)} count: {Deposits.Length}");
         }
 
         if (ParentBeaconBlockRoot is not null)
@@ -73,6 +79,7 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
+        + (Deposits is null ? 0 : Keccak.Size) // deposits root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
@@ -112,55 +119,49 @@ public class PayloadAttributes
             position += Keccak.Size;
         }
 
+        if (Deposits is not null)
+        {
+            Hash256 depositsRootHash = Deposits.Length == 0
+                ? PatriciaTree.EmptyTreeHash
+                : new DepositTrie(Deposits).RootHash;
+            depositsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
+            position += Keccak.Size;
+        }
+
         return position;
     }
 
     private static PayloadAttributesValidationResult ValidateVersion(
         int apiVersion,
         int actualVersion,
-        int expectedVersion,
+        int timestampVersion,
         string methodName,
         [NotNullWhen(false)] out string? error)
     {
-        if (apiVersion >= EngineApiVersions.Cancun)
+        // version calculated from parameters should match api version
+        if (actualVersion != apiVersion)
         {
-            if (actualVersion == apiVersion && expectedVersion != apiVersion)
+            // except of Shanghai api handling Paris fork
+            if (apiVersion == EngineApiVersions.Shanghai && timestampVersion < apiVersion)
             {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
+
+                error = null;
+                return PayloadAttributesValidationResult.Success;
             }
-        }
-        else if (apiVersion == EngineApiVersions.Shanghai)
-        {
-            if (actualVersion == apiVersion && expectedVersion >= EngineApiVersions.Cancun)
-            {
-                error = $"{methodName}{expectedVersion} expected";
-                return PayloadAttributesValidationResult.UnsupportedFork;
-            }
+
+            error = $"{methodName}{apiVersion} expected";
+            return actualVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.InvalidPayloadAttributes;
         }
 
-        if (actualVersion == expectedVersion)
+        // timestamp should correspond to proper api version
+        if (timestampVersion != apiVersion)
         {
-            if (apiVersion >= EngineApiVersions.Cancun)
-            {
-                if (actualVersion == apiVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
-            else
-            {
-                if (apiVersion >= actualVersion)
-                {
-                    error = null;
-                    return PayloadAttributesValidationResult.Success;
-                }
-            }
+            error = $"{methodName}{timestampVersion} expected";
+            return timestampVersion <= EngineApiVersions.Paris ? PayloadAttributesValidationResult.InvalidParams : PayloadAttributesValidationResult.UnsupportedFork;
         }
 
-        error = $"{methodName}{expectedVersion} expected";
-        return PayloadAttributesValidationResult.InvalidParams;
+        error = null;
+        return PayloadAttributesValidationResult.Success;
     }
 
     public virtual PayloadAttributesValidationResult Validate(
@@ -170,19 +171,20 @@ public class PayloadAttributes
         ValidateVersion(
             apiVersion: apiVersion,
             actualVersion: this.GetVersion(),
-            expectedVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
+            timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
                 .ExpectedEngineSpecVersion(),
             "PayloadAttributesV",
             out error);
 }
 
-public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, UnsupportedFork };
+public enum PayloadAttributesValidationResult : byte { Success, InvalidParams, InvalidPayloadAttributes, UnsupportedFork };
 
 public static class PayloadAttributesExtensions
 {
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
+            { Deposits: not null } => EngineApiVersions.Prague,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
@@ -191,6 +193,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
         spec switch
         {
+            { IsEip6110Enabled: true } => EngineApiVersions.Prague,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

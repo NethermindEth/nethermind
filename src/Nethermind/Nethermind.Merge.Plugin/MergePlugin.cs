@@ -323,6 +323,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
                 new GetPayloadV1Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV2Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new GetPayloadV3Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
+                new GetPayloadV4Handler(payloadPreparationService, _api.SpecProvider, _api.LogManager),
                 new NewPayloadHandler(
                     _api.BlockValidator,
                     _api.BlockTree,
@@ -441,6 +442,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

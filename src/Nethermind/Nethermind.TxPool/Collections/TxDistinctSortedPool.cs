@@ -4,12 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Comparison;
@@ -73,7 +72,7 @@ namespace Nethermind.TxPool.Collections
 
         public void UpdatePool(IAccountStateProvider accounts, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             EnsureCapacity();
             foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
@@ -122,7 +121,7 @@ namespace Nethermind.TxPool.Collections
 
         public void UpdateGroup(Address groupKey, AccountStruct groupValue, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))

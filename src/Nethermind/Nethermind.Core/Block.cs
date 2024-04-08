@@ -26,15 +26,16 @@ public class Block
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
         IEnumerable<Withdrawal>? withdrawals = null,
+        IEnumerable<Deposit>? deposits = null,
         IEnumerable<ValidatorExit>? validatorExits = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), validatorExits?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), deposits?.ToArray(), validatorExits?.ToArray());
     }
 
     public Block(BlockHeader header) : this(
         header,
-        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>())
+        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>(), header.DepositsRoot is null ? null : Array.Empty<Deposit>(), header.ValidatorExitsRoot is null ? null : Array.Empty<ValidatorExit>())
     )
     { }
 
@@ -59,6 +60,7 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
+    public Deposit[]? Deposits => Body.Deposits;
 
     public ValidatorExit[]? ValidatorExits => Body.ValidatorExits; // do not add setter here
 

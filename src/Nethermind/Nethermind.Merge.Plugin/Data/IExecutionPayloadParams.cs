@@ -19,13 +19,14 @@ public interface IExecutionPayloadParams
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadV3Params : IExecutionPayloadParams
+public class ExecutionPayloadParams<TVersionedExecutionPayload> : IExecutionPayloadParams
+    where TVersionedExecutionPayload : ExecutionPayload
 {
-    private readonly ExecutionPayloadV3 _executionPayload;
+    private readonly TVersionedExecutionPayload _executionPayload;
     private readonly byte[]?[] _blobVersionedHashes;
     private readonly Hash256? _parentBeaconBlockRoot;
 
-    public ExecutionPayloadV3Params(ExecutionPayloadV3 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
+    public ExecutionPayloadParams(TVersionedExecutionPayload executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
     {
         _executionPayload = executionPayload;
         _blobVersionedHashes = blobVersionedHashes;
