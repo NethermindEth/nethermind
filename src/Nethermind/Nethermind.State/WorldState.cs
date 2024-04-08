@@ -37,9 +37,7 @@ namespace Nethermind.State
             get => _state.StateRoot;
             set
             {
-                // clean previous and get new
-                _state.Dispose();
-                _state = _factory.Get(value);
+                ResetState(value);
             }
         }
 
@@ -106,7 +104,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
-            Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
+            ResetState(stateRoot);
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
@@ -161,10 +159,7 @@ namespace Nethermind.State
         {
             _state.Commit(blockNumber);
 
-            // clean previous and get new
-            IState previous = _state;
-            previous.Dispose();
-            _state = _factory.Get(previous.StateRoot);
+            ResetState(_state.StateRoot);
         }
 
         public void TouchCode(in ValueHash256 codeHash)
@@ -255,6 +250,11 @@ namespace Nethermind.State
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
+        }
+
+        private void ResetState(Hash256 stateRoot)
+        {
+            Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
         }
     }
 }
