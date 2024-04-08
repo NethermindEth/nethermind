@@ -228,7 +228,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
         {
         }
 
@@ -304,7 +304,7 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }

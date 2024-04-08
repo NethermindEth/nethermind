@@ -17,7 +17,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
-    private Stack<Address>? _callers;
+    private EvmExceptionType? _error;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate;
 
     public NativePrestateTracer(
@@ -31,9 +31,6 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         IsTracingStack = true;
 
         _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-
-        _executingAccount = context.To ?? context.From;
-
         LookupInitialTransactionAccounts(context);
     }
 
@@ -47,25 +44,11 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
     {
-        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-
-        if (Depth > 0)
-        {
-            _callers ??= new Stack<Address>();
-            _callers.Push(_executingAccount);
-        }
-
-        _executingAccount = callType == ExecutionType.DELEGATECALL
-            ? _executingAccount
-            : to;
-    }
-
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-    {
-        base.StartOperation(depth, gas, opcode, pc, isPostMerge);
+        base.StartOperation(depth, gas, opcode, pc, executingAccount, isPostMerge);
         _op = opcode;
+        _executingAccount = executingAccount;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -78,6 +61,11 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     {
         base.SetOperationStack(stack);
 
+        if (_error is not null)
+        {
+            return;
+        }
+
         int stackLen = stack.Count;
         Address address;
 
@@ -85,11 +73,10 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         {
             case Instruction.SLOAD:
             case Instruction.SSTORE:
-                if (stackLen > 1)
+                if (stackLen >= 1)
                 {
                     UInt256 index = stack.PeekUInt256(0);
                     LookupStorage(_executingAccount!, index);
-                    // LookupStorage(_executingAccountLegacy!, index);
                 }
                 break;
             case Instruction.EXTCODECOPY:
@@ -122,38 +109,22 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
                     ReadOnlySpan<byte> salt = stack.Peek(3);
                     address = ContractAddress.From(_executingAccount!, salt, initCode);
                     LookupAccount(address);
+                    _executingAccount = address;
                 }
                 break;
             case Instruction.CREATE:
-                LookupAccount(_executingAccount!);
+                UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
+                address = ContractAddress.From(_executingAccount, nonce);
+                LookupAccount(address!);
+                _executingAccount = address;
                 break;
         }
     }
 
-    public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
+    public override void ReportOperationError(EvmExceptionType error)
     {
-        base.ReportActionEnd(gas, deploymentAddress, deployedCode);
-        InvokeExit();
-    }
-
-    public override void ReportActionEnd(long gas, ReadOnlyMemory<byte> output)
-    {
-        base.ReportActionEnd(gas, output);
-        InvokeExit();
-    }
-
-    public override void ReportActionError(EvmExceptionType evmExceptionType)
-    {
-        base.ReportActionError(evmExceptionType);
-        InvokeExit();
-    }
-
-    private void InvokeExit()
-    {
-        if (Depth > 0 && _callers!.TryPop(out Address caller))
-        {
-            _executingAccount = caller;
-        }
+        base.ReportOperationError(error);
+        _error = error;
     }
 
     private void LookupInitialTransactionAccounts(NativeTracerContext context)
@@ -164,9 +135,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         Address to = context.To;
         if (to is null)
         {
-            ulong fromNonce = _prestate[from].Nonce ?? 0;
+            UInt256 fromNonce = _prestate[from].Nonce ?? 0;
             to = ContractAddress.From(from, fromNonce);
-            _prestate[from].Nonce -= 1;
         }
         LookupAccount(to);
 
@@ -201,7 +171,6 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void LookupStorage(Address addr, UInt256 index)
     {
-        // TODO: continue looking into storage/execute account bug with 0x97182a2305a357bf2b3191ad2f02f887ccd69f21f92bc42973dd618a5c70cdff
         _prestate[addr].Storage ??= new Dictionary<UInt256, UInt256>();
 
         if (!_prestate[addr].Storage.ContainsKey(index))
