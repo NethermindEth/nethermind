@@ -3,6 +3,8 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -104,8 +106,7 @@ namespace Nethermind.State
 
         public void ResetTo(Hash256 stateRoot)
         {
-            _state.Dispose();
-            _state = _factory.Get(stateRoot);
+            Interlocked.Exchange(ref _state, _factory.Get(stateRoot))?.Dispose();
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
