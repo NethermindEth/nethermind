@@ -14,7 +14,7 @@ public class ChiadoSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x646e0e4c;
     public const ulong CancunTimestamp = 0x65ba8e4c;
     // todo: change timestamp and fork name
-    public const ulong BarnetTimestamp = 0x65ba8e4d;
+    public const ulong BarnetTimestamp = 0x65efbeef;
 
     private ChiadoSpecProvider() { }
 

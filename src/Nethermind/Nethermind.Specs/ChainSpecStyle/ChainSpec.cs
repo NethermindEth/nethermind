@@ -11,7 +11,7 @@ namespace Nethermind.Specs.ChainSpecStyle
 {
     /// <summary>
     /// https://github.com/ethereum/wiki/wiki/Ethereum-Chain-Spec-Format
-    /// https://wiki.parity.io/Chain-specification
+    /// https://openethereum.github.io/Chain-specification
     /// </summary>
     [DebuggerDisplay("{Name}, ChainId = {ChainId}")]
     public class ChainSpec
@@ -83,5 +83,6 @@ namespace Nethermind.Specs.ChainSpecStyle
         public ulong? ShanghaiTimestamp { get; set; }
 
         public ulong? CancunTimestamp { get; set; }
+        public ulong? BarnetTimestamp { get; set; }
     }
 }

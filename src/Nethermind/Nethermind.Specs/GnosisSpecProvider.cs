@@ -19,7 +19,7 @@ public class GnosisSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x64c8edbc;
     public const ulong CancunTimestamp = 0x65ef4dbc;
     // todo: change timestamp and fork name
-    public const ulong BarnetTimestamp = 0x65ef4dbd;
+    public const ulong BarnetTimestamp = 0x65efbeef;
 
     private GnosisSpecProvider() { }
 
