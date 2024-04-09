@@ -60,7 +60,7 @@ public class BlockStore : IBlockStore
         }
 
         // if we carry Rlp from the network message all the way here then we could solve 4GB of allocations and some processing
-        // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync
+        // by avoiding encoding back to RLP here (allocations measured on a sample 3M blocks Goerli fast sync) [todo: goerli is now phased out, maybe remeasure on another network]
         using NettyRlpStream newRlp = _blockDecoder.EncodeToNewNettyStream(block);
 
         _blockDb.Set(block.Number, block.Hash, newRlp.AsSpan(), writeFlags);

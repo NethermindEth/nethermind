@@ -46,7 +46,7 @@ public class GoerliSpecProvider : ISpecProvider
     public ulong NetworkId => 5; // set here because goerli is being removed/isolated from every other part of code base.
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;
-    public ForkActivation? MergeBlockNumber { get; private set; } = null;
+    public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = 10790000;
     public IReleaseSpec GenesisSpec { get; } = ConstantinopleFix.Instance;

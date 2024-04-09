@@ -17,6 +17,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
         [Test]
         public void Calculates_RequestId_Correctly_No_Signature()
         {
+            //todo: find another simialr transaction on a different network like holesky as goerli is being phased out.
             //Using the following transaction as reference: https://goerli.etherscan.io/tx/0xa9236155292e30bfb43c5a758e0c906e18697cf23198f81e2a72e5322cd0acb7#eventlog
             UserOperation userOperation = new(new UserOperationRpc
             {
