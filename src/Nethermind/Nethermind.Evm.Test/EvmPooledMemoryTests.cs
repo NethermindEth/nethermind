@@ -142,7 +142,8 @@ namespace Nethermind.Evm.Test
 
         private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
         private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
-        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+        private static readonly ulong chainId = 0x85; // for testing purposes, particular chain id does not matter.
+        private static readonly EthereumEcdsa ethereumEcdsa = new(chainId, LimboLogs.Instance);
         private static string run(byte[] input)
         {
             long blocknr = 12965000;
