@@ -31,7 +31,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
         }
 
         block!.Header.DepositsRoot = Deposits is null ? null : new DepositTrie(Deposits).RootHash;
-        block!.Header.ValidatorExitsRoot = ValidatorExits is null ? null : new ValidatorExitsTrie(ValidatorExits, false).RootHash;
+        block!.Header.ValidatorExitsRoot = ValidatorExits is null ? null : ValidatorExitsTrie.CalculateRoot(ValidatorExits);
         return true;
     }
 
