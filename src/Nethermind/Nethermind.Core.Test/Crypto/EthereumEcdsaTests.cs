@@ -63,9 +63,10 @@ namespace Nethermind.Core.Test.Crypto
         }
 
         [Test]
-        public void Sign_goerli()
+        public void Sign_generic_network()
         {
-            EthereumEcdsa ecdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+            const ulong chainId = 0x85; // maybe make random id so it captures the idea that signature should would irrespective of chain
+            EthereumEcdsa ecdsa = new(chainId, LimboLogs.Instance);
             PrivateKey key = Build.A.PrivateKey.TestObject;
             Transaction tx = Build.A.Transaction.TestObject;
             ecdsa.Sign(key, tx, true);
