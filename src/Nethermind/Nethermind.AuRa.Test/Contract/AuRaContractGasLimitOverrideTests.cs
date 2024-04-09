@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -100,6 +101,7 @@ public class AuRaContractGasLimitOverrideTests
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 TxProcessor,
+                null,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);
         }

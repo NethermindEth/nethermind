@@ -47,6 +47,7 @@ public class PerTableDbConfig
     public bool EnableDbStatistics => _dbConfig.EnableDbStatistics;
     public uint StatsDumpPeriodSec => _dbConfig.StatsDumpPeriodSec;
     public bool? DisableCompression => ReadConfig<bool?>(nameof(DisableCompression));
+    public bool? UseLz4 => ReadConfig<bool?>(nameof(UseLz4));
     public ulong? CompactionReadAhead => ReadConfig<ulong?>(nameof(CompactionReadAhead));
     public ulong MaxBytesForLevelBase => ReadConfig<ulong>(nameof(MaxBytesForLevelBase));
     public ulong TargetFileSizeBase => ReadConfig<ulong>(nameof(TargetFileSizeBase));
@@ -55,7 +56,7 @@ public class PerTableDbConfig
     public bool UseHashIndex => ReadConfig<bool>(nameof(UseHashIndex));
     public ulong? PrefixExtractorLength => ReadConfig<ulong?>(nameof(PrefixExtractorLength));
     public bool AllowMmapReads => ReadConfig<bool>(nameof(AllowMmapReads));
-    public bool VerifyChecksum => ReadConfig<bool>(nameof(VerifyChecksum));
+    public bool? VerifyChecksum => ReadConfig<bool?>(nameof(VerifyChecksum));
     public double MaxBytesForLevelMultiplier => ReadConfig<double>(nameof(MaxBytesForLevelMultiplier));
     public ulong? MaxCompactionBytes => ReadConfig<ulong?>(nameof(MaxCompactionBytes));
     public int MinWriteBufferNumberToMerge => ReadConfig<int>(nameof(MinWriteBufferNumberToMerge));
@@ -64,12 +65,14 @@ public class PerTableDbConfig
     public bool OnlyCompressLastLevel => ReadConfig<bool>(nameof(OnlyCompressLastLevel));
     public long? MaxWriteBufferSizeToMaintain => ReadConfig<long?>(nameof(MaxWriteBufferSizeToMaintain));
     public bool UseHashSkipListMemtable => ReadConfig<bool>(nameof(UseHashSkipListMemtable));
-    public int BlockRestartInterval => ReadConfig<int>(nameof(BlockRestartInterval));
+    public int? BlockRestartInterval => ReadConfig<int?>(nameof(BlockRestartInterval));
     public double MemtablePrefixBloomSizeRatio => ReadConfig<double>(nameof(MemtablePrefixBloomSizeRatio));
     public bool AdviseRandomOnOpen => ReadConfig<bool>(nameof(AdviseRandomOnOpen));
     public bool LevelCompactionDynamicLevelBytes => ReadConfig<bool>(nameof(LevelCompactionDynamicLevelBytes));
-    public int BloomFilterBitsPerKey => ReadConfig<int>(nameof(BloomFilterBitsPerKey));
+    public int? BloomFilterBitsPerKey => ReadConfig<int?>(nameof(BloomFilterBitsPerKey));
+    public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
+    public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
 
     private T? ReadConfig<T>(string propertyName)
     {

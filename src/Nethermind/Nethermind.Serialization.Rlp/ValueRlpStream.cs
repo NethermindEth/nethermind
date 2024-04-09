@@ -136,11 +136,15 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
 
         return result;
 
+        [DoesNotReturn]
+        [StackTraceHidden]
         static void ThrowSequenceLengthTooLong()
         {
             throw new RlpException("Expected length of length less or equal 4");
         }
 
+        [DoesNotReturn]
+        [StackTraceHidden]
         static void ThrowLengthTooLong(int length)
         {
             throw new RlpException($"Expected length greater or equal 56 and was {length}");

@@ -6,8 +6,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Numerics;
+using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
@@ -206,9 +209,10 @@ namespace Nethermind.Trie.Pruning
                     Keccak = keccak;
                 }
 
+                [SkipLocalsInit]
                 public override int GetHashCode()
                 {
-                    return Keccak.GetHashCode();
+                    return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Keccak.GetHashCode()) + (Address?.GetHashCode() ?? 0);
                 }
 
                 public bool Equals(Key other)
@@ -250,11 +254,11 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private LruCache<(Hash256?, TinyTreePath), ValueHash256>? _pastPathHash;
+        private LruCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
-        private ConcurrentDictionary<(Hash256?, TinyTreePath, ValueHash256), long> _persistedLastSeens = new();
+        private ConcurrentDictionary<HashAndTinyPathAndHash, long> _persistedLastSeens = new();
 
         private bool _lastPersistedReachedReorgBoundary;
         private Task _pruningTask = Task.CompletedTask;
@@ -284,6 +288,14 @@ namespace Nethermind.Trie.Pruning
             INodeStorage? nodeStorage,
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
+            ILogManager? logManager)
+        {
+        }
+
+        public TrieStore(
+            INodeStorage? nodeStorage,
+            IPruningStrategy? pruningStrategy,
+            IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager,
             long? reorgDepthOverride = null)
         {
@@ -293,8 +305,6 @@ namespace Nethermind.Trie.Pruning
             _persistenceStrategy = persistenceStrategy ?? throw new ArgumentNullException(nameof(persistenceStrategy));
             _dirtyNodes = new DirtyNodesCache(this);
             _publicStore = new TrieKeyValueStore(this);
-
-            if (reorgDepthOverride != null) _reorgDepth = reorgDepthOverride.Value;
 
             if (pruningStrategy.TrackedPastKeyCount > 0 && nodeStorage.RequirePath)
             {
@@ -536,18 +546,14 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        public IReadOnlyTrieStore AsReadOnly(INodeStorage? store)
-        {
-            return new ReadOnlyTrieStore(this, store);
-        }
+        public IReadOnlyTrieStore AsReadOnly(INodeStorage? store) =>
+            new ReadOnlyTrieStore(this, store);
 
         public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => _dirtyNodes.IsNodeCached(new DirtyNodesCache.Key(address, path, hash));
         private bool IsNodeCached(DirtyNodesCache.Key key) => _dirtyNodes.IsNodeCached(key);
 
-        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash)
-        {
-            return FindCachedOrUnknown(address, path, hash, false);
-        }
+        public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
+            FindCachedOrUnknown(address, path, hash, false);
 
         internal TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash, bool isReadOnly)
         {
@@ -581,17 +587,31 @@ namespace Nethermind.Trie.Pruning
                         {
                             using (_dirtyNodes.AcquireMapLock())
                             {
+                                Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                while (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
                                 {
-                                    PruneCache();
+                                    // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
+                                    // usually faster to just SaveSnapshot causing most of the entry to be persisted.
+                                    // Not saving snapshot just save about 5% of memory at most most of the time, causing
+                                    // an elevated pruning a few blocks after making it not very effective especially
+                                    // on constant block processing such as during forward sync where it can take up to
+                                    // 30% of the total time on halfpath as the block processing portion got faster.
+                                    //
+                                    // With halfpath's live pruning, there is a slight complication, the currently loaded
+                                    // persisted node have a pretty good hit rate and tend to conflict with the persisted
+                                    // nodes (address,path) entry on second PruneCache. So pruning them ahead of time
+                                    // really helps increase nodes that can be removed.
+                                    PruneCache(true);
 
-                                    if (_pruningTaskCancellationTokenSource.IsCancellationRequested || !CanPruneCacheFurther())
-                                    {
-                                        break;
-                                    }
+                                    SaveSnapshot();
+
+                                    PruneCache();
                                 }
+
+                                Metrics.PruningTime = sw.ElapsedMilliseconds;
+                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds.");
                             }
                         }
 
@@ -605,7 +625,7 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        private bool CanPruneCacheFurther()
+        private bool SaveSnapshot()
         {
             if (_pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
             {
@@ -615,7 +635,7 @@ namespace Nethermind.Trie.Pruning
                 using ArrayPoolList<BlockCommitSet> candidateSets = new(_commitSetQueue.Count);
                 while (_commitSetQueue.TryDequeue(out BlockCommitSet frontSet))
                 {
-                    if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _reorgDepth)
+                    if (frontSet!.BlockNumber >= LatestCommittedBlockNumber - _pruningStrategy.MaxDepth)
                     {
                         toAddBack.Add(frontSet);
                     }
@@ -644,9 +664,9 @@ namespace Nethermind.Trie.Pruning
                     // If more than one candidate set, its a reorg, we can't remove node as persisted node may not be canonical
                     candidateSets.Count == 1;
 
-                Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes =
+                Dictionary<HashAndTinyPath, Hash256?>? persistedHashes =
                     shouldDeletePersistedNode
-                    ? new Dictionary<(Hash256?, TinyTreePath), Hash256?>()
+                    ? new Dictionary<HashAndTinyPath, Hash256?>()
                     : null;
 
                 INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
@@ -657,16 +677,20 @@ namespace Nethermind.Trie.Pruning
                     PersistBlockCommitSet(null, blockCommitSet, writeBatch, persistedHashes: persistedHashes);
                 }
 
-                RemovePastKeys(persistedHashes);
+                // Run in parallel. Reduce time by about 30%.
+                Task deleteTask = Task.Run(() => RemovePastKeys(persistedHashes));
 
-                foreach (KeyValuePair<(Hash256, TinyTreePath, ValueHash256), long> keyValuePair in _persistedLastSeens)
+                writeBatch.Dispose();
+                AnnounceReorgBoundaries();
+                deleteTask.Wait();
+
+                foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in _persistedLastSeens)
                 {
                     if (IsNoLongerNeeded(keyValuePair.Value))
                     {
                         _persistedLastSeens.Remove(keyValuePair.Key, out _);
                     }
                 }
-                writeBatch.Dispose();
 
                 if (candidateSets.Count > 0)
                 {
@@ -674,17 +698,17 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 _commitSetQueue.TryPeek(out BlockCommitSet? uselessFrontSet);
-                if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_reorgDepth})");
+                if (_logger.IsDebug) _logger.Debug($"Found no candidate for elevated pruning (sets: {_commitSetQueue.Count}, earliest: {uselessFrontSet?.BlockNumber}, newest kept: {LatestCommittedBlockNumber}, reorg depth {_pruningStrategy.MaxDepth})");
             }
 
             return false;
         }
 
-        private void RemovePastKeys(Dictionary<(Hash256, TinyTreePath), Hash256?>? persistedHashes)
+        private void RemovePastKeys(Dictionary<HashAndTinyPath, Hash256?>? persistedHashes)
         {
             if (persistedHashes == null) return;
 
-            bool CanRemove(Hash256? address, TinyTreePath path, TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
+            bool CanRemove(Hash256? address, TinyTreePath path, in TreePath fullPath, ValueHash256 keccak, Hash256? currentlyPersistingKeccak)
             {
                 // Multiple current hash that we don't keep track for simplicity. Just ignore this case.
                 if (currentlyPersistingKeccak == null) return false;
@@ -692,7 +716,7 @@ namespace Nethermind.Trie.Pruning
                 // The persisted hash is the same as currently persisting hash. Do nothing.
                 if (currentlyPersistingKeccak == keccak) return false;
 
-                // We have is in cache and it is still needed.
+                // We have it in cache and it is still needed.
                 if (_dirtyNodes.TryGetValue(new DirtyNodesCache.Key(address, fullPath, keccak.ToCommitment()), out TrieNode node) &&
                     !IsNoLongerNeeded(node)) return false;
 
@@ -703,20 +727,32 @@ namespace Nethermind.Trie.Pruning
                 return true;
             }
 
-            using INodeStorage.WriteBatch deleteNodeBatch = _nodeStorage.StartWriteBatch();
-            foreach (KeyValuePair<(Hash256?, TinyTreePath), Hash256> keyValuePair in persistedHashes)
+            using INodeStorage.WriteBatch writeBatch = _nodeStorage.StartWriteBatch();
+
+            void DoAct(KeyValuePair<HashAndTinyPath, Hash256> keyValuePair)
             {
-                (Hash256? addr, TinyTreePath path) key = keyValuePair.Key;
-                if (key.path.Length > TinyTreePath.MaxNibbleLength) continue;
+                HashAndTinyPath key = keyValuePair.Key;
                 if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
-                        deleteNodeBatch.Remove(key.addr, fullPath, prevHash);
+                        Metrics.RemovedNodeCount++;
+                        writeBatch.Remove(key.addr, fullPath, prevHash);
                     }
                 }
             }
+
+            ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>> actionBlock =
+                new ActionBlock<KeyValuePair<HashAndTinyPath, Hash256>>(DoAct);
+
+            foreach (KeyValuePair<HashAndTinyPath, Hash256> keyValuePair in persistedHashes)
+            {
+                actionBlock.Post(keyValuePair);
+            }
+
+            actionBlock.Complete();
+            actionBlock.Completion.Wait();
         }
 
         /// <summary>
@@ -742,26 +778,40 @@ namespace Nethermind.Trie.Pruning
         /// removing ones that are either no longer referenced or already persisted.
         /// </summary>
         /// <exception cref="InvalidOperationException"></exception>
-        private void PruneCache()
+        private void PruneCache(bool skipRecalculateMemory = false)
         {
             if (_logger.IsDebug) _logger.Debug($"Pruning nodes {MemoryUsedByDirtyCache / 1.MB()} MB , last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
             Stopwatch stopwatch = Stopwatch.StartNew();
 
+            // Run in parallel
+            bool shouldTrackPersistedNode = _pastPathHash != null && !_persistenceStrategy.IsFullPruning;
+            ActionBlock<(DirtyNodesCache.Key key, TrieNode node)>? trackNodesAction = shouldTrackPersistedNode
+                ? new ActionBlock<(DirtyNodesCache.Key key, TrieNode node)>(
+                    entry => TrackPrunedPersistedNodes(entry.key, entry.node))
+                : null;
+
             long newMemory = 0;
+            ActionBlock<TrieNode> pruneAndRecalculateAction =
+                new ActionBlock<TrieNode>(node =>
+                {
+                    node.PrunePersistedRecursively(1);
+                    Interlocked.Add(ref newMemory, node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage);
+                });
+
             foreach ((DirtyNodesCache.Key key, TrieNode node) in _dirtyNodes.AllNodes)
             {
                 if (node.IsPersisted)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Removing persisted {node} from memory.");
 
-                    TrackPrunedPersistedNodes(key, node);
+                    trackNodesAction?.Post((key, node));
 
                     Hash256? keccak = node.Keccak;
                     if (keccak is null)
                     {
                         TreePath path2 = key.Path;
-                        Hash256? newKeccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
-                        if (newKeccak != key.Keccak)
+                        keccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
+                        if (keccak != key.Keccak)
                         {
                             throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
                         }
@@ -783,26 +833,27 @@ namespace Nethermind.Trie.Pruning
 
                     Metrics.PrunedTransientNodesCount++;
                 }
-                else
+                else if (!skipRecalculateMemory)
                 {
-                    node.PrunePersistedRecursively(1);
-                    newMemory += node.GetMemorySize(false) + _dirtyNodes.KeyMemoryUsage;
+                    pruneAndRecalculateAction.Post(node);
                 }
             }
 
-            MemoryUsedByDirtyCache = newMemory + _persistedLastSeens.Count * 48;
+            pruneAndRecalculateAction.Complete();
+            trackNodesAction?.Complete();
+            pruneAndRecalculateAction.Completion.Wait();
+            trackNodesAction?.Completion.Wait();
+
+            if (!skipRecalculateMemory) MemoryUsedByDirtyCache = newMemory + _persistedLastSeens.Count * 48;
             Metrics.CachedNodesCount = _dirtyNodes.Count;
 
             stopwatch.Stop();
-            Metrics.PruningTime = stopwatch.ElapsedMilliseconds;
             if (_logger.IsDebug) _logger.Debug($"Finished pruning nodes in {stopwatch.ElapsedMilliseconds}ms {MemoryUsedByDirtyCache / 1.MB()} MB, last persisted block: {LastPersistedBlockNumber} current: {LatestCommittedBlockNumber}.");
         }
 
         private void TrackPrunedPersistedNodes(in DirtyNodesCache.Key key, TrieNode node)
         {
             if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
-            if (_pastPathHash == null) return;
-
             TinyTreePath treePath = new TinyTreePath(key.Path);
             // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
             // recalculated to the same hash.
@@ -831,6 +882,11 @@ namespace Nethermind.Trie.Pruning
             _pruningTaskCancellationTokenSource.Cancel();
             _pruningTask.Wait();
             PersistOnShutdown();
+        }
+
+        public void WaitForPruning()
+        {
+            _pruningTask.Wait();
         }
 
         #region Private
@@ -894,7 +950,7 @@ namespace Nethermind.Trie.Pruning
             Hash256? address,
             BlockCommitSet commitSet,
             INodeStorage.WriteBatch writeBatch,
-            Dictionary<(Hash256?, TinyTreePath), Hash256?>? persistedHashes = null,
+            Dictionary<HashAndTinyPath, Hash256?>? persistedHashes = null,
             WriteFlags writeFlags = WriteFlags.None
         )
         {
@@ -944,8 +1000,7 @@ namespace Nethermind.Trie.Pruning
                 // to prevent it from being removed from cache and also want to have it persisted.
 
                 if (_logger.IsTrace) _logger.Trace($"Persisting {nameof(TrieNode)} {currentNode} in snapshot {blockNumber}.");
-                // TODO: Pass span
-                writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp.ToArray(), writeFlags);
+                writeBatch.Set(address, path, currentNode.Keccak, currentNode.FullRlp, writeFlags);
                 currentNode.IsPersisted = true;
                 currentNode.LastSeen = Math.Max(blockNumber, currentNode.LastSeen ?? 0);
                 PersistedNodesCount++;
@@ -966,16 +1021,16 @@ namespace Nethermind.Trie.Pruning
         {
             Debug.Assert(lastSeen.HasValue, $"Any node that is cache should have {nameof(TrieNode.LastSeen)} set.");
             return lastSeen < LastPersistedBlockNumber
-                   && lastSeen < LatestCommittedBlockNumber - _reorgDepth;
+                   && lastSeen < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth;
         }
 
         private void DequeueOldCommitSets()
         {
             while (_commitSetQueue.TryPeek(out BlockCommitSet blockCommitSet))
             {
-                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _reorgDepth - 1)
+                if (blockCommitSet.BlockNumber < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth - 1)
                 {
-                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_reorgDepth}");
+                    if (_logger.IsDebug) _logger.Debug($"Removing historical ({_commitSetQueue.Count}) {blockCommitSet.BlockNumber} < {LatestCommittedBlockNumber} - {_pruningStrategy.MaxDepth}");
                     _commitSetQueue.TryDequeue(out _);
                 }
                 else
@@ -1024,7 +1079,7 @@ namespace Nethermind.Trie.Pruning
             {
                 // even after we persist a block we do not really remember it as a safe checkpoint
                 // until max reorgs blocks after
-                if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _reorgDepth)
+                if (LatestCommittedBlockNumber >= LastPersistedBlockNumber + _pruningStrategy.MaxDepth)
                 {
                     shouldAnnounceReorgBoundary = true;
                 }
@@ -1052,7 +1107,7 @@ namespace Nethermind.Trie.Pruning
                     {
                         candidateSets.Add(frontSet);
                     }
-                    else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - _reorgDepth
+                    else if (frontSet!.BlockNumber < LatestCommittedBlockNumber - _pruningStrategy.MaxDepth
                              && frontSet!.BlockNumber > candidateSets[0].BlockNumber)
                     {
                         candidateSets.Clear();
@@ -1134,7 +1189,7 @@ namespace Nethermind.Trie.Pruning
                         DirtyNodesCache.Key key = new DirtyNodesCache.Key(address, path, n.Keccak);
                         if (wasPersisted.TryAdd(key, true))
                         {
-                            _nodeStorage.Set(address, path, n.Keccak, n.FullRlp.ToArray());
+                            _nodeStorage.Set(address, path, n.Keccak, n.FullRlp);
                             n.IsPersisted = true;
                         }
                     }
@@ -1153,6 +1208,9 @@ namespace Nethermind.Trie.Pruning
                     }
                 }
             }
+
+            _persistedLastSeens.Clear();
+            _pastPathHash?.Clear();
             if (_logger.IsInfo) _logger.Info($"Clear cache took {stopwatch.Elapsed}.");
         }
 
@@ -1198,6 +1256,39 @@ namespace Nethermind.Trie.Pruning
             }
 
             return true;
+        }
+
+        private readonly struct HashAndTinyPath(Hash256? hash, TinyTreePath path) : IEquatable<HashAndTinyPath>
+        {
+            public readonly Hash256? addr = hash;
+            public readonly TinyTreePath path = path;
+
+            public static implicit operator HashAndTinyPath((Hash256? hash, TinyTreePath path) value) => new HashAndTinyPath(value.hash, value.path);
+
+            public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
+            public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
+            public override int GetHashCode() => (int)BitOperations.Crc32C((uint)path.GetHashCode(), (uint)(addr?.GetHashCode() ?? 0));
+        }
+
+        private readonly struct HashAndTinyPathAndHash(Hash256? hash, TinyTreePath path, ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
+        {
+            public readonly Hash256? hash = hash;
+            public readonly TinyTreePath path = path;
+            public readonly ValueHash256 valueHash = valueHash;
+
+            public static implicit operator HashAndTinyPathAndHash((Hash256? hash, TinyTreePath path, ValueHash256 valueHash) value) => new HashAndTinyPathAndHash(value.hash, value.path, value.valueHash);
+
+            public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
+            public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
+            public override int GetHashCode()
+            {
+                uint hashCode = BitOperations.Crc32C((uint)valueHash.GetHashCode(), (uint)path.GetHashCode());
+                if (hash is not null)
+                {
+                    hashCode = BitOperations.Crc32C(hashCode, (uint)hash.GetHashCode());
+                }
+                return (int)hashCode;
+            }
         }
     }
 }

@@ -28,7 +28,8 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "In Fast sync mode, the min height threshold limit up to which the Full sync, if already on, stays on when the chain is behind the network head. If the limit is exceeded, it switches back to Fast sync. For regular usage scenarios, setting this value lower than 32 is not recommended as this can cause issues with chain reorgs. Note that the last 2 blocks are always processed in Full sync, so setting it lower than 2 has no effect.", DefaultValue = "8192")]
     long? FastSyncCatchUpHeightDelta { get; set; }
 
-    [ConfigItem(Description = "Whether to first download blocks from the provided pivot number downwards in the Fast sync mode. This allows for parallelization of requests with many sync peers and with no need to worry about syncing a valid branch (syncing downwards to 0). You need to provide the pivot block number, hash, and total difficulty from a trusted source (e.g., Etherscan) and confirm with other sources if you want to change it.", DefaultValue = "false")]
+    [Obsolete]
+    [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     bool FastBlocks { get; set; }
 
     [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Goerli, Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
@@ -140,6 +141,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
 
-    [ConfigItem(Description = "_Experimental._ Whether to enable snap serving. WARNING: Very slow on hash db layout.", DefaultValue = "true", HiddenFromDocs = true)]
-    bool SnapServingEnabled { get; set; }
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    bool? SnapServingEnabled { get; set; }
+
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int MultiSyncModeSelectorLoopTimerMs { get; set; }
 }

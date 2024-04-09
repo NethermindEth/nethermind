@@ -22,6 +22,8 @@ public class NodeStorageFactory : INodeStorageFactory
         _currentKeyScheme = null;
     }
 
+    public INodeStorage.KeyScheme? CurrentKeyScheme => _currentKeyScheme!;
+
     public void DetectCurrentKeySchemeFrom(IDb mainStateDb)
     {
         _currentKeyScheme = DetectKeyScheme(mainStateDb);
@@ -37,26 +39,10 @@ public class NodeStorageFactory : INodeStorageFactory
 
     public INodeStorage WrapKeyValueStore(IKeyValueStore keyValueStore, bool forceUsePreferredKeyScheme = false)
     {
-        INodeStorage.KeyScheme effectiveKeyScheme;
-        if (forceUsePreferredKeyScheme && _preferredKeyScheme != INodeStorage.KeyScheme.Current)
-        {
-            effectiveKeyScheme = _preferredKeyScheme;
-        }
-        else
-        {
-            if (_currentKeyScheme != null)
-            {
-                effectiveKeyScheme = _currentKeyScheme.Value;
-            }
-            else if (_preferredKeyScheme != INodeStorage.KeyScheme.Current)
-            {
-                effectiveKeyScheme = _preferredKeyScheme;
-            }
-            else
-            {
-                effectiveKeyScheme = INodeStorage.KeyScheme.HalfPath;
-            }
-        }
+        bool preferredNotCurrent = _preferredKeyScheme != INodeStorage.KeyScheme.Current;
+        INodeStorage.KeyScheme effectiveKeyScheme = forceUsePreferredKeyScheme && preferredNotCurrent
+            ? _preferredKeyScheme
+            : _currentKeyScheme ?? (preferredNotCurrent ? _preferredKeyScheme : INodeStorage.KeyScheme.HalfPath);
 
         bool requirePath = effectiveKeyScheme == INodeStorage.KeyScheme.HalfPath ||
                            _currentKeyScheme == INodeStorage.KeyScheme.HalfPath ||

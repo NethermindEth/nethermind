@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
@@ -51,7 +50,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
     public override Task forkchoiceUpdatedV2_should_validate_withdrawals((IReleaseSpec Spec,
         string ErrorMessage,
         Withdrawal[]? Withdrawals,
-        string BlockHash
+        string BlockHash,
+        int ErrorCode
         ) input)
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
@@ -157,8 +157,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
 
             AuRaMergeBlockProducerEnvFactory blockProducerEnvFactory = new(
                 _api!,
-                new AuRaConfig(),
-                new DisposableStack(),
                 WorldStateManager,
                 BlockTree,
                 SpecProvider,

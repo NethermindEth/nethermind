@@ -28,7 +28,7 @@ namespace Nethermind.Synchronization.ParallelSync
     ///     - Their are enabled based on <see cref="IBeaconSyncStrategy.ShouldBeInBeaconHeaders"/> and <see cref="IBeaconSyncStrategy.ShouldBeInBeaconModeControl"/>.
     /// * When <see cref="ISyncConfig.FastSync"/> is enabled:
     ///     - Beacon modes are exclusive with <see cref="SyncMode.FastSync"/>, <see cref="SyncMode.Full"/>, <see cref="SyncMode.StateNodes"/> and <see cref="SyncMode.SnapSync"/>.
-    ///     - Beacon modes can run parallel with syncing old state (<see cref="SyncMode.FastHeaders"/>, <see cref="SyncMode.FastBlocks"/> and <see cref="SyncMode.FastReceipts"/>).
+    ///     - Beacon modes can run parallel with syncing old state (<see cref="SyncMode.FastHeaders"/>, <see cref="SyncMode.FastBlocks"/> (the default and always on) and <see cref="SyncMode.FastReceipts"/>).
     /// * When <see cref="ISyncConfig.FastSync"/> is disabled:
     ///     - Beacon modes are allied directly.
     ///     - If no Beacon mode is applied and we have good peers on the network we apply <see cref="SyncMode.Full"/>,.
@@ -57,10 +57,9 @@ namespace Nethermind.Synchronization.ParallelSync
         private long _pivotNumber;
         private bool FastSyncEnabled => _syncConfig.FastSync;
         private bool SnapSyncEnabled => _syncConfig.SnapSync && !_isSnapSyncDisabledAfterAnyStateSync;
-        private bool FastBlocksEnabled => _syncConfig.FastSync && _syncConfig.FastBlocks;
-        private bool FastBodiesEnabled => FastBlocksEnabled && _syncConfig.DownloadBodiesInFastSync;
-        private bool FastReceiptsEnabled => FastBlocksEnabled && _syncConfig.DownloadReceiptsInFastSync;
-        private bool FastBlocksHeadersFinished => !FastBlocksEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
+        private bool FastBodiesEnabled => FastSyncEnabled && _syncConfig.DownloadBodiesInFastSync;
+        private bool FastReceiptsEnabled => FastSyncEnabled && _syncConfig.DownloadReceiptsInFastSync;
+        private bool FastBlocksHeadersFinished => !FastSyncEnabled || _syncProgressResolver.IsFastBlocksHeadersFinished();
         private bool FastBlocksBodiesFinished => !FastBodiesEnabled || _syncProgressResolver.IsFastBlocksBodiesFinished();
         private bool FastBlocksReceiptsFinished => !FastReceiptsEnabled || _syncProgressResolver.IsFastBlocksReceiptsFinished();
         private long FastSyncCatchUpHeightDelta => _syncConfig.FastSyncCatchUpHeightDelta ?? FastSyncLag;
@@ -105,7 +104,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         private async Task StartAsync(CancellationToken cancellationToken)
         {
-            PeriodicTimer timer = new(TimeSpan.FromSeconds(1));
+            PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_syncConfig.MultiSyncModeSelectorLoopTimerMs));
             try
             {
                 while (await timer.WaitForNextTickAsync(cancellationToken))
@@ -383,7 +382,7 @@ namespace Nethermind.Synchronization.ParallelSync
                 return false;
             }
 
-            if (_syncConfig.FastBlocks && _pivotNumber != 0 && best.Header == 0)
+            if (_pivotNumber != 0 && best.Header == 0)
             {
                 // do not start fast sync until at least one header is downloaded or we would start from zero
                 // we are fine to start from zero if we do not use fast blocks

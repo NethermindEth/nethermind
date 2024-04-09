@@ -20,3 +20,16 @@ public interface IOwnedReadOnlyList<T> : IReadOnlyList<T>, IDisposable
 {
     ReadOnlySpan<T> AsSpan();
 }
+
+public static class OwnedReadOnlyListExtensions
+{
+    public static void DisposeRecursive<T>(this IOwnedReadOnlyList<T> list) where T : IDisposable
+    {
+        for (int i = 0; i < list.Count; i++)
+        {
+            list[i]?.Dispose();
+        }
+
+        list.Dispose();
+    }
+}

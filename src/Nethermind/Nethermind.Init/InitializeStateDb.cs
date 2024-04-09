@@ -55,6 +55,31 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
+
+        syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
+            && _api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
+            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
+
+        if (_api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.Hash
+            || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
+        {
+            // Special case in case its using hashdb, use a slightly different database configuration.
+            if (_api.DbProvider?.StateDb is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
+        }
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
@@ -90,8 +115,12 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()) // TODO: memory hint should define this
-                .TrackingPastKeys(pruningConfig.TrackedPastKeyCount);
+            pruningStrategy = Prune
+                .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
+                // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
+                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
+                .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
         {

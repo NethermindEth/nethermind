@@ -141,7 +141,7 @@ namespace Nethermind.Db
             }
 
             WritesCount++;
-            if (value == null)
+            if (value is null)
             {
                 _db.TryRemove(key, out _);
                 return;

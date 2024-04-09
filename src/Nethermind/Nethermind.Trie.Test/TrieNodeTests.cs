@@ -439,6 +439,7 @@ namespace Nethermind.Trie.Test
             }
 
             TreePath emptyPath = TreePath.Empty;
+            node.ResolveKey(NullTrieStore.Instance, ref emptyPath, true);
             node.Accept(visitor, default, NullTrieNodeResolver.Instance, ref emptyPath, context);
 
             visitor.VisitBranchReceived[(TreePath.Empty, node, context)].Should().Be(1);
@@ -1011,7 +1012,7 @@ namespace Nethermind.Trie.Test
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext), int> VisitBranchReceived = new();
             public readonly Dictionary<(TreePath path, TrieNode, TrieVisitContext, byte[]), int> VisitLeafReceived = new(new LeafComparer());
 
-            public bool IsFullDbScan => true;
+            public bool IsFullDbScan => false;
 
             public bool ShouldVisit(in TreePathContext nodeContext, Hash256 nextNode) => true;
 

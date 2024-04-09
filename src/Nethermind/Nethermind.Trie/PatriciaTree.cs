@@ -960,8 +960,7 @@ namespace Nethermind.Trie
             }
 
             ResolveNode(childNode, in traverseContext, in path);
-            ref readonly CappedArray<byte> response = ref TraverseNext(childNode, in traverseContext, ref path, 1);
-            return ref response;
+            return ref TraverseNext(childNode, in traverseContext, ref path, 1);
         }
 
         private ref readonly CappedArray<byte> TraverseLeaf(TrieNode node, scoped in TraverseContext traverseContext, scoped ref TreePath path)
@@ -1088,7 +1087,7 @@ namespace Nethermind.Trie
                     PushToNodeStack(new StackedNode(node, traverseContext.CurrentIndex, 0));
                 }
 
-                int previousPathLength = node.AppendChildPath(ref path, 0);
+                node.AppendChildPath(ref path, 0);
                 TrieNode next = node.GetChildWithChildPath(TrieStore, ref path, 0);
                 if (next is null)
                 {

@@ -10,11 +10,11 @@ namespace Nethermind.Trie;
 
 public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrieStore
 {
-    private IScopedTrieStore _scopedTrieStoreImplementation;
+    private IScopedTrieStore _baseImplementation;
 
     public TrieStoreWithReadFlags(IScopedTrieStore implementation, ReadFlags flags) : base(implementation, flags)
     {
-        _scopedTrieStoreImplementation = implementation;
+        _baseImplementation = implementation;
     }
 
     public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
@@ -29,11 +29,11 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrie
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
     {
-        return _scopedTrieStoreImplementation.IsPersisted(in path, in keccak);
+        return _baseImplementation.IsPersisted(in path, in keccak);
     }
 
     public void Set(in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
-        _scopedTrieStoreImplementation.Set(in path, in keccak, rlp);
+        _baseImplementation.Set(in path, in keccak, rlp);
     }
 }

@@ -46,7 +46,7 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private ReadOptions _defaultReadOptions = null!;
     private ReadOptions _hintCacheMissOptions = null!;
-    private ReadOptions? _readAheadReadOptions = null;
+    internal ReadOptions? _readAheadReadOptions = null;
 
     internal DbOptions? DbOptions { get; private set; }
 
@@ -73,13 +73,11 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     private readonly List<IDisposable> _metricsUpdaters = new();
 
-    private readonly ManagedIterators _readaheadIterators = new();
-    private readonly ManagedIterators _readaheadIterators2 = new();
-    private readonly ManagedIterators _readaheadIterators3 = new();
-
     internal long _allocatedSpan = 0;
     private long _totalReads;
     private long _totalWrites;
+
+    private readonly IteratorManager _iteratorManager;
 
     public DbOnTheRocks(
         string basePath,
@@ -103,6 +101,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             ApplyOptions(_perTableDbConfig.AdditionalRocksDbOptions);
         }
+
+        _iteratorManager = new IteratorManager(_db, null, _readAheadReadOptions);
     }
 
     protected virtual RocksDb DoOpen(string path, (DbOptions Options, ColumnFamilies? Families) db)
@@ -187,10 +187,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
         {
-            throw new ApplicationException(
-                $"Unable to load 'libdl' necessary to init the RocksDB database. Please run{Environment.NewLine}" +
-                $"sudo apt-get update && sudo apt-get install libsnappy-dev libc6-dev libc6 unzip{Environment.NewLine}" +
-                "or similar depending on your distribution.");
+            throw;
         }
         catch (RocksDbException x) when (x.Message.Contains("LOCK"))
         {
@@ -381,10 +378,22 @@ public class DbOnTheRocks : IDb, ITunableDb
         }
 
         tableOptions.SetFormatVersion(5);
-        if (dbConfig.BloomFilterBitsPerKey != 0)
+        if (dbConfig.BloomFilterBitsPerKey.GetValueOrDefault() != 0)
         {
-            // Bloom filter size for the sst files.
-            tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey, false));
+            if (dbConfig.UseRibbonFilterStartingFromLevel is not null)
+            {
+                // Ribbon filter reduces filter size by about 30% but uses up roughly the same amount of CPU for the same
+                // false positive rate. This config allow the use of ribbon filter only for lower levels.
+                IntPtr filter = _rocksDbNative.rocksdb_filterpolicy_create_ribbon_hybrid(
+                    dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(),
+                    dbConfig.UseRibbonFilterStartingFromLevel.Value);
+                tableOptions.SetFilterPolicy(filter);
+            }
+            else
+            {
+                // Bloom filter size for the sst files.
+                tableOptions.SetFilterPolicy(BloomFilterPolicy.Create(dbConfig.BloomFilterBitsPerKey.GetValueOrDefault(), false));
+            }
         }
 
         // Default value is 16.
@@ -393,15 +402,17 @@ public class DbOnTheRocks : IDb, ITunableDb
         // through a minimum of "BlockRestartInterval" number of key, probably. That is my understanding.
         // Reducing this is likely going to improve CPU usage at the cost of increased uncompressed size, which effect
         // cache utilization.
-        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval);
+        _rocksDbNative.rocksdb_block_based_options_set_block_restart_interval(tableOptions.Handle, dbConfig.BlockRestartInterval ?? 16);
 
         // This adds a hashtable-like index per block (the 16kb block)
-        // In theory, this should reduce CPU, but I don't see any different.
-        // It seems to increase disk space use by about 1 GB, which again, could be just noise. I'll just keep this.
-        // That said, on lower block size, it'll probably be useless.
-        // Note, the index points to a restart interval (see above), not to the value itself.
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
-        _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, 0.75);
+        // In, this reduce CPU and therefore latency under high block cache hit scenario.
+        // It seems to increase disk space use by about 1 GB.
+        double? dataBlockIndexUtilRatio = dbConfig.DataBlockIndexUtilRatio;
+        if (dataBlockIndexUtilRatio.HasValue && dataBlockIndexUtilRatio.Value > 0)
+        {
+            _rocksDbNative.rocksdb_block_based_options_set_data_block_index_type(tableOptions.Handle, 1);
+            _rocksDbNative.rocksdb_block_based_options_set_data_block_hash_ratio(tableOptions.Handle, dataBlockIndexUtilRatio.Value);
+        }
 
         ulong blockCacheSize = dbConfig.BlockCacheSize;
         if (sharedCache is not null && blockCacheSize == 0)
@@ -439,6 +450,11 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.DisableCompression == true)
         {
             options.SetCompression(Compression.No);
+        }
+        else if (dbConfig.UseLz4 == true)
+        {
+            // Its faster sometimes, its slower sometimes, depends on the DB.
+            options.SetCompression(Compression.Lz4);
         }
         else if (dbConfig.OnlyCompressLastLevel)
         {
@@ -640,10 +656,10 @@ public class DbOnTheRocks : IDb, ITunableDb
         _rocksDbNative.rocksdb_writeoptions_set_low_pri(_lowPriorityAndNoWalWrite.Handle, true);
 
         _defaultReadOptions = new ReadOptions();
-        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _defaultReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
 
         _hintCacheMissOptions = new ReadOptions();
-        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+        _hintCacheMissOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
         _hintCacheMissOptions.SetFillCache(false);
 
         // When readahead flag is on, the next keys are expected to be after the current key. Increasing this value,
@@ -654,7 +670,7 @@ public class DbOnTheRocks : IDb, ITunableDb
         if (dbConfig.ReadAheadSize != 0)
         {
             _readAheadReadOptions = new ReadOptions();
-            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum);
+            _readAheadReadOptions.SetVerifyChecksums(dbConfig.VerifyChecksum ?? true);
             _readAheadReadOptions.SetReadaheadSize(dbConfig.ReadAheadSize ?? (ulong)256.KiB());
             _readAheadReadOptions.SetTailing(true);
         }
@@ -677,20 +693,10 @@ public class DbOnTheRocks : IDb, ITunableDb
 
     public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
     {
-        ManagedIterators iterators = _readaheadIterators;
-        if ((flags & ReadFlags.HintReadAhead2) != 0)
-        {
-            iterators = _readaheadIterators2;
-        }
-        else if ((flags & ReadFlags.HintReadAhead3) != 0)
-        {
-            iterators = _readaheadIterators3;
-        }
-
-        return GetWithColumnFamily(key, null, iterators, flags);
+        return GetWithColumnFamily(key, null, _iteratorManager, flags);
     }
 
-    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, ManagedIterators readaheadIterators, ReadFlags flags = ReadFlags.None)
+    internal byte[]? GetWithColumnFamily(ReadOnlySpan<byte> key, ColumnFamilyHandle? cf, IteratorManager iteratorManager, ReadFlags flags = ReadFlags.None)
     {
         ObjectDisposedException.ThrowIf(_isDisposing, this);
 
@@ -700,12 +706,8 @@ public class DbOnTheRocks : IDb, ITunableDb
         {
             if (_readAheadReadOptions is not null && (flags & ReadFlags.HintReadAhead) != 0)
             {
-                if (!readaheadIterators.IsValueCreated)
-                {
-                    readaheadIterators.Value = _db.NewIterator(cf, _readAheadReadOptions);
-                }
-
-                Iterator iterator = readaheadIterators.Value!;
+                using IteratorManager.RentWrapper wrapper = iteratorManager.Rent(flags);
+                Iterator iterator = wrapper.Iterator;
 
                 if (iterator.Valid() && TryCloseReadAhead(iterator, key, out byte[]? closeRes))
                 {
@@ -727,6 +729,38 @@ public class DbOnTheRocks : IDb, ITunableDb
             throw;
         }
     }
+
+    /// <summary>
+    /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
+    /// Here we attempt to do that first. To prevent futile attempt some logic is added to approximately detect
+    /// if the requested key is too far from the current key and skip this entirely.
+    /// </summary>
+    /// <param name="iterator"></param>
+    /// <param name="key"></param>
+    /// <returns></returns>
+    private bool TryCloseReadAhead(Iterator iterator, ReadOnlySpan<byte> key, out byte[]? result)
+    {
+        // Probably hash db. Can't really do this with hashdb. Even with batched trie visitor, its going to skip a lot.
+        if (key.Length <= 32)
+        {
+            result = null;
+            return false;
+        }
+
+        iterator.Next();
+        ReadOnlySpan<byte> currentKey = iterator.GetKeySpan();
+        int compareResult = currentKey.SequenceCompareTo(key);
+        if (compareResult == 0)
+        {
+            result = iterator.Value();
+            return true; // This happens A LOT.
+        }
+
+        result = null;
+        if (compareResult > 0)
+        {
+            return false;
+        }
 
     /// <summary>
     /// iterator.Next() is about 10 to 20 times faster than iterator.Seek().
@@ -1330,10 +1364,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             batch.Dispose();
         }
 
-        _readaheadIterators.DisposeAll();
-        _readaheadIterators2.DisposeAll();
-        _readaheadIterators3.DisposeAll();
-
+        _iteratorManager.Dispose();
         _db.Dispose();
 
         if (_cache.HasValue)
@@ -1457,6 +1488,9 @@ public class DbOnTheRocks : IDb, ITunableDb
             case ITunableDb.TuneType.EnableBlobFiles:
                 ApplyOptions(GetBlobFilesOptions());
                 break;
+            case ITunableDb.TuneType.HashDb:
+                ApplyOptions(GetHashDbOptions());
+                break;
             case ITunableDb.TuneType.Default:
             default:
                 ApplyOptions(GetStandardOptions());
@@ -1495,6 +1529,20 @@ public class DbOnTheRocks : IDb, ITunableDb
 
             { "soft_pending_compaction_bytes_limit", 64.GiB().ToString() },
             { "hard_pending_compaction_bytes_limit", 256.GiB().ToString() },
+        };
+    }
+
+    private IDictionary<string, string> GetHashDbOptions()
+    {
+        return new Dictionary<string, string>()
+        {
+            // Some database config is slightly faster on hash db database. These are applied when hash db is detected
+            // to prevent unexpected regression.
+            { "table_factory.block_size", "4096" },
+            { "table_factory.block_restart_interval", "16" },
+            { "compression", "kSnappyCompression" },
+            { "max_bytes_for_level_multiplier", "10" },
+            { "max_bytes_for_level_base", "256000000" },
         };
     }
 
@@ -1592,29 +1640,154 @@ public class DbOnTheRocks : IDb, ITunableDb
         };
     }
 
-    // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
-    internal sealed class ManagedIterators : ThreadLocal<Iterator>
+    /// <summary>
+    /// Iterators should not be kept for long as it will pin some memory block and sst file. This would show up as
+    /// temporary higher disk usage or memory usage.
+    ///
+    /// This class handles a periodic timer which periodically dispose all iterator.
+    /// </summary>
+    internal class IteratorManager : IDisposable
     {
-        public ManagedIterators() : base(trackAllValues: true)
+        private readonly ManagedIterators _readaheadIterators = new();
+        private readonly ManagedIterators _readaheadIterators2 = new();
+        private readonly ManagedIterators _readaheadIterators3 = new();
+        private readonly RocksDb _rocksDb;
+        private readonly ColumnFamilyHandle? _cf;
+        private readonly ReadOptions? _readOptions;
+        private readonly Timer _timer;
+
+        // This is about once every two second maybe at max throughput.
+        private const int IteratorUsageLimit = 1000000;
+
+        public IteratorManager(RocksDb rocksDb, ColumnFamilyHandle? cf, ReadOptions? readOptions)
         {
+            _rocksDb = rocksDb;
+            _cf = cf;
+            _readOptions = readOptions;
+
+            _timer = new Timer(OnTimer, null, TimeSpan.Zero, TimeSpan.FromSeconds(10));
         }
 
-        public void DisposeAll()
+        private void OnTimer(object? state)
         {
-            foreach (Iterator iterator in Values)
+            _readaheadIterators.ClearIterators();
+            _readaheadIterators2.ClearIterators();
+            _readaheadIterators3.ClearIterators();
+        }
+
+        public void Dispose()
+        {
+            _timer.Dispose();
+            _readaheadIterators.DisposeAll();
+            _readaheadIterators2.DisposeAll();
+            _readaheadIterators3.DisposeAll();
+        }
+
+        public RentWrapper Rent(ReadFlags flags)
+        {
+
+            ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
             {
-                iterator.Dispose();
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
             }
 
-            Dispose();
+            IteratorHolder holder = iterators.Value!;
+            // If null, we create a new one.
+            Iterator? iterator = Interlocked.Exchange(ref holder.Iterator, null);
+            return new RentWrapper(iterator ?? _rocksDb.NewIterator(_cf, _readOptions), flags, this);
         }
 
-        protected override void Dispose(bool disposing)
+        private void Return(Iterator iterator, ReadFlags flags)
         {
-            // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
-            Value?.Dispose();
-            Value = null!;
-            base.Dispose(disposing);
+            ManagedIterators iterators = _readaheadIterators;
+            if ((flags & ReadFlags.HintReadAhead2) != 0)
+            {
+                iterators = _readaheadIterators2;
+            }
+            else if ((flags & ReadFlags.HintReadAhead3) != 0)
+            {
+                iterators = _readaheadIterators3;
+            }
+
+            IteratorHolder holder = iterators.Value!;
+
+            // We don't keep using the same iterator for too long.
+            if (holder.Usage > IteratorUsageLimit)
+            {
+                iterator.Dispose();
+                holder.Usage = 0;
+                return;
+            }
+
+            holder.Usage++;
+
+            Iterator? oldIterator = Interlocked.Exchange(ref holder.Iterator, iterator);
+            if (oldIterator != null)
+            {
+                // Well... this is weird. I'll just dispose it.
+                oldIterator.Dispose();
+            }
+        }
+
+        public readonly struct RentWrapper(Iterator iterator, ReadFlags flags, IteratorManager manager) : IDisposable
+        {
+            public Iterator Iterator => iterator;
+
+            public void Dispose()
+            {
+                manager.Return(iterator, flags);
+            }
+        }
+
+        // Note: use of threadlocal is very important as the seek forward is fast, but the seek backward is not fast.
+        private sealed class ManagedIterators : ThreadLocal<IteratorHolder>
+        {
+            private bool _disposed = false;
+
+            public ManagedIterators() : base(() => new IteratorHolder(), trackAllValues: true)
+            {
+            }
+
+            public void ClearIterators()
+            {
+                if (_disposed) return;
+
+                foreach (IteratorHolder iterator in Values)
+                {
+                    iterator.Dispose();
+                }
+            }
+
+            public void DisposeAll()
+            {
+                ClearIterators();
+                Dispose();
+            }
+
+            protected override void Dispose(bool disposing)
+            {
+                // Note: This is called from finalizer thread, so we can't use foreach to dispose all values
+                Value?.Dispose();
+                Value = null!;
+                _disposed = true;
+                base.Dispose(disposing);
+            }
+        }
+
+        private class IteratorHolder : IDisposable
+        {
+            public Iterator? Iterator = null;
+            public int Usage = 0;
+
+            public void Dispose()
+            {
+                Interlocked.Exchange(ref Iterator, null)?.Dispose();
+            }
         }
     }
 }
