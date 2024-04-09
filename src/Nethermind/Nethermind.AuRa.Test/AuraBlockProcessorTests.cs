@@ -150,8 +150,8 @@ namespace Nethermind.AuRa.Test
             TrieStore trieStore = new(stateDb, LimboLogs.Instance);
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
-            AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                GoerliSpecProvider.Instance,
+            var processor = new AuRaBlockProcessor(
+                HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
