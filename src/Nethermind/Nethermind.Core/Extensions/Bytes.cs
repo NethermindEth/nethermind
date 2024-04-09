@@ -227,8 +227,14 @@ namespace Nethermind.Core.Extensions
         public static Vector256<byte> ToEvmWord(this Span<byte> bytes)
         {
             Vector256<byte> word = default;
-            bytes = bytes.Slice(bytes.LeadingZerosCount());
-            bytes.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1)).Slice(32 - bytes.Length));
+            if (bytes.Length == 32)
+            {
+                word = Unsafe.ReadUnaligned<Vector256<byte>>(ref MemoryMarshal.GetReference(bytes));
+            }
+            else
+            {
+                bytes.CopyTo(MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref word, 1)).Slice(32 - bytes.Length));
+            }
             return word;
         }
 
