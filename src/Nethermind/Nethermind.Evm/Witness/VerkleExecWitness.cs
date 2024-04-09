@@ -5,7 +5,6 @@ using System;
 using Nethermind.Core;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Evm.Witness;
@@ -63,9 +62,9 @@ public class VerkleExecWitness : IWitness
         return UpdateGas(gas, ref unspentGas);
     }
 
-    public bool AccessAndChargeForBalance(Address address, ref long unspentGas)
+    public bool AccessAndChargeForBalance(Address address, ref long unspentGas, bool isWrite = false)
     {
-        long gas = _witness.AccessBalance(address);
+        long gas = _witness.AccessBalance(address, isWrite);
         if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForBalance: {gas} {address} {unspentGas}");
         return UpdateGas(gas, ref unspentGas);
     }
@@ -114,6 +113,13 @@ public class VerkleExecWitness : IWitness
     {
         long gas = _witness.AccessForProofOfAbsence(address);
         if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForAbsentAccount: {gas} {address} {unspentGas}");
+        return UpdateGas(gas, ref unspentGas);
+    }
+
+    public bool AccessAndChargeForSelfDestruct(Address contract, Address inheritor, ref long unspentGas, bool balanceIsZero)
+    {
+        long gas = _witness.AccessForSelfDestruct(contract, inheritor, balanceIsZero);
+        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForAbsentAccount: {gas} {contract} {unspentGas}");
         return UpdateGas(gas, ref unspentGas);
     }
 

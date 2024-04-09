@@ -17,6 +17,11 @@ public class NoExecWitness : IWitness
         ref long unspentGas) => true;
 
     public bool AccessAndChargeForGasBeneficiary(Address gasBeneficiary, ref long unspentGas) => true;
+    public bool AccessAndChargeForSelfDestruct(Address address, Address inheritor, ref long unspentGas, bool balanceIsZero)
+    {
+        return true;
+    }
+
     public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer)
     {
         return true;
@@ -27,7 +32,7 @@ public class NoExecWitness : IWitness
         return true;
     }
 
-    public bool AccessAndChargeForBalance(Address address, ref long unspentGas)
+    public bool AccessAndChargeForBalance(Address address, ref long unspentGas, bool isWrite = false)
     {
         return true;
     }

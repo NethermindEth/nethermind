@@ -17,14 +17,14 @@ public interface IWitness
         ref long unspentGas);
 
     public bool AccessAndChargeForGasBeneficiary(Address gasBeneficiary, ref long unspentGas);
+    public bool AccessAndChargeForSelfDestruct(Address contract, Address inheritor, ref long unspentGas, bool balanceIsZero);
 
     public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer);
 
 
     public bool AccessAndChargeForCodeOpCodes(Address caller, ref long unspentGas);
 
-
-    public bool AccessAndChargeForBalance(Address address, ref long unspentGas);
+    public bool AccessAndChargeForBalance(Address address, ref long unspentGas, bool isWrite = false);
 
     public bool AccessAndChargeForCodeHash(Address address, ref long unspentGas);
 
