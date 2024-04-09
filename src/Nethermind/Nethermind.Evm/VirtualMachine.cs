@@ -38,6 +38,7 @@ using System.Linq;
 using System.Threading;
 
 using Int256;
+using Nethermind.Crypto;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -2094,6 +2095,24 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             break;
                         }
+                    }
+                case Instruction.AUTH:
+                    {
+                        if (!spec.AuthCallsEnabled) goto InvalidInstruction;
+                        Address authorized = stack.PopAddress();
+                        //a = offset
+                        //b = length
+                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
+                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
+
+                        
+                        var yParity = vmState.Memory.Load(in a, a + 1);
+                        var r = vmState.Memory.Load(a + 1, a + 33);
+                        var s = vmState.Memory.Load(a + 33, a + 65);
+                        var commit = vmState.Memory.Load(a + 65, a + 97);
+
+
+                        break;
                     }
                 default:
                     {

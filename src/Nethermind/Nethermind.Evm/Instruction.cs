@@ -174,6 +174,7 @@ namespace Nethermind.Evm
         REVERT = 0xfd,
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
+        AUTH = 0xC,
     }
 
     public static class InstructionExtensions

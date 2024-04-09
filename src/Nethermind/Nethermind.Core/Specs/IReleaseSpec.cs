@@ -279,6 +279,12 @@ namespace Nethermind.Core.Specs
         bool IsEip6780Enabled { get; }
 
         /// <summary>
+        /// https://eips.ethereum.org/EIPS/eip-3074
+        /// AUTH and AUTHCALL for EOA
+        /// </summary>
+        bool IsEip3074Enabled { get; }
+
+        /// <summary>
         /// Should transactions be validated against chainId.
         /// </summary>
         /// <remarks>Backward compatibility for early Kovan blocks.</remarks>
@@ -361,5 +367,7 @@ namespace Nethermind.Core.Specs
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
+
+        bool AuthCallsEnabled => IsEip3074Enabled;
     }
 }
