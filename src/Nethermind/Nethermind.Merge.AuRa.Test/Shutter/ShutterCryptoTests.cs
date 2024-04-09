@@ -54,7 +54,11 @@ class ShutterCryptoTests
 
         Assert.That(ShutterCrypto.RecoverSigma(encryptedMessage, key), Is.EqualTo(sigma));
         Assert.That(msg.SequenceEqual(ShutterCrypto.Decrypt(encryptedMessage, key)));
-        Assert.That(encryptedMessage, Is.EqualTo(ShutterCrypto.DecodeEncryptedMessage(EncodeEncryptedMessage(encryptedMessage))));
+
+        var decoded = ShutterCrypto.DecodeEncryptedMessage(EncodeEncryptedMessage(encryptedMessage));
+        Assert.That(encryptedMessage.c1.is_equal(decoded.c1));
+        Assert.That(encryptedMessage.c2, Is.EqualTo(decoded.c2));
+        Assert.That(encryptedMessage.c3, Is.EqualTo(decoded.c3));
     }
 
     [Test]
