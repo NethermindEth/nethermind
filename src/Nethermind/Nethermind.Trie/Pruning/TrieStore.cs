@@ -264,8 +264,6 @@ namespace Nethermind.Trie.Pruning
         private Task _pruningTask = Task.CompletedTask;
         private readonly CancellationTokenSource _pruningTaskCancellationTokenSource = new();
 
-        private long _reorgDepth = Reorganization.MaxDepth;
-
         public TrieStore(IKeyValueStoreWithBatching? keyValueStore, ILogManager? logManager)
             : this(keyValueStore, No.Pruning, Pruning.Persist.EveryBlock, logManager)
         {
@@ -289,15 +287,6 @@ namespace Nethermind.Trie.Pruning
             IPruningStrategy? pruningStrategy,
             IPersistenceStrategy? persistenceStrategy,
             ILogManager? logManager)
-        {
-        }
-
-        public TrieStore(
-            INodeStorage? nodeStorage,
-            IPruningStrategy? pruningStrategy,
-            IPersistenceStrategy? persistenceStrategy,
-            ILogManager? logManager,
-            long? reorgDepthOverride = null)
         {
             _logger = logManager?.GetClassLogger<TrieStore>() ?? throw new ArgumentNullException(nameof(logManager));
             _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
@@ -813,10 +802,10 @@ namespace Nethermind.Trie.Pruning
                         keccak = node.GenerateKey(this.GetTrieStore(key.Address), ref path2, isRoot: true);
                         if (keccak != key.Keccak)
                         {
-                            throw new InvalidOperationException($"Persisted {node} {newKeccak} != {keccak}");
+                            throw new InvalidOperationException($"Persisted {node} {key} != {keccak}");
                         }
 
-                        node.Keccak = key.Keccak;
+                        node.Keccak = keccak;
                     }
                     _dirtyNodes.Remove(key);
 

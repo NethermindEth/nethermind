@@ -139,7 +139,6 @@ public class NodeStorage : INodeStorage
         return _keyValueStore.Get(GetHashBasedStoragePath(storagePathSpan, keccak), readFlags)
                ?? _keyValueStore.Get(GetHalfPathNodeStoragePathSpan(storagePathSpan, address, path, keccak), readFlags);
     }
-    }
 
     public bool KeyExists(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
@@ -193,6 +192,8 @@ public class NodeStorage : INodeStorage
         }
     }
 
+    public void Set(Hash256? address, in TreePath path, in ValueHash256 hash, byte[] toArray, WriteFlags writeFlags = WriteFlags.None)
+        => Set(address, path, hash, toArray, writeFlags);
     private class WriteBatch : INodeStorage.WriteBatch
     {
         private readonly IWriteBatch _writeBatch;
@@ -224,5 +225,8 @@ public class NodeStorage : INodeStorage
             // Only delete half path key. DO NOT delete hash based key.
             _writeBatch.Remove(GetHalfPathNodeStoragePathSpan(stackalloc byte[StoragePathLength], address, path, keccak));
         }
+
+        public void Set(Hash256? address, in TreePath path, in ValueHash256 currentNodeKeccak, byte[] toArray, WriteFlags writeFlags)
+            => Set(address, path, currentNodeKeccak, toArray, writeFlags);
     }
 }

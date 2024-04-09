@@ -298,6 +298,7 @@ public class TxPermissionFilterTest
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 TxProcessor,
+                null,
                 PermissionBasedTxFilter);
         }
 

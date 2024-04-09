@@ -78,7 +78,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                     )
                 ),
-            readOnlyTxProcessingEnv.TransactionProcessor);
+            readOnlyTxProcessingEnv.TransactionProcessor, null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

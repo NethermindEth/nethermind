@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -19,12 +18,12 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, IScopedTrie
 
     public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
     {
-        _scopedTrieStoreImplementation.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
+        _baseImplementation.CommitNode(blockNumber, nodeCommitInfo, writeFlags);
     }
 
     public void FinishBlockCommit(TrieType trieType, long blockNumber, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
     {
-        _scopedTrieStoreImplementation.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
+        _baseImplementation.FinishBlockCommit(trieType, blockNumber, root, writeFlags);
     }
 
     public bool IsPersisted(in TreePath path, in ValueHash256 keccak)
