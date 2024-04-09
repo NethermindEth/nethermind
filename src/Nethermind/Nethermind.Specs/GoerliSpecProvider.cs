@@ -43,7 +43,7 @@ public class GoerliSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId => BlockchainIds.Goerli;
+    public ulong NetworkId => 5; // set here because goerli is being removed/isolated from every other part of code base.
     public ulong ChainId => NetworkId;
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; } = null;

@@ -22,7 +22,6 @@ namespace Nethermind.Core
         public const int Olympic = 0;
         public const int Mainnet = 1;
         public const int Morden = 2;
-        public const int Goerli = 5;
         public const int RootstockMainnet = 30;
         public const int RootstockTestnet = 31;
         public const int Kovan = 42;
@@ -44,7 +43,6 @@ namespace Nethermind.Core
                 Olympic => nameof(Olympic),
                 Mainnet => nameof(Mainnet),
                 Morden => nameof(Morden),
-                Goerli => nameof(Goerli),
                 RootstockMainnet => nameof(RootstockMainnet),
                 RootstockTestnet => nameof(RootstockTestnet),
                 Kovan => nameof(Kovan),

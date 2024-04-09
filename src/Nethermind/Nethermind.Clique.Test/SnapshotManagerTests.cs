@@ -97,7 +97,8 @@ namespace Nethermind.Clique.Test
             SnapshotManager snapshotManager = new(CliqueConfig.Default, _snapshotDb, _blockTree, NullEthereumEcdsa.Instance, LimboLogs.Instance);
             Block genesis = CliqueTests.GetGenesis();
             Snapshot snapshot = snapshotManager.GetOrCreateSnapshot(0, genesis.Hash);
-            SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(BlockchainIds.Goerli, LimboLogs.Instance), LimboLogs.Instance);
+            const ulong chainId = 0x85; // random chain id, should be independent of test.
+            SnapshotManager manager = new(CliqueConfig.Default, _snapshotDb, _blockTree, new EthereumEcdsa(chainId, LimboLogs.Instance), LimboLogs.Instance);
             // Block 1
             Assert.IsTrue(manager.IsInTurn(snapshot, 1, _signer1));
             Assert.IsFalse(manager.IsInTurn(snapshot, 1, _signer2));
