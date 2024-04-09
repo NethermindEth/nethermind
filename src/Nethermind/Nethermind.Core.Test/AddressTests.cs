@@ -216,7 +216,6 @@ namespace Nethermind.Core.Test
         [Test]
         public void There_are_no_duplicates_in_known_addresses()
         {
-            _ = KnownAddresses.GoerliValidators;
             _ = KnownAddresses.KnownMiners;
         }
     }

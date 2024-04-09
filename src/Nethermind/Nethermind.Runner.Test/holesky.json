@@ -1,7 +1,7 @@
 {
-  "_comment": "IMPORTANT! This goerli chainspec file is incorrect. it exists only for testing purposes.",
-  "name": "Görli Testnet",
-  "dataDir": "goerli",
+  "_comment": "IMPORTANT! This holesky chainspec file is incorrect. it exists only for testing purposes.",
+  "name": "Holesky Incorrect Testnet",
+  "dataDir": "holesky",
   "engine": {
     "clique": {
       "params": {

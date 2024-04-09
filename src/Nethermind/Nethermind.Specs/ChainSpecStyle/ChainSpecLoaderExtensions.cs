@@ -60,16 +60,13 @@ public static class ChainSpecLoaderExtensions
         return builder.ToString();
     }
 
-    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger logger)
+    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger? logger = null)
     {
         filePath = CheckEmbeddedChainSpec(filePath);
-        if (logger.IsInfo) logger.Info($"Loading chainspec from file: {filePath}");
-        return LoadFromFileInternal(chainSpecLoader, filePath);
-    }
+        if (logger is null) return LoadFromFileInternal(chainSpecLoader, filePath);
 
-    public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath)
-    {
-        filePath = CheckEmbeddedChainSpec(filePath);
+        ILogger log = logger.Value;
+        if (log.IsInfo) log.Info($"Loading chainspec from file: {filePath}");
         return LoadFromFileInternal(chainSpecLoader, filePath);
     }
 
