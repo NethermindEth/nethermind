@@ -17,6 +17,8 @@ public class GoerliSpecProvider : ISpecProvider
     public const ulong ShanghaiTimestamp = 0x6410f460;
     public const ulong CancunTimestamp = 0x65A77460;
 
+    public const ulong CHAIN_ID = 5; // set here because goerli is being removed/isolated from every other part of code base.
+
     private GoerliSpecProvider() { }
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation)
@@ -43,8 +45,8 @@ public class GoerliSpecProvider : ISpecProvider
             TerminalTotalDifficulty = terminalTotalDifficulty;
     }
 
-    public ulong NetworkId => 5; // set here because goerli is being removed/isolated from every other part of code base.
-    public ulong ChainId => NetworkId;
+    public ulong NetworkId => CHAIN_ID;
+    public ulong ChainId => CHAIN_ID;
     public long? DaoBlockNumber => null;
     public ForkActivation? MergeBlockNumber { get; private set; }
     public ulong TimestampFork => ShanghaiTimestamp;
