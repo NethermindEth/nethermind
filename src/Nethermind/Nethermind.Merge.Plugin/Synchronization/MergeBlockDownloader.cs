@@ -155,6 +155,9 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return true;
             }
 
+            long bestProcessedBlock = 0;
+            bool switchedToFastSyncTransition = false;
+
             while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
                 if (HasBetterPeer)
@@ -199,8 +202,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                     break;
                 }
 
-                long bestProcessedBlock = 0;
-
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {
                     if (cancellation.IsCancellationRequested)
@@ -237,14 +238,29 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         {
                             long bestFullState = _fullStateFinder.FindBestFullState();
                             shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
-                            if (!shouldProcess && !downloadReceipts)
+                            if (!shouldProcess)
                             {
                                 if (_logger.IsInfo) _logger.Info($"Skipping processing during fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}, trying to load receipts");
-                                downloadReceipts = true;
-                                context.SetDownloadReceipts();
-                                await RequestReceipts(bestPeer, cancellation, context);
-                                receipts = context.ReceiptsForBlocks;
+                                switchedToFastSyncTransition = true;
+                                if (!downloadReceipts)
+                                {
+                                    downloadReceipts = true;
+                                    context.SetDownloadReceipts();
+                                    await RequestReceipts(bestPeer, cancellation, context);
+                                    receipts = context.ReceiptsForBlocks;
+                                }
                             }
+                        }
+                    }
+                    else if (switchedToFastSyncTransition)
+                    {
+                        long bestFullState = _fullStateFinder.FindBestFullState();
+                        shouldProcess = currentBlock.Number > bestFullState && bestFullState != 0;
+                        if (shouldProcess)
+                        {
+                            switchedToFastSyncTransition = false;
+                            if (_logger.IsInfo) _logger.Info($"Switching back to processing from fastSyncTransition, currentBlock: {currentBlock}, bestFullState: {bestFullState}");
+                            downloadReceipts = false;
                         }
                     }
 
