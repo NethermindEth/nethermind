@@ -75,7 +75,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
             AddTraceEntry(CurrentTraceEntry);
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
-        CurrentTraceEntry.Depth = env.CallDepth;
+        CurrentTraceEntry.Depth = env.CallDepth + 1;
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
         CurrentTraceEntry.ProgramCounter = pc;

@@ -104,7 +104,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
         _log.pc = pc;
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
-        _log.depth = env.CallDepth;
+        _log.depth = env.CallDepth + 1;
         _log.error = null;
         _log.gasCost = null;
     }

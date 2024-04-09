@@ -57,7 +57,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName(isPostMerge);
         _traceEntry.Gas = gas;
-        _traceEntry.Depth = env.CallDepth;
+        _traceEntry.Depth = env.CallDepth + 1;
         _trace.Entries.Add(_traceEntry);
     }
 
