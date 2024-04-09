@@ -10,6 +10,9 @@ using Nethermind.Merge.AuRa.Shutter;
 using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Serialization.Rlp;
+using NLog;
+using Nethermind.Core.Test;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -38,46 +41,47 @@ class ShutterCryptoTests
     }
 
     [Test]
-    public void Can_decrypt()
+    [TestCase("f869820243849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0510c063afbe5b8b8875b680e96a1778c99c765cc0df263f10f8d9707cfa0f114a02590b2ce6dbce6532da17c52a2a7f2eb6155f23404128fca5fb72dc852ce64c6")]
+    public void Can_encrypt_then_decrypt(string msgHex)
     {
-        Span<byte> msg = stackalloc byte[200];
-        msg.Fill(55);
-        byte[] b = [0xca, 0x55, 0x72, 0x15, 0xff, 0x44];
-        b.CopyTo(msg);
-
+        byte[] msg = Convert.FromHexString(msgHex);
         UInt256 sk = 123456789;
         G1 identity = G1.generator().mult(3261443);
         G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
         Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
-        EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
-
+        EncryptedMessage encryptedMessage = Encrypt(msg, identity, eonKey, sigma);
         G1 key = identity.dup().mult(sk.ToLittleEndian());
-        Assert.That(ShutterCrypto.RecoverSigma(c, key), Is.EqualTo(sigma));
 
-        Span<byte> res = ShutterCrypto.Decrypt(c, key);
-        Assert.That(res.SequenceEqual(msg));
+        Assert.That(ShutterCrypto.RecoverSigma(encryptedMessage, key), Is.EqualTo(sigma));
+        Assert.That(msg.SequenceEqual(ShutterCrypto.Decrypt(encryptedMessage, key)));
+        Assert.That(encryptedMessage, Is.EqualTo(ShutterCrypto.DecodeEncryptedMessage(EncodeEncryptedMessage(encryptedMessage))));
     }
 
     [Test]
-    public void Can_encrypt()
+    [TestCase(
+        "f869820243849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0510c063afbe5b8b8875b680e96a1778c99c765cc0df263f10f8d9707cfa0f114a02590b2ce6dbce6532da17c52a2a7f2eb6155f23404128fca5fb72dc852ce64c6",
+        "3834a349678eF446baE07e2AefFC01054184af00",
+        "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834",
+        "B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579",
+        "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834"
+    )]
+    public void Output_encrypted_transaction(string rawTxHex, string senderAddress, string identityPrefixHex, string eonKeyHex, string sigmaHex)
     {
-        Span<byte> msg = Convert.FromHexString("f86982023a849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a0b57537146400540097d65e12d4e2622959014465efead4a8798683a4e93ff5e0a0071b5309bf9f354bbc87814acec53ca5c0cdbfa5c7b6dd37558c933f50c7a65c");
+        byte[] rawTx = Convert.FromHexString(rawTxHex);
 
-        Bytes32 identityPrefix = new([0x23, 0xbb, 0xdd, 0x06, 0x95, 0xf3, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
-        Address sender = new("3834a349678eF446baE07e2AefFC01054184af00");
-        G1 identity = ShutterCrypto.ComputeIdentity(identityPrefix, sender);
+        Transaction transaction = Rlp.Decode<Transaction>(new Rlp(rawTx), RlpBehaviors.AllowUnsigned);
+        transaction.SenderAddress = new EthereumEcdsa(BlockchainIds.Chiado, new NUnitLogManager()).RecoverAddress(transaction, true);
+        TestContext.WriteLine(transaction.ToShortString());
 
-        UInt256 sk = 123456789;
-        G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
+        Bytes32 identityPrefix = new(Convert.FromHexString(identityPrefixHex).AsSpan());
+        G1 identity = ShutterCrypto.ComputeIdentity(identityPrefix, new(senderAddress));
+        G2 eonKey = new(Convert.FromHexString(eonKeyHex));
+        Bytes32 sigma = new(Convert.FromHexString(sigmaHex).AsSpan());
 
-        Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
-
-        EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
+        EncryptedMessage c = Encrypt(rawTx, identity, eonKey, sigma);
 
         byte[] encoded = EncodeEncryptedMessage(c);
         TestContext.WriteLine("encrypted tx: " + Convert.ToHexString(encoded));
-        TestContext.WriteLine("identity prefix: " + Convert.ToHexString(identityPrefix.Unwrap()));
-        TestContext.WriteLine("eon key: " + Convert.ToHexString(eonKey.compress()));
     }
 
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)

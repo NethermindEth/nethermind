@@ -11,7 +11,6 @@ using Nethermind.Abi;
 using Nethermind.Crypto;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
-using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.Consensus.Producers;
 using System.Runtime.CompilerServices;
@@ -22,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
-using Nethermind.Libp2p.Core.Enums;
 using Nethermind.Core.Crypto;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
@@ -43,12 +41,13 @@ public class ShutterTxSource : ITxSource
     private readonly ISpecProvider _specProvider;
     private readonly IAuraConfig _auraConfig;
     private readonly ILogger _logger;
+    private readonly IEthereumEcdsa _ethereumEcdsa;
     private readonly SequencerContract _sequencerContract;
     private readonly Address ValidatorRegistryContractAddress;
     private readonly IEnumerable<(ulong, byte[])> ValidatorsInfo;
     private readonly UInt256 EncryptedGasLimit;
 
-    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEnumerable<(ulong, byte[])> validatorsInfo)
+    public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
         _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
@@ -56,6 +55,7 @@ public class ShutterTxSource : ITxSource
         _auraConfig = auraConfig;
         _specProvider = specProvider;
         _logger = logManager.GetClassLogger();
+        _ethereumEcdsa = ethereumEcdsa;
         _sequencerContract = new(auraConfig.ShutterSequencerContractAddress, logFinder, filterStore);
         ValidatorRegistryContractAddress = new(_auraConfig.ShutterValidatorRegistryContractAddress);
         ValidatorsInfo = validatorsInfo;
@@ -66,6 +66,7 @@ public class ShutterTxSource : ITxSource
     {
         if (_lastHash is not null && parent.Hash == _lastHash)
         {
+            _logger.Info("used cache!");
             return _transactionCache;
         }
 
@@ -99,10 +100,13 @@ public class ShutterTxSource : ITxSource
         // todo: change once keypers are aware of validator contract
         // skip block decryption key, does it do anything?
         // IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
-        IEnumerable<Transaction> transactions = sequencedTransactions.Select(x => DecryptSequencedTransaction(x, new()));
+        IEnumerable<Transaction> transactions = sequencedTransactions.Select(x => DecryptSequencedTransaction(x, new())).OfType<Transaction>();
         if (_logger.IsInfo) _logger.Info($"Decrypted {transactions.Count()} Shutter transactions...");
 
-        transactions.ForEach((tx) => _logger.Info(tx.ToShortString()));
+        transactions.ForEach((tx) =>
+        {
+            _logger.Info(tx.ToShortString());
+        });
 
         _lastHash = parent.Hash!;
         _transactionCache = transactions;
@@ -110,7 +114,7 @@ public class ShutterTxSource : ITxSource
         return transactions;
     }
 
-    internal Transaction DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
+    internal Transaction? DecryptSequencedTransaction(SequencedTransaction sequencedTransaction, Dto.Key decryptionKey)
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
 
@@ -125,11 +129,24 @@ public class ShutterTxSource : ITxSource
 
         if (!identity.is_equal(sequencedTransaction.Identity))
         {
-            throw new Exception("Transaction identity did not match decryption key.");
+            if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: Transaction identity did not match decryption key.");
+            return null;
         }
 
-        byte[] transaction = ShutterCrypto.Decrypt(encryptedMessage, key);
-        return Rlp.Decode<Transaction>(new Rlp(transaction), RlpBehaviors.AllowUnsigned);
+        Transaction transaction;
+        try
+        {
+            byte[] encodedTransaction = ShutterCrypto.Decrypt(encryptedMessage, key);
+            transaction = Rlp.Decode<Transaction>(new Rlp(encodedTransaction));
+            transaction.SenderAddress = _ethereumEcdsa.RecoverAddress(transaction, true);
+        }
+        catch (Exception e)
+        {
+            if (_logger.IsDebug) _logger.Debug("Could not decrypt Shutter transaction: " + e.Message);
+            return null;
+        }
+
+        return transaction;
     }
 
     internal IEnumerable<SequencedTransaction> GetNextTransactions(ulong eon, ulong txPointer)
