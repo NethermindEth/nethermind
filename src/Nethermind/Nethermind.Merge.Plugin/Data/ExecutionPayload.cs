@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -100,6 +101,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
+    /// Gets or sets a collection of <see cref="ValidatorExits"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
+    /// </summary>
+    public virtual ValidatorExit[]? ValidatorExits { get; set; }
+
+
+    /// <summary>
     /// Gets or sets <see cref="Block.BlobGasUsed"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-4844">EIP-4844</see>.
     /// </summary>
@@ -156,7 +164,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 
-            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals, Deposits);
+            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals, Deposits, ValidatorExits);
 
             return true;
         }

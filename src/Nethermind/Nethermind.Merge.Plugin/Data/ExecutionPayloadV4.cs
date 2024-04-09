@@ -6,6 +6,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Proofs;
+using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -19,6 +20,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     public ExecutionPayloadV4(Block block) : base(block)
     {
         Deposits = block.Deposits;
+        ValidatorExits = block.ValidatorExits;
     }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
@@ -29,11 +31,13 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
         }
 
         block!.Header.DepositsRoot = Deposits is null ? null : new DepositTrie(Deposits).RootHash;
+        block!.Header.ValidatorExitsRoot = ValidatorExits is null ? null : new ValidatorExitsTrie(ValidatorExits, false).RootHash;
         return true;
     }
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
-        specProvider.GetSpec(BlockNumber, Timestamp).IsEip6110Enabled;
+        specProvider.GetSpec(BlockNumber, Timestamp).IsEip6110Enabled
+        && specProvider.GetSpec(BlockNumber, Timestamp).IsEip7002Enabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Deposits"/> as defined in
@@ -41,4 +45,11 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     /// </summary>
     [JsonRequired]
     public override Deposit[]? Deposits { get; set; }
+
+    /// <summary>
+    /// Gets or sets <see cref="Block.ValidatorExits"/> as defined in
+    /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
+    /// </summary>
+    [JsonRequired]
+    public override ValidatorExit[]? ValidatorExits { get; set; }
 }
