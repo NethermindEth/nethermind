@@ -142,8 +142,8 @@ namespace Nethermind.Overseer.Test.Framework
             }
 
             // The entry point for the async work.
-            // Spin up a completed task to start with 
-            // so that we dont have to do null checks    
+            // Spin up a completed task to start with
+            // so that we dont have to do null checks
             this.ScenarioCompletion = Task.FromResult<int>(0);
         }
 
@@ -182,16 +182,6 @@ namespace Nethermind.Overseer.Test.Framework
         public TestBuilder StartCliqueMiner(string name)
         {
             return StartNode(name, "configs/cliqueMiner.cfg");
-        }
-
-        public TestBuilder StartGoerliNode(string name)
-        {
-            return StartNode(name, "configs/goerliNode.cfg");
-        }
-
-        public TestBuilder StartGoerliMiner(string name)
-        {
-            return StartNode(name, "configs/goerliMiner.cfg");
         }
 
         public TestBuilder StartAuRaMiner(string name, string key)
