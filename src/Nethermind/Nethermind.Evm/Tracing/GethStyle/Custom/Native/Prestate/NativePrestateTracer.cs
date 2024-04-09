@@ -47,11 +47,11 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
+    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
     {
-        base.StartOperation(depth, gas, opcode, pc, executingAccount, isPostMerge);
+        base.StartOperation(env, gas, opcode, pc);
         _op = opcode;
-        _executingAccount = executingAccount;
+        _executingAccount = env.ExecutingAccount;
     }
 
     public override void SetOperationMemory(TraceMemory memoryTrace)
@@ -112,14 +112,12 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
                     ReadOnlySpan<byte> salt = stack.Peek(3);
                     address = ContractAddress.From(_executingAccount!, salt, initCode);
                     LookupAccount(address);
-                    _executingAccount = address;
                 }
                 break;
             case Instruction.CREATE:
                 UInt256 nonce = _worldState!.GetNonce(_executingAccount!);
                 address = ContractAddress.From(_executingAccount, nonce);
                 LookupAccount(address!);
-                _executingAccount = address;
                 break;
         }
     }
@@ -130,7 +128,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         _error = error;
     }
 
-    private void LookupInitialTransactionAccounts(NativeTracerContext context)
+    private void LookupInitialTransactionAccounts(in NativeTracerContext context)
     {
         Address from = context.From;
         LookupAccount(from);

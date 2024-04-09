@@ -48,15 +48,16 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
     {
+        bool isPostMerge = env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge;
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
         _traceEntry.Pc = pc;
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName(isPostMerge);
         _traceEntry.Gas = gas;
-        _traceEntry.Depth = depth;
+        _traceEntry.Depth = env.CallDepth;
         _trace.Entries.Add(_traceEntry);
     }
 

@@ -228,7 +228,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, Address executingAccount, bool isPostMerge = false)
+        public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
         {
         }
 
