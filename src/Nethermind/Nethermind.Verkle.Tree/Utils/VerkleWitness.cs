@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
@@ -15,30 +14,16 @@ namespace Nethermind.Verkle.Tree.Utils;
 
 // TODO: this can be definitely optimized by caching the keys from StateProvider - because for every access we
 //       already calculate keys in StateProvider - or we maintain pre images?
-public class VerkleWitness : IVerkleWitness
+public class VerkleWitness: IJournal<int>
 {
-    // TODO: add these in GasPrices List
-    private const long WitnessChunkRead = 200; // verkle-trie
-    private const long WitnessChunkWrite = 500; // verkle-trie
-    private const long WitnessChunkFill = 6200; // verkle-trie
-    private const long WitnessBranchRead = 1900; // verkle-trie
-    private const long WitnessBranchWrite = 3000; // verkle-trie
-    private readonly JournalSet<Hash256> _accessedLeaves;
+    private readonly JournalSet<Hash256> _accessedLeaves = new();
+    private readonly JournalSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
 
-    private readonly JournalSet<byte[]> _accessedSubtrees;
-    private readonly JournalSet<Hash256> _modifiedLeaves;
-    private readonly JournalSet<byte[]> _modifiedSubtrees;
+    private readonly JournalSet<Hash256> _modifiedLeaves = new();
+    private readonly JournalSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
 
     private readonly Dictionary<int, int[]> _snapshots = new();
-    private int NextSnapshot;
-
-    public VerkleWitness()
-    {
-        _accessedSubtrees = new JournalSet<byte[]>(Bytes.EqualityComparer);
-        _accessedLeaves = new JournalSet<Hash256>();
-        _modifiedLeaves = new JournalSet<Hash256>();
-        _modifiedSubtrees = new JournalSet<byte[]>(Bytes.EqualityComparer);
-    }
+    private int _nextSnapshot;
 
     /// <summary>
     ///     When a non-precompile address is the target of a CALL, CALLCODE,
@@ -50,7 +35,8 @@ public class VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessForCodeOpCodes(Address caller)
     {
-        var gas = AccessAccount(caller, AccountHeaderAccess.Version | AccountHeaderAccess.CodeSize);
+        var gas = AccessVersion(caller);
+        gas += AccessCodeSize(caller);
         // _logger.Info($"AccessForCodeOpCodes: {caller.Bytes.ToHexString()} {gas}");
         return gas;
     }
@@ -68,9 +54,7 @@ public class VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessValueTransfer(Address caller, Address? callee)
     {
-        var gas = AccessAccount(caller, AccountHeaderAccess.Balance, true) +
-                  // this generally happens in the case of contract creation
-                  (callee == null ? 0 : AccessAccount(callee, AccountHeaderAccess.Balance, true));
+        var gas = AccessBalance(caller, true) + (callee == null ? 0 : AccessBalance(callee, true));
         // _logger.Info($"AccessForCodeOpCodes: {caller.Bytes.ToHexString()} {gas}");
         return gas;
     }
@@ -83,11 +67,8 @@ public class VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer)
     {
-        var gas = isValueTransfer
-            ? AccessAccount(contractAddress,
-                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce | AccountHeaderAccess.Balance, true)
-            : AccessAccount(contractAddress,
-                AccountHeaderAccess.Version | AccountHeaderAccess.Nonce, true);
+        var gas = AccessVersion(contractAddress, true) + AccessNonce(contractAddress, true);
+        if (isValueTransfer) gas += AccessBalance(contractAddress, true);
         // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {isValueTransfer} {gas}");
 
         return gas;
@@ -102,30 +83,6 @@ public class VerkleWitness : IVerkleWitness
     {
         var gas = AccessCompleteAccount(contractAddress, true);
         // _logger.Info($"AccessContractCreated: {contractAddress.Bytes.ToHexString()} {gas}");
-        return gas;
-    }
-
-    /// <summary>
-    ///     If the BALANCE opcode is called targeting some address.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <returns></returns>
-    public long AccessBalance(Address address)
-    {
-        var gas = AccessAccount(address, AccountHeaderAccess.Balance);
-        // _logger.Info($"AccessBalance: {address.Bytes.ToHexString()} {gas}");
-        return gas;
-    }
-
-    /// <summary>
-    ///     If the EXTCODEHASH opcode is called targeting some address.
-    /// </summary>
-    /// <param name="address"></param>
-    /// <returns></returns>
-    public long AccessCodeHash(Address address)
-    {
-        var gas = AccessAccount(address, AccountHeaderAccess.CodeHash);
-        // _logger.Info($"AccessCodeHash: {address.Bytes.ToHexString()} {gas}");
         return gas;
     }
 
@@ -170,19 +127,25 @@ public class VerkleWitness : IVerkleWitness
     public long AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer)
     {
         // TODO: does not seem right - not upto spec
-        var gasCost = AccessAccount(originAddress,
-                          AccountHeaderAccess.Version | AccountHeaderAccess.Balance | AccountHeaderAccess.Nonce |
-                          AccountHeaderAccess.CodeHash | AccountHeaderAccess.CodeSize)
-                      + (destinationAddress == null ? 0 : AccessCompleteAccount(destinationAddress));
-
+        long gasCost = 0;
+        gasCost += AccessVersion(originAddress);
         // when you are executing a transaction, you are writing to the nonce of the origin address
-        gasCost += AccessAccount(originAddress, AccountHeaderAccess.Nonce, true);
-        if (isValueTransfer)
+        gasCost += AccessNonce(originAddress, true);
+        gasCost += AccessBalance(originAddress, true);
+        gasCost += AccessCodeHash(originAddress);
+        gasCost += AccessCodeSize(originAddress);
+
+        if (destinationAddress is not null)
+        {
+            gasCost += AccessVersion(destinationAddress);
+            gasCost += AccessNonce(destinationAddress);
             // when you are executing a transaction with value transfer,
             // you are writing to the balance of the origin and destination address
-            gasCost += AccessValueTransfer(originAddress, destinationAddress);
-        else
-            gasCost += AccessAccount(originAddress, AccountHeaderAccess.Balance, true);
+            gasCost += AccessBalance(destinationAddress, isValueTransfer);
+            gasCost += AccessCodeHash(destinationAddress);
+            gasCost += AccessCodeSize(destinationAddress);
+
+        }
         // _logger.Info($"AccessForTransaction: {originAddress.Bytes.ToHexString()} {destinationAddress?.Bytes.ToHexString()} {isValueTransfer} {gasCost}");
         return gasCost;
     }
@@ -207,33 +170,14 @@ public class VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessCompleteAccount(Address address, bool isWrite = false)
     {
-        var gas = AccessAccount(address,
-            AccountHeaderAccess.Version | AccountHeaderAccess.Balance | AccountHeaderAccess.Nonce |
-            AccountHeaderAccess.CodeHash | AccountHeaderAccess.CodeSize,
-            isWrite);
+        long gasCost = 0;
+        gasCost += AccessVersion(address, isWrite);
+        gasCost += AccessNonce(address, isWrite);
+        gasCost += AccessBalance(address, isWrite);
+        gasCost += AccessCodeHash(address, isWrite);
+        gasCost += AccessCodeSize(address, isWrite);
         // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
-        return gas;
-    }
-
-    public byte[][] GetAccessedKeys()
-    {
-        return _accessedLeaves.ToArray().Select(x => x.Bytes.ToArray()).ToArray();
-    }
-
-    public int TakeSnapshot()
-    {
-        var snapshot = new int[2];
-        snapshot[0] = _accessedSubtrees.TakeSnapshot();
-        snapshot[1] = _accessedLeaves.TakeSnapshot();
-        _snapshots.Add(NextSnapshot, snapshot);
-        return NextSnapshot++;
-    }
-
-    public void Restore(int snapshot)
-    {
-        var witnessSnapshot = _snapshots[snapshot];
-        _accessedSubtrees.Restore(witnessSnapshot[0]);
-        _accessedLeaves.Restore(witnessSnapshot[1]);
+        return gasCost;
     }
 
     /// <summary>
@@ -243,81 +187,123 @@ public class VerkleWitness : IVerkleWitness
     /// <returns></returns>
     public long AccessForGasBeneficiary(Address gasBeneficiary)
     {
-        var gas = AccessAccount(gasBeneficiary,
-            AccountHeaderAccess.Version | AccountHeaderAccess.Balance | AccountHeaderAccess.Nonce |
-            AccountHeaderAccess.CodeHash | AccountHeaderAccess.CodeSize);
+        long gas = 0;
+        gas += AccessVersion(gasBeneficiary);
+        gas += AccessNonce(gasBeneficiary);
+        gas += AccessBalance(gasBeneficiary);
+        gas += AccessCodeHash(gasBeneficiary);
+        gas += AccessCodeSize(gasBeneficiary);
         // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
         return gas;
     }
 
     /// <summary>
-    ///     When you have to access the certain keys for the account
-    ///     you can specify the keys you want to access using the AccountHeaderAccess.
+    ///
     /// </summary>
-    /// <param name="address"></param>
-    /// <param name="accessOptions"></param>
-    /// <param name="isWrite"></param>
+    /// <param name="contract"></param>
+    /// <param name="beneficiary"></param>
+    /// <param name="balanceIsZero"></param>
     /// <returns></returns>
-    private long AccessAccount(Address address, AccountHeaderAccess accessOptions, bool isWrite = false)
+    public long AccessForSelfDestruct(Address contract, Address beneficiary, bool balanceIsZero)
     {
-        long gasUsed = 0;
-        if ((accessOptions & AccountHeaderAccess.Version) == AccountHeaderAccess.Version)
-            gasUsed += AccessKey(AccountHeader.GetTreeKey(address.Bytes, UInt256.Zero, AccountHeader.Version), isWrite);
-        if ((accessOptions & AccountHeaderAccess.Balance) == AccountHeaderAccess.Balance)
-            gasUsed += AccessKey(AccountHeader.GetTreeKey(address.Bytes, UInt256.Zero, AccountHeader.Balance), isWrite);
-        if ((accessOptions & AccountHeaderAccess.Nonce) == AccountHeaderAccess.Nonce)
-            gasUsed += AccessKey(AccountHeader.GetTreeKey(address.Bytes, UInt256.Zero, AccountHeader.Nonce), isWrite);
-        if ((accessOptions & AccountHeaderAccess.CodeHash) == AccountHeaderAccess.CodeHash)
-            gasUsed += AccessKey(AccountHeader.GetTreeKey(address.Bytes, UInt256.Zero, AccountHeader.CodeHash),
-                isWrite);
-        if ((accessOptions & AccountHeaderAccess.CodeSize) == AccountHeaderAccess.CodeSize)
-            gasUsed += AccessKey(AccountHeader.GetTreeKey(address.Bytes, UInt256.Zero, AccountHeader.CodeSize),
-                isWrite);
-        // _logger.Info($"AccessAccount: {address.Bytes.ToHexString()} {accessOptions} {isWrite} {gasUsed}");
-        return gasUsed;
+        bool contractNotSameAsBeneficiary = contract != beneficiary;
+        long gas = 0;
+        gas += AccessVersion(contract);
+        gas += AccessCodeSize(contract);
+
+        if (contractNotSameAsBeneficiary)
+        {
+            gas += AccessVersion(beneficiary);
+            gas += AccessCodeSize(beneficiary);
+        }
+
+
+        if (balanceIsZero)
+        {
+            gas += AccessBalance(contract);
+            if (contractNotSameAsBeneficiary) gas += AccessBalance(beneficiary);
+        }
+        else
+        {
+            gas += AccessBalance(contract, true);
+            if (contractNotSameAsBeneficiary) gas += AccessBalance(beneficiary, true);
+        }
+        return gas;
+    }
+
+    public byte[][] GetAccessedKeys()
+    {
+        return _accessedLeaves.Select(x => x.BytesToArray()).ToArray();
+    }
+
+    public int TakeSnapshot()
+    {
+        var snapshot = new int[2];
+        snapshot[0] = _accessedSubtrees.TakeSnapshot();
+        snapshot[1] = _accessedLeaves.TakeSnapshot();
+        _snapshots.Add(_nextSnapshot, snapshot);
+        return _nextSnapshot++;
+    }
+
+    public void Restore(int snapshot)
+    {
+        var witnessSnapshot = _snapshots[snapshot];
+        _accessedSubtrees.Restore(witnessSnapshot[0]);
+        _accessedLeaves.Restore(witnessSnapshot[1]);
+    }
+
+    # region WitnessAccess helper
+    private long AccessVersion(Address address, bool isWrite = false)
+    {
+        return AccessAddress(address, UInt256.Zero, AccountHeader.Version, isWrite);
+    }
+
+    public long AccessBalance(Address address, bool isWrite = false)
+    {
+        return AccessAddress(address, UInt256.Zero, AccountHeader.Balance, isWrite);
+    }
+
+    private long AccessNonce(Address address, bool isWrite = false)
+    {
+        return AccessAddress(address, UInt256.Zero, AccountHeader.Nonce, isWrite);
+    }
+
+    private long AccessCodeSize(Address address, bool isWrite = false)
+    {
+        return AccessAddress(address, UInt256.Zero, AccountHeader.CodeSize, isWrite);
+    }
+
+    public long AccessCodeHash(Address address, bool isWrite = false)
+    {
+        return AccessAddress(address, UInt256.Zero, AccountHeader.CodeHash, isWrite);
+    }
+
+    private long AccessAddress(Address address, UInt256 treeIndex, byte subIndex, bool isWrite = false)
+    {
+        return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), isWrite);
     }
 
     private long AccessKey(Hash256 key, bool isWrite = false, bool leafExist = false)
     {
-        var newSubTreeAccess = false;
-        var newLeafAccess = false;
+        long accessCost = 0;
+        if (_accessedLeaves.Add(key)) accessCost += WitnessChunkRead;
+        if (_accessedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += WitnessBranchRead;;
 
-        var newSubTreeUpdate = false;
-        var newLeafUpdate = false;
-
-        var newLeafFill = false;
-
-
-        if (_accessedLeaves.Add(key)) newLeafAccess = true;
-
-        if (_accessedSubtrees.Add(key.Bytes.Slice(0, 31).ToArray())) newSubTreeAccess = true;
-
-        var accessCost =
-            (newLeafAccess ? WitnessChunkRead : 0) +
-            (newSubTreeAccess ? WitnessBranchRead : 0);
-        if (!isWrite)
-            return accessCost;
-
-        if (_modifiedLeaves.Add(key))
-            // newLeafFill = !leafExist;
-            newLeafUpdate = true;
-
-        if (_modifiedSubtrees.Add(key.Bytes.Slice(0, 31).ToArray())) newSubTreeUpdate = true;
-        var writeCost =
-            (newLeafUpdate ? WitnessChunkWrite : 0) +
-            (newLeafFill ? WitnessChunkFill : 0) +
-            (newSubTreeUpdate ? WitnessBranchWrite : 0);
-
-        return writeCost + accessCost;
+        if (isWrite)
+        {
+            if (_modifiedLeaves.Add(key)) accessCost += WitnessChunkWrite;
+            if (_modifiedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += WitnessBranchWrite;
+        }
+        return accessCost;
     }
+    #endregion
 
-    [Flags]
-    private enum AccountHeaderAccess
-    {
-        Version = 1,
-        Balance = 2,
-        Nonce = 4,
-        CodeHash = 8,
-        CodeSize = 16
-    }
+    # region GasCost verkle
+    // TODO: add these in GasPrices List
+    private const long WitnessChunkRead = 200; // verkle-trie
+    private const long WitnessChunkWrite = 500; // verkle-trie
+    private const long WitnessChunkFill = 6200; // verkle-trie
+    private const long WitnessBranchRead = 1900; // verkle-trie
+    private const long WitnessBranchWrite = 3000; // verkle-trie
+    #endregion
 }
