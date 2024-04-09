@@ -607,6 +607,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
 
         bool result = true;
+        bool witnessGasCharged = false;
 
         if (spec.IsVerkleTreeEipEnabled)
         {
@@ -615,7 +616,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 case Instruction.BALANCE:
                     {
-                        result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                        long gasBalance = vmState.Env.Witness.AccessForBalance(address);
+                        if (gasBalance > 0)
+                        {
+                            witnessGasCharged = true;
+                            result = UpdateGas(gasBalance, ref gasAvailable);
+                        }
                         break;
                     }
                 case Instruction.EXTCODESIZE:
@@ -627,19 +633,42 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (!isAddressPreCompile)
                         {
-                            result = vmState.Env.Witness.AccessAndChargeForCodeOpCodes(address, ref gasAvailable);
+                            var gasCodeOp = vmState.Env.Witness.AccessForCodeOpCodes(address);
+                            if (gasCodeOp > 0)
+                            {
+                                witnessGasCharged = true;
+                                result = UpdateGas(gasCodeOp, ref gasAvailable);
+                            }
                             if (!result) break;
                         }
-                        if (valueTransfer) result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                        if (valueTransfer)
+                        {
+                            var gasValueTransfer = vmState.Env.Witness.AccessForBalance(address);
+                            if (gasValueTransfer > 0)
+                            {
+                                witnessGasCharged = true;
+                                result = UpdateGas(gasValueTransfer, ref gasAvailable);
+                            }
+                        }
                         break;
                     }
                 case Instruction.EXTCODEHASH:
                     {
-                        result = vmState.Env.Witness.AccessAndChargeForCodeHash(address, ref gasAvailable);
+                        var gasCodeHash = vmState.Env.Witness.AccessForCodeHash(address);
+                        if (gasCodeHash > 0)
+                        {
+                            witnessGasCharged = true;
+                            result = UpdateGas(gasCodeHash, ref gasAvailable);
+                        }
                         break;
                     }
                 case Instruction.SELFDESTRUCT:
-                    result = vmState.Env.Witness.AccessAndChargeForBalance(address, ref gasAvailable);
+                    var gasSelfDestruct = vmState.Env.Witness.AccessForBalance(address);
+                    if (gasSelfDestruct > 0)
+                    {
+                        witnessGasCharged = true;
+                        result = UpdateGas(gasSelfDestruct, ref gasAvailable);
+                    }
                     break;
             }
 
@@ -649,7 +678,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (!result) return false;
         }
 
-        if (spec.UseHotAndColdStorage)
+        if (!witnessGasCharged && spec.UseHotAndColdStorage)
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
@@ -686,11 +715,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         // Console.WriteLine($"Accessing {storageCell} {storageAccessType}");
 
-        bool result = vmState.Env.Witness.AccessAndChargeForStorage(storageCell.Address, storageCell.Index,
-            storageAccessType == StorageAccessType.SSTORE, ref gasAvailable);
+        long storageWitnessGas = vmState.Env.Witness.AccessForStorage(storageCell.Address, storageCell.Index,
+            storageAccessType == StorageAccessType.SSTORE);
+        if (!UpdateGas(storageWitnessGas, ref gasAvailable)) return false;
 
-        if (!result) return false;
-
+        bool result = true;
         if (spec.UseHotAndColdStorage)
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
@@ -796,7 +825,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 // TODO: have to cross check what is the use case of this here
                 if (vmState.ExecutionType == ExecutionType.TRANSACTION && env.TransferValue.IsZero)
                 {
-                    if (!env.Witness.AccessAndChargeForAbsentAccount(env.ExecutingAccount, ref gasAvailable)) goto OutOfGas;
+                    var absentAccountGas = env.Witness.AccessForAbsentAccount(env.ExecutingAccount);
+                    if (!UpdateGas(absentAccountGas, ref gasAvailable)) goto OutOfGas;
                 }
                 _state.CreateAccount(env.ExecutingAccount, env.TransferValue);
             }
@@ -895,8 +925,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (!vmState.IsContractDeployment)
             {
-                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To, programCounter, false,
-                        ref gasAvailable)) goto OutOfGas;
+                long codeChunkGas = env.Witness.AccessForCodeProgramCounter(vmState.To, programCounter, false);
+                if (!UpdateGas(codeChunkGas, ref gasAvailable)) goto OutOfGas;
             }
 
             var instruction = (Instruction)code[programCounter];
@@ -1599,10 +1629,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Hash256? GetBlockHashFromState(ulong blockNumber)
                         {
                             StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockNumber);
-                            // TODO: find a better way to access without charging
-                            long fakeGas = 1000000;
-                            vmState.Env.Witness.AccessAndChargeForStorage(blockHashStoreCell.Address, blockHashStoreCell.Index,
-                                false, ref fakeGas);
+                            vmState.Env.Witness.AccessForStorage(blockHashStoreCell.Address,
+                                blockHashStoreCell.Index,
+                                false);
                             ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
                             if (data.Length < 32) return null;
                             return new Hash256(data);
@@ -1862,13 +1891,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         else
                         {
                             stack.PushByte(code[programCounterInt]);
+
                             // just a optimization - because if it is not the first element of the chunk
                             // it means that that it was already included as witness due to code execution
-
                             if (!vmState.IsContractDeployment && programCounterInt % 31 == 0)
                             {
-                                if (!env.Witness.AccessAndChargeForCodeProgramCounter(vmState.To, programCounterInt + 1,
-                                        false, ref gasAvailable)) goto OutOfGas;
+                                var pushChunkGas = env.Witness.AccessForCodeProgramCounter(vmState.To,
+                                    programCounterInt + 1,
+                                    false);
+                                if (!UpdateGas(pushChunkGas, ref gasAvailable)) goto OutOfGas;
                             }
                         }
 
@@ -2655,7 +2686,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
-        if (!env.Witness.AccessAndChargeForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+        var contractCreationInitCost =
+            env.Witness.AccessForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero);
+        if (!UpdateGas(contractCreationInitCost, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2694,7 +2727,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
 
-        if (!env.Witness.AccessAndChargeForContractCreated(contractAddress, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+        long contractCreationCompleteGas = env.Witness.AccessForContractCreated(contractAddress);
+        if (!UpdateGas(contractCreationCompleteGas, ref callGas)) return (EvmExceptionType.OutOfGas, null);
 
         ExecutionEnvironment callEnv = new
         (

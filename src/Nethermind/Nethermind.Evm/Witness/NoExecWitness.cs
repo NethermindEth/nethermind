@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
@@ -7,60 +7,36 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
 
-public class NoExecWitness : IWitness
+public class NoExecWitness: IExecutionWitness
 {
-    public bool AccessAndChargeForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long unspentGas) => true;
+    public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer) => 0;
 
-    public bool AccessAndChargeForContractCreated(Address contractAddress, ref long unspentGas) => true;
+    public long AccessForContractCreated(Address contractAddress)=> 0;
 
-    public bool AccessAndChargeForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer,
+    public long AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer) => 0;
+
+    public long AccessForGasBeneficiary(Address gasBeneficiary) => 0;
+
+    public long AccessForCodeOpCodes(Address caller) => 0;
+
+    public long AccessForBalance(Address address, bool isWrite = false) => 0;
+
+    public long AccessForCodeHash(Address address) => 0;
+
+    public long AccessForStorage(Address address, UInt256 key, bool isWrite) => 0;
+
+    public long AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite) => 0;
+
+    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite,
         ref long unspentGas) => true;
 
-    public bool AccessAndChargeForGasBeneficiary(Address gasBeneficiary, ref long unspentGas) => true;
-    public bool AccessAndChargeForSelfDestruct(Address address, Address inheritor, ref long unspentGas, bool balanceIsZero)
-    {
-        return true;
-    }
+    public long AccessCodeChunk(Address address, byte chunkId, bool isWrite) => 0;
 
-    public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer)
-    {
-        return true;
-    }
+    public long AccessForAbsentAccount(Address address) => 0;
 
-    public bool AccessAndChargeForCodeOpCodes(Address caller, ref long unspentGas)
-    {
-        return true;
-    }
+    public long AccessCompleteAccount(Address address, bool isWrite = false) => 0;
 
-    public bool AccessAndChargeForBalance(Address address, ref long unspentGas, bool isWrite = false)
-    {
-        return true;
-    }
-
-    public bool AccessAndChargeForCodeHash(Address address, ref long unspentGas)
-    {
-        return true;
-    }
-
-    public bool AccessAndChargeForStorage(Address address, UInt256 key, bool isWrite, ref long unspentGas)
-    {
-        return true;
-    }
-
-    public bool AccessAndChargeForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long unspentGas)
-    {
-        return true;
-    }
-
-    public bool AccessAndChargeForAbsentAccount(Address address, ref long unspentGas)
-    {
-        return true;
-    }
-
-    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long unspentGas)
-    {
-        return true;
-    }
+    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero) => 0;
 
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
 }

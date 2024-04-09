@@ -3,6 +3,7 @@
 
 using System.Threading;
 using Nethermind.Core;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -43,7 +44,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportAccessWitness(VerkleWitness witness)
+        public void ReportAccessWitness(IExecutionWitness witness)
         {
             _token.ThrowIfCancellationRequested();
             if (_innerTracer.IsTracingRewards)

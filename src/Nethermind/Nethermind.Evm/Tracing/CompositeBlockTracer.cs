@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -41,7 +42,7 @@ namespace Nethermind.Evm.Tracing
             }
         }
 
-        public void ReportAccessWitness(VerkleWitness witness)
+        public void ReportAccessWitness(IExecutionWitness witness)
         {
             for (int index = 0; index < _childTracers.Count; index++)
             {

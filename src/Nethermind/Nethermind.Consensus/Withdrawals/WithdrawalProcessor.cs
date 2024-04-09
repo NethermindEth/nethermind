@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Witness;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Verkle.Tree.Utils;
@@ -31,15 +32,17 @@ public class WithdrawalProcessor : IWithdrawalProcessor
 
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
-        VerkleWitness? witness = null;
-        if (blockTracer.IsTracingAccessWitness) witness = new VerkleWitness();
+        IExecutionWitness witness = blockTracer.IsTracingAccessWitness
+            ? new VerkleExecWitness(NullLogManager.Instance)
+            : new NoExecWitness();
+
         if (block.Withdrawals is not null)
         {
             foreach (Withdrawal? withdrawal in block.Withdrawals)
             {
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
-                witness?.AccessCompleteAccount(withdrawal.Address);
+                witness.AccessCompleteAccount(withdrawal.Address);
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
                 if (_stateProvider.AccountExists(withdrawal.Address))
                 {

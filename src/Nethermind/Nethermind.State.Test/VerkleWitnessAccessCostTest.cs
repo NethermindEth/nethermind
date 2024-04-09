@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Witness;
+using Nethermind.Logging;
 using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Utils;
 using NUnit.Framework;
@@ -15,7 +18,7 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForTransaction()
     {
-        var calculator = new VerkleWitness();
+        var calculator = new VerkleExecWitness(NullLogManager.Instance);
         long gas = calculator.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, false);
         Console.WriteLine(gas);
     }
@@ -23,7 +26,7 @@ public class VerkleWitnessAccessCostTest
     [Test]
     public void TestAccessForTransactionWithValue()
     {
-        VerkleWitness calculator = new();
+        VerkleExecWitness calculator = new(NUnitLogManager.Instance);
         long gas = calculator.AccessForTransaction(TestItem.AddressA, TestItem.AddressB, true);
         Console.WriteLine(gas);
     }
