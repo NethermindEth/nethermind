@@ -42,6 +42,7 @@ class ShutterCryptoTests
 
     [Test]
     [TestCase("f869820243849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0510c063afbe5b8b8875b680e96a1778c99c765cc0df263f10f8d9707cfa0f114a02590b2ce6dbce6532da17c52a2a7f2eb6155f23404128fca5fb72dc852ce64c6")]
+    [TestCase("0825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a02356f869820246849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a02356b138904ed89a72a1fa913aa651c3b4144a5b47aa0cbf6a6cf9956d896bc0a0825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a023560825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0235607e1364d24a98ac1cdb3f0af8c5c0cf164528df11dd766aa368d4136651ceb55e")]
     public void Can_encrypt_then_decrypt(string msgHex)
     {
         byte[] msg = Convert.FromHexString(msgHex);
@@ -63,7 +64,7 @@ class ShutterCryptoTests
 
     [Test]
     [TestCase(
-        "f869820243849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a0510c063afbe5b8b8875b680e96a1778c99c765cc0df263f10f8d9707cfa0f114a02590b2ce6dbce6532da17c52a2a7f2eb6155f23404128fca5fb72dc852ce64c6",
+        "f869820246849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd4a02356b138904ed89a72a1fa913aa651c3b4144a5b47aa0cbf6a6cf9956d896bc0a07e1364d24a98ac1cdb3f0af8c5c0cf164528df11dd766aa368d4136651ceb55e",
         "3834a349678eF446baE07e2AefFC01054184af00",
         "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834",
         "B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579",
@@ -73,7 +74,7 @@ class ShutterCryptoTests
     {
         byte[] rawTx = Convert.FromHexString(rawTxHex);
 
-        Transaction transaction = Rlp.Decode<Transaction>(new Rlp(rawTx), RlpBehaviors.AllowUnsigned);
+        Transaction transaction = Rlp.Decode<Transaction>(new Rlp(rawTx));
         transaction.SenderAddress = new EthereumEcdsa(BlockchainIds.Chiado, new NUnitLogManager()).RecoverAddress(transaction, true);
         TestContext.WriteLine(transaction.ToShortString());
 
@@ -137,9 +138,11 @@ class ShutterCryptoTests
         Span<byte> padded = stackalloc byte[bytes.Length + n];
         padded.Fill((byte)n);
         bytes.CopyTo(padded);
-        for (int i = 0; i < (bytes.Length + n) / 32; i++)
+
+        for (int i = 0; i < padded.Length / 32; i++)
         {
-            res.Add(new(padded[(i * 32)..((i + 1) * 32)]));
+            int offset = i * 32;
+            res.Add(new(padded[offset..(offset + 32)]));
         }
         return res;
     }
