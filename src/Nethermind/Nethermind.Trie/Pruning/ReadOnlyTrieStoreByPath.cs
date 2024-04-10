@@ -88,10 +88,6 @@ namespace Nethermind.Trie.Pruning
 
         public void StopPrefetch() { }
 
-        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
-
-        public void StopPrefetch() { }
-
         public byte[]? this[ReadOnlySpan<byte> key] => _trieStore[key];
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags) => _trieStore.Get(key, flags);

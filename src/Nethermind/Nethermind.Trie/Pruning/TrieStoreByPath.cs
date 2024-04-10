@@ -46,8 +46,6 @@ namespace Nethermind.Trie.Pruning
         private long _rlpReadLvl2;
         private long _rlpCacheReads;
 
-        private readonly PathPrefetcher? _prefetcher;
-
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
             IByPathPersistenceStrategy? persistenceStrategy,
