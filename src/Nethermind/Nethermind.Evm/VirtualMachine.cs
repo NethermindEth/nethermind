@@ -2565,10 +2565,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
 
         Address executingAccount = vmState.Env.ExecutingAccount;
-        UInt256 result = _state.GetBalance(executingAccount);
+        UInt256 contractBalance = _state.GetBalance(executingAccount);
 
         // get the verkle witness cost and charge the account access gas if the verkle cost is zero
-        var selfDestructGas = vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, result.IsZero);
+        var selfDestructGas = vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero);
         if (selfDestructGas == 0)
         {
             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false,
@@ -2585,8 +2585,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.DestroyList.Add(executingAccount);
 
-        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
-        if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
+        if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, contractBalance, inheritor);
+        if (spec.ClearEmptyAccountWhenTouched && !contractBalance.IsZero && _state.IsDeadAccount(inheritor))
         {
             if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
         }
@@ -2599,17 +2599,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!inheritorAccountExists)
         {
-            _state.CreateAccount(inheritor, result);
+            _state.CreateAccount(inheritor, contractBalance);
         }
         else if (!inheritor.Equals(executingAccount))
         {
-            _state.AddToBalance(inheritor, result, spec);
+            _state.AddToBalance(inheritor, contractBalance, spec);
         }
 
         if (spec.SelfdestructOnlyOnSameTransaction && !createInSameTx && inheritor.Equals(executingAccount))
             return EvmExceptionType.None; // don't burn eth when contract is not destroyed per EIP clarification
 
-        _state.SubtractFromBalance(executingAccount, result, spec);
+        _state.SubtractFromBalance(executingAccount, contractBalance, spec);
         return EvmExceptionType.None;
     }
 
