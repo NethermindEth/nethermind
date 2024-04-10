@@ -30,6 +30,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Consensus.AuRa.Depositss;
 
 namespace Nethermind.AuRa.Test.Transactions;
 
@@ -297,6 +298,7 @@ public class TxPermissionFilterTest
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                NullDepositsProcessor.Instance,
                 null,
                 PermissionBasedTxFilter);
         }

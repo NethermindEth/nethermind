@@ -78,6 +78,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                     )
                 ),
+            new Consensus.Deposits.DepositsProcessor(logManager),
             null);
     }
 
