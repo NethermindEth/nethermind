@@ -111,15 +111,11 @@ namespace Nethermind.TxPool
 
         private bool StartBroadcast(Transaction tx)
         {
-            if (tx is null) return false;
-
-            bool txInserted = _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx);
-
-            if (!txInserted) return false;
-
             // broadcast local tx only if MaxFeePerGas is not lower than configurable percent of current base fee
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
-            if (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
+            if (tx is not null
+                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx)
+                && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree()))
             {
                 NotifyPeersAboutLocalTx(tx);
                 return true;
