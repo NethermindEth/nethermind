@@ -429,9 +429,16 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
-        bool IsEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
+        bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
+        
+        if (isEip6110Enabled)
+        {
+            genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
+        }
 
-        if (IsEip7002Enabled)
+        bool isEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
+
+        if (isEip7002Enabled)
         {
             genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
         }
@@ -440,10 +447,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         genesisHeader.AuRaSignature = auRaSignature;
 
         if (withdrawalsEnabled)
-        {
-            if(IsEip7002Enabled) chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>(), Array.Empty<Deposit>(), Array.Empty<ValidatorExit>());
-            else chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        }
+            chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>(), isEip6110Enabled ? Array.Empty<Deposit>() : null, isEip7002Enabled ? Array.Empty<ValidatorExit>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);

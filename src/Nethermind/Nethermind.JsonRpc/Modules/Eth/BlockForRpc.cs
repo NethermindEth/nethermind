@@ -86,6 +86,8 @@ public class BlockForRpc
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
         ValidatorExits = block.ValidatorExits;
         ValidatorExitsRoot = block.Header.ValidatorExitsRoot;
+        Deposits = block.Deposits;
+        DepositsRoot = block.Header.DepositsRoot;
     }
 
     public Address Author { get; set; }
@@ -149,4 +151,9 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ValidatorExitsRoot { get; set; }
+    public IEnumerable<Deposit>? Deposits { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? DepositsRoot { get; set; }
+
 }
