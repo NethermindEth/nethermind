@@ -13,7 +13,7 @@ namespace Nethermind.Trie.Pruning
 
         public static readonly NullTrieNodeResolver Instance = new();
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
             throw new NotImplementedException();
         }

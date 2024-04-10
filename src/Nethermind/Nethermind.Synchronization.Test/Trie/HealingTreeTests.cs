@@ -197,6 +197,6 @@ public class HealingTreeTests
 
         public void PersistNodeData(Span<byte> fullPath, int pathToNodeLength, byte[]? rlpData, IWriteBatch? batch = null, WriteFlags writeFlags = WriteFlags.None) { }
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) { return null; }
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None) { return null; }
     }
 }

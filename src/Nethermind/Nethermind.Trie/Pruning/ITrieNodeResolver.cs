@@ -35,7 +35,7 @@ namespace Nethermind.Trie.Pruning
         /// <returns></returns>
         byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None);
         byte[]? LoadRlp(Span<byte> nodePath, Hash256 rootHash = null);
-        byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore);
+        byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None);
 
         TrieNodeResolverCapability Capability { get; }
 

@@ -66,7 +66,7 @@ public class TrieNodeResolverWithReadFlags : ITrieNodeResolver
         return _baseResolver.LoadRlp(nodePath, rootHash);
     }
 
-    public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+    public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
     {
         return _baseResolver.TryLoadRlp(path, keyValueStore);
     }

@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -35,6 +35,11 @@ namespace Nethermind.Trie.Pruning
         private readonly bool _useCommittedCache = false;
 
         private readonly TrieKeyValueStore _publicStore;
+        private readonly SpanLruCache<byte, byte[]>? _readLruCache;
+        private long _allLoadRlpCalls;
+        private long _rlpReadLvl1;
+        private long _rlpReadLvl2;
+        private long _rlpCacheReads;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -49,6 +54,11 @@ namespace Nethermind.Trie.Pruning
             _pathStateDb = stateDb as IByPathStateDb;
             _currentWriteBatches = new ConcurrentDictionary<StateColumns, IWriteBatch?>();
             _publicStore = new TrieKeyValueStore(this);
+            if (_useCommittedCache)
+            {
+                _readLruCache =
+                    new SpanLruCache<byte, byte[]>(640000, 1000, "TrieStore LRU Cache", Bytes.SpanNibbleEqualityComparer);
+            }
         }
 
         public TrieStoreByPath(IColumnsDb<StateColumns> stateDb, ILogManager? logManager) : this(stateDb, ByPathPersist.EveryBlock, logManager)
@@ -132,6 +142,9 @@ namespace Nethermind.Trie.Pruning
                 if (_useCommittedCache)
                 {
                     _committedNodes.AddNodeData(blockNumber, node);
+                    _readLruCache?.Delete(node.FullPath);
+                    if (node.IsLeaf)
+                        _readLruCache?.Delete(node.PathToNode);
                 }
                 else
                 {
@@ -179,6 +192,7 @@ namespace Nethermind.Trie.Pruning
                             {
                                 Persist(persist.Value.blockNumber, persist.Value.stateRoot);
                                 AnnounceReorgBoundaries();
+                                _readLruCache?.Clear();
                             }
                             else
                             {
@@ -193,6 +207,7 @@ namespace Nethermind.Trie.Pruning
 
                                     Persist(commitSet.BlockNumber, commitSet.Root?.Keccak);
                                     AnnounceReorgBoundaries();
+                                    _readLruCache?.Clear();
                                 }
                             }
                         }
@@ -210,17 +225,44 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
+            Interlocked.Increment(ref _allLoadRlpCalls);
+            if (_allLoadRlpCalls % 10000 == 0)
+            {
+                _logger.Info($"Cached reads {_rlpCacheReads} | all calls {_allLoadRlpCalls} | all reads {_rlpReadLvl1} | all reads long {_rlpReadLvl2} | long reads ratio {(float)_rlpReadLvl2 / _rlpReadLvl1 * 100:00.00} | ratio {(float)_rlpCacheReads / _allLoadRlpCalls * 100:00.00} | size {(float)(_readLruCache?.MemorySize ?? 0)/ 1.MiB():##.00}");
+            }
+
+            if ((flags & ReadFlags.HintCacheMiss) != ReadFlags.HintCacheMiss)
+            {
+                if (_readLruCache?.TryGet(path, out byte[] cachedRlp) == true)
+                {
+                    Interlocked.Increment(ref _rlpCacheReads);
+                    return cachedRlp;
+                }
+            }
             StateColumns column = GetProperColumn(path.Length);
             keyValueStore ??= _stateDb.GetColumnDb(column);
-
             byte[] keyPath = Nibbles.NibblesToByteStorage(path);
+
+            Interlocked.Increment(ref _rlpReadLvl1);
+            if (_logger.IsDebug) _logger.Debug($"Loading RLP for {path.ToHexString()}");
             byte[]? rlp = keyValueStore.Get(keyPath);
             if (rlp is null || rlp[0] != PathMarker)
+            {
+                _readLruCache?.Set(path, rlp);
                 return rlp;
+            }
 
-            return keyValueStore.Get(rlp.AsSpan()[1..]);
+            Interlocked.Increment(ref _rlpReadLvl2);
+            rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
+            if (rlp is not null)
+            {
+                //Span<byte> fullPath = Nibbles.BytesToNibblesStorage(rlp.AsSpan()[1..]);
+                //_readLruCache?.Set(fullPath, rlp);
+                _readLruCache?.Set(path, rlp);
+            }
+            return rlp;
         }
 
         internal byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
@@ -258,7 +300,7 @@ namespace Nethermind.Trie.Pruning
 
         public bool IsPersisted(Hash256 keccak, byte[] childPath)
         {
-            byte[]? rlp = TryLoadRlp(childPath, null);
+            byte[]? rlp = TryLoadRlp(childPath, null, ReadFlags.HintCacheMiss);
             if (rlp is null)
                 return keccak == Keccak.EmptyTreeHash;
 
@@ -650,18 +692,6 @@ namespace Nethermind.Trie.Pruning
 
         #endregion
 
-        public bool ExistsInDB(Hash256 hash, byte[] pathNibbles)
-        {
-            byte[]? rlp = TryLoadRlp(pathNibbles.AsSpan(), GetProperColumnDb(pathNibbles.Length));
-            if (rlp is not null)
-            {
-                TrieNode node = new(NodeType.Unknown, rlp);
-                node.ResolveNode(this);
-                node.ResolveKey(this, false);
-                return node.Keccak == hash;
-            }
-            return false;
-        }
         public byte[]? this[ReadOnlySpan<byte> key]
         {
             get => Get(key);

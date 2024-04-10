@@ -42,7 +42,7 @@ namespace Nethermind.Trie.Pruning
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(Hash256 hash, byte[] nodePathNibbles) => _trieStore.IsPersisted(hash, nodePathNibbles);
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
             throw new NotImplementedException();
         }

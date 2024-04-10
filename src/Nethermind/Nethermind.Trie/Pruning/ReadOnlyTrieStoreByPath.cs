@@ -37,7 +37,7 @@ namespace Nethermind.Trie.Pruning
 
         public byte[] LoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => _trieStore.LoadRlp(hash, _readOnlyStore, flags);
         public byte[]? TryLoadRlp(Hash256 hash, ReadFlags flags = ReadFlags.None) => _trieStore.TryLoadRlp(hash, flags);
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore) => _trieStore.TryLoadRlp(path, keyValueStore);
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None) => _trieStore.TryLoadRlp(path, keyValueStore);
 
         public bool IsPersisted(Hash256 keccak) => _trieStore.IsPersisted(keccak);
         public bool IsPersisted(in ValueHash256 keccak) => _trieStore.IsPersisted(keccak);

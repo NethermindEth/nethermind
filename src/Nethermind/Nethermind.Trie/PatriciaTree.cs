@@ -688,7 +688,7 @@ namespace Nethermind.Trie
             if (startRootHash is not null)
             {
                 if (_logger.IsTrace) TraceStart(startRootHash, in traverseContext);
-                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash);
+                TrieNode startNode = TrieStore.FindCachedOrUnknown(startRootHash, Array.Empty<byte>(), StoreNibblePathPrefix);
                 ResolveNode(startNode, in traverseContext);
                 return ref TraverseNode(startNode, in traverseContext, in diagData);
             }

@@ -22,7 +22,7 @@ namespace Nethermind.Trie.Pruning
 
         public IReadOnlyTrieStore AsReadOnly(IKeyValueStore? keyValueStore = null) => this;
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
             return Array.Empty<byte>();
         }
@@ -75,6 +75,15 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool ShouldResetObjectsOnRootChange() => false;
+        public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot)
+        {
+            throw new NotImplementedException();
+        }
+
+        public void StopPrefetch(StateColumns column)
+        {
+            throw new NotImplementedException();
+        }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
