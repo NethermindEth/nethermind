@@ -27,4 +27,9 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
     {
         return (ulong)Call(blockHeader, getNumKeyperSets, Address.Zero, [])[0];
     }
+
+    public (Address, ulong) GetKeyperSetIndexBySlot(BlockHeader blockHeader, in ulong index)
+    {
+        return ((Address, ulong))Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
+    }
 }

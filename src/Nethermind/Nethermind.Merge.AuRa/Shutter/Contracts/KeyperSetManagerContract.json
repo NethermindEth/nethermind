@@ -41,5 +41,29 @@
     ],
     "stateMutability": "view",
     "type": "function"
+  },
+  {
+    "inputs": [
+      {
+        "internalType": "uint64",
+        "name": "slot",
+        "type": "uint64"
+      }
+    ],
+    "name": "getKeyperSetIndexBySlot",
+    "outputs": [
+      {
+        "name": "",
+        "type": "address",
+        "internaltype": "address"
+      },
+      {
+        "name": "",
+        "type": "uint64",
+        "internaltype": "uint64"
+      }
+    ],
+    "stateMutability": "view",
+    "type": "function"
   }
 ]

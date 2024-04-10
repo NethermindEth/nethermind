@@ -35,7 +35,10 @@ public class ShutterP2P
     private readonly Address KeyBroadcastContractAddress;
     private readonly Address KeyperSetManagerContractAddress;
     private readonly ulong InstanceID;
-    private ulong _eon = 0;
+    private ulong _eon = ulong.MaxValue;
+    private Bls.P2 _eonKey = new();
+    private ulong _threshold = 0;
+    private Address[] _keyperAddresses = [];
 
     public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
@@ -124,7 +127,6 @@ public class ShutterP2P
     internal void ProcessP2PMessage(byte[] msg)
     {
         IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
-        KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
         Dto.Envelope envelope = Dto.Envelope.Parser.ParseFrom(msg);
@@ -134,20 +136,16 @@ public class ShutterP2P
             return;
         }
 
-        if (!GetEonInfo(keyBroadcastContract, keyperSetManagerContract!, out ulong eon, out Bls.P2 eonKey, out int threshold))
-        {
-            if (_logger.IsWarn) _logger.Warn("Could not get Shutter eon info...");
-            return;
-        }
+        GetEonInfo(readOnlyTransactionProcessor, keyperSetManagerContract!, decryptionKeys.Gnosis.Slot, out ulong eon, out Bls.P2 eonKey, out ulong threshold, out Address[] keyperAddresses);
 
-        if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, threshold))
+        if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, threshold, keyperAddresses))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysReceived(decryptionKeys);
         }
     }
 
-    internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, Dto.DecryptionKeys decryptionKeys, ulong eon, Bls.P2 eonKey, int threshold)
+    internal bool CheckDecryptionKeys(IKeyperSetManagerContract keyperSetManagerContract, in Dto.DecryptionKeys decryptionKeys, ulong eon, in Bls.P2 eonKey, ulong threshold, in Address[] keyperAddresses)
     {
         if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer}");
 
@@ -186,7 +184,7 @@ public class ShutterP2P
             return false;
         }
 
-        if (signerIndicesCount != threshold)
+        if (signerIndicesCount != (int)threshold)
         {
             if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: signer indices did not match threshold.");
             return false;
@@ -196,7 +194,7 @@ public class ShutterP2P
 
         // foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
         // {
-        //     Address keyperAddress = keyperSetManagerContract.GetKeyperSetAddress(_readOnlyBlockTree.Head!.Header, signerIndex).Item1;
+        //     Address keyperAddress = keyperAddresses[signerIndex];
         //     if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
         //     {
         //         return false;
@@ -214,30 +212,44 @@ public class ShutterP2P
         }
     }
 
-    internal bool GetEonInfo(IKeyBroadcastContract keyBroadcastContract, IKeyperSetManagerContract keyperSetManagerContract, out ulong eon, out Bls.P2 eonKey, out int threshold)
+    internal void GetEonInfo(IReadOnlyTransactionProcessor readOnlyTransactionProcessor, IKeyperSetManagerContract keyperSetManagerContract, ulong slot, out ulong eon, out Bls.P2 eonKey, out ulong threshold, out Address[] keyperAddresses)
     {
-        eon = keyperSetManagerContract.GetNumKeyperSets(_readOnlyBlockTree.Head!.Header) - 1;
-        // todo: fetch from keyper set contract
-        threshold = 0;
-        byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
+        BlockHeader header = _readOnlyBlockTree.Head!.Header;
+        (Address keyperSetManagerContractAddress, eon) = keyperSetManagerContract.GetKeyperSetIndexBySlot(header, slot);
 
-        // todo: remove once shutter fixes
-        if (!eonKeyBytes.Any())
+        if (_eon == eon)
         {
-            // eonKeyBytes = Convert.FromHexString("2fdfb787563ac3aa9be365a581eae6684334cbb9ce11e95c486ea31820e0469a07a5e6e49caddee2b1891900848e7ed03749aac68d4d31d4f98f4a537b9050621a791a11c6c154ae972659a5a4ed7c55d2bf8772f1a4c05542436df59d0a2edc05ea7e70b72f27b4eb8a4fb5ed675cb35d67934a1ed75043ed3802ac6a8ed68c");
-            eonKeyBytes = Convert.FromHexString("B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579");
+            eonKey = _eonKey;
+            threshold = _threshold;
+            keyperAddresses = _keyperAddresses;
         }
-
-        // todo: use key bytes when Shutter swaps to BLS
-        // eonKey = new(eonKeyBytes);
-        eonKey = new();
-
-        if (_logger.IsInfo && _eon != eon)
+        else
         {
-            _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)}");
+            KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetManagerContractAddress);
+
+            if (!keyperSetContract.IsFinalized(header))
+            {
+                throw new Exception("Cannot use unfinalized keyper set contract.");
+            }
+            threshold = keyperSetContract.GetThreshold(header);
+            keyperAddresses = keyperSetContract.GetMembers(header);
+
+            KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
+            byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
+            // todo: remove once shutter fixes
+            if (!eonKeyBytes.Any())
+            {
+                // eonKeyBytes = Convert.FromHexString("2fdfb787563ac3aa9be365a581eae6684334cbb9ce11e95c486ea31820e0469a07a5e6e49caddee2b1891900848e7ed03749aac68d4d31d4f98f4a537b9050621a791a11c6c154ae972659a5a4ed7c55d2bf8772f1a4c05542436df59d0a2edc05ea7e70b72f27b4eb8a4fb5ed675cb35d67934a1ed75043ed3802ac6a8ed68c");
+                eonKeyBytes = Convert.FromHexString("B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579");
+            }
+            eonKey = new(eonKeyBytes);
+
+            if (_logger.IsInfo) _logger.Info($"Shutter eon: {eon} key: {Convert.ToHexString(eonKeyBytes)} threshold: {threshold} #keyperAddresses: {keyperAddresses.Length}");
+
             _eon = eon;
+            _eonKey = eonKey;
+            _threshold = threshold;
+            _keyperAddresses = keyperAddresses;
         }
-
-        return true;
     }
 }

@@ -8,7 +8,7 @@ namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 public interface IKeyperSetManagerContract
 {
     /// <summary>
-    /// Gets the keyper address from its index.
+    /// Gets the keyper set contract address from index (eon).
     /// </summary>
     /// <param name="eon"></param>
     (Address, ulong) GetKeyperSetAddress(BlockHeader blockHeader, in ulong index);
@@ -17,4 +17,11 @@ public interface IKeyperSetManagerContract
     /// Gets the current eon.
     /// </summary>
     ulong GetNumKeyperSets(BlockHeader blockHeader);
+
+
+    /// <summary>
+    /// Gets the keyper set contract address from slot.
+    /// </summary>
+    /// <param name="eon"></param>
+    (Address, ulong) GetKeyperSetIndexBySlot(BlockHeader blockHeader, in ulong slot);
 }
