@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 
 namespace Nethermind.Consensus.Messages;
 public static class BlockErrorMessages
@@ -118,4 +119,7 @@ public static class BlockErrorMessages
         "NegativeGasUsed: Cannot be negative.";
     public static string InvalidDepositsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
        $"InvalidDepositsRoot: expected {expected}, got {actual}";
+
+    public static string InvalidValidatorExitsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
+        $"InvalidValidatorExitsRoot: expected {expected}, got {actual}";
 }

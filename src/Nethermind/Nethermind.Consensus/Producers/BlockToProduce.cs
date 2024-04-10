@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Blockchain.ValidatorExit;
 
 //TODO: Redo clique block producer
 [assembly: InternalsVisibleTo("Nethermind.Consensus.Clique")]
@@ -34,8 +35,9 @@ namespace Nethermind.Consensus.Producers
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
             IEnumerable<Withdrawal>? withdrawals = null,
-            IEnumerable<Deposit>? deposits = null)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals, deposits)
+            IEnumerable<Deposit>? deposits = null,
+            IEnumerable<ValidatorExit>? validatorExits = null)
+            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals, deposits, validatorExits)
         {
             Transactions = transactions;
         }

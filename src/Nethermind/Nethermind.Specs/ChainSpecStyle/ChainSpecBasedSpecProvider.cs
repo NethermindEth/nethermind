@@ -255,6 +255,9 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip6110Enabled = (chainSpec.Parameters.Eip6110TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip6110ContractAddress = chainSpec.Parameters.Eip6110ContractAddress;
 
+            releaseSpec.IsEip7002Enabled = (chainSpec.Parameters.Eip7002TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip7002ContractAddress = chainSpec.Parameters.Eip7002ContractAddress;
+
             return releaseSpec;
         }
 

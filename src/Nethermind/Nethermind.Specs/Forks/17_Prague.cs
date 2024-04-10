@@ -15,6 +15,7 @@ public class Prague : Cancun
     {
         Name = "Prague";
         IsEip6110Enabled = true;
+        IsEip7002Enabled = true;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());

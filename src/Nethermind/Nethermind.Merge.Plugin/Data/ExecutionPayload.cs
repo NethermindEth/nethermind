@@ -218,7 +218,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        if (spec.IsEip6110Enabled)
+        if (spec.IsEip6110Enabled || spec.IsEip7002Enabled)
         {
             error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;
@@ -240,7 +240,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     {
         return this switch
         {
-            { Deposits: not null } => 4,
+            { Deposits: not null, ValidatorExits: not null } => 4,
             { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
             { Withdrawals: not null } => 2,
             _ => 1

@@ -15,6 +15,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
+using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -154,6 +155,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
             Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
             Eip6110ContractAddress = chainSpecJson.Params.Eip6110ContractAddress,
+            Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
+            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -426,13 +429,25 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
+        bool IsEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
+
+        if (IsEip7002Enabled)
+        {
+            genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
+        }
+
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
         if (withdrawalsEnabled)
-            chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>(), Array.Empty<Deposit>());
+        {
+            if(IsEip7002Enabled) chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>(), Array.Empty<Deposit>(), Array.Empty<ValidatorExit>());
+            else chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
+        }
         else
+        {
             chainSpec.Genesis = new Block(genesisHeader);
+        }
     }
 
     private static void LoadAllocations(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

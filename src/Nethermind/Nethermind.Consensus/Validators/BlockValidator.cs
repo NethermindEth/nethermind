@@ -150,6 +150,9 @@ public class BlockValidator : IBlockValidator
         if (!ValidateDeposits(block, spec, out _))
             return false;
 
+        if (!ValidateValidatorExits(block, spec, out _))
+            return false;
+
         return true;
     }
 
@@ -350,6 +353,46 @@ public class BlockValidator : IBlockValidator
         return true;
     }
 
+    public bool ValidateValidatorExits(Block block, out string error) =>
+        ValidateValidatorExits(block, _specProvider.GetSpec(block.Header), out error);
+
+    
+    private bool ValidateValidatorExits(Block block, IReleaseSpec spec, out string error)
+    {
+        if(spec.IsEip7002Enabled && block.ValidatorExits is null)
+        {
+            error = $"ValidatorExits cannot be null in block {block.Hash} when EIP-7002 activated.";
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if (!spec.IsEip7002Enabled && block.ValidatorExits is not null)
+        {
+            error = $"ValidatorExits must be null in block {block.Hash} when EIP-7002 not activated.";
+
+            if (_logger.IsWarn) _logger.Warn(error);
+
+            return false;
+        }
+
+        if(block.ValidatorExits is not null)
+        {
+            if (!ValidateValidatorExitsHashMatches(block, out Hash256 validatorExitsRoot))
+            {
+                error = $"ValidatorExits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.ValidatorExitsRoot}, got {validatorExitsRoot}";
+                if (_logger.IsWarn) _logger.Warn($"ValidatorExits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.ValidatorExitsRoot}, got {validatorExitsRoot}");
+
+                return false;
+            }
+        }
+
+        error = null;
+
+        return true;
+    }
+
     private bool ValidateTransactions(Block block, IReleaseSpec spec, out string errorMessage)
     {
         Transaction[] transactions = block.Transactions;
@@ -487,6 +530,22 @@ public class BlockValidator : IBlockValidator
         depositsRoot = new DepositTrie(body.Deposits).RootHash;
 
         return header.DepositsRoot == depositsRoot;
+    }
+
+    private static bool ValidateValidatorExitsHashMatches(Block block, out Hash256? validatorExitsRoot)
+    {
+        return ValidateValidatorExitsHashMatches(block.Header, block.Body, out validatorExitsRoot);
+    }
+
+    public static bool ValidateValidatorExitsHashMatches(BlockHeader header, BlockBody body, out Hash256? validatorExitsRoot)
+    {
+        validatorExitsRoot = null;
+        if (body.ValidatorExits == null)
+            return header.ValidatorExitsRoot == null;
+
+        validatorExitsRoot = ValidatorExitsTrie.CalculateRoot(body.ValidatorExits);
+
+        return header.ValidatorExitsRoot == validatorExitsRoot;
     }
 
     private static string Invalid(Block block) =>

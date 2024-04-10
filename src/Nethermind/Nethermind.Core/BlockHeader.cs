@@ -79,7 +79,8 @@ public class BlockHeader
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
-                           || (DepositsRoot is not null && DepositsRoot != Keccak.EmptyTreeHash);
+                           || (DepositsRoot is not null && DepositsRoot != Keccak.EmptyTreeHash)
+                           || (ValidatorExitsRoot is not null && ValidatorExitsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
@@ -123,6 +124,10 @@ public class BlockHeader
         if (DepositsRoot is not null)
         {
             builder.AppendLine($"{indent}DepositsRoot: {DepositsRoot}");
+        }
+        if (ValidatorExitsRoot is not null)
+        {
+            builder.AppendLine($"{indent}ValidatorExitsRoot: {ValidatorExitsRoot}");
         }
         return builder.ToString();
     }
