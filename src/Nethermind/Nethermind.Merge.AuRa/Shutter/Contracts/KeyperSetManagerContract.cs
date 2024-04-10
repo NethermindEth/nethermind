@@ -10,8 +10,9 @@ namespace Nethermind.Merge.AuRa.Shutter.Contracts;
 
 public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContract
 {
-    private const string getKeyperSetAddress = "getEonKey";
+    private const string getKeyperSetAddress = "getKeyperSetAddress";
     private const string getNumKeyperSets = "getNumKeyperSets";
+    private const string getKeyperSetIndexBySlot = "getKeyperSetIndexBySlot";
 
     public KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress)
@@ -28,8 +29,8 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
         return (ulong)Call(blockHeader, getNumKeyperSets, Address.Zero, [])[0];
     }
 
-    public (Address, ulong) GetKeyperSetIndexBySlot(BlockHeader blockHeader, in ulong index)
+    public (Address, ulong) GetKeyperSetIndexBySlot(BlockHeader blockHeader, in ulong slot)
     {
-        return ((Address, ulong))Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
+        return ((Address, ulong))Call(blockHeader, getKeyperSetIndexBySlot, Address.Zero, [slot])[0];
     }
 }

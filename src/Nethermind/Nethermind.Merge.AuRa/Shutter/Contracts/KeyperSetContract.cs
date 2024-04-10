@@ -31,6 +31,6 @@ public class KeyperSetContract : CallableContract, IKeyperSetContract
 
     public Address[] GetMembers(BlockHeader blockHeader)
     {
-        return (Address[])Call(blockHeader, getThreshold, Address.Zero, [])[0];
+        return (Address[])Call(blockHeader, getMembers, Address.Zero, [])[0];
     }
 }
