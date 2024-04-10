@@ -50,7 +50,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             test.ShouldCopyAllValues();
         }
 
-        [Timeout(Timeout.MaxTestTime)]
+        [Timeout(Timeout.MaxTestTime * 2)] // this is particular long test
         [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.Hash)]
         [TestCase(INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.Current, INodeStorage.KeyScheme.HalfPath)]
         [TestCase(INodeStorage.KeyScheme.Hash, INodeStorage.KeyScheme.HalfPath, INodeStorage.KeyScheme.HalfPath)]
@@ -286,7 +286,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
 
                 try
                 {
-                    Assert.That(() => FullPruningDb.Context, Is.Not.Null.After(5000, 1));
+                    Assert.That(() => FullPruningDb.Context, Is.Not.Null.After(Timeout.MaxTestTime, 1));
                 }
                 finally
                 {

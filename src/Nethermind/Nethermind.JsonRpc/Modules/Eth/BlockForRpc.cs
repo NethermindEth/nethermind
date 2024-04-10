@@ -83,6 +83,8 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        Deposits = block.Deposits;
+        DepositsRoot = block.Header.DepositsRoot;
     }
 
     public Address Author { get; set; }
@@ -140,4 +142,11 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IEnumerable<Deposit>? Deposits { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? DepositsRoot { get; set; }
+
 }

@@ -430,12 +430,18 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
+        bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
+        if (isEip6110Enabled)
+        {
+            genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
+        }
+
         genesisHeader.AuRaStep = step;
         genesisHeader.AuRaSignature = auRaSignature;
 
         if (withdrawalsEnabled)
             chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>());
-        if (depositsEnabled)
+        else if (depositsEnabled)
             chainSpec.Genesis = new Block(genesisHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>(), Array.Empty<Withdrawal>(), Array.Empty<Deposit>());
         else
             chainSpec.Genesis = new Block(genesisHeader);
