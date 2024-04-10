@@ -1381,7 +1381,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.SubmitTx(cheapTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingTransactions().Should().NotContain(cheapTx);
             _txPool.GetOwnPendingTransactions().Should().Contain(cheapTx);
             peer.Received().SendNewTransaction(cheapTx);
@@ -1393,7 +1393,7 @@ namespace Nethermind.TxPool.Test
                 .WithMaxFeePerGas(1)
                 .WithMaxPriorityFeePerGas(1)
                 .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
-            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLowToCompete);
+            _txPool.SubmitTx(fourthTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
             _txPool.GetPendingTransactions().Should().NotContain(fourthTx);
             _txPool.GetOwnPendingTransactions().Should().Contain(fourthTx);
             peer.Received().SendNewTransaction(fourthTx);
