@@ -13,6 +13,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
+using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -83,6 +84,8 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
+        ValidatorExits = block.ValidatorExits;
+        ValidatorExitsRoot = block.Header.ValidatorExitsRoot;
     }
 
     public Address Author { get; set; }
@@ -140,4 +143,10 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public IEnumerable<ValidatorExit>? ValidatorExits { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? ValidatorExitsRoot { get; set; }
 }
