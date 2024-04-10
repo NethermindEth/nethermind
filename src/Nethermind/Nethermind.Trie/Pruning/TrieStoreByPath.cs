@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -44,6 +45,8 @@ namespace Nethermind.Trie.Pruning
         private long _rlpReadLvl1;
         private long _rlpReadLvl2;
         private long _rlpCacheReads;
+
+        private readonly PathPrefetcher? _prefetcher;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
