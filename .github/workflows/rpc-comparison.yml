@@ -42,7 +42,7 @@ on:
       timeout:
        type: string
        description: "How long should node be kept alive"
-       default: "12"
+       default: "24"
        required: false
 
 jobs:
