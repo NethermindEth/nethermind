@@ -34,6 +34,16 @@ on:
         description: "When checked, attempts to check RPC performance (because of Linode limitations it would work on single VM). When not checked equality mode will be started."
         default: false
         required: false
+      convert_to_paprika:
+        type: boolean
+        description: "When checked, attempts to convert synced node to paprika"
+        default: false
+        required: false
+      timeout:
+       type: string
+       description: "How long should node be kept alive"
+       default: "12"
+       required: false
 
 jobs:
   verify_correctness_of_setup:
@@ -64,12 +74,13 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "${{ inputs.timeout }}",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-8' || '' }}"
+          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}",
+          "convert_to_paparika": "${{ inputs.convert_to_paprika }}"
         }
       non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
@@ -86,12 +97,13 @@ jobs:
     with:
       additional_options: >-
         {
-          "timeout": "12",
+          "timeout": "${{ inputs.timeout }}",
           "default_dockerfile": "Dockerfile",
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ inputs.is_performance_check == true && 'g7-premium-8' || '' }}"
+          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+          # "convert_to_paparika": "${{ inputs.convert_to_paprika }}" - do not convert comparision node to paprika (at least for now)
         }
       non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
@@ -159,7 +171,6 @@ jobs:
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
 
-
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
     runs-on: [vpn]
@@ -216,6 +227,56 @@ jobs:
             done
           }
 
+          check_jsonrpc_responding() {
+            rpc_url=$1
+            echo "Checking if JsonRPC is responding at $rpc_url."
+    
+            # Flag to ensure at least one failure has been logged
+            has_failed_before=false
+    
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' -m 10 "$rpc_url" || echo "curl_failed")
+        
+              if [[ "$response" == "curl_failed" ]]; then
+                echo "JsonRPC not responding at $rpc_url, node might be stopped for migration."
+                has_failed_before=true
+              else
+                if [ "$has_failed_before" = true ]; then
+                  echo "JsonRPC responded at $rpc_url, node might have restarted."
+                  break
+                else
+                  # Log the successful response but do not break; wait for a possible failure
+                  echo "JsonRPC responded at $rpc_url, but waiting for at least one failure before confirming."
+                fi
+              fi        
+              sleep 60 # Check every 60 seconds
+            done
+          }
+
+          check_chain_head() {
+            rpc_url=$1
+            etherscan_api_key='YourEtherscanApiKey'  # Replace with your actual Etherscan API key
+            etherscan_api_url="https://api.etherscan.io/api"
+
+            # Fetch current chain head from node
+            node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
+            node_head_decimal=$(echo $((16#$node_head_hex)))  # Convert from hex to decimal
+            echo "Current chain head at $rpc_url: $node_head_decimal"
+
+            # Fetch current chain head from Etherscan API
+            etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
+            etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
+            etherscan_head_decimal=$(echo $((16#$etherscan_head_hex)))  # Convert from hex to decimal
+            echo "Current chain head at Etherscan: $etherscan_head_decimal"
+
+            # Compare heads
+            if [ "$node_head_decimal" -ge "$etherscan_head_decimal" ]; then
+              echo "Node at $rpc_url has caught up with the chain."
+            else
+              echo "Node at $rpc_url has not caught up with the chain. Node head: $node_head_decimal, Etherscan head: $etherscan_head_decimal"
+            fi
+          }
+
           # Just an RPC warmup - to make sure no faulty info reached a check
           sleep 60
 
@@ -227,7 +288,14 @@ jobs:
           # Check if nodes are synced
           for url in "${processed_rpc_urls[@]}"; do
             check_eth_syncing "$url"
-          done  
+          done            
+
+          if 
+          # Waiting for Paprika Import
+          for url in "${processed_rpc_urls[@]}"; do
+            check_jsonrpc_responding "$url"
+            check_chain_head "$url"
+          done
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
