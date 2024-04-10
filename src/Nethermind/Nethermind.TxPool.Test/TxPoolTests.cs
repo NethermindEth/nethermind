@@ -505,7 +505,7 @@ namespace Nethermind.TxPool.Test
             AcceptTxResult result = _txPool.SubmitTx(tx, txHandlingOptions);
             _txPool.GetPendingTransactionsCount().Should().Be(30);
             _txPool.GetOwnPendingTransactions().Length.Should().Be(isLocal ? 1 : 0);
-            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.FeeTooLowToCompete) : nameof(AcceptTxResult.FeeTooLow));
+            result.ToString().Should().Contain(isLocal ? nameof(AcceptTxResult.Accepted) : nameof(AcceptTxResult.FeeTooLow));
         }
 
         [TestCase(0)]
