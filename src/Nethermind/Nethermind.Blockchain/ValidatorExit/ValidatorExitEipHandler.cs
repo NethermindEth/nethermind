@@ -44,7 +44,7 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
                 state.Get(validatorAddressFirstCell)[..32].ToArray()
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
-            validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey };
+            validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = 0 };
         }
 
         return validatorExits;

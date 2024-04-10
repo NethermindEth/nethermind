@@ -7,12 +7,15 @@ namespace Nethermind.Blockchain.ValidatorExit;
 
 public struct ValidatorExit
 {
-    public ValidatorExit(Address sourceAddress, byte[] validatorPubkey)
+    public ValidatorExit(Address sourceAddress, byte[] validatorPubkey, ulong amount)
     {
         SourceAddress = sourceAddress;
         ValidatorPubkey = validatorPubkey;
+        Amount = amount;
     }
 
     public Address SourceAddress;
     public byte[] ValidatorPubkey;
+
+    public ulong Amount;
 }

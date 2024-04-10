@@ -18,7 +18,7 @@ public class ValidatorExitDecoderTests
     {
         byte[] validatorPubkey = new byte[48];
         validatorPubkey[11] = 11;
-        ValidatorExit exit = new(TestItem.AddressA, validatorPubkey);
+        ValidatorExit exit = new(TestItem.AddressA, validatorPubkey, 0);
 
         Rlp encoded = _decoder.Encode(exit);
         ValidatorExit decoded = _decoder.Decode(encoded.Bytes);
@@ -31,7 +31,7 @@ public class ValidatorExitDecoderTests
     public void GetLength_should_be_72()
     {
         byte[] validatorPubkey = new byte[48];
-        ValidatorExit exit = new(TestItem.AddressA, validatorPubkey);
+        ValidatorExit exit = new(TestItem.AddressA, validatorPubkey, 0);
         Assert.That(_decoder.GetLength(exit, RlpBehaviors.None), Is.EqualTo(72), "GetLength");
     }
 }
