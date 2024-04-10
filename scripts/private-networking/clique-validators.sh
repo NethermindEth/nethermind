@@ -9,11 +9,22 @@ DEBIAN_FRONTEND=noninteractive
 # Install required packages
 #sudo apt-get install -y docker-compose docker.io jq pwgen
 
+validators=$1
+docker_image=$2
+
+if [ -z "$validators" ]
+then
+      validators=3	  
+fi
+
+if [ -z "$docker_image" ]
+then
+      docker_image=nethermind/nethermind:latest	  
+fi
+
 main() {
 mkdir private-networking
 cd private-networking
-
-read -p "Enter number of Validators you wish to run: " validators
 
 # Create folder for each node
 for i in $(seq 1 $validators); do mkdir node_$i; done
@@ -24,6 +35,10 @@ mkdir genesis
 echo "Downloading goerli chainspec from Nethermind GitHub repository"
 # Download chainspec file with clique engine and place it in genesis folder (we will be using goerli chainspec in this example)
 wget -q https://raw.githubusercontent.com/NethermindEth/nethermind/master/src/Nethermind/Chains/goerli.json
+
+# Remove all EIPs in a bit hacky way
+sed -i '/Transition/d' goerli.json
+
 cp goerli.json genesis/goerli.json
 
 for i in $(seq 1 $validators); do mkdir node_$i/configs node_$i/staticNodes; done
@@ -34,7 +49,7 @@ for i in $(seq 1 $validators);
 do 
     PORT=$(( 30301 + $i ))
     PRIVATE_IP=10.5.0.$(( 1 + $i ))
-    KEY=$(pwgen 64 1 | tr '[:lower:]' '[:upper:]') 
+    KEY=$(openssl rand -hex 32) 
     writeNethermindConfig $i $PORT $PRIVATE_IP $KEY
 done
 
@@ -138,7 +153,10 @@ cat <<EOF > node_$1/configs/config.cfg
     },
     "KeyStoreConfig": {
         "TestNodeKey": "$KEY"
-    }
+    },
+	"Merge":{
+		"Enabled":false
+	}
 }
 EOF
 }
@@ -174,7 +192,7 @@ EOF
 function writeDockerComposeService() {
 cat <<EOF >> docker-compose.yml
     node_$1:
-        image: nethermind/nethermind:latest
+        image: $docker_image
         container_name: node_$1
         command: --config config
         volumes:
@@ -204,7 +222,7 @@ function writeExtraData() {
     EXTRA_SEAL="0000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000"
     EXTRA_DATA=${EXTRA_VANITY}${SIGNERS}${EXTRA_SEAL}
     echo "EXTRA_DATA: $EXTRA_DATA"
-    cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"'' > genesis/goerli.json
+    cat goerli.json | jq '.genesis.extraData = '\"$EXTRA_DATA\"' | .params.chainID = "0x12341234" | .params.networkID = "0x12341234" | .nodes = [] | .engine.clique.params.period = 3' > genesis/goerli.json
 }
 
 main
