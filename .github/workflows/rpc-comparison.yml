@@ -182,6 +182,8 @@ jobs:
       
       - name: Wait for the nodes to sync
         timeout-minutes: 600
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |          
           # Assuming rpc_urls_str is a comma-separated string of URLs
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
@@ -255,7 +257,7 @@ jobs:
 
           check_chain_head() {
             rpc_url=$1
-            etherscan_api_key='YourEtherscanApiKey'  # Replace with your actual Etherscan API key
+            etherscan_api_key='$ETHERSCAN_API_KEY'
             etherscan_api_url="https://api.etherscan.io/api"
 
             # Fetch current chain head from node
