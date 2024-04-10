@@ -918,9 +918,9 @@ namespace Nethermind.Trie.Pruning
         public bool CanAccessByPath() => false;
 
         public bool ShouldResetObjectsOnRootChange() => true;
-        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+        public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
 
-        public void StopPrefetch() { }
+        public void StopPrefetch(StateColumns column) { }
 
         public void OpenContext(long blockNumber, Hash256 keccak) { }
 

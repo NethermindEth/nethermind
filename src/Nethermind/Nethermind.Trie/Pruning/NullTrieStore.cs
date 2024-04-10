@@ -75,14 +75,9 @@ namespace Nethermind.Trie.Pruning
         }
 
         public bool ShouldResetObjectsOnRootChange() => false;
-        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+        public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
 
-        public void StopPrefetch() { }
-
-        public void StopPrefetch(StateColumns column)
-        {
-            throw new NotImplementedException();
-        }
+        public void StopPrefetch(StateColumns column) { }
 
         public byte[]? Get(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {

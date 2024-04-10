@@ -8,6 +8,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
 using Nethermind.Trie.Pruning;
@@ -88,11 +89,18 @@ namespace Nethermind.State
 
             return value;
         }
-        public override void Commit(IStorageTracer tracer)
+
+        public override void Set(in StorageCell storageCell, byte[] newValue)
         {
-            _trieStore.StopPrefetch();
-            base.Commit(tracer);
+            base.Set(storageCell, newValue);
+
+            StorageTree tree = GetOrCreateStorage(storageCell.Address);
+            Span<byte> key = stackalloc byte[32];
+            StorageTree.GetKey(storageCell.Index, key);
+            _trieStore.PrefetchForSet(StateColumns.Storage, key, tree.StoreNibblePathPrefix, tree.ParentStateRootHash);
+            //_trieStore.PrefetchForSet(StateColumns.State, ValueKeccak.Compute(storageCell.Address.Bytes).BytesAsSpan, Array.Empty<byte>(), tree.ParentStateRootHash);
         }
+
 
         /// <summary>
         /// Called by Commit
@@ -111,6 +119,8 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
+            _logger.Debug("PersistentStorageProvider CommitCore started");
+            _trieStore.StopPrefetch(StateColumns.Storage);
             HashSet<Address> toUpdateRoots = new();
 
             bool isTracing = tracer.IsTracingStorage;
@@ -208,6 +218,7 @@ namespace Nethermind.State
             {
                 ReportChanges(tracer!, trace!);
             }
+            _logger.Debug("PersistentStorageProvider CommitCore ended");
         }
 
         /// <summary>
@@ -308,16 +319,6 @@ namespace Nethermind.State
             _storages[address].ParentStateRootHash = stateRootHash ?? StateRoot;
 
             if (_logger.IsTrace) _logger.Trace($"Clearing storage for address {address} - created new storage tree with parent state root hash context {_storages[address].ParentStateRootHash}");
-        }
-
-        public override void Set(in StorageCell storageCell, byte[] newValue)
-        {
-            base.Set(storageCell, newValue);
-
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-            Span<byte> key = stackalloc byte[32];
-            StorageTree.GetKey(storageCell.Index, key);
-            _trieStore.PrefetchForSet(key, tree.StoreNibblePathPrefix, tree.ParentStateRootHash);
         }
 
         private class StorageTreeFactory : IStorageTreeFactory

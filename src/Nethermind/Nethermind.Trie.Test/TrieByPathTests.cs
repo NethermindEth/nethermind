@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -1425,7 +1426,7 @@ public class TrieByPathTests
         patriciaTree.Set(_keyAccountD, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000101"));
         patriciaTree.Set(_keyAccountE, Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000102"));
 
-        trieStore.PrefetchPath(_keyAccountD, Array.Empty<byte>(), patriciaTree.RootHash);
+        trieStore.PrefetchPath(_keyAccountD, Array.Empty<byte>(), patriciaTree.RootHash, CancellationToken.None);
 
         patriciaTree.Commit(1);
 

@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
@@ -99,4 +100,8 @@ public class TrieStoreWithReadFlags : TrieNodeResolverWithReadFlags, ITrieStore
     {
         return _baseImplementation.ShouldResetObjectsOnRootChange();
     }
+
+    public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+
+    public void StopPrefetch(StateColumns column) { }
 }

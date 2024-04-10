@@ -3,7 +3,6 @@
 
 using System;
 using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Threading;
@@ -39,12 +38,12 @@ namespace Nethermind.Trie.Pruning
 
         private readonly TrieKeyValueStore _publicStore;
         private readonly SpanLruCache<byte, byte[]>? _readLruCache;
+        private readonly PathPrefetcher? _prefetcher;
+        private readonly PathPrefetcher? _statePrefetcher;
         private long _allLoadRlpCalls;
         private long _rlpReadLvl1;
         private long _rlpReadLvl2;
         private long _rlpCacheReads;
-
-        private readonly PathPrefetcher? _prefetcher;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -63,6 +62,8 @@ namespace Nethermind.Trie.Pruning
             {
                 _readLruCache =
                     new SpanLruCache<byte, byte[]>(640000, 1000, "TrieStore LRU Cache", Bytes.SpanNibbleEqualityComparer);
+                _prefetcher = new PathPrefetcher(this, 2, logManager);
+                _statePrefetcher = null;
             }
         }
 
@@ -230,7 +231,7 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, out RlpSource source, ReadFlags flags = ReadFlags.None)
         {
             Interlocked.Increment(ref _allLoadRlpCalls);
             if (_allLoadRlpCalls % 10000 == 0)
@@ -243,6 +244,7 @@ namespace Nethermind.Trie.Pruning
                 if (_readLruCache?.TryGet(path, out byte[] cachedRlp) == true)
                 {
                     Interlocked.Increment(ref _rlpCacheReads);
+                    source = RlpSource.ReadCache;
                     return cachedRlp;
                 }
             }
@@ -256,6 +258,7 @@ namespace Nethermind.Trie.Pruning
             if (rlp is null || rlp[0] != PathMarker)
             {
                 _readLruCache?.Set(path, rlp);
+                source = RlpSource.Database;
                 return rlp;
             }
 
@@ -263,11 +266,15 @@ namespace Nethermind.Trie.Pruning
             rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
             if (rlp is not null)
             {
-                //Span<byte> fullPath = Nibbles.BytesToNibblesStorage(rlp.AsSpan()[1..]);
-                //_readLruCache?.Set(fullPath, rlp);
                 _readLruCache?.Set(path, rlp);
             }
+            source = RlpSource.Database;
             return rlp;
+        }
+
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
+        {
+            return TryLoadRlp(path, keyValueStore, out _, flags);
         }
 
         internal byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
@@ -936,10 +943,7 @@ namespace Nethermind.Trie.Pruning
             _committedNodes.OpenContext(blockNumber, keccak);
         }
 
-        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
-        public void Set(in ValueHash256 hash, byte[] rlp) { }
-
-        public void PrefetchPath(ReadOnlySpan<byte> rawKey, byte[] storeNibblePrefix, Hash256 stateRoot)
+        public int PrefetchPath(ReadOnlySpan<byte> rawKey, byte[] storeNibblePrefix, Hash256 stateRoot, CancellationToken cancellationToken)
         {
             int fullLength = storeNibblePrefix.Length + rawKey.Length * 2;
             Span<byte> nibbles = stackalloc byte[130];
@@ -947,24 +951,29 @@ namespace Nethermind.Trie.Pruning
             storeNibblePrefix.CopyTo(nibbles);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles.Slice(storeNibblePrefix.Length, 64));
             nibbles = nibbles.Slice(0, fullLength);
+            int dbReads = 0;
 
             int index = storeNibblePrefix.Length;
             while (index < fullLength)
             {
+                if (cancellationToken.IsCancellationRequested)
+                    break;
+
                 byte[]? rlp = null;
                 Span<byte> currentPath = nibbles[..index];
                 NodeData? nodeData = _committedNodes.GetNodeDataAtRoot(stateRoot, currentPath);
                 rlp = nodeData?.RLP;
                 if (rlp is null)
                 {
-                    if (!_readCache.TryGetValue(currentPath, out rlp))
-                    {
-                        rlp = TryLoadRlp(currentPath, null);
-                    }
+                    rlp = TryLoadRlp(currentPath, null, out RlpSource source);
+                    if (source == RlpSource.Database)
+                        dbReads++;
                 }
 
+                if (_logger.IsDebug) _logger.Debug($"Prefetched path {currentPath.ToHexString()}");
+
                 if (rlp is null)
-                    return;
+                    return dbReads;
 
                 RlpStream rlpStream = rlp.AsRlpStream();
 
@@ -984,17 +993,27 @@ namespace Nethermind.Trie.Pruning
                     index += key.Length;
                 }
             }
+            return dbReads;
         }
 
-        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot)
+        public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot)
         {
-            _prefetcher?.Enqueue(new PrefetchWorkItem(key.ToArray(), storeNibblePrefix, stateRoot));
+            if (column == StateColumns.Storage)
+                _prefetcher?.Enqueue(new PrefetchWorkItem(key.ToArray(), storeNibblePrefix, stateRoot));
+            else
+                _statePrefetcher?.Enqueue(new PrefetchWorkItem(key.ToArray(), storeNibblePrefix, stateRoot));
         }
 
-        public void StopPrefetch()
+        public void StopPrefetch(StateColumns column)
         {
-            _prefetcher?.Stop();
+            if (column == StateColumns.Storage)
+                _prefetcher?.Stop();
+            else
+                _statePrefetcher?.Stop();
         }
+
+        public IReadOnlyKeyValueStore TrieNodeRlpStore => _publicStore;
+        public void Set(in ValueHash256 hash, byte[] rlp) { }
 
         private class TrieKeyValueStore : IReadOnlyKeyValueStore
         {
@@ -1016,18 +1035,24 @@ namespace Nethermind.Trie.Pruning
         private readonly TrieStoreByPath _trieStore;
         private readonly ConcurrentQueue<PrefetchWorkItem> _prefetchQueue;
         private readonly CancellationTokenSource _prefetchCancellationTokenSource;
+        private CancellationTokenSource _singleRequestCancellationTokenSource;
         private readonly ManualResetEventSlim _prefetchEvent;
-        private readonly ConcurrentDictionary<PrefetchWorkItem, bool> _prefetchedThisRound;
+        private readonly ConcurrentDictionary<PrefetchWorkItem, bool> _alreadyEnqueuedThisRound;
         private readonly ILogger _logger;
+        private long _processedRequests;
+        private long _allRequests;
+        private long _allDbReads;
+        private long _stopCalls;
 
         public PathPrefetcher(TrieStoreByPath trieStore, int threadsCount, ILogManager logManager)
         {
             _trieStore = trieStore;
 
             _prefetchCancellationTokenSource = new CancellationTokenSource();
+            _singleRequestCancellationTokenSource = new CancellationTokenSource();
             _prefetchQueue = new ConcurrentQueue<PrefetchWorkItem>();
             _prefetchEvent = new ManualResetEventSlim(false);
-            _prefetchedThisRound = new ConcurrentDictionary<PrefetchWorkItem, bool>();
+            _alreadyEnqueuedThisRound = new ConcurrentDictionary<PrefetchWorkItem, bool>();
 
             for (int i = 0; i < threadsCount; i++)
             {
@@ -1047,11 +1072,13 @@ namespace Nethermind.Trie.Pruning
 
                 if (_prefetchQueue.TryDequeue(out PrefetchWorkItem item))
                 {
-                    _trieStore.PrefetchPath(item.Key, item.StoreNibblePrefix, item.StateRoot);
-                    _prefetchedThisRound.TryAdd(item, true);
+                    int dbReads = _trieStore.PrefetchPath(item.Key, item.StoreNibblePrefix, item.StateRoot, _singleRequestCancellationTokenSource.Token);
+                    Interlocked.Increment(ref _processedRequests);
+                    Interlocked.Add(ref _allDbReads, dbReads);
                 }
                 else
                 {
+                    if (_logger.IsDebug) _logger.Debug($"Prefetcher - no more items");
                     _prefetchEvent.Reset();
                 }
             }
@@ -1059,8 +1086,15 @@ namespace Nethermind.Trie.Pruning
 
         public void Enqueue(PrefetchWorkItem newItem)
         {
-            if (!_prefetchedThisRound.ContainsKey(newItem))
+            if (!_alreadyEnqueuedThisRound.ContainsKey(newItem))
             {
+                Interlocked.Increment(ref _allRequests);
+                if (_allRequests % 1000 == 0)
+                {
+                    if (_logger.IsInfo) _logger.Info($"All requests {_allRequests} | processed {_processedRequests} | ratio {(float)_processedRequests / _allRequests } | db reads / commit {(float)_allDbReads / _stopCalls}");
+                }
+
+                _alreadyEnqueuedThisRound.TryAdd(newItem, true);
                 _prefetchQueue.Enqueue(newItem);
                 _prefetchEvent.Set();
             }
@@ -1068,8 +1102,12 @@ namespace Nethermind.Trie.Pruning
 
         public void Stop()
         {
+            Task cancel = _singleRequestCancellationTokenSource.CancelAsync();
             _prefetchQueue.Clear();
-            _prefetchedThisRound.Clear();
+            _alreadyEnqueuedThisRound.Clear();
+            Interlocked.Increment(ref _stopCalls);
+            cancel.Wait(_prefetchCancellationTokenSource.Token);
+            _singleRequestCancellationTokenSource = new CancellationTokenSource();
         }
 
         public void Dispose()
@@ -1078,6 +1116,12 @@ namespace Nethermind.Trie.Pruning
             _prefetchCancellationTokenSource.Dispose();
             _prefetchEvent.Dispose();
         }
+    }
+
+    public enum RlpSource
+    {
+        Database,
+        ReadCache
     }
 
     public class PrefetchWorkItem
@@ -1110,10 +1154,15 @@ namespace Nethermind.Trie.Pruning
         public override int GetHashCode()
         {
             int hash = 11;
-            hash = hash * 13 + Key.GetHashCode();
-            hash = hash * 19 + StoreNibblePrefix.GetHashCode();
+            hash = hash * 13 + Key.GetSimplifiedHashCode();
+            hash = hash * 19 + Bytes.GetSimplifiedHashCodeForNibbles(StoreNibblePrefix);
             hash = hash * 17 + StateRoot.GetHashCode();
             return hash;
+        }
+
+        public override string ToString()
+        {
+            return $"{Key.ToHexString()} - {StoreNibblePrefix.ToHexString()} - {StateRoot}";
         }
     }
 }

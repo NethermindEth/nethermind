@@ -133,9 +133,8 @@ public class HealingTreeTests
 
         public bool CanAccessByPath() => false;
         public bool ShouldResetObjectsOnRootChange() => false;
-        public void PrefetchForSet(Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
-        public void StopPrefetch() { }
-
+        public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot) { }
+        public void StopPrefetch(StateColumns column) { }
         public void ClearCache() { }
 
         public void CommitNode(long blockNumber, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None) { }
