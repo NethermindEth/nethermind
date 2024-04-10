@@ -194,13 +194,6 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
         gas += AccessVersion(contract);
         gas += AccessCodeSize(contract);
 
-        if (contractNotSameAsBeneficiary)
-        {
-            gas += AccessVersion(inheritor);
-            gas += AccessCodeSize(inheritor);
-        }
-
-
         if (balanceIsZero)
         {
             gas += AccessBalance(contract);
