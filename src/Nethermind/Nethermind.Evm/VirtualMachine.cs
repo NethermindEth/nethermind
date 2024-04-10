@@ -662,14 +662,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         break;
                     }
-                case Instruction.SELFDESTRUCT:
-                    var gasSelfDestruct = vmState.Env.Witness.AccessForBalance(address);
-                    if (gasSelfDestruct > 0)
-                    {
-                        witnessGasCharged = true;
-                        result = UpdateGas(gasSelfDestruct, ref gasAvailable);
-                    }
-                    break;
             }
 
             // we still use the UseHotAndColdStorage costs - we should be removing the Cold costs as it's being replaced
@@ -678,23 +670,25 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (!result) return false;
         }
 
-        if (!witnessGasCharged && spec.UseHotAndColdStorage)
+        if (spec.UseHotAndColdStorage)
         {
             if (_txTracer.IsTracingAccess) // when tracing access we want cost as if it was warmed up from access list
             {
                 vmState.WarmUp(address);
             }
 
-            if (vmState.IsCold(address) && !address.IsPrecompile(spec))
+            if (witnessGasCharged)
+            {
+                vmState.WarmUp(address);
+            }
+            else if (vmState.IsCold(address) && !address.IsPrecompile(spec))
             {
                 // after verkle is enabled we dont charge cost cost as it is replace by verkle access costs
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdAccountAccess, ref gasAvailable);
                 vmState.WarmUp(address);
             }
             else if (chargeForWarm)
-            {
                 result = UpdateGas(GasCostOf.WarmStateRead, ref gasAvailable);
-            }
         }
 
         return result;
@@ -1491,18 +1485,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
                         {
                             bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)code[programCounter];
-                            // code.length is zero
-                            if (nextInstruction == Instruction.ISZERO)
+                            var nextInstruction = (Instruction)code[programCounter];
+                            switch (nextInstruction)
                             {
-                                optimizeAccess = true;
-                            }
-                            // code.length > 0 || code.length == 0
-                            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
-                                    stack.PeekUInt256IsZero())
-                            {
-                                optimizeAccess = true;
-                                stack.PopLimbo();
+                                // code.length is zero
+                                case Instruction.ISZERO:
+                                    optimizeAccess = true;
+                                    break;
+                                // code.length > 0 || code.length == 0
+                                case Instruction.GT or Instruction.EQ when
+                                    stack.PeekUInt256IsZero():
+                                    optimizeAccess = true;
+                                    stack.PopLimbo();
+                                    break;
                             }
 
                             if (optimizeAccess)
@@ -2569,17 +2564,27 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address inheritor = stack.PopAddress();
         if (inheritor is null) return EvmExceptionType.StackUnderflow;
 
-        // TODO: charging access cost for the inheritor
-        //       but when the inheritor is same as the executing contract and that contract was create in the same transaction
-        //       we should not be charging the access cost?
-        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false, opCode: Instruction.SELFDESTRUCT)) return EvmExceptionType.OutOfGas;
-
         Address executingAccount = vmState.Env.ExecutingAccount;
+        UInt256 result = _state.GetBalance(executingAccount);
+
+        // get the verkle witness cost and charge the account access gas if the verkle cost is zero
+        var selfDestructGas = vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, result.IsZero);
+        if (selfDestructGas == 0)
+        {
+            if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false,
+                    opCode: Instruction.SELFDESTRUCT)) return EvmExceptionType.OutOfGas;
+        }
+        else
+        {
+            if (spec.UseHotAndColdStorage) vmState.WarmUp(inheritor);
+            if (!UpdateGas(selfDestructGas, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+        }
+
+
         bool createInSameTx = vmState.CreateList.Contains(executingAccount);
         if (!spec.SelfdestructOnlyOnSameTransaction || createInSameTx)
             vmState.DestroyList.Add(executingAccount);
 
-        UInt256 result = _state.GetBalance(executingAccount);
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, result, inheritor);
         if (spec.ClearEmptyAccountWhenTouched && !result.IsZero && _state.IsDeadAccount(inheritor))
         {
