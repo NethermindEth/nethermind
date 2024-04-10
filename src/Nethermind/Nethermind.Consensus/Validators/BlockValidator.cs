@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Data;
 using System.Linq;
 using System.Text;
 using Nethermind.Blockchain;
@@ -147,7 +148,7 @@ public class BlockValidator : IBlockValidator
         if (!ValidateWithdrawals(block, spec, out errorMessage))
             return false;
 
-        if (!ValidateDeposits(block, spec, out _))
+        if (!ValidateDeposits(block, spec, out errorMessage))
             return false;
 
         return true;
@@ -239,32 +240,6 @@ public class BlockValidator : IBlockValidator
             }
         }
 
-        if (suggestedBlock.Deposits is not null)
-        {
-            List<Deposit> depositList = [];
-            for (int i = 0; i < processedBlock.Transactions.Length; i++)
-            {
-                foreach (var log in receipts[i].Logs)
-                {
-                    if (log.LoggersAddress == spec.Eip6110ContractAddress)
-                    {
-                        var depositDecoder = new DepositDecoder();
-                        Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                        depositList.Add(deposit);
-                    }
-                }
-            }
-
-            Hash256 expectedDepositsRoot = suggestedBlock.Header.DepositsRoot;
-            Hash256 actualDepositsRoot = new DepositTrie(depositList.ToArray()).RootHash;
-            if (actualDepositsRoot != expectedDepositsRoot)
-            {
-                if (_logger.IsWarn) _logger.Error($"- deposits root : expected {expectedDepositsRoot}, got {actualDepositsRoot}");
-                error = error ?? BlockErrorMessages.InvalidDepositsRoot(expectedDepositsRoot, actualDepositsRoot);
-            }
-        }
-
-
         if (suggestedBlock.ExtraData is not null)
         {
             if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
@@ -318,7 +293,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.IsEip6110Enabled && block.Deposits is null)
         {
-            error = $"Deposits cannot be null in block {block.Hash} when EIP-6110 activated.";
+            error = BlockErrorMessages.MissingDeposits;
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -327,7 +302,7 @@ public class BlockValidator : IBlockValidator
 
         if (!spec.IsEip6110Enabled && block.Deposits is not null)
         {
-            error = $"Deposits must be null in block {block.Hash} when EIP-6110 not activated.";
+            error = BlockErrorMessages.DepositsNotEnabled;
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -338,7 +313,7 @@ public class BlockValidator : IBlockValidator
         {
             if (!ValidateDepositsHashMatches(block, out Hash256 depositsRoot))
             {
-                error = $"Deposits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.DepositsRoot}, got {depositsRoot}";
+                error = BlockErrorMessages.InvalidDepositsRoot(block.Header.DepositsRoot, depositsRoot);
                 if (_logger.IsWarn) _logger.Warn($"DepositsRoot root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.DepositsRoot}, got {depositsRoot}");
 
                 return false;

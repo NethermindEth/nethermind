@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Consensus.Deposits;
 
-public interface IWithdrawalProcessor
+public interface IDepositsProcessor
 {
-    void ProcessWithdrawals(Block block, IReleaseSpec spec);
+    void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
 }

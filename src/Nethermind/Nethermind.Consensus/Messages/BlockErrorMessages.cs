@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 
 namespace Nethermind.Consensus.Messages;
@@ -116,6 +117,7 @@ public static class BlockErrorMessages
 
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
-    public static string InvalidDepositsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
-       $"InvalidDepositsRoot: expected {expected}, got {actual}";
+    public static string MissingDeposits => "Deposits cannot be null in block when EIP-6110 activated.";
+    public static string DepositsNotEnabled => "Deposits must be null in block when EIP-6110 not activated.";
+    public static string InvalidDepositsRoot(Hash256 expected, Hash256 actual) => $"Deposits root hash mismatch in block: expected {expected}, got {actual}";
 }

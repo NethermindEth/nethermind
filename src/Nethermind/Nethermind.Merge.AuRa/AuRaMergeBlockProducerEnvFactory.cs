@@ -72,7 +72,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             receiptStorage,
             logManager,
             _blockTree,
-            new Consensus.Withdrawals.BlockProductionWithdrawalProcessor(
+            new Consensus.Deposits.BlockProductionWithdrawalProcessor(
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager

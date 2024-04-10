@@ -22,7 +22,7 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Deposits;
 using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.Plugin.Test

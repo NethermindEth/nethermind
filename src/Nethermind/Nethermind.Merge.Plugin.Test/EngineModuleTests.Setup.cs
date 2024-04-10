@@ -15,7 +15,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Deposits;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -152,6 +152,8 @@ public partial class EngineModuleTests
 
         public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
 
+        public IDepositsProcessor? DepositsProcessor { get; set; }
+
         public ISyncPeerPool SyncPeerPool { get; set; }
 
         protected int _blockProcessingThrottle = 0;
@@ -231,6 +233,7 @@ public partial class EngineModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            DepositsProcessor = new DepositsProcessor(LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -240,7 +243,8 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                DepositsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
