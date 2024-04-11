@@ -265,7 +265,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         if (chainSpecJson.Engine?.AuthorityRound is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.AuRa;
+            // chainSpec.SealEngineType = SealEngineType.AuRa;
             chainSpec.AuRa = new AuRaParameters
             {
                 MaximumUncleCount = chainSpecJson.Engine.AuthorityRound.MaximumUncleCount,
@@ -286,19 +286,9 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 WithdrawalContractAddress = chainSpecJson.Engine.AuthorityRound.WithdrawalContractAddress,
             };
         }
-        else if (chainSpecJson.Engine?.Clique is not null)
-        {
-            chainSpec.SealEngineType = SealEngineType.Clique;
-            chainSpec.Clique = new CliqueParameters
-            {
-                Epoch = chainSpecJson.Engine.Clique.Epoch,
-                Period = chainSpecJson.Engine.Clique.Period,
-                Reward = chainSpecJson.Engine.Clique.BlockReward ?? UInt256.Zero
-            };
-        }
         else if (chainSpecJson.Engine?.Ethash is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.Ethash;
+            // chainSpec.SealEngineType = SealEngineType.Ethash;
             chainSpec.Ethash = new EthashParameters
             {
                 MinimumDifficulty = chainSpecJson.Engine.Ethash.MinimumDifficulty ?? 0L,
@@ -326,37 +316,24 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 }
             }
         }
-        else if (chainSpecJson.Engine?.Optimism is not null)
+        else if (chainSpecJson.Engine.EngineData.Count != 0)
         {
-            chainSpec.SealEngineType = SealEngineType.Optimism;
-            chainSpec.Optimism = new OptimismParameters
+            chainSpec.AdditionalParameters = new();
+            foreach (KeyValuePair<string, JsonElement> element in chainSpecJson.Engine.EngineData)
             {
-                RegolithTimestamp = chainSpecJson.Engine.Optimism.RegolithTimestamp,
-                BedrockBlockNumber = chainSpecJson.Engine.Optimism.BedrockBlockNumber,
-                CanyonTimestamp = chainSpecJson.Engine.Optimism.CanyonTimestamp,
-                L1FeeRecipient = chainSpecJson.Engine.Optimism.L1FeeRecipient,
-                L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
-                CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
-                Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
-            };
+                var parsed = element.Value.Deserialize<Dictionary<string, object>>();
+                chainSpec.AdditionalParameters.Add(element.Key, parsed["params"]);
+            }
         }
         else if (chainSpecJson.Engine?.NethDev is not null)
         {
-            chainSpec.SealEngineType = SealEngineType.NethDev;
+            // chainSpec.SealEngineType = SealEngineType.NethDev;
         }
 
-        var customEngineType = chainSpecJson.Engine?.CustomEngineData?.FirstOrDefault().Key;
-
-        if (!string.IsNullOrEmpty(customEngineType))
-        {
-            chainSpec.SealEngineType = customEngineType;
-        }
-
-        if (string.IsNullOrEmpty(chainSpec.SealEngineType))
-        {
-            throw new NotSupportedException("unknown seal engine in chainspec");
-        }
+        // if (string.IsNullOrEmpty(chainSpec.SealEngineType))
+        // {
+        //     throw new NotSupportedException("unknown seal engine in chainspec");
+        // }
     }
 
     private static void LoadGenesis(ChainSpecJson chainSpecJson, ChainSpec chainSpec)

@@ -1547,7 +1547,7 @@ public partial class EngineModuleTests
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/foundation.json");
         ChainSpecLoader chainSpecLoader = new(new EthereumJsonSerializer());
         ChainSpec chainSpec = chainSpecLoader.LoadFromFile(path);
-        ChainSpecBasedSpecProvider specProvider = new(chainSpec);
+        ChainSpecBasedSpecProvider specProvider = new(chainSpec, null);
         EngineRpcCapabilitiesProvider engineRpcCapabilitiesProvider = new(specProvider);
         ExchangeCapabilitiesHandler exchangeCapabilitiesHandler = new(engineRpcCapabilitiesProvider, LimboLogs.Instance);
         string[] result = exchangeCapabilitiesHandler.Handle(Array.Empty<string>()).Data.ToArray();

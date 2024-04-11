@@ -18,9 +18,9 @@ namespace Nethermind.Blockchain.Services
         public ulong? MaxSecondsIntervalForProcessingBlocksHint()
         {
             ulong? blockProcessorHint;
-            if (_chainSpec.SealEngineType == SealEngineType.Ethash)
-                blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.EthashProcessingSafetyMultiplier;
-            else
+            // if (_chainSpec.SealEngineType == SealEngineType.Ethash)
+            //     blockProcessorHint = HealthHintConstants.EthashStandardProcessingPeriod * HealthHintConstants.EthashProcessingSafetyMultiplier;
+            // else
                 blockProcessorHint = HealthHintConstants.InfinityHint;
 
             return blockProcessorHint;

@@ -45,7 +45,7 @@ public class ChainSpecBasedSpecProviderTests
         ILogger logger = new(Substitute.ForPartsOf<LimboTraceLogger>());
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
             .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
         expectedSpec.Name = "Genesis_with_non_zero_timestamp";
@@ -90,7 +90,7 @@ public class ChainSpecBasedSpecProviderTests
         ILogger logger = new(iLogger);
         var logManager = Substitute.For<ILogManager>();
         logManager.GetClassLogger<ChainSpecBasedSpecProvider>().Returns(logger);
-        ChainSpecBasedSpecProvider provider = new(chainSpec, logManager);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null, logManager);
         ReleaseSpec expectedSpec = ((ReleaseSpec)MainnetSpecProvider
             .Instance.GetSpec((MainnetSpecProvider.GrayGlacierBlockNumber, null))).Clone();
         expectedSpec.Name = "Genesis_with_non_zero_timestamp";
@@ -138,7 +138,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Sepolia_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("sepolia");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         SepoliaSpecProvider sepolia = SepoliaSpecProvider.Instance;
 
         CompareSpecs(sepolia, provider, forkActivation);
@@ -169,7 +169,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Holesky_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("holesky");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         ISpecProvider hardCodedSpec = HoleskySpecProvider.Instance;
 
         CompareSpecs(hardCodedSpec, provider, forkActivation);
@@ -208,7 +208,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Goerli_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
 
         CompareSpecs(goerli, provider, forkActivation);
@@ -239,7 +239,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Chiado_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("chiado");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         ChiadoSpecProvider chiado = ChiadoSpecProvider.Instance;
 
         CompareSpecs(chiado, provider, forkActivation, CompareSpecsOptions.IsGnosis);
@@ -284,7 +284,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Gnosis_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("gnosis");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         GnosisSpecProvider gnosisSpecProvider = GnosisSpecProvider.Instance;
 
         CompareSpecs(gnosisSpecProvider, provider, forkActivation, CompareSpecsOptions.IsGnosis);
@@ -383,7 +383,7 @@ public class ChainSpecBasedSpecProviderTests
     public void Mainnet_loads_properly(ForkActivation forkActivation)
     {
         ChainSpec chainSpec = LoadChainSpecFromChainFolder("foundation");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         MainnetSpecProvider mainnet = MainnetSpecProvider.Instance;
 
         CompareSpecs(mainnet, provider, forkActivation, CompareSpecsOptions.CheckDifficultyBomb);
@@ -497,7 +497,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters(), NetworkId = 2, ChainId = 5 };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.NetworkId, Is.EqualTo(2));
         Assert.That(provider.ChainId, Is.EqualTo(5));
     }
@@ -509,7 +509,7 @@ public class ChainSpecBasedSpecProviderTests
         chainSpec.Parameters = new ChainParameters();
         chainSpec.DaoForkBlockNumber = 23;
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.DaoBlockNumber, Is.EqualTo(23));
     }
 
@@ -522,7 +522,7 @@ public class ChainSpecBasedSpecProviderTests
             Ethash = new EthashParameters { DifficultyBoundDivisor = 19 }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.GenesisSpec.DifficultyBoundDivisor, Is.EqualTo(19));
         Assert.That(provider.GenesisSpec.GasLimitBoundDivisor, Is.EqualTo(17));
     }
@@ -546,7 +546,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.GetSpec((ForkActivation)3).DifficultyBombDelay, Is.EqualTo(100));
         Assert.That(provider.GetSpec((ForkActivation)7).DifficultyBombDelay, Is.EqualTo(300));
         Assert.That(provider.GetSpec((ForkActivation)13).DifficultyBombDelay, Is.EqualTo(600));
@@ -569,7 +569,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
         Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
@@ -580,7 +580,7 @@ public class ChainSpecBasedSpecProviderTests
     {
         ChainSpec chainSpec = new() { Parameters = new ChainParameters { Eip2200Transition = 5 } };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
     }
 
@@ -590,7 +590,7 @@ public class ChainSpecBasedSpecProviderTests
         ChainSpec chainSpec =
             new() { Parameters = new ChainParameters { Eip1706Transition = 5, Eip1283Transition = 5 } };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
     }
 
@@ -608,7 +608,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeTrue();
     }
 
@@ -625,7 +625,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         provider.GetSpec((ForkActivation)5).IsEip2200Enabled.Should().BeFalse();
     }
 
@@ -642,7 +642,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
 
         provider.GetSpec((ForkActivation)9).IsEip170Enabled.Should().BeFalse();
         provider.GetSpec((ForkActivation)10).IsEip170Enabled.Should().BeTrue();
@@ -668,7 +668,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
 
         provider.GetSpec((100, 9)).IsEip170Enabled.Should().BeFalse();
         provider.GetSpec((100, 10)).IsEip170Enabled.Should().BeTrue();
@@ -749,7 +749,7 @@ public class ChainSpecBasedSpecProviderTests
             }
         };
 
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
+        ChainSpecBasedSpecProvider provider = new(chainSpec, null);
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition - 1)).MaxCodeSize, Is.EqualTo(long.MaxValue), "one before");
         Assert.That(provider.GetSpec((ForkActivation)maxCodeTransition).MaxCodeSize, Is.EqualTo(maxCodeSize), "at transition");
         Assert.That(provider.GetSpec((ForkActivation)(maxCodeTransition + 1)).MaxCodeSize, Is.EqualTo(maxCodeSize), "one after");
