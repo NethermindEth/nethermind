@@ -10,9 +10,20 @@
     "name": "getKeyperSetAddress",
     "outputs": [
       {
-        "internaltype": "address",
+        "components": [
+          {
+            "internaltype": "address",
+            "name": "",
+            "type": "address"
+          },
+          {
+            "internaltype": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
         "name": "",
-        "type": "address"
+        "type": "tuple"
       }
     ],
     "stateMutability": "view",
@@ -42,9 +53,20 @@
     "name": "getKeyperSetIndexByBlock",
     "outputs": [
       {
-        "internaltype": "uint64",
+        "components": [
+          {
+            "internaltype": "address",
+            "name": "",
+            "type": "address"
+          },
+          {
+            "internaltype": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
         "name": "",
-        "type": "uint64"
+        "type": "tuple"
       }
     ],
     "stateMutability": "view",
