@@ -53,14 +53,20 @@
     "name": "getKeyperSetIndexBySlot",
     "outputs": [
       {
+        "components": [
+          {
+            "internaltype": "address",
+            "name": "",
+            "type": "address"
+          },
+          {
+            "internaltype": "uint64",
+            "name": "",
+            "type": "uint64"
+          }
+        ],
         "name": "",
-        "type": "address",
-        "internaltype": "address"
-      },
-      {
-        "name": "",
-        "type": "uint64",
-        "internaltype": "uint64"
+        "type": "tuple"
       }
     ],
     "stateMutability": "view",
