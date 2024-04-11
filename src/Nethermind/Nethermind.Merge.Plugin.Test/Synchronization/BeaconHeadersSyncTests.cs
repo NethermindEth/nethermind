@@ -5,8 +5,8 @@ using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -14,21 +14,16 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.State.Repositories;
-using Nethermind.Synchronization;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Synchronization.Reporting;
-using Nethermind.Synchronization.SnapSync;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -62,7 +57,7 @@ public class BeaconHeadersSyncTests
         private IBeaconPivot? _beaconPivot;
         public IBeaconPivot BeaconPivot
         {
-            get => _beaconPivot ??= new BeaconPivot(SyncConfig, MetadataDb, BlockTree, LimboLogs.Instance);
+            get => _beaconPivot ??= new BeaconPivot(SyncConfig, MetadataDb, BlockTree, PoSSwitcher, LimboLogs.Instance);
             set => _beaconPivot = value;
         }
 
@@ -407,7 +402,7 @@ public class BeaconHeadersSyncTests
         }
     }
 
-    private void BuildHeadersSyncBatchResponse(HeadersSyncBatch? batch, IBlockTree blockTree)
+    private static void BuildHeadersSyncBatchResponse(HeadersSyncBatch? batch, IBlockTree blockTree)
     {
         batch!.MarkSent();
         BlockHeader? startHeader = blockTree.FindHeader(batch.StartNumber);
@@ -420,9 +415,9 @@ public class BeaconHeadersSyncTests
         batch.Response = new ArrayPoolList<BlockHeader?>(headers.Count, headers);
     }
 
-    private IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
+    private static IBeaconPivot PreparePivot(long blockNumber, ISyncConfig syncConfig, IBlockTree blockTree, BlockHeader? pivotHeader = null)
     {
-        IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
+        IBeaconPivot pivot = new BeaconPivot(syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.EnsurePivot(pivotHeader ?? Build.A.BlockHeader.WithNumber(blockNumber).TestObject);
         return pivot;
     }
