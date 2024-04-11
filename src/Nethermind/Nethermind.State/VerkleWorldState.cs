@@ -638,6 +638,7 @@ public class VerkleWorldState : IWorldState
                 throw new StateException.StateDeleteNotSupported(
                     "Account can only be deleted when it was created in the same transaction");
             }
+            _storageProvider.ClearStorage(address);
         }
         else
         {
