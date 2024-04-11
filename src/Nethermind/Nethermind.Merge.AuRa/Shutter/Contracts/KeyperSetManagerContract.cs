@@ -12,16 +12,16 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
 {
     private const string getKeyperSetAddress = "getKeyperSetAddress";
     private const string getNumKeyperSets = "getNumKeyperSets";
-    private const string getKeyperSetIndexBySlot = "getKeyperSetIndexBySlot";
+    private const string getKeyperSetIndexByBlock = "getKeyperSetIndexByBlock";
 
     public KeyperSetManagerContract(ITransactionProcessor transactionProcessor, IAbiEncoder abiEncoder, Address contractAddress)
         : base(transactionProcessor, abiEncoder, contractAddress)
     {
     }
 
-    public (Address, ulong) GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
+    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
     {
-        return ((Address, ulong))Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
+        return (Address)Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
     }
 
     public ulong GetNumKeyperSets(BlockHeader blockHeader)
@@ -29,8 +29,8 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
         return (ulong)Call(blockHeader, getNumKeyperSets, Address.Zero, [])[0];
     }
 
-    public (Address, ulong) GetKeyperSetIndexBySlot(BlockHeader blockHeader, in ulong slot)
+    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber)
     {
-        return ((Address, ulong))Call(blockHeader, getKeyperSetIndexBySlot, Address.Zero, [slot])[0];
+        return (ulong)Call(blockHeader, getKeyperSetIndexByBlock, Address.Zero, [blockNumber])[0];
     }
 }

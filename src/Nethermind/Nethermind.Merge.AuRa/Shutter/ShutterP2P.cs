@@ -212,10 +212,10 @@ public class ShutterP2P
         }
     }
 
-    internal void GetEonInfo(IReadOnlyTransactionProcessor readOnlyTransactionProcessor, IKeyperSetManagerContract keyperSetManagerContract, ulong slot, out ulong eon, out Bls.P2 eonKey, out ulong threshold, out Address[] keyperAddresses)
+    internal void GetEonInfo(IReadOnlyTransactionProcessor readOnlyTransactionProcessor, IKeyperSetManagerContract keyperSetManagerContract, ulong blockNumber, out ulong eon, out Bls.P2 eonKey, out ulong threshold, out Address[] keyperAddresses)
     {
         BlockHeader header = _readOnlyBlockTree.Head!.Header;
-        (Address keyperSetContractAddress, eon) = keyperSetManagerContract.GetKeyperSetIndexBySlot(header, slot);
+        eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, blockNumber);
 
         if (_eon == eon)
         {
@@ -225,6 +225,7 @@ public class ShutterP2P
         }
         else
         {
+            Address keyperSetContractAddress = keyperSetManagerContract.GetKeyperSetAddress(header, eon);
             KeyperSetContract keyperSetContract = new(readOnlyTransactionProcessor, _abiEncoder, keyperSetContractAddress);
 
             if (!keyperSetContract.IsFinalized(header))
