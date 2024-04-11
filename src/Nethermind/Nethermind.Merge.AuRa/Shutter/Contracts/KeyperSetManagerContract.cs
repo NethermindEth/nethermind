@@ -19,9 +19,9 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
     {
     }
 
-    public (Address, ulong) GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
+    public Address GetKeyperSetAddress(BlockHeader blockHeader, in ulong index)
     {
-        return ((Address, ulong))Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
+        return (Address)Call(blockHeader, getKeyperSetAddress, Address.Zero, [index])[0];
     }
 
     public ulong GetNumKeyperSets(BlockHeader blockHeader)
@@ -29,8 +29,8 @@ public class KeyperSetManagerContract : CallableContract, IKeyperSetManagerContr
         return (ulong)Call(blockHeader, getNumKeyperSets, Address.Zero, [])[0];
     }
 
-    public (Address, ulong) GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber)
+    public ulong GetKeyperSetIndexByBlock(BlockHeader blockHeader, in ulong blockNumber)
     {
-        return ((Address, ulong))Call(blockHeader, getKeyperSetIndexByBlock, Address.Zero, [blockNumber])[0];
+        return (ulong)Call(blockHeader, getKeyperSetIndexByBlock, Address.Zero, [blockNumber])[0];
     }
 }

@@ -77,12 +77,15 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        if (DecryptionKeys is null || DecryptionKeys!.Gnosis.Slot != (ulong)parent.Number || TxPointer is null)
+        // _logger.Info($"current dk slot: {DecryptionKeys!.Gnosis.Slot}, parent block number?: {parent.Number}");
+        if (DecryptionKeys is null || TxPointer is null)
         {
             // todo: store a dictionary?
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {parent.Number}, cannot include Shutter transactions");
             return [];
         }
+
+        // todo: how to check slot number? get from fork choice?
 
         IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, TxPointer.Value);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");

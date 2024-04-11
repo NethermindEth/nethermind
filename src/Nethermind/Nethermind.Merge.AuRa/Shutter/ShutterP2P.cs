@@ -27,16 +27,18 @@ namespace Nethermind.Merge.AuRa.Shutter;
 
 public class ShutterP2P
 {
-    private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysReceived;
+    private readonly Func<Dto.DecryptionKeys, bool> _shouldProcessDecryptionKeys;
+    private readonly Action<Dto.DecryptionKeys> _onDecryptionKeysValidated;
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogger _logger;
     private readonly ulong InstanceID;
     private ShutterEonInfo _eonInfo;
 
-    public ShutterP2P(Action<Dto.DecryptionKeys> OnDecryptionKeysReceived, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
+    public ShutterP2P(Action<Dto.DecryptionKeys> onDecryptionKeysValidated, Func<Dto.DecryptionKeys, bool> shouldProcessDecryptionKeys, IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogManager logManager)
     {
-        _onDecryptionKeysReceived = OnDecryptionKeysReceived;
+        _onDecryptionKeysValidated = onDecryptionKeysValidated;
+        _shouldProcessDecryptionKeys = shouldProcessDecryptionKeys;
         _readOnlyBlockTree = readOnlyBlockTree;
         _abiEncoder = abiEncoder;
         _logger = logManager.GetClassLogger();
@@ -126,18 +128,23 @@ public class ShutterP2P
             return;
         }
 
+        if (!_shouldProcessDecryptionKeys(decryptionKeys))
+        {
+            return;
+        }
+
         _eonInfo.Update();
 
         if (CheckDecryptionKeys(decryptionKeys))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
-            _onDecryptionKeysReceived(decryptionKeys);
+            _onDecryptionKeysValidated(decryptionKeys);
         }
     }
 
     internal bool CheckDecryptionKeys(in Dto.DecryptionKeys decryptionKeys)
     {
-        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer}");
+        if (_logger.IsInfo) _logger.Info($"Checking decryption keys instanceID: {decryptionKeys.InstanceID} eon: {decryptionKeys.Eon} #keys: {decryptionKeys.Keys.Count()} #sig: {decryptionKeys.Gnosis.Signatures.Count()} #txpointer: {decryptionKeys.Gnosis.TxPointer} #slot: {decryptionKeys.Gnosis.Slot} #block: {_readOnlyBlockTree.Head!.Header.Number}");
 
         if (decryptionKeys.InstanceID != InstanceID)
         {

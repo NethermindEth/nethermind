@@ -115,21 +115,22 @@ namespace Nethermind.Merge.AuRa
                 shutterTxSource = new ShutterTxSource(_api.LogFinder!, _api.FilterStore!, readOnlyTxProcessingEnvFactory, _api.AbiEncoder, _auraConfig, _api.SpecProvider!, _api.LogManager, _api.EthereumEcdsa!, validatorsInfo);
 
                 // init P2P to listen for decryption keys
-                Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysReceived = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
+                Func<Shutter.Dto.DecryptionKeys, bool> shouldProccessDecryptionKeys = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
                 {
-                    if (shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys!.Gnosis.Slot)
-                    {
-                        if (logger.IsInfo) logger.Info("Updated Shutter decryption keys...");
-                        shutterTxSource.DecryptionKeys = decryptionKeys;
+                    return shutterTxSource.DecryptionKeys is null || decryptionKeys.Gnosis.Slot > shutterTxSource.DecryptionKeys.Gnosis.Slot;
+                };
 
-                        if (shutterTxSource.TxPointer is null)
-                        {
-                            shutterTxSource.TxPointer = decryptionKeys.Gnosis.TxPointer;
-                        }
+                Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysValidated = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
+                {
+                    shutterTxSource.DecryptionKeys = decryptionKeys;
+
+                    if (shutterTxSource.TxPointer is null)
+                    {
+                        shutterTxSource.TxPointer = decryptionKeys.Gnosis.TxPointer;
                     }
                 };
 
-                ShutterP2P shutterP2P = new(onDecryptionKeysReceived, readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, _api.LogManager);
+                ShutterP2P shutterP2P = new(onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, _api.LogManager);
             }
 
             return _api.BlockProducerEnvFactory.Create(shutterTxSource);
