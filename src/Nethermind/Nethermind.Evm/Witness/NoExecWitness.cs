@@ -36,7 +36,7 @@ public class NoExecWitness: IExecutionWitness
 
     public long AccessCompleteAccount(Address address, bool isWrite = false) => 0;
 
-    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero) => 0;
+    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist) => 0;
 
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
 }

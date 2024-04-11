@@ -187,13 +187,18 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
         return gasCost;
     }
 
-    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero)
+    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist)
     {
         bool contractNotSameAsBeneficiary = contract != inheritor;
         long gas = 0;
         gas += AccessVersion(contract);
         gas += AccessCodeSize(contract);
 
+        if (!inheritorExist)
+        {
+            gas += AccessVersion(inheritor);
+            gas += AccessNonce(inheritor);
+        }
         if (balanceIsZero)
         {
             gas += AccessBalance(contract);

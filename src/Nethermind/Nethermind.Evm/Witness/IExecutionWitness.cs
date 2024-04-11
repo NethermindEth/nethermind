@@ -63,6 +63,6 @@ public interface IExecutionWitness
     /// <returns></returns>
     long AccessCompleteAccount(Address address, bool isWrite = false);
 
-    long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero);
+    long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist);
     byte[][] GetAccessedKeys();
 }
