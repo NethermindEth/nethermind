@@ -136,6 +136,7 @@ public class ShutterP2P
             return;
         }
 
+        //todo: change to block number
         GetEonInfo(readOnlyTransactionProcessor, keyperSetManagerContract!, decryptionKeys.Gnosis.Slot, out ulong eon, out Bls.P2 eonKey, out ulong threshold, out Address[] keyperAddresses);
 
         if (CheckDecryptionKeys(keyperSetManagerContract!, decryptionKeys, eon, eonKey, threshold, keyperAddresses))

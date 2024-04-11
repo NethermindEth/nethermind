@@ -19,6 +19,7 @@
     <EmbeddedResource Include="Shutter\Contracts\ValidatorRegistryContract.json" />
     <EmbeddedResource Include="Shutter\Contracts\KeyBroadcastContract.json" />
     <EmbeddedResource Include="Shutter\Contracts\KeyperSetManagerContract.json" />
+    <EmbeddedResource Include="Shutter\Contracts\KeyperSetContract.json" />
     <EmbeddedResource Include="Shutter\Contracts\SequencerContract.json" />
   </ItemGroup>
 
