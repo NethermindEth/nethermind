@@ -2566,9 +2566,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         Address executingAccount = vmState.Env.ExecutingAccount;
         UInt256 contractBalance = _state.GetBalance(executingAccount);
+        bool inheritorAccountExists = _state.AccountExists(inheritor);
 
         // get the verkle witness cost and charge the account access gas if the verkle cost is zero
-        var selfDestructGas = vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero);
+        var selfDestructGas = vmState.Env.Witness.AccessForSelfDestruct(executingAccount, inheritor, contractBalance.IsZero, inheritorAccountExists);
         if (selfDestructGas == 0)
         {
             if (!ChargeAccountAccessGas(ref gasAvailable, vmState, inheritor, spec, chargeForWarm: false,
@@ -2586,15 +2587,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.DestroyList.Add(executingAccount);
 
         if (_txTracer.IsTracingActions) _txTracer.ReportSelfDestruct(executingAccount, contractBalance, inheritor);
-        if (spec.ClearEmptyAccountWhenTouched && !contractBalance.IsZero && _state.IsDeadAccount(inheritor))
-        {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
-        }
 
-        bool inheritorAccountExists = _state.AccountExists(inheritor);
-        if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+        if (!spec.IsVerkleTreeEipEnabled)
         {
-            if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            if (spec.ClearEmptyAccountWhenTouched && !contractBalance.IsZero && _state.IsDeadAccount(inheritor))
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
+
+            if (!spec.ClearEmptyAccountWhenTouched && !inheritorAccountExists && spec.UseShanghaiDDosProtection)
+            {
+                if (!UpdateGas(GasCostOf.NewAccount, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+            }
         }
 
         if (!inheritorAccountExists)
