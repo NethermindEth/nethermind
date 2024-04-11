@@ -4,20 +4,15 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Int256;
-using Nethermind.State;
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
 public abstract class GethLikeNativeTxTracer : GethLikeTxTracer
 {
     protected int Depth { get; private set; }
-    protected readonly IWorldState? _worldState;
 
-    protected GethLikeNativeTxTracer(
-        IWorldState? worldState,
-        GethTraceOptions options) : base(options)
+    protected GethLikeNativeTxTracer(GethTraceOptions options) : base(options)
     {
         Depth = -1;
-        _worldState = worldState;
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)

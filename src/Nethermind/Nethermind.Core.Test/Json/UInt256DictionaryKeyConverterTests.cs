@@ -14,7 +14,7 @@ namespace Nethermind.Core.Test.Json;
 [TestFixture]
 public class UInt256DictionaryKeyConverterTests
 {
-    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.CreateOptions(true);
+    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.JsonOptionsIndented;
 
     [Test]
     public void ReadJson_NestedValidJson_ReturnsCorrectDictionary()

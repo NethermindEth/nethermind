@@ -22,7 +22,7 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
     {
         _context.From = tx?.SenderAddress!;
         _context.To = tx?.To;
-        return GethLikeNativeTracerFactory.CreateTracer(_worldState, _context, _options);
+        return GethLikeNativeTracerFactory.CreateTracer(_options, _worldState, _context);
     }
 
     protected override bool ShouldTraceTx(Transaction? tx) => tx is not null && base.ShouldTraceTx(tx);

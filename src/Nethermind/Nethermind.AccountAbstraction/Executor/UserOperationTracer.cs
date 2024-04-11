@@ -85,7 +85,7 @@ namespace Nethermind.AccountAbstraction.Executor
 
         public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
         {
-            int depth = env.CallDepth + 1;
+            int depth = env.GetGethTraceDepth();
             if (_nextOpcodeMustBeCall)
             {
                 _nextOpcodeMustBeCall = false;

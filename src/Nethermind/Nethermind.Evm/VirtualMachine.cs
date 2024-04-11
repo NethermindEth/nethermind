@@ -2317,7 +2317,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             outputOffset = 0;
         }
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
         returnData = new EvmState(
             gasLimitUl,
             callEnv,

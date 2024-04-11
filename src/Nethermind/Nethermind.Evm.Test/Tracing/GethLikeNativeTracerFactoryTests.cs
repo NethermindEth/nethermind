@@ -16,7 +16,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var options = new GethTraceOptions { Tracer = Native4ByteTracer.FourByteTracer };
 
-        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(null, null, options);
+        GethLikeNativeTxTracer? nativeTracer = GethLikeNativeTracerFactory.CreateTracer(options);
 
         Assert.True(nativeTracer is Native4ByteTracer);
     }
@@ -26,7 +26,7 @@ public class GethLikeNativeTracerFactoryTests
     {
         var options = new GethTraceOptions { Tracer = "nonExistentTracer" };
 
-        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(null, null, options));
+        Assert.Throws<ArgumentException>(() => GethLikeNativeTracerFactory.CreateTracer(options));
     }
 
     [Test]

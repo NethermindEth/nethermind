@@ -70,12 +70,12 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
 
     public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
     {
-        bool isPostMerge = env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge;
+        bool isPostMerge = env.IsPostMerge();
         if (CurrentTraceEntry is not null)
             AddTraceEntry(CurrentTraceEntry);
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
-        CurrentTraceEntry.Depth = env.CallDepth + 1;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
         CurrentTraceEntry.ProgramCounter = pc;

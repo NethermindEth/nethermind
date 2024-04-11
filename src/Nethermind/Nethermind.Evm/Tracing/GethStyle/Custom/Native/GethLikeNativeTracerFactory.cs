@@ -15,7 +15,7 @@ public static class GethLikeNativeTracerFactory
 
     private static readonly Dictionary<string, Func<IWorldState?, NativeTracerContext?, GethTraceOptions, GethLikeNativeTxTracer>> _tracers = new();
 
-    public static GethLikeNativeTxTracer CreateTracer(IWorldState? worldState, NativeTracerContext? context, GethTraceOptions options) =>
+    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, IWorldState? worldState = null, NativeTracerContext? context = null) =>
         _tracers.TryGetValue(options.Tracer, out Func<IWorldState?, NativeTracerContext?, GethTraceOptions, GethLikeNativeTxTracer> tracerFunc)
         ? tracerFunc(worldState, context, options)
         : throw new ArgumentException($"Unknown tracer: {options.Tracer}");

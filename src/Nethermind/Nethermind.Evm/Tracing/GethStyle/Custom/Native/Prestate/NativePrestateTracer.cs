@@ -14,6 +14,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 {
     public const string PrestateTracer = "prestateTracer";
 
+    private readonly IWorldState? _worldState;
     private TraceMemory _memoryTrace;
     private Instruction _op;
     private Address? _executingAccount;
@@ -23,12 +24,14 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public NativePrestateTracer(
         IWorldState worldState,
         NativeTracerContext? context,
-        GethTraceOptions options) : base(worldState, options)
+        GethTraceOptions options) : base(options)
     {
         IsTracingRefunds = true;
         IsTracingActions = true;
         IsTracingMemory = true;
         IsTracingStack = true;
+
+        _worldState = worldState;
 
         _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
         if (context is not null)
@@ -50,6 +53,9 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
     {
         base.StartOperation(env, gas, opcode, pc);
+
+        if (_error is not null) return;
+
         _op = opcode;
         _executingAccount = env.ExecutingAccount;
     }
@@ -63,11 +69,6 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     public override void SetOperationStack(TraceStack stack)
     {
         base.SetOperationStack(stack);
-
-        if (_error is not null)
-        {
-            return;
-        }
 
         int stackLen = stack.Count;
         Address address;
@@ -106,12 +107,22 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             case Instruction.CREATE2:
                 if (stackLen >= 4)
                 {
-                    int offset = stack.Peek(1).ReadEthInt32();
-                    int length = stack.Peek(2).ReadEthInt32();
-                    ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
-                    ReadOnlySpan<byte> salt = stack.Peek(3);
-                    address = ContractAddress.From(_executingAccount!, salt, initCode);
-                    LookupAccount(address);
+                    try
+                    {
+                        int offset = stack.Peek(1).ReadEthInt32();
+                        int length = stack.Peek(2).ReadEthInt32();
+                        ReadOnlySpan<byte> initCode = _memoryTrace.Slice(offset, length);
+                        ReadOnlySpan<byte> salt = stack.Peek(3);
+                        address = ContractAddress.From(_executingAccount!, salt, initCode);
+                        LookupAccount(address);
+                    }
+                    catch
+                    {
+                        /*
+                         * This operation error will be recorded in ReportOperationError and all
+                         * subsequent operations will be ignored from the prestate trace
+                         */
+                    }
                 }
                 break;
             case Instruction.CREATE:
@@ -130,16 +141,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
     private void LookupInitialTransactionAccounts(in NativeTracerContext context)
     {
-        Address from = context.From;
-        LookupAccount(from);
-
-        Address to = context.To;
-        if (to is null)
-        {
-            UInt256 fromNonce = _prestate[from].Nonce ?? 0;
-            to = ContractAddress.From(from, fromNonce);
-        }
-        LookupAccount(to);
+        LookupAccount(context.From);
+        LookupAccount(context.To ?? ContractAddress.From(context.From, _prestate[context.From].Nonce ?? 0));
 
         // Look up client beneficiary address as well
         LookupAccount(context.Beneficiary ?? Address.Zero);
@@ -153,31 +156,24 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
             {
                 ulong nonce = (ulong)account.Nonce;
                 byte[]? code = _worldState.GetCode(addr);
-                _prestate.Add(addr, new NativePrestateTracerAccount
-                {
-                    Balance = account.Balance,
-                    Nonce = nonce > 0 ? nonce : null,
-                    Code = code is not null && code.Length > 0 ? code : null
-                });
+                _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
             }
             else
             {
-                _prestate.Add(addr, new NativePrestateTracerAccount
-                {
-                    Balance = UInt256.Zero
-                });
+                _prestate.Add(addr, new NativePrestateTracerAccount(UInt256.Zero));
             }
         }
     }
 
     private void LookupStorage(Address addr, UInt256 index)
     {
-        _prestate[addr].Storage ??= new Dictionary<UInt256, UInt256>();
+        NativePrestateTracerAccount account = _prestate[addr];
+        account.Storage ??= new Dictionary<UInt256, UInt256>();
 
-        if (!_prestate[addr].Storage.ContainsKey(index))
+        if (!account.Storage.ContainsKey(index))
         {
             UInt256 storage = new(_worldState!.Get(new StorageCell(addr, index)), true);
-            _prestate[addr].Storage.Add(index, storage);
+            account.Storage.Add(index, storage);
         }
     }
 }

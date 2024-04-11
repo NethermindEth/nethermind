@@ -31,7 +31,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
     private Instruction _op;
 
     public Native4ByteTracer(
-        GethTraceOptions options) : base(null, options)
+        GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
     }

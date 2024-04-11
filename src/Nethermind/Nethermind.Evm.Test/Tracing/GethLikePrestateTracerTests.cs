@@ -16,9 +16,9 @@ using NUnit.Framework;
 namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
-public class GethLikePrestateTracerTests : GethLikeNativeTracerTestsBase
+public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
-    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.CreateOptions(true);
+    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.JsonOptionsIndented;
 
     [Test]
     public void Test_PrestateTrace_SStore()
