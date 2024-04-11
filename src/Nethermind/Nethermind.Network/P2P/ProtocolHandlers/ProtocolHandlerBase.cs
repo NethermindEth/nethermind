@@ -81,8 +81,14 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         {
             Interlocked.Increment(ref Counter);
             if (Logger.IsTrace) Logger.Trace($"{Counter} Sending {typeof(T).Name}");
-            if (NetworkDiagTracer.IsEnabled) NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, message.ToString(), size);
-            int size = Session.DeliverMessage(message);
+            if (NetworkDiagTracer.IsEnabled)
+            {
+                string messageString = message.ToString();
+                int size = Session.DeliverMessage(message);
+                NetworkDiagTracer.ReportOutgoingMessage(Session.Node?.Address, Name, messageString, size);
+            }
+            else
+                Session.DeliverMessage(message);
         }
 
         protected async Task CheckProtocolInitTimeout()
