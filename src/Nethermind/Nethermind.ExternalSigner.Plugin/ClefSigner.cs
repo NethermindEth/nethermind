@@ -84,7 +84,7 @@ public class ClefSigner : IHeaderSigner, ISignerStore
 
             //Clef will set recid to 0/1, without the VOffset
             if (bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1))
-                return new Signature(bytes.AsSpan(0,64), bytes[64]);
+                return new Signature(bytes.AsSpan(0, 64), bytes[64]);
             return new Signature(bytes);
         }
         finally

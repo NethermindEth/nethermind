@@ -59,9 +59,9 @@ namespace Nethermind.JsonRpc.Client
             }
             catch (Exception e) when
             (
-                e is not TaskCanceledException  &&
-                e is not HttpRequestException   &&
-                e is not NotImplementedException&&
+                e is not TaskCanceledException &&
+                e is not HttpRequestException &&
+                e is not NotImplementedException &&
                 e is not NotSupportedException
             )
             {
@@ -101,7 +101,7 @@ namespace Nethermind.JsonRpc.Client
 
         public virtual void Dispose()
         {
-           _client.Dispose();        
+            _client.Dispose();
         }
     }
 }
