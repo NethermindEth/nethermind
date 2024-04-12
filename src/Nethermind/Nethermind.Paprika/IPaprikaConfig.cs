@@ -20,7 +20,7 @@ public interface IPaprikaConfig : IConfig
     [ConfigItem(Description = "The total budget of entries to be used per block", DefaultValue = "10000")]
     public int CacheMerklePerBlock { get; set; }
 
-    [ConfigItem(Description = "Whether Merkle should use parallelism", DefaultValue = "false")]
+    [ConfigItem(Description = "Whether Merkle should use parallelism", DefaultValue = "true")]
     public bool ParallelMerkle { get; set; }
 }
 
@@ -36,5 +36,5 @@ public class PaprikaConfig : IPaprikaConfig
     public ushort CacheMerkleBeyond { get; set; } = 8;
     public int CacheMerklePerBlock { get; set; } = 5000;
 
-    public bool ParallelMerkle { get; set; } = false;
+    public bool ParallelMerkle { get; set; } = true;
 }
