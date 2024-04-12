@@ -713,6 +713,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             storageAccessType == StorageAccessType.SSTORE);
         if (!UpdateGas(storageWitnessGas, ref gasAvailable)) return false;
 
+        bool witnessGasCharged = storageWitnessGas != 0;
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
@@ -721,7 +722,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 vmState.WarmUp(in storageCell);
             }
 
-            if (vmState.IsCold(in storageCell))
+            if (witnessGasCharged)
+            {
+                vmState.WarmUp(in storageCell);
+            }
+            else if (vmState.IsCold(in storageCell))
             {
                 // after verkle is enabled we dont charge cost cost as it is replace by verkle access costs
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
