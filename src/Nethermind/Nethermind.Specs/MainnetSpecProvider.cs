@@ -47,7 +47,8 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
-            _ => Cancun.Instance
+            { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
+            _ => Prague.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)
@@ -86,7 +87,7 @@ public class MainnetSpecProvider : ISpecProvider
         (ForkActivation)GrayGlacierBlockNumber,
         ShanghaiActivation,
         CancunActivation,
-        //PragueActivation,
+        PragueActivation,
         //OsakaActivation
     };
 
