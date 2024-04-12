@@ -110,22 +110,9 @@ namespace Nethermind.JsonRpc.Client
         private static string Base64Encode(string plainText)
             => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
 
-        protected virtual void Dispose(bool disposing)
+        protected virtual void Dispose()
         {
-            if (!disposedValue)
-            {
-                if (disposing)
-                {
-                    _client?.Dispose();
-                }
-                disposedValue = true;
-            }
-        }
-
-        public void Dispose()
-        {
-            Dispose(disposing: true);
-            GC.SuppressFinalize(this);
+           _client.Dispose();        
         }
     }
 }
