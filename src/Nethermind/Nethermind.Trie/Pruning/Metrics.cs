@@ -37,6 +37,10 @@ namespace Nethermind.Trie.Pruning
         public static long LoadedFromDbNodesCount { get; set; }
 
         [CounterMetric]
+        [Description("Number of 2nd DB reads (flat layout specific).")]
+        public static long LoadedFromDbNodesVia2NdReadCount { get; set; }
+
+        [CounterMetric]
         [Description("Number of reads from the node cache.")]
         public static long LoadedFromCacheNodesCount { get; set; }
 
@@ -67,5 +71,12 @@ namespace Nethermind.Trie.Pruning
         [GaugeMetric]
         [Description("Estimated memory used by cache.")]
         public static long MemoryUsedByCache { get; set; }
+
+        [CounterMetric]
+        [Description("Prefetcher requests count - all (flat layout specific).")]
+        public static long PrefetcherRequestCount { get; set; }
+        [CounterMetric]
+        [Description("Prefetcher requests count - processed (flat layout specific).")]
+        public static long PrefetcherProcessedRequestCount { get; set; }
     }
 }

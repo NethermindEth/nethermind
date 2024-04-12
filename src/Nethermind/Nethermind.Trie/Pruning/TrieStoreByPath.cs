@@ -41,10 +41,6 @@ namespace Nethermind.Trie.Pruning
         private readonly SpanLruCache<byte, byte[]>? _readLruCache;
         private readonly PathPrefetcher? _prefetcher;
         private readonly PathPrefetcher? _statePrefetcher;
-        private long _allLoadRlpCalls;
-        private long _rlpReadLvl1;
-        private long _rlpReadLvl2;
-        private long _rlpCacheReads;
 
         public TrieStoreByPath(
             IColumnsDb<StateColumns> stateDb,
@@ -64,6 +60,7 @@ namespace Nethermind.Trie.Pruning
                 _readLruCache =
                     new SpanLruCache<byte, byte[]>(640000, 1000, "TrieStore LRU Cache", Bytes.SpanNibbleEqualityComparer);
                 _prefetcher = new PathPrefetcher(this, 2, logManager);
+                //_prefetcher = null;
                 _statePrefetcher = null;
             }
         }
@@ -232,50 +229,32 @@ namespace Nethermind.Trie.Pruning
 
         public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, out RlpSource source, ReadFlags flags = ReadFlags.None)
+        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
         {
-            Interlocked.Increment(ref _allLoadRlpCalls);
-            if (_allLoadRlpCalls % 10000 == 0)
-            {
-                _logger.Info($"Cached reads {_rlpCacheReads} | all calls {_allLoadRlpCalls} | all reads {_rlpReadLvl1} | all reads long {_rlpReadLvl2} | long reads ratio {(float)_rlpReadLvl2 / _rlpReadLvl1 * 100:00.00} | ratio {(float)_rlpCacheReads / _allLoadRlpCalls * 100:00.00} | size {(float)(_readLruCache?.MemorySize ?? 0)/ 1.MiB():##.00}");
-            }
-
             if ((flags & ReadFlags.HintCacheMiss) != ReadFlags.HintCacheMiss)
             {
                 if (_readLruCache?.TryGet(path, out byte[] cachedRlp) == true)
                 {
-                    Interlocked.Increment(ref _rlpCacheReads);
-                    source = RlpSource.ReadCache;
+                    Metrics.LoadedFromRlpCacheNodesCount++;
                     return cachedRlp;
                 }
             }
-            StateColumns column = GetProperColumn(path.Length);
-            keyValueStore ??= _stateDb.GetColumnDb(column);
+            keyValueStore ??= _stateDb.GetColumnDb(GetProperColumn(path.Length));
             byte[] keyPath = Nibbles.NibblesToByteStorage(path);
 
-            Interlocked.Increment(ref _rlpReadLvl1);
             if (_logger.IsDebug) _logger.Debug($"Loading RLP for {path.ToHexString()}");
             byte[]? rlp = keyValueStore.Get(keyPath);
-            if (rlp is null || rlp[0] != PathMarker)
+            if (rlp?[0] == PathMarker)
             {
-                _readLruCache?.Set(path, rlp);
-                source = RlpSource.Database;
-                return rlp;
+                rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
+                if (rlp is not null)
+                    Metrics.LoadedFromDbNodesVia2NdReadCount++;
             }
 
-            Interlocked.Increment(ref _rlpReadLvl2);
-            rlp = keyValueStore.Get(rlp.AsSpan()[1..]);
-            if (rlp is not null)
-            {
-                _readLruCache?.Set(path, rlp);
-            }
-            source = RlpSource.Database;
+            if (rlp is null) return rlp;
+            _readLruCache?.Set(path, rlp);
+            Metrics.LoadedFromDbNodesCount++;
             return rlp;
-        }
-
-        public byte[]? TryLoadRlp(Span<byte> path, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
-        {
-            return TryLoadRlp(path, keyValueStore, out _, flags);
         }
 
         internal byte[] LoadRlp(Hash256 keccak, IKeyValueStore? keyValueStore, ReadFlags flags = ReadFlags.None)
@@ -292,9 +271,6 @@ namespace Nethermind.Trie.Pruning
             {
                 throw new TrieException($"Node {Nibbles.NibblesToByteStorage(path).ToHexString()} is missing from the DB | path.Length {path.Length} - {path.ToHexString()}");
             }
-
-            Metrics.LoadedFromDbNodesCount++;
-
             return rlp;
         }
 
@@ -944,7 +920,7 @@ namespace Nethermind.Trie.Pruning
             _committedNodes.OpenContext(blockNumber, keccak);
         }
 
-        public int PrefetchPath(ReadOnlySpan<byte> rawKey, byte[] storeNibblePrefix, Hash256 stateRoot, CancellationToken cancellationToken)
+        public void PrefetchPath(ReadOnlySpan<byte> rawKey, byte[] storeNibblePrefix, Hash256 stateRoot, CancellationToken cancellationToken)
         {
             int fullLength = storeNibblePrefix.Length + rawKey.Length * 2;
             Span<byte> nibbles = stackalloc byte[130];
@@ -952,7 +928,6 @@ namespace Nethermind.Trie.Pruning
             storeNibblePrefix.CopyTo(nibbles);
             Nibbles.BytesToNibbleBytes(rawKey, nibbles.Slice(storeNibblePrefix.Length, 64));
             nibbles = nibbles.Slice(0, fullLength);
-            int dbReads = 0;
 
             int index = storeNibblePrefix.Length;
             while (index < fullLength)
@@ -963,18 +938,12 @@ namespace Nethermind.Trie.Pruning
                 byte[]? rlp = null;
                 Span<byte> currentPath = nibbles[..index];
                 NodeData? nodeData = _committedNodes.GetNodeDataAtRoot(stateRoot, currentPath);
-                rlp = nodeData?.RLP;
-                if (rlp is null)
-                {
-                    rlp = TryLoadRlp(currentPath, null, out RlpSource source);
-                    if (source == RlpSource.Database)
-                        dbReads++;
-                }
+                rlp = nodeData?.RLP ?? TryLoadRlp(currentPath, null);
 
                 if (_logger.IsDebug) _logger.Debug($"Prefetched path {currentPath.ToHexString()}");
 
                 if (rlp is null)
-                    return dbReads;
+                    return;
 
                 RlpStream rlpStream = rlp.AsRlpStream();
 
@@ -994,7 +963,6 @@ namespace Nethermind.Trie.Pruning
                     index += key.Length;
                 }
             }
-            return dbReads;
         }
 
         public void PrefetchForSet(StateColumns column, Span<byte> key, byte[] storeNibblePrefix, Hash256 stateRoot)
@@ -1040,10 +1008,6 @@ namespace Nethermind.Trie.Pruning
         private readonly ManualResetEventSlim _prefetchEvent;
         private readonly ConcurrentDictionary<PrefetchWorkItem, bool> _alreadyEnqueuedThisRound;
         private readonly ILogger _logger;
-        private long _processedRequests;
-        private long _allRequests;
-        private long _allDbReads;
-        private long _stopCalls;
 
         public PathPrefetcher(TrieStoreByPath trieStore, int threadsCount, ILogManager logManager)
         {
@@ -1073,9 +1037,9 @@ namespace Nethermind.Trie.Pruning
 
                 if (_prefetchQueue.TryDequeue(out PrefetchWorkItem item))
                 {
-                    int dbReads = _trieStore.PrefetchPath(item.Key, item.StoreNibblePrefix, item.StateRoot, _singleRequestCancellationTokenSource.Token);
-                    Interlocked.Increment(ref _processedRequests);
-                    Interlocked.Add(ref _allDbReads, dbReads);
+                    _trieStore.PrefetchPath(item.Key, item.StoreNibblePrefix, item.StateRoot, _singleRequestCancellationTokenSource.Token);
+                    if (!_singleRequestCancellationTokenSource.IsCancellationRequested)
+                        Metrics.PrefetcherProcessedRequestCount++;
                 }
                 else
                 {
@@ -1089,12 +1053,7 @@ namespace Nethermind.Trie.Pruning
         {
             if (!_alreadyEnqueuedThisRound.ContainsKey(newItem))
             {
-                Interlocked.Increment(ref _allRequests);
-                if (_allRequests % 1000 == 0)
-                {
-                    if (_logger.IsInfo) _logger.Info($"All requests {_allRequests} | processed {_processedRequests} | ratio {(float)_processedRequests / _allRequests } | db reads / commit {(float)_allDbReads / _stopCalls}");
-                }
-
+                Metrics.PrefetcherRequestCount++;
                 _alreadyEnqueuedThisRound.TryAdd(newItem, true);
                 _prefetchQueue.Enqueue(newItem);
                 _prefetchEvent.Set();
@@ -1106,7 +1065,6 @@ namespace Nethermind.Trie.Pruning
             Task cancel = _singleRequestCancellationTokenSource.CancelAsync();
             _prefetchQueue.Clear();
             _alreadyEnqueuedThisRound.Clear();
-            Interlocked.Increment(ref _stopCalls);
             cancel.Wait(_prefetchCancellationTokenSource.Token);
             _singleRequestCancellationTokenSource = new CancellationTokenSource();
         }
@@ -1117,12 +1075,6 @@ namespace Nethermind.Trie.Pruning
             _prefetchCancellationTokenSource.Dispose();
             _prefetchEvent.Dispose();
         }
-    }
-
-    public enum RlpSource
-    {
-        Database,
-        ReadCache
     }
 
     public class PrefetchWorkItem
