@@ -256,7 +256,7 @@ jobs:
 
           check_chain_head() {
             rpc_url=$1
-            etherscan_api_key='$ETHERSCAN_API_KEY'
+            etherscan_api_key="$ETHERSCAN_API_KEY"
             etherscan_api_url="https://api.etherscan.io/api"
 
             # Fetch current chain head from node
@@ -291,7 +291,6 @@ jobs:
             check_eth_syncing "$url"
           done            
 
-          if 
           # Waiting for Paprika Import
           for url in "${processed_rpc_urls[@]}"; do
             check_jsonrpc_responding "$url"
