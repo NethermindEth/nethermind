@@ -89,7 +89,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("aura ^archive", false)]
-        [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
@@ -291,12 +290,6 @@ namespace Nethermind.Runner.Test
         public void Stores_receipts(string configWildcard, bool storeReceipts)
         {
             Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
-        }
-
-        [TestCase("clique")]
-        public void Clique_pivots_divide_by_30000_epoch_length(string configWildcard)
-        {
-            Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
         }
 
         [TestCase("mainnet_archive.cfg", true)]

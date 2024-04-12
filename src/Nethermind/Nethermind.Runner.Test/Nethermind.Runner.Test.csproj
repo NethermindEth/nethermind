@@ -63,5 +63,8 @@
   <ItemGroup>
     <ProjectReference Include="..\Nethermind.Seq\Nethermind.Seq.csproj" />
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="configs\" />
+  </ItemGroup>
 
 </Project>
