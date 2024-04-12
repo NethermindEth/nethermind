@@ -291,11 +291,12 @@ jobs:
             check_eth_syncing "$url"
           done            
 
-          # Waiting for Paprika Import
-          for url in "${processed_rpc_urls[@]}"; do
+          if [ "${{ inputs.convert_to_paprika }}" == "true" ]; then
+            # Waiting for Paprika Import
+            url="${processed_rpc_urls[0]}"
             check_jsonrpc_responding "$url"
             check_chain_head "$url"
-          done
+          fi
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
