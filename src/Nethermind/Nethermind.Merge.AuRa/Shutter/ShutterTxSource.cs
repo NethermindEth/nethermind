@@ -78,10 +78,10 @@ public class ShutterTxSource : ITxSource
         }
 
         // todo: add to specprovider
-        ulong slot = ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ChiadoSpecProvider.BeaconChainGenesisTimestamp) / 5;
-        if (DecryptionKeys is null || TxPointer is null || DecryptionKeys.Gnosis.Slot != slot)
+        ulong nextSlot = (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ChiadoSpecProvider.BeaconChainGenesisTimestamp) / 5) + 1;
+        if (DecryptionKeys is null || TxPointer is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {slot}, cannot include Shutter transactions");
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
             return [];
         }
 
