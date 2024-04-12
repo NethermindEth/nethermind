@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BlockHashInState;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
@@ -36,6 +39,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
+    private readonly IBlockHashInStateHandler _blockHashInStateHandlerHandler;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
@@ -72,6 +76,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         ReceiptsTracer = new BlockReceiptsTracer();
@@ -223,6 +228,23 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
+    private void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
+    {
+        long current = currentBlock.Number;
+        BlockHeader header = currentBlock;
+        for (var i = 0; i < Math.Min(256, current); i++)
+        {
+            // an extract check - dont think it is needed
+            if (header.IsGenesis) break;
+            _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
+            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null)
+            {
+                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+            }
+        }
+    }
+
     private bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
@@ -238,6 +260,23 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+
+        if (spec.IsEip2935Enabled)
+        {
+            // TODO: find a better way to handle this - no need to have this check everytime
+            //      this would just be true on the fork block
+            BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
+            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimeStamp)
+            {
+                InitEip2935History(block.Header, spec, _stateProvider);
+            }
+            else
+            {
+                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, _stateProvider, ReceiptsTracer);
+            }
+        }
+
+
         _stateProvider.Commit(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
