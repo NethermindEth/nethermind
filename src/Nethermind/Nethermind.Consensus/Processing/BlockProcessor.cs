@@ -39,7 +39,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-
+    private readonly IBlockTree _blockTree;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -56,6 +56,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockTree? blockTree,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null)
@@ -71,6 +72,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }

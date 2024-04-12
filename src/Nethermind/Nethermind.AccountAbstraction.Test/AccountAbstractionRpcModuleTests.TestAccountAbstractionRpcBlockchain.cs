@@ -190,6 +190,7 @@ namespace Nethermind.AccountAbstraction.Test
                     State,
                     ReceiptStorage,
                     NullWitnessCollector.Instance,
+                    BlockTree,
                     LogManager);
 
                 AbiParameterConverter.RegisterFactory(new AbiTypeFactory(new AbiTuple<UserOperationAbi>()));

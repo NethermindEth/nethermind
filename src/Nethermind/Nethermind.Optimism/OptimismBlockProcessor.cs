@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -28,12 +29,13 @@ public class OptimismBlockProcessor : BlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockTree? blockTree,
         ILogManager? logManager,
         IOPConfigHelper opConfigHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
+            stateProvider, receiptStorage, witnessCollector, blockTree, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

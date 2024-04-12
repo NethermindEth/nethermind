@@ -217,6 +217,7 @@ namespace Nethermind.Init.Steps
             if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
+            if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
 
             IWorldState worldState = _api.WorldState!;
 
@@ -228,6 +229,7 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
+                _api.BlockTree,
                 _api.LogManager);
         }
 
