@@ -40,6 +40,8 @@ namespace Nethermind.Runner.Test
                 .Match<ChainSpec>(cs => cs.ChainId == chainId);
         }
 
+        // This holesky.json contains invalid config values. This test ensues that those config values are
+        // ignored for the correct ones contained in another holesky.json file embedded in the config directory
         [TestCase("holesky.json", 0x4268UL)]
         public void ignoring_custom_chainSpec_when_embedded_exists(string chainSpecPath, ulong chainId)
         {

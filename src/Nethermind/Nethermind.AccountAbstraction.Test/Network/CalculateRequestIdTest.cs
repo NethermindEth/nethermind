@@ -12,7 +12,6 @@ namespace Nethermind.AccountAbstraction.Test.Network
     [TestFixture]
     public class CalculateRequestIdTest
     {
-        private const ulong ChainId = 5;
 
         [Test]
         public void Calculates_RequestId_Correctly_No_Signature()
@@ -39,7 +38,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
 
             Address entryPointId = new Address("0x90f3E1105E63C877bF9587DE5388C23Cdb702c6B");
             Hash256 idFromTransaction = new Hash256("0x9f5d37eb5cc7b0707b2898b1da01fa7aac806a18d531b17a981994bc512cbfc8");
-            userOperation.CalculateRequestId(entryPointId, ChainId);
+            userOperation.CalculateRequestId(entryPointId, BlockchainIds.Goerli);
             Assert.That(userOperation.RequestId!, Is.EqualTo(idFromTransaction),
                 "Request IDs do not match.");
         }
@@ -70,7 +69,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
             Address entryPointId = new Address("0x90f3e1105e63c877bf9587de5388c23cdb702c6b");
             Hash256 idFromTransaction2 =
                 new Hash256("0x87c3605deda77b02b78e62157309985d94531cf7fbb13992c602c8555bece921");
-            userOperation2.CalculateRequestId(entryPointId, ChainId);
+            userOperation2.CalculateRequestId(entryPointId, BlockchainIds.Goerli);
             Assert.That(userOperation2.RequestId!, Is.EqualTo(idFromTransaction2),
                 "Request IDs do not match.");
         }

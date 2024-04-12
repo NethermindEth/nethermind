@@ -105,10 +105,6 @@ public abstract class ConfigFileTestsBase
     protected IEnumerable<string> AuraNonValidatingConfigs
         => AuraConfigs.Where(c => !c.Contains("validator"));
 
-    [ConfigFileGroup("clique")]
-    protected IEnumerable<string> CliqueConfigs
-        => HoleskyConfigs;
-
     protected IEnumerable<string> Resolve(string configWildcard)
     {
         Dictionary<string, IEnumerable<string>> groups = BuildConfigGroups();

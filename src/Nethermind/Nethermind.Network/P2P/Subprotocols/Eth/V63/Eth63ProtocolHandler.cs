@@ -143,8 +143,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
             GetNodeDataMessage msg = new(keys.ToPooledList());
 
-            // if node data is a disposable pooled array wrapper here then we could save around 1.6% allocations
-            // on a sample 3M blocks Goerli fast sync. // todo: Maybe switch to array pooled list here? and maybe remeasure as goerli on another network like holesky has been phased out.
+            // could use more array pooled lists (pooled memmory) here.
+            // maybe remeasure allocations on another network since goerli has been phased out.
             IOwnedReadOnlyList<byte[]> nodeData = await SendRequest(msg, token);
             return nodeData;
         }
