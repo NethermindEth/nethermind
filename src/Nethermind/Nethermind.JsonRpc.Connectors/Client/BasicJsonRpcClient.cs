@@ -15,7 +15,6 @@ namespace Nethermind.JsonRpc.Client
         private readonly HttpClient _client;
         private readonly IJsonSerializer _jsonSerializer;
         private readonly ILogger _logger;
-        private bool disposedValue;
 
         public BasicJsonRpcClient(Uri uri, IJsonSerializer jsonSerializer, ILogManager logManager) :
             this(uri, jsonSerializer, logManager, /*support long block traces better, default 100s might be too small*/ TimeSpan.FromMinutes(5))
@@ -58,25 +57,15 @@ namespace Nethermind.JsonRpc.Client
 
                 return jsonResponse.Result;
             }
-            catch (NotSupportedException)
+            catch (Exception e) when
+            (
+                e is not TaskCanceledException  &&
+                e is not HttpRequestException   &&
+                e is not NotImplementedException&&
+                e is not NotSupportedException
+            )
             {
-                throw;
-            }
-            catch (NotImplementedException)
-            {
-                throw;
-            }
-            catch (HttpRequestException)
-            {
-                throw;
-            }
-            catch (TaskCanceledException)
-            {
-                throw;
-            }
-            catch (Exception)
-            {
-                throw new DataException($"Cannot deserialize {responseString}");
+                throw new DataException($"Cannot deserialize {responseString}", e);
             }
         }
 
@@ -110,7 +99,7 @@ namespace Nethermind.JsonRpc.Client
         private static string Base64Encode(string plainText)
             => Convert.ToBase64String(Encoding.UTF8.GetBytes(plainText));
 
-        protected virtual void Dispose()
+        public virtual void Dispose()
         {
            _client.Dispose();        
         }

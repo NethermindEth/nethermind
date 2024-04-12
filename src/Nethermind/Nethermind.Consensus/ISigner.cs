@@ -15,8 +15,6 @@ namespace Nethermind.Consensus
         PrivateKey? Key { get; }
         Address Address { get; }
         Signature Sign(Hash256 message);
-        Signature Sign(BlockHeader header);
         bool CanSign { get; }
-        bool CanSignHeader { get; }
     }
 }

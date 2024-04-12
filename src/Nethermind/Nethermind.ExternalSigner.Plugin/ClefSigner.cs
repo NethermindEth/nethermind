@@ -13,7 +13,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 
 namespace Nethermind.JsonRpc;
-public class ClefSigner : ISigner, ISignerStore
+public class ClefSigner : IHeaderSigner, ISignerStore
 {
     private readonly IJsonRpcClient rpcClient;
     private HeaderDecoder _headerDecoder;
@@ -78,15 +78,13 @@ public class ClefSigner : ISigner, ISignerStore
                 "application/x-clique-header",
                 Address.ToString(),
                 buffer.AsSpan().ToHexString(true)).GetAwaiter().GetResult();
-            if (signed == null)
+            if (signed is null)
                 ThrowInvalidOperationSignFailed();
             byte[] bytes = Bytes.FromHexString(signed);
 
-            //Clef will set recid to 0/1, but we expect it to be 27/28
-            if (bytes.Length == 65 && bytes[64] == 0 || bytes[64] == 1)
-                //We expect V to be 27/28
-                bytes[64] += 27;
-
+            //Clef will set recid to 0/1, without the VOffset
+            if (bytes.Length == 65 && (bytes[64] == 0 || bytes[64] == 1))
+                return new Signature(bytes.AsSpan(0,64), bytes[64]);
             return new Signature(bytes);
         }
         finally
