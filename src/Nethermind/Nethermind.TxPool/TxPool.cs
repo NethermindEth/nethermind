@@ -456,7 +456,9 @@ namespace Nethermind.TxPool
                     // but can be good enough for TxBroadcaster pool - for local txs only
                     Metrics.PendingTransactionsPassedFiltersButCannotCompeteOnFees++;
                     return AcceptTxResult.FeeTooLowToCompete;
-                } else {
+                }
+                else
+                {
                     return AcceptTxResult.Accepted;
                 }
             }
