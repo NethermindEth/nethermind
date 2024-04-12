@@ -14,4 +14,10 @@ public static class Eip2935Constants
     /// Gets the <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>
     public static readonly Address BlockHashHistoryAddress = new("0xfffffffffffffffffffffffffffffffffffffffe");
+
+     /// <summary>
+     /// Gets the <c>RING_BUFFER_SIZE</c> parameter.
+     /// </summary>
+    public static readonly long RingBufferSize = 8192;
+
 }

@@ -31,7 +31,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        var blockIndex = new UInt256((ulong)(blockHeader.Number - 1) % 256);
+        var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         // TODO: this is just for kaustinen right now
