@@ -418,7 +418,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             currentState.GasAvailable -= gasAvailableForCodeDeposit;
                             worldState.Restore(previousState.Snapshot);
-                            if (!previousState.IsCreateOnPreExistingAccount)
+                            if (!previousState.IsCreateOnPreExistingAccount && !spec.IsVerkleTreeEipEnabled)
                             {
                                 _state.DeleteAccount(callCodeOwner);
                             }
