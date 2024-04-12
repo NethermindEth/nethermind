@@ -261,13 +261,13 @@ jobs:
 
             # Fetch current chain head from node
             node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
-            node_head_decimal=$(echo $((16#$node_head_hex)))  # Convert from hex to decimal
+            node_head_decimal=$(echo $((16#${node_head_hex#0x})))
             echo "Current chain head at $rpc_url: $node_head_decimal"
 
             # Fetch current chain head from Etherscan API
             etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
             etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
-            etherscan_head_decimal=$(echo $((16#$etherscan_head_hex)))  # Convert from hex to decimal
+            etherscan_head_decimal=$(echo $((16#${etherscan_head_hex#0x})))
             echo "Current chain head at Etherscan: $etherscan_head_decimal"
 
             # Compare heads
