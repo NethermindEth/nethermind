@@ -86,7 +86,7 @@ jobs:
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ inputs.network || 'mainnet' }}"
-      convert_to_paparika: "${{ inputs.convert_to_paprika }}"
+      convert_to_paprika: "${{ inputs.convert_to_paprika }}"
   
   create_compare_node:
     name: Create node from branch to compare
