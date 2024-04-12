@@ -70,8 +70,7 @@ namespace Nethermind.Consensus.Clique
             if (_signer is IHeaderSigner headerSigner)
             {
                 BlockHeader clone = header.Clone();
-                int extraSeal = 65;
-                clone.ExtraData = clone.ExtraData.Slice(0, clone.ExtraData.Length - extraSeal);
+                clone.ExtraData = SnapshotManager.SliceExtraSealFromExtraData(clone.ExtraData);
                 clone.Hash = headerHash;
                 signature = headerSigner.Sign(clone);
             }

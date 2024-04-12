@@ -224,11 +224,9 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		nuget.config = nuget.config
 	EndProjectSection
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Clients", "Nethermind.JsonRpc.Connectors\Nethermind.JsonRpc.Clients.csproj", "{513049F7-B0AD-4FB5-9223-C3B0237FD3B0}"
-EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Signer", "Signer", "{89311B58-AF36-4956-883D-54531BC1D5A3}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.ExternalSigner.Plugin", "Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj", "{6528010D-7DCE-4935-9785-5270FF515F3E}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ExternalSigner.Plugin", "Nethermind.ExternalSigner.Plugin\Nethermind.ExternalSigner.Plugin.csproj", "{6528010D-7DCE-4935-9785-5270FF515F3E}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -620,10 +618,6 @@ Global
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.Build.0 = Release|Any CPU
-		{513049F7-B0AD-4FB5-9223-C3B0237FD3B0}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{513049F7-B0AD-4FB5-9223-C3B0237FD3B0}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{513049F7-B0AD-4FB5-9223-C3B0237FD3B0}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{513049F7-B0AD-4FB5-9223-C3B0237FD3B0}.Release|Any CPU.Build.0 = Release|Any CPU
 		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
 		{6528010D-7DCE-4935-9785-5270FF515F3E}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{6528010D-7DCE-4935-9785-5270FF515F3E}.Release|Any CPU.ActiveCfg = Release|Any CPU
