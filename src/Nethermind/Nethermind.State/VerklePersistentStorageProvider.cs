@@ -17,6 +17,7 @@ namespace Nethermind.State;
 
 internal class VerklePersistentStorageProvider : PartialStorageProviderBase
 {
+    protected readonly ResettableHashSet<Address> _selfDestructAddress = new ResettableHashSet<Address>();
     protected readonly VerkleStateTree _verkleTree;
     private readonly ILogManager? _logManager;
     /// <summary>
@@ -40,6 +41,7 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
         base.Reset();
         _originalValues.Clear();
         _committedThisRound.Clear();
+        _selfDestructAddress.Clear();
     }
 
     /// <summary>
@@ -152,7 +154,7 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
                     }
 
                     Db.Metrics.StorageTreeWrites++;
-                    _verkleTree.SetStorage(change.StorageCell, change.Value);
+                    if(!_selfDestructAddress.Contains(change.StorageCell.Address)) _verkleTree.SetStorage(change.StorageCell, change.Value);
                     if (isTracing)
                     {
                         trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -168,6 +170,7 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
         base.CommitCore(tracer);
         _originalValues.Reset();
         _committedThisRound.Reset();
+        _selfDestructAddress.Reset();
 
         if (isTracing)
         {
@@ -215,6 +218,6 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
 
     public override void ClearStorage(Address address)
     {
-        throw new NotSupportedException("Verkle Trees does not support deletion of data from the tree");
+        _selfDestructAddress.Add(address);
     }
 }

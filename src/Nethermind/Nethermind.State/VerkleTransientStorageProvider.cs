@@ -16,7 +16,5 @@ internal class VerkleTransientStorageProvider : PartialStorageProviderBase
         TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : _zeroValue;
 
     public override void ClearStorage(Address address)
-    {
-        throw new NotSupportedException("Verkle Trees does not support deletion of data from the tree");
-    }
+    { }
 }

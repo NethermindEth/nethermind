@@ -14,6 +14,7 @@ using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
+using Nethermind.Consensus.Tracing;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
@@ -23,6 +24,8 @@ using Nethermind.Core.Verkle;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
@@ -326,7 +329,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (!block.IsGenesis && block.Transactions.Length != 0 && ExecutionTracer.IsTracingAccessWitness)
         {
-            var gasWitness = new VerkleWitness();
+            var gasWitness = new VerkleExecWitness(NullLogManager.Instance);
             gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!);
             ExecutionTracer.ReportAccessWitness(gasWitness);
         }

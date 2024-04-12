@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -37,7 +38,7 @@ public abstract class BlockTracerBase<TTrace, TTracer> : IBlockTracer<TTrace> wh
     {
     }
 
-    public void ReportAccessWitness(VerkleWitness witness) { }
+    public void ReportAccessWitness(IExecutionWitness witness) { }
 
     public virtual void StartNewBlockTrace(Block block)
     {

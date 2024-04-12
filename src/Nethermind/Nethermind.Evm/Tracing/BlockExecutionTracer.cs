@@ -8,6 +8,7 @@ using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -229,7 +230,7 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
         _otherTracer.ReportReward(author, rewardType, rewardValue);
 
-    public void ReportAccessWitness(VerkleWitness witness) => ReportAccessWitness(witness.GetAccessedKeys());
+    public void ReportAccessWitness(IExecutionWitness witness) => ReportAccessWitness(witness.GetAccessedKeys());
 
     public void StartNewBlockTrace(Block block)
     {
@@ -304,7 +305,7 @@ public class BlockExecutionTracer(bool traceReceipts, bool traceWitness)
             otherTxTracer.ReportAccessWitness(verkleWitnessKeys);
         }
 
-        if (_currentTxTracer.IsTracingReceipt)
+        if (_currentTxTracer.IsTracingAccess)
         {
             _currentTxTracer.ReportAccessWitness(verkleWitnessKeys);
         }

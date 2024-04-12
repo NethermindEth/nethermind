@@ -21,7 +21,7 @@ namespace Nethermind.Evm
             in TxExecutionContext txExecutionContext,
             UInt256 transferValue,
             UInt256 value,
-            IWitness witness,
+            IExecutionWitness witness,
             int callDepth = 0)
         {
             CodeInfo = codeInfo;
@@ -44,7 +44,7 @@ namespace Nethermind.Evm
         /// <summary>
         ///
         /// </summary>
-        public readonly IWitness Witness;
+        public readonly IExecutionWitness Witness;
 
         /// <summary>
         /// Currently executing account (in DELEGATECALL this will be equal to caller).

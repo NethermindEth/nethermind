@@ -7,7 +7,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -29,7 +31,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
         Hash256 parentBlockHash = blockHeader.ParentHash;
-        var blockIndex = new UInt256((ulong)blockHeader.Number - 1);
+        var blockIndex = new UInt256((ulong)(blockHeader.Number - 1) % 256);
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         // TODO: this is just for kaustinen right now
@@ -38,9 +40,9 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
 
 
-        var blockHashWitness = new VerkleWitness();
+        var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance);
         blockHashWitness.AccessCompleteAccount(eip2935Account);
-        blockHashWitness.AccessStorage(eip2935Account, blockIndex, true);
+        blockHashWitness.AccessForStorage(eip2935Account, blockIndex, true);
         blockTracer.ReportAccessWitness(blockHashWitness);
     }
 }

@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -48,7 +49,7 @@ namespace Nethermind.Evm.Tracing
         /// </summary>
         /// <param name="witness">Witness for processing withdrawals.</param>
         /// <remarks>Depends on <see cref="IsTracingAccessWitness"/></remarks>
-        void ReportAccessWitness(VerkleWitness witness);
+        void ReportAccessWitness(IExecutionWitness witness);
 
         /// <summary>
         /// Starts a trace for new block.

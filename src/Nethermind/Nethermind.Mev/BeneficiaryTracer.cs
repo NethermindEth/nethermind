@@ -3,6 +3,7 @@
 
 using Nethermind.Core;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Verkle.Tree.Utils;
 
@@ -19,7 +20,7 @@ namespace Nethermind.Mev
         public bool IsTracingRewards => true;
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue) { }
-        public void ReportAccessWitness(VerkleWitness witness) { }
+        public void ReportAccessWitness(IExecutionWitness witness) { }
 
         public void StartNewBlockTrace(Block block)
         {
