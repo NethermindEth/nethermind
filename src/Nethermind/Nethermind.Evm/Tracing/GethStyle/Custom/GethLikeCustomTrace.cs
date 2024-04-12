@@ -3,12 +3,10 @@
 
 using System.Text.Json.Serialization;
 
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+namespace Nethermind.Evm.Tracing.GethStyle.Custom;
 
-namespace Nethermind.Evm.Tracing.GethStyle;
-
-[JsonConverter(typeof(GethLikeJavaScriptTraceConverter))]
-public class GethLikeJavaScriptTrace
+[JsonConverter(typeof(GethLikeCustomTraceConverter))]
+public class GethLikeCustomTrace
 {
     private static readonly object _empty = new { };
     public object Value { get; set; } = _empty;
