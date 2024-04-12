@@ -11,7 +11,6 @@ using NUnit.Framework;
 using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
-using NLog;
 using Nethermind.Core.Test;
 
 namespace Nethermind.Merge.AuRa.Test;
@@ -50,6 +49,9 @@ class ShutterCryptoTests
         G1 identity = G1.generator().mult(3261443);
         G2 eonKey = G2.generator().mult(sk.ToLittleEndian());
         Bytes32 sigma = new([0x12, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x15, 0xaa, 0xbb, 0x33, 0xfd, 0x66, 0x55, 0x22, 0x88, 0x45]);
+
+        TestContext.WriteLine("eon key for " + sk + ": " + Convert.ToHexString(eonKey.compress()));
+
         EncryptedMessage encryptedMessage = Encrypt(msg, identity, eonKey, sigma);
         G1 key = identity.dup().mult(sk.ToLittleEndian());
 
@@ -64,7 +66,7 @@ class ShutterCryptoTests
 
     [Test]
     [TestCase(
-        "f869820247849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a0306101cf2d9eed822ecfba6989276be0fa522bfdbb1dfe6717826a7d32ca36aca030c4e507d19c8de63f77eb8d634e1b17af04c8740dfd1b4c981ecc1454566b1b",
+        "f869820248849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a001e44318458b1f279bf81aef969df1b9991944bf8b9d16fd1799ed5b0a7986faa058f572cce63aaff3326df9c902d338b0c416c8fb93109446d6aadd5a65d3d115",
         "3834a349678eF446baE07e2AefFC01054184af00",
         "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834",
         "B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579",

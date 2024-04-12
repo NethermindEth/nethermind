@@ -21,7 +21,7 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
+using Nethermind.Specs;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa.Test")]
 
@@ -77,11 +77,11 @@ public class ShutterTxSource : ITxSource
             }
         }
 
-        // _logger.Info($"current dk slot: {DecryptionKeys!.Gnosis.Slot}, parent block number?: {parent.Number}");
-        if (DecryptionKeys is null || TxPointer is null)
+        // todo: add to specprovider
+        ulong slot = ((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ChiadoSpecProvider.BeaconChainGenesisTimestamp) / 5;
+        if (DecryptionKeys is null || TxPointer is null || DecryptionKeys.Gnosis.Slot != slot)
         {
-            // todo: store a dictionary?
-            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {parent.Number}, cannot include Shutter transactions");
+            if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {slot}, cannot include Shutter transactions");
             return [];
         }
 

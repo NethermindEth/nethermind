@@ -36,7 +36,7 @@ public class ChiadoSpecProvider : ISpecProvider
     }
 
     public ForkActivation? MergeBlockNumber { get; private set; }
-    public ulong TimestampFork => ShanghaiTimestamp;
+    public ulong TimestampFork => CancunTimestamp;
     public UInt256? TerminalTotalDifficulty { get; private set; } = UInt256.Parse("231707791542740786049188744689299064356246512");
     public IReleaseSpec GenesisSpec => London.Instance;
     public long? DaoBlockNumber => null;
