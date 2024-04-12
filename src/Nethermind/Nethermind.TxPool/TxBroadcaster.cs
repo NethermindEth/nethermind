@@ -115,8 +115,8 @@ namespace Nethermind.TxPool
             // (70% by default). Otherwise only add to persistent txs and broadcast when tx will be ready for inclusion
 
             if (tx is not null
-                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
                 && (tx.MaxFeePerGas >= _baseFeeThreshold || tx.IsFree())
+                && _persistentTxs.TryInsert(tx.Hash, tx.SupportsBlobs ? new LightTransaction(tx) : tx, out Transaction? removed)
                 && removed?.Hash != tx.Hash)
             {
                 NotifyPeersAboutLocalTx(tx);
