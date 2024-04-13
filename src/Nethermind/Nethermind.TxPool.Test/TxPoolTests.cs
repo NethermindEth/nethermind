@@ -1638,6 +1638,76 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
+        [TestCase]
+        public void Should_only_add_legacy_and_1559_local_transactions_to_local_pool_when_underpaid()
+        {
+            ISpecProvider specProvider = GetLondonSpecProvider();
+            TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30 };
+            _txPool = CreatePool(txPoolConfig, specProvider);
+
+            Transaction[] transactions = GetTransactions(GetPeers(3), true, false);
+
+            foreach (Address address in transactions.Select(t => t.SenderAddress).Distinct())
+            {
+                EnsureSenderBalance(address, UInt256.MaxValue);
+            }
+
+            foreach (Transaction transaction in transactions)
+            {
+                transaction.GasPrice = 10.GWei();
+                _txPool.SubmitTx(transaction, TxHandlingOptions.None);
+            }
+
+            _txPool.GetPendingTransactionsCount().Should().Be(30);
+
+
+            // send legacy tx (gasPrice 9 gwei)
+            Transaction firstTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.Legacy)
+                .WithGasPrice(9.GWei())
+                .WithTo(TestItem.AddressD)
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeyA.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(firstTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(1);
+            _txPool.GetPendingTransactions().Should().NotContain(firstTx);
+
+
+
+            // send eip1559 tx (gasPrice 9 gwei)
+            Transaction secondTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.EIP1559)
+                .WithTo(TestItem.AddressD)
+                .WithMaxFeePerGas(9.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyB).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeyB.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(secondTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.Accepted);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(2);
+            _txPool.GetPendingTransactions().Should().NotContain(secondTx);
+
+
+            // send blop tx (gasPrice 9 gwei)
+            Transaction thirdTx = Build.A.Transaction
+                .WithNonce(0)
+                .WithValue(0)
+                .WithType(TxType.Blob)
+                .WithTo(TestItem.AddressD)
+                .WithBlobVersionedHashes(new byte[1][])
+                .WithMaxFeePerBlobGas(9.GWei())
+                .SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyC).TestObject;
+
+            EnsureSenderBalance(TestItem.PrivateKeyC.Address, UInt256.MaxValue);
+            _txPool.SubmitTx(thirdTx, TxHandlingOptions.PersistentBroadcast).Should().Be(AcceptTxResult.FeeTooLow);
+            _txPool.GetOwnPendingTransactions().Length.Should().Be(2);
+            _txPool.GetPendingTransactions().Should().NotContain(thirdTx);
+        }
+
         private IDictionary<ITxPoolPeer, PrivateKey> GetPeers(int limit = 100)
         {
             var peers = new Dictionary<ITxPoolPeer, PrivateKey>();
