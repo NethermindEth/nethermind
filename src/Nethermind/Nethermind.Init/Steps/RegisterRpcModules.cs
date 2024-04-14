@@ -15,6 +15,7 @@ using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
@@ -92,6 +93,8 @@ public class RegisterRpcModules : IStep
         if (_api.EthSyncingInfo is null) throw new StepDependencyException(nameof(_api.EthSyncingInfo));
 
 
+        var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
+        _api.DisposeStack.Push(feeHistoryOracle);
         EthModuleFactory ethModuleFactory = new(
             _api.TxPool,
             _api.TxSender,
@@ -104,7 +107,8 @@ public class RegisterRpcModules : IStep
             _api.SpecProvider,
             _api.ReceiptStorage,
             _api.GasPriceOracle,
-            _api.EthSyncingInfo);
+            _api.EthSyncingInfo,
+            feeHistoryOracle);
 
         RpcLimits.Init(rpcConfig.RequestQueueLimit);
         rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);
