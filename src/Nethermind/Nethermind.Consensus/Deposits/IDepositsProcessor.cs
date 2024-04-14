@@ -3,10 +3,13 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Serialization.Rlp;
+using System.Collections.Generic;
 
 namespace Nethermind.Consensus.Deposits;
 
 public interface IDepositsProcessor
 {
     void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
+    void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec);
 }
