@@ -12,7 +12,7 @@ public class Barnet : Cancun
 
     protected Barnet()
     {
-        Name = "Barnet";
+        Name = nameof(Barnet);
         IsGnosisBlobFeeCollectionEnabled = true;
     }
 
