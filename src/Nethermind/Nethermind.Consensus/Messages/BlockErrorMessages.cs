@@ -118,6 +118,6 @@ public static class BlockErrorMessages
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
     public static string MissingDeposits => "Deposits cannot be null in block when EIP-6110 activated.";
-    public static string DepositsNotEnabled => "Deposits must be null in block when EIP-6110 not activated.";
+    public static string DepositsNotEnabled => "DepositsNotEnabled: Deposits must be null in block when EIP-6110 not activated.";
     public static string InvalidDepositsRoot(Hash256 expected, Hash256 actual) => $"InvalidDepositsRoot: Deposits root hash mismatch in block: expected {expected}, got {actual}";
 }
