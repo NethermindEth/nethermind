@@ -22,14 +22,11 @@ namespace Evm
     {
         public static async Task Main(string[] args)
         {
-            var inputTxs = "C:\\Users\\STARLINECOMP\\nethermind\\tools\\Evm\\proof.rlp";
-            string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "").Replace(" ", "");
-            var c = IntrinsicGasCalculator.DataCost(Bytes.FromHexString(rlpRaw), Cancun.Instance, false);
-            var d = IntrinsicGasCalculator.CreateCost
-                (false, Cancun.Instance);
-            Console.WriteLine(c);
-            Console.WriteLine(d);
-            Console.WriteLine(GasCostOf.Transaction + c + d);
+            var rootCmd = new RootCommand();
+            rootCmd.Name = "evm";
+            ConfigureT8NCommand(ref rootCmd);
+
+            await rootCmd.InvokeAsync(args);
         }
 
         static void ConfigureT8NCommand(ref RootCommand rootCmd)

@@ -19,6 +19,7 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Specs\Nethermind.Specs.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Trie\Nethermind.Trie.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus\Nethermind.Consensus.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Consensus.AuRa\Nethermind.Consensus.AuRa.csproj" />
   </ItemGroup>
 
 </Project>

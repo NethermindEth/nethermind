@@ -16,11 +16,8 @@ public class T8NBlockHashProvider : IBlockhashProvider
                ?? throw new T8NException($"BlockHash for block {number} not provided", ExitCodes.ErrorMissingBlockhash);
     }
 
-    public void Insert(Hash256? blockHash, long number)
+    public void Insert(Hash256 blockHash, long number)
     {
-        if (blockHash != null)
-        {
-            _blockHashes[number] = blockHash;
-        }
+        _blockHashes[number] = blockHash;
     }
 }

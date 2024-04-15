@@ -304,7 +304,7 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<Address, AccountState> accountState in
                 ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
             {
-                if (accountState.Value.Storage != null)
+                if (accountState.Value.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                     {

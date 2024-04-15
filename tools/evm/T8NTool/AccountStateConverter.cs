@@ -26,25 +26,25 @@ public class AccountStateJsonConverter : JsonConverter<AccountState>
 
         if (accountState.Code != null)
         {
-            writer.WritePropertyName("code");
+            writer.WritePropertyName("code"u8);
             ByteArrayConverter.Convert(writer, accountState.Code);
         }
 
         if (!accountState.Balance.IsZero)
         {
-            writer.WritePropertyName("balance");
+            writer.WritePropertyName("balance"u8);
             _uInt256Converter.Write(writer, accountState.Balance, options);
         }
 
         if (!accountState.Nonce.IsZero)
         {
-            writer.WritePropertyName("nonce");
+            writer.WritePropertyName("nonce"u8);
             _uInt256Converter.Write(writer, accountState.Nonce, options);
         }
 
         if (!accountState.Storage.IsNullOrEmpty())
         {
-            writer.WritePropertyName("storage");
+            writer.WritePropertyName("storage"u8);
             var storage = accountState.Storage.ToDictionary(pair => Utils.ConvertToHash256(pair.Key), pair => Utils.ConvertToHash256(pair.Value));
             writer.WriteStartObject();
 

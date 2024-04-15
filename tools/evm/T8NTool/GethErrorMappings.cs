@@ -8,15 +8,14 @@ public class GethErrorMappings
 
     private const string MissingTxToError = "TxMissingTo: Must be set.";
     private const string MissingTxToGethError = "rlp: input string too short for common.Address, decoding into (types.Transaction)(types.BlobTx).To";
-
-    private static Dictionary<string, string> _mapping = new()
-    {
-        { WrongTransactionNonceError, WrongTransactionNonceGethError },
-        { MissingTxToError, MissingTxToGethError }
-    };
  
     public static string GetErrorMapping(string error, params object[] arguments)
     {
-        return _mapping.TryGetValue(error, out var newError) ? string.Format(newError, arguments) : error;
+        return error switch
+        {
+            WrongTransactionNonceError => string.Format(WrongTransactionNonceGethError, arguments),
+            MissingTxToError => string.Format(MissingTxToGethError),
+            _ => error
+        };
     }
 }

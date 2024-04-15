@@ -151,7 +151,7 @@ namespace Ethereum.Test.Base
         {
             foreach (KeyValuePair<Address, AccountState> accountState in pre)
             {
-                if (accountState.Value.Storage != null)
+                if (accountState.Value.Storage is not null)
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                     {
@@ -161,7 +161,7 @@ namespace Ethereum.Test.Base
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
-                if (accountState.Value.Code != null)
+                if (accountState.Value.Code is not null)
                 {
                     stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
                 }

@@ -5,6 +5,7 @@ using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
+using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -17,9 +18,9 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
+using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -119,8 +120,8 @@ public class T8NTool
 
         Transaction[] transactions;
         if (inputTxs.EndsWith(".json")) {
-            TransactionInfo[] txInfoList = _ethereumJsonSerializer.Deserialize<TransactionInfo[]>(File.ReadAllText(inputTxs));
-            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToArray();
+            var txInfoList = _ethereumJsonSerializer.Deserialize<TransactionForRpc[]>(File.ReadAllText(inputTxs));
+            transactions = txInfoList.Select(txInfo => txInfo.ToTransaction()).ToArray();
         } else {
             string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
@@ -165,24 +166,24 @@ public class T8NTool
         GeneralStateTestBase.InitializeTestPreState(allocJson, stateProvider, specProvider);
 
         var ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
-        foreach (Transaction transaction in transactions)
+        foreach (var transaction in transactions)
         {
             transaction.SenderAddress = ecdsa.RecoverAddress(transaction);
         }
 
         envInfo.ApplyChecks(specProvider, spec);
 
-        BlockHeader header = envInfo.GetBlockHeader();
-        BlockHeader parent = envInfo.GetParentBlockHeader();
+        var header = envInfo.GetBlockHeader();
+        var parent = envInfo.GetParentBlockHeader();
 
         if (IsPostMerge(spec))
         {
             header.IsPostMerge = true;
         }
 
-        blockhashProvider.Insert(header.Hash, header.Number);
-        blockhashProvider.Insert(parent.Hash, parent.Number);
-        foreach (KeyValuePair<string, Hash256> envJsonBlockHash in envInfo.BlockHashes)
+        if (header.Hash != null) blockhashProvider.Insert(header.Hash, header.Number);
+        if (parent.Hash != null) blockhashProvider.Insert(parent.Hash, parent.Number);
+        foreach (var envJsonBlockHash in envInfo.BlockHashes)
         {
             blockhashProvider.Insert(envJsonBlockHash.Value, long.Parse(envJsonBlockHash.Key));
         }
@@ -201,7 +202,7 @@ public class T8NTool
                 .TestObject)
             .ToArray();
 
-        Block block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
+        var block = Build.A.Block.WithHeader(header).WithTransactions(transactions).WithWithdrawals(envInfo.Withdrawals).WithUncles(uncles).TestObject;
         new BeaconBlockRootHandler().ApplyContractStateChanges(block, spec, stateProvider);
         
 
@@ -320,15 +321,15 @@ public class T8NTool
         var rewardCalculator = new RewardCalculator(UInt256.Parse(stateReward));
         BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
 
-        foreach (BlockReward blockReward in rewards)
+        foreach (BlockReward reward in rewards)
         {
-            if (!stateProvider.AccountExists(blockReward.Address))
+            if (!stateProvider.AccountExists(reward.Address))
             {
-                stateProvider.CreateAccount(blockReward.Address, blockReward.Value);
+                stateProvider.CreateAccount(reward.Address, reward.Value);
             }
             else
             {
-                stateProvider.AddToBalance(blockReward.Address, blockReward.Value, spec);
+                stateProvider.AddToBalance(reward.Address, reward.Value, spec);
             }
         }
     }
