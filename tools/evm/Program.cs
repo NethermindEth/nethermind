@@ -2,6 +2,10 @@ using System.CommandLine;
 using Evm.JsonTypes;
 using Evm.T8NTool;
 using Nethermind.Core.Exceptions;
+using Nethermind.Core.Extensions;
+using Nethermind.Evm;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Specs.Forks;
 
 namespace Evm
 {
@@ -18,11 +22,14 @@ namespace Evm
     {
         public static async Task Main(string[] args)
         {
-            var rootCmd = new RootCommand();
-            rootCmd.Name = "evm";
-            ConfigureT8NCommand(ref rootCmd);
-
-            await rootCmd.InvokeAsync(args);
+            var inputTxs = "C:\\Users\\STARLINECOMP\\nethermind\\tools\\Evm\\proof.rlp";
+            string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "").Replace(" ", "");
+            var c = IntrinsicGasCalculator.DataCost(Bytes.FromHexString(rlpRaw), Cancun.Instance, false);
+            var d = IntrinsicGasCalculator.CreateCost
+                (false, Cancun.Instance);
+            Console.WriteLine(c);
+            Console.WriteLine(d);
+            Console.WriteLine(GasCostOf.Transaction + c + d);
         }
 
         static void ConfigureT8NCommand(ref RootCommand rootCmd)

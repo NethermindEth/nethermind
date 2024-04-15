@@ -32,6 +32,17 @@ public static class IntrinsicGasCalculator
 
         return createCost;
     }
+    
+    public static long CreateCost(bool isContractCreation, IReleaseSpec releaseSpec)
+    {
+        long createCost = 0;
+        if (isContractCreation && releaseSpec.IsEip2Enabled)
+        {
+            createCost += GasCostOf.TxCreate;
+        }
+
+        return createCost;
+    }
 
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
@@ -45,6 +56,23 @@ public static class IntrinsicGasCalculator
         }
 
         if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
+        {
+            dataCost += EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord;
+        }
+
+        return dataCost;
+    }
+    
+    public static long DataCost(Span<byte> data, IReleaseSpec releaseSpec, bool isContractCreation)
+    {
+        long txDataNonZeroGasCost =
+            releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+        long dataCost = 0;
+        for (int i = 0; i < data.Length; i++)
+        {
+            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+        }
+        if (isContractCreation && releaseSpec.IsEip3860Enabled)
         {
             dataCost += EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord;
         }
