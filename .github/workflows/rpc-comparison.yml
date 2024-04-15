@@ -175,12 +175,12 @@ jobs:
     runs-on: [vpn]
     needs: [aggregate_rpcs]
     if: always() && needs.aggregate_rpcs.result == 'success'
-    timeout-minutes: 600
+    timeout-minutes: 1440
     steps:
       - uses: actions/checkout@v3
       
       - name: Wait for the nodes to sync
-        timeout-minutes: 600
+        timeout-minutes: 1440
         env:
           ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |          
