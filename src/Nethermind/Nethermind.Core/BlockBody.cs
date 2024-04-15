@@ -24,8 +24,8 @@ namespace Nethermind.Core
         public BlockBody WithChangedUncles(BlockHeader[] uncles) => new(Transactions, uncles, Withdrawals, Deposits, ValidatorExits);
 
         public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals, Deposits, ValidatorExits);
-
-        public BlockBody WithChangedValidatorExits(ValidatorExit[]? validatorExits) => new(Transactions, Uncles, Withdrawals, Deposits, ValidatorExits);
+        public BlockBody WithChangedDeposits(Deposit[]? deposits) => new(Transactions, Uncles, Withdrawals, deposits, ValidatorExits);
+        public BlockBody WithChangedValidatorExits(ValidatorExit[]? validatorExits) => new(Transactions, Uncles, Withdrawals, Deposits, validatorExits);
 
         public static BlockBody WithOneTransactionOnly(Transaction tx) => new(new[] { tx }, null, null);
 
