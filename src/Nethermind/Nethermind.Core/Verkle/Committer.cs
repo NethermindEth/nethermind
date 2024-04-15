@@ -1,3 +1,4 @@
+using System;
 using System.Diagnostics;
 using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
@@ -9,6 +10,17 @@ namespace Nethermind.Core.Verkle
     {
         private static readonly CRS Constants = CRS.Instance;
 
+        private static Banderwagon[] Zeros = null!;
+
+        static Committer()
+        {
+            Zeros = new Banderwagon[256];
+            for (int i = 0; i < 256; i++)
+            {
+                Zeros[i] = Constants.BasisG[i] * FrE.Zero;
+            }
+        }
+
         public static Banderwagon Commit(FrE[] value)
         {
             return Banderwagon.MultiScalarMul(Constants.BasisG, value);
@@ -16,6 +28,11 @@ namespace Nethermind.Core.Verkle
 
         public static Banderwagon ScalarMul(in FrE value, int index)
         {
+            if (value.IsZero)
+            {
+                // Should not make a difference, but it seems to make some difference
+                return Zeros[index];
+            }
             return Constants.BasisG[index] * value;
         }
     }
