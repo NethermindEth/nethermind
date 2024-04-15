@@ -10,7 +10,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Extensions;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
