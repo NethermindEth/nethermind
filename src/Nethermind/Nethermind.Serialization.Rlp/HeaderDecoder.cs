@@ -73,7 +73,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = decoderContext.DecodeUInt256();
             }
 
-            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 5);
+            int itemsRemaining = decoderContext.PeekNumberOfItemsRemaining(null, 6);
             if (itemsRemaining > 0 &&
                 decoderContext.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
             {
@@ -170,7 +170,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 4);
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 6);
             if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
             {
@@ -317,7 +317,7 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
                                 + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
-                                + (item.DepositsRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
+                                + (item.DepositsRoot is null ? 0 : Rlp.LengthOf(item.DepositsRoot))
                                 + (item.ValidatorExitsRoot is null ? 0 : Rlp.LengthOf(item.ValidatorExitsRoot));
 
             if (notForSealing)
