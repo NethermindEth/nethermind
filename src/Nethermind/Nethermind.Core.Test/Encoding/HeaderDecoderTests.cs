@@ -166,6 +166,7 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithDepositsRoot(Keccak.Zero)
             .WithValidatorExitsRoot(TestItem.KeccakA).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
@@ -185,6 +186,7 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
+            .WithDepositsRoot(Keccak.Zero)
             .WithValidatorExitsRoot(null).TestObject;
 
         Rlp rlp = Rlp.Encode(header);

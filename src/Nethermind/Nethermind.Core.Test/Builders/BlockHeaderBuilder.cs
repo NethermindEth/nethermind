@@ -196,6 +196,12 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
+    public BlockHeaderBuilder WithDepositsRoot(Hash256? depositRoot)
+    {
+        TestObjectInternal.DepositsRoot = depositRoot;
+        return this;
+    }
+
     public BlockHeaderBuilder WithValidatorExitsRoot(Hash256? validatorExitsRoot)
     {
         TestObjectInternal.ValidatorExitsRoot = validatorExitsRoot;

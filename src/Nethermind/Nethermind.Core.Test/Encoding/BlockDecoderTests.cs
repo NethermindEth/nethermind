@@ -96,6 +96,8 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
+                // an empty Deposit array
+                .WithDeposits(0)
                 .WithValidatorExits(new[] { new ValidatorExit(TestItem.AddressA, new byte[48]) })
                 .TestObject
         };
