@@ -417,7 +417,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
-        if(depositsEnabled)
+        if (depositsEnabled)
             genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
@@ -434,7 +434,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
 
         bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        
+
         if (isEip6110Enabled)
         {
             genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;

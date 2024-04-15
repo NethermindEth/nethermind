@@ -331,10 +331,10 @@ public class BlockValidator : IBlockValidator
     public bool ValidateValidatorExits(Block block, out string error) =>
         ValidateValidatorExits(block, _specProvider.GetSpec(block.Header), out error);
 
-    
+
     private bool ValidateValidatorExits(Block block, IReleaseSpec spec, out string error)
     {
-        if(spec.IsEip7002Enabled && block.ValidatorExits is null)
+        if (spec.IsEip7002Enabled && block.ValidatorExits is null)
         {
             error = $"ValidatorExits cannot be null in block {block.Hash} when EIP-7002 activated.";
 
@@ -352,7 +352,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if(block.ValidatorExits is not null)
+        if (block.ValidatorExits is not null)
         {
             if (!ValidateValidatorExitsHashMatches(block, out Hash256 validatorExitsRoot))
             {
