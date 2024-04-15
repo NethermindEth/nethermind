@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
-using DotNetty.Common.Utilities;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
@@ -16,7 +17,6 @@ using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.TreeStore;
 using Nethermind.Verkle.Tree.Utils;
-using Nethermind.Verkle.Tree.VerkleDb;
 
 namespace Nethermind.State;
 
@@ -75,6 +75,49 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
     {
         Hash256? key = AccountHeader.GetTreeKeyForStorageSlot(cell.Address.Bytes, cell.Index);
         Insert(key, value);
+    }
+
+    public void BulkSet(IDictionary<StorageCell, byte[]> values)
+    {
+        // Put the sets into a list to be sorted
+        using ArrayPoolList<KeyValuePair<StorageCell, byte[]>> theList = new ArrayPoolList<KeyValuePair<StorageCell, byte[]>>(values.Count, values);
+
+        // Sort by address and index.
+        theList.AsSpan().Sort((kv1, kv2) =>
+        {
+            int addressCompare = kv1.Key.Address.CompareTo(kv2.Key.Address);
+            return addressCompare != 0 ? addressCompare : kv1.Key.Index.CompareTo(kv2.Key.Index);
+        });
+
+        Hash256 currentStem = Hash256.Zero;
+        Dictionary<byte, byte[]> stemValues = new Dictionary<byte, byte[]>();
+        foreach (KeyValuePair<StorageCell, byte[]> kv in theList)
+        {
+            // Because of the way the mapping works
+            Hash256 theKey = AccountHeader.GetTreeKeyForStorageSlot(kv.Key.Address.Bytes, kv.Key.Index);
+
+            if (!currentStem.Bytes[..31].SequenceEqual(theKey.Bytes[..31]))
+            {
+                // Different stem, will attempt to insert the stem batch
+                if (stemValues.Count != 0)
+                {
+                    // Stem is different and stemValues have value.
+                    InsertStemBatch(theKey.Bytes[..31], stemValues.Select(kv => (kv.Key, kv.Value)));
+                    stemValues.Clear();
+                }
+
+                // And set the next stem
+                currentStem = theKey;
+            }
+
+            stemValues[theKey.Bytes[31]] = kv.Value;
+        }
+
+        if (stemValues.Count != 0)
+        {
+            InsertStemBatch(currentStem.Bytes[..31], stemValues.Select(kv => (kv.Key, kv.Value)));
+            stemValues.Clear();
+        }
     }
 
     public static VerkleStateTree CreateStatelessTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, ILogManager logManager)

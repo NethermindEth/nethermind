@@ -92,7 +92,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
             leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), value), key[31]);
         }
 
-        _leafUpdateCache[stem.ToArray()] = leafUpdateDelta;
+        _leafUpdateCache[stem] = leafUpdateDelta;
     }
 
     public void InsertStemBatch(in ReadOnlySpan<byte> stem, IEnumerable<LeafInSubTree> leafIndexValueMap)

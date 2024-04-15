@@ -105,6 +105,8 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
             trace = new Dictionary<StorageCell, ChangeTrace>();
         }
 
+        var toSet = new Dictionary<StorageCell, byte[]>();
+
         for (int i = 0; i <= _currentPosition; i++)
         {
             Change change = _changes[_currentPosition - i];
@@ -154,7 +156,8 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
                     }
 
                     Db.Metrics.StorageTreeWrites++;
-                    if(!_selfDestructAddress.Contains(change.StorageCell.Address)) _verkleTree.SetStorage(change.StorageCell, change.Value);
+                    if(!_selfDestructAddress.Contains(change.StorageCell.Address)) toSet[change.StorageCell] = change.Value;
+
                     if (isTracing)
                     {
                         trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -165,6 +168,8 @@ internal class VerklePersistentStorageProvider : PartialStorageProviderBase
                     throw new ArgumentOutOfRangeException();
             }
         }
+
+        _verkleTree.BulkSet(toSet);
 
         _verkleTree.Commit();
         base.CommitCore(tracer);
