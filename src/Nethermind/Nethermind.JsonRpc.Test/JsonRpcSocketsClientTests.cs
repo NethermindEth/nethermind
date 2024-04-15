@@ -51,7 +51,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
-                JsonRpcResult result = JsonRpcResult.Single(bigObject, default);
+                using JsonRpcResult result = JsonRpcResult.Single(bigObject, default);
 
                 return await client.SendJsonRpcResult(result);
             });
@@ -122,7 +122,7 @@ public class JsonRpcSocketsClientTests
 
                 for (int i = 0; i < messageCount; i++)
                 {
-                    JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000, () => disposeCount++), default);
+                    using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000, () => disposeCount++), default);
                     await client.SendJsonRpcResult(result);
                     await Task.Delay(100);
                 }
@@ -291,7 +291,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
-                JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
+                using JsonRpcResult result = JsonRpcResult.Single(RandomSuccessResponse(1_000), default);
 
                 for (int i = 0; i < messageCount; i++)
                 {
@@ -335,7 +335,7 @@ public class JsonRpcSocketsClientTests
                     jsonRpcLocalStats: new NullJsonRpcLocalStats(),
                     jsonSerializer: new EthereumJsonSerializer()
                 );
-                JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
+                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
 
                 await client.SendJsonRpcResult(result);
 
@@ -375,7 +375,7 @@ public class JsonRpcSocketsClientTests
                     jsonSerializer: new EthereumJsonSerializer(),
                     maxBatchResponseBodySize: maxByteCount
                 );
-                JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
+                using JsonRpcResult result = JsonRpcResult.Collection(RandomBatchResult(10, 100));
 
                 int sent = await client.SendJsonRpcResult(result);
 

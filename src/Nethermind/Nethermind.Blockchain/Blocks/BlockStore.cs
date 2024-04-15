@@ -91,6 +91,15 @@ public class BlockStore : IBlockStore
         return _blockDb.Get(blockHash, _blockDecoder, _blockCache, rlpBehaviors, shouldCache);
     }
 
+    public byte[]? GetRaw(long blockNumber, Hash256 blockHash)
+    {
+        Span<byte> dbKey = stackalloc byte[40];
+        KeyValueStoreExtensions.GetBlockNumPrefixedKey(blockNumber, blockHash, dbKey);
+        var b = _blockDb.Get(dbKey);
+        if (b is not null) return b;
+        return _blockDb.Get(blockHash);
+    }
+
     public ReceiptRecoveryBlock? GetReceiptRecoveryBlock(long blockNumber, Hash256 blockHash)
     {
         Span<byte> keyWithBlockNumber = stackalloc byte[40];
@@ -111,4 +120,5 @@ public class BlockStore : IBlockStore
     {
         return _blockDb.GetAllValues(true).Select(bytes => _blockDecoder.Decode(bytes.AsRlpStream()));
     }
+
 }

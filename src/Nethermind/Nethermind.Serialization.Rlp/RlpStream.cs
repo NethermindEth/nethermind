@@ -1142,7 +1142,7 @@ namespace Nethermind.Serialization.Rlp
         {
             int positionCheck = ReadSequenceLength() + Position;
             int count = PeekNumberOfItemsRemaining(checkPositions ? positionCheck : (int?)null);
-            ArrayPoolList<T> result = new ArrayPoolList<T>(count, count);
+            var result = new ArrayPoolList<T>(count, count);
             for (int i = 0; i < result.Count; i++)
             {
                 if (PeekByte() == Rlp.OfEmptySequence[0])

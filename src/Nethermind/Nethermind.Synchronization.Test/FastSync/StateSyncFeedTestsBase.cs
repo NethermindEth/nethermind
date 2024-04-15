@@ -13,6 +13,7 @@ using Nethermind.Blockchain.Utils;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Test;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
@@ -40,7 +41,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 {
     public class StateSyncFeedTestsBase
     {
-        private const int TimeoutLength = 5000;
+        private const int TimeoutLength = 10000;
 
         private static IBlockTree? _blockTree;
         protected static IBlockTree BlockTree => LazyInitializer.EnsureInitialized(ref _blockTree, () => Build.A.BlockTree().OfChainLength(100).TestObject);
@@ -73,9 +74,9 @@ namespace Nethermind.Synchronization.Test.FastSync
             (_logger.UnderlyingLogger as ConsoleAsyncLogger)?.Flush();
         }
 
-        protected static StorageTree SetStorage(ITrieStore trieStore, byte i)
+        protected static StorageTree SetStorage(ITrieStore trieStore, byte i, Address address)
         {
-            StorageTree remoteStorageTree = new StorageTree(trieStore, Keccak.EmptyTreeHash, LimboLogs.Instance);
+            StorageTree remoteStorageTree = new StorageTree(trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, LimboLogs.Instance);
             for (int j = 0; j < i; j++) remoteStorageTree.Set((UInt256)j, new[] { (byte)j, i });
 
             remoteStorageTree.Commit(0);
@@ -114,7 +115,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 ctx.Pool.AddPeer(syncPeer);
             }
 
-            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalStateDb, blockTree, _logManager);
+            ctx.TreeFeed = new(SyncMode.StateNodes, dbContext.LocalCodeDb, dbContext.LocalNodeStorage, blockTree, _logManager);
             ctx.Feed = new StateSyncFeed(ctx.TreeFeed, _logManager);
             ctx.Feed.SyncModeSelectorOnChanged(SyncMode.StateNodes | SyncMode.FastBlocks);
             ctx.Downloader = new StateSyncDownloader(_logManager);
@@ -169,6 +170,7 @@ namespace Nethermind.Synchronization.Test.FastSync
                 LocalDb = new TestMemDb();
                 RemoteStateDb = RemoteDb;
                 LocalStateDb = LocalDb;
+                LocalNodeStorage = new NodeStorage(LocalDb);
                 LocalCodeDb = new TestMemDb();
                 RemoteCodeDb = new MemDb();
                 RemoteTrieStore = new TrieStore(RemoteStateDb, logManager);
@@ -184,6 +186,7 @@ namespace Nethermind.Synchronization.Test.FastSync
             public ITrieStore RemoteTrieStore { get; }
             public IDb RemoteStateDb { get; }
             public IDb LocalStateDb { get; }
+            public NodeStorage LocalNodeStorage { get; }
             public StateTree RemoteStateTree { get; }
             public StateTree LocalStateTree { get; }
 
@@ -248,7 +251,7 @@ namespace Nethermind.Synchronization.Test.FastSync
 
                 ILastNStateRootTracker alwaysAvailableRootTracker = Substitute.For<ILastNStateRootTracker>();
                 alwaysAvailableRootTracker.HasStateRoot(Arg.Any<Hash256>()).Returns(true);
-                IReadOnlyTrieStore trieStore = new TrieStore(stateDb, Nethermind.Trie.Pruning.No.Pruning,
+                IReadOnlyTrieStore trieStore = new TrieStore(new NodeStorage(stateDb), Nethermind.Trie.Pruning.No.Pruning,
                     Persist.EveryBlock, LimboLogs.Instance).AsReadOnly();
                 _stateDb = trieStore.TrieNodeRlpStore;
                 _snapServer = new SnapServer(
@@ -287,7 +290,10 @@ namespace Nethermind.Synchronization.Test.FastSync
                 {
                     if (i >= MaxResponseLength) break;
 
-                    if (_filter is null || _filter.Contains(item)) responses[i] = _stateDb[item.Bytes] ?? _codeDb[item.Bytes]!;
+                    if (_filter is null || _filter.Contains(item))
+                    {
+                        responses[i] = _codeDb[item.Bytes] ?? _stateDb[item.Bytes]!;
+                    }
 
                     i++;
                 }

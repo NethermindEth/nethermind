@@ -91,11 +91,9 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
     public async Task<ResultWrapper<ForkchoiceUpdatedV1Result>> Handle(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes, int version)
     {
         Block? newHeadBlock = GetBlock(forkchoiceState.HeadBlockHash);
-        ResultWrapper<ForkchoiceUpdatedV1Result>? payloadUpdateResult = await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes);
-        return
-            ValidateAttributes(payloadAttributes, version) ??
-            payloadUpdateResult ??
-            StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
+        return await ApplyForkchoiceUpdate(newHeadBlock, forkchoiceState, payloadAttributes)
+            ?? ValidateAttributes(payloadAttributes, version)
+            ?? StartBuildingPayload(newHeadBlock!, forkchoiceState, payloadAttributes);
     }
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
@@ -308,8 +306,10 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
         {
             PayloadAttributesValidationResult.InvalidParams =>
                 ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.InvalidParams),
+            PayloadAttributesValidationResult.InvalidPayloadAttributes =>
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.InvalidPayloadAttributes),
             PayloadAttributesValidationResult.UnsupportedFork =>
-                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, ErrorCodes.UnsupportedFork),
+                ResultWrapper<ForkchoiceUpdatedV1Result>.Fail(error!, MergeErrorCodes.UnsupportedFork),
             _ => null,
         };
     }
