@@ -1,6 +1,8 @@
 using System;
+using System.Collections.Generic;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
 namespace Nethermind.Core.Verkle;
@@ -21,7 +23,21 @@ public readonly struct AccountHeader
 
     private static readonly UInt256 MainStorageOffset = (UInt256)MainStorageOffsetBase << MainStorageOffsetExponent;
 
-    private static readonly LruCache<(byte[], UInt256), byte[]> _keyCache = new(1000000, 10000, "Verkle Key Cache");
+    private static readonly LruCache<(byte[], UInt256), byte[]> _keyCache = new(
+        1000000, 10000, "Verkle Key Cache", new ArrayAndUintComparer());
+
+    private class ArrayAndUintComparer : IEqualityComparer<(byte[], UInt256)>
+    {
+        public bool Equals((byte[], UInt256) x, (byte[], UInt256) y)
+        {
+            return Bytes.AreEqual(x.Item1, y.Item1) && ((Object)x.Item2).Equals(y.Item2);
+        }
+
+        public int GetHashCode((byte[], UInt256) obj)
+        {
+            return HashCode.Combine(obj.Item1.GetSimplifiedHashCode(), obj.Item2);
+        }
+    }
 
     public static byte[] GetTreeKeyPrefix(ReadOnlySpan<byte> address20, UInt256 treeIndex)
     {
@@ -31,7 +47,7 @@ public readonly struct AccountHeader
         return value;
     }
 
-    public static Hash256 GetTreeKey(byte[] address, UInt256 treeIndex, byte subIndexBytes)
+    public static Hash256 GetTreeKey(ReadOnlySpan<byte> address, UInt256 treeIndex, byte subIndexBytes)
     {
         var treeKeyPrefix = GetTreeKeyPrefix(address, treeIndex);
         treeKeyPrefix[31] = subIndexBytes;
@@ -46,7 +62,7 @@ public readonly struct AccountHeader
         return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
     }
 
-    public static Hash256 GetTreeKeyForStorageSlot(byte[] address, UInt256 storageKey)
+    public static Hash256 GetTreeKeyForStorageSlot(ReadOnlySpan<byte> address, UInt256 storageKey)
     {
         UInt256 pos;
 
