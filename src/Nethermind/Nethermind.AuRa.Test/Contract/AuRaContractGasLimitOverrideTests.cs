@@ -10,6 +10,7 @@ using Nethermind.Abi;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
+using Nethermind.Consensus.AuRa.Depositss;
 using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -100,6 +101,7 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
+                NullDepositsProcessor.Instance,
                 null,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);

@@ -13,6 +13,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.Contracts;
 using Nethermind.Consensus.AuRa.Contracts.DataStore;
+using Nethermind.Consensus.AuRa.Depositss;
 using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.AuRa.Services;
 using Nethermind.Consensus.AuRa.Transactions;
@@ -109,6 +110,7 @@ public class InitializeBlockchainAuRa : InitializeBlockchain
             _api.LogManager,
             _api.BlockTree!,
             NullWithdrawalProcessor.Instance,
+            NullDepositsProcessor.Instance,
             CreateAuRaValidator(),
             txFilter,
             GetGasLimitCalculator(),

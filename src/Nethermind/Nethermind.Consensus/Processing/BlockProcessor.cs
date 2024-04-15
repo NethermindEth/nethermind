@@ -12,7 +12,7 @@ using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Withdrawals;
+using Nethermind.Consensus.Deposits;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -43,6 +43,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
     private readonly IValidatorExitEipHandler _validatorExitEipHandler;
 
+    private readonly IDepositsProcessor _depositsProcessor;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -61,6 +62,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
+        IDepositsProcessor? depositsProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -73,6 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _depositsProcessor = depositsProcessor ?? new DepositsProcessor(logManager);
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         _validatorExitEipHandler = new ValidatorExitEipHandler();
 
@@ -255,6 +258,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         ProcessValidatorExits(block, spec);
 
+        _depositsProcessor.ProcessDeposits(block, receipts, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);

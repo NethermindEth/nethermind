@@ -4,7 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 
-namespace Nethermind.Consensus.Withdrawals;
+namespace Nethermind.Consensus.Deposits;
 
 public interface IWithdrawalProcessor
 {

@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Deposits;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
@@ -44,6 +45,7 @@ namespace Nethermind.Merge.AuRa.InitializationSteps
                 _api.BlockTree!,
                 new AuraWithdrawalProcessor(
                     withdrawalContractFactory.Create(transactionProcessor!), _api.LogManager),
+                new DepositsProcessor(_api.LogManager),
                 CreateAuRaValidator(),
                 txFilter,
                 GetGasLimitCalculator(),

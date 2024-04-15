@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Comparers;
+using Nethermind.Consensus.Deposits;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -122,6 +123,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     LogManager
             );
 
+            DepositsProcessor depositsProcessor = new(LogManager);
+
             BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
@@ -132,7 +135,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                depositsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

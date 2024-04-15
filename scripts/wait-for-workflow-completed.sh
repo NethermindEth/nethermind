@@ -1,9 +1,10 @@
-﻿#!/bin/bash
+#!/bin/bash
 
 # Set the maximum waiting time (in minutes) and initialize the counter
 max_wait_minutes="${MAX_WAIT_MINUTES}"
 timeout="${TIMEOUT}"
 interval="${INTERVAL}"
+name_filter="${NAME_FILTER}"
 counter=0
 
 # Get the current time in ISO 8601 format
@@ -20,6 +21,7 @@ echo "ℹ️ Reference: $REF"
 echo "ℹ️ Maximum wait time: ${max_wait_minutes} minutes"
 echo "ℹ️ Timeout for the workflow to complete: ${timeout} minutes"
 echo "ℹ️ Interval between checks: ${interval} seconds"
+echo "ℹ️ Name filter applied: ${name_filter}"
 
 # If RUN_ID is not empty, use it directly
 if [ -n "${RUN_ID}" ]; then
@@ -42,8 +44,8 @@ else
       exit 1
     fi
     run_id=$(echo "$response" | \
-      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg current_time "$current_time" \
-      '.workflow_runs[] | select(.head_branch == $ref and .status == "in_progress") | .id' | sort -r | head -n 1)
+      jq -r --arg ref "$(echo "$REF" | sed 's/refs\/heads\///')" --arg current_time "$current_time" --arg expected_name "$name_filter" \
+      '.workflow_runs[] | select(.head_branch == $ref and .status == "in_progress" and (if $expected_name == "" then true else .name | test($expected_name) end)) | .id' | sort -r | head -n 1)
     if [ -n "$run_id" ]; then
       echo "🎉 Workflow triggered! Run ID: $run_id"
       break
