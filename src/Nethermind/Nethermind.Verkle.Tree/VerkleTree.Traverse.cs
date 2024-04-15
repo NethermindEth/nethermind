@@ -17,12 +17,12 @@ public partial class VerkleTree
     {
         if (_logger.IsTrace) _logger.Trace($"Updating Tree Commitments Stem:{stem.ToHexString()} forSync:{forSync}");
         TraverseContext context = new(stem, leafUpdateDelta) { ForSync = forSync };
-        Banderwagon rootDelta = TraverseBranch(context);
+        Banderwagon rootDelta = TraverseBranch(ref context);
         if (_logger.IsTrace) _logger.Trace($"RootDelta To Apply: {rootDelta.ToBytes().ToHexString()}");
         UpdateRootNode(rootDelta);
     }
 
-    private Banderwagon TraverseBranch(TraverseContext traverseContext)
+    private Banderwagon TraverseBranch(ref TraverseContext traverseContext)
     {
         var childIndex = traverseContext.Stem[traverseContext.CurrentIndex];
         Span<byte> absolutePath = traverseContext.Stem[..(traverseContext.CurrentIndex + 1)];
@@ -48,7 +48,7 @@ public partial class VerkleTree
         if (child.IsBranchNode)
         {
             traverseContext.CurrentIndex += 1;
-            Banderwagon branchDeltaHash = TraverseBranch(traverseContext);
+            Banderwagon branchDeltaHash = TraverseBranch(ref traverseContext);
             traverseContext.CurrentIndex -= 1;
             if (_logger.IsTrace) _logger.Trace($"TraverseBranch Delta:{branchDeltaHash.ToBytes().ToHexString()}");
 
@@ -59,7 +59,7 @@ public partial class VerkleTree
         }
 
         traverseContext.CurrentIndex += 1;
-        var changeStemToBranch = TraverseStem(child, traverseContext, out Banderwagon stemDeltaHash);
+        var changeStemToBranch = TraverseStem(child, ref traverseContext, out Banderwagon stemDeltaHash);
         traverseContext.CurrentIndex -= 1;
         if (_logger.IsTrace) _logger.Trace($"TraverseStem Delta:{stemDeltaHash.ToBytes().ToHexString()}");
 
@@ -80,7 +80,7 @@ public partial class VerkleTree
         return stemDeltaHash;
     }
 
-    private bool TraverseStem(InternalNode node, TraverseContext traverseContext, out Banderwagon stemDeltaHash)
+    private bool TraverseStem(InternalNode node, ref TraverseContext traverseContext, out Banderwagon stemDeltaHash)
     {
         Debug.Assert(node.IsStem);
 
@@ -89,42 +89,7 @@ public partial class VerkleTree
 
         if (sharedPathCount != 31)
         {
-            var relativePathLength = sharedPathCount - traverseContext.CurrentIndex;
-            var oldLeafIndex = node.Stem!.BytesAsSpan[sharedPathCount];
-            var newLeafIndex = traverseContext.Stem[sharedPathCount];
-            Span<byte> sharedPath = traverseContext.Stem[..sharedPathCount];
-            // node share a path but not the complete stem.
-
-            // the internal node will be denoted by their sharedPath
-            // 1. create SuffixNode for the traverseContext.Key - get the delta of the commitment
-            // 2. set this suffix as child node of the BranchNode - get the commitment point
-            // 3. set the existing suffix as the child - get the commitment point
-            // 4. update the internal node with the two commitment points
-            var newStem = new InternalNode(VerkleNodeType.StemNode, traverseContext.Stem.ToArray());
-            FrE deltaFrNewStem = newStem.UpdateCommitment(traverseContext.LeafUpdateDelta);
-            FrE deltaHashNewStem = deltaFrNewStem + newStem.InitCommitmentHash!.Value;
-
-            // creating the stem node for the new suffix node
-            var stemKey = new byte[sharedPathCount + 1];
-            sharedPath.CopyTo(stemKey);
-            stemKey[^1] = newLeafIndex;
-            SetInternalNode(stemKey, newStem);
-            Banderwagon newSuffixCommitmentDelta = Committer.ScalarMul(deltaHashNewStem, newLeafIndex);
-
-            stemKey = new byte[sharedPathCount + 1];
-            sharedPath.CopyTo(stemKey);
-            stemKey[^1] = oldLeafIndex;
-            SetInternalNode(stemKey, node);
-
-            Banderwagon oldSuffixCommitmentDelta =
-                Committer.ScalarMul(node.InternalCommitment.PointAsField, oldLeafIndex);
-
-            Banderwagon deltaCommitment = oldSuffixCommitmentDelta + newSuffixCommitmentDelta;
-
-            Banderwagon internalCommitment =
-                FillSpaceWithBranchNodes(sharedPath, relativePathLength, deltaCommitment);
-
-            stemDeltaHash = internalCommitment - node.InternalCommitment.Point;
+            TraverseInnerStem(node, ref traverseContext, sharedPathCount, out stemDeltaHash);
             return true;
         }
 
@@ -154,6 +119,46 @@ public partial class VerkleTree
             stemDeltaHash = Committer.ScalarMul(deltaFr, childIndex);
             return false;
         }
+    }
+
+    private void TraverseInnerStem(InternalNode node, ref TraverseContext traverseContext, int sharedPathCount, out Banderwagon stemDeltaHash)
+    {
+        var relativePathLength = sharedPathCount - traverseContext.CurrentIndex;
+        var oldLeafIndex = node.Stem!.BytesAsSpan[sharedPathCount];
+        var newLeafIndex = traverseContext.Stem[sharedPathCount];
+        Span<byte> sharedPath = traverseContext.Stem[..sharedPathCount];
+        // node share a path but not the complete stem.
+
+        // the internal node will be denoted by their sharedPath
+        // 1. create SuffixNode for the traverseContext.Key - get the delta of the commitment
+        // 2. set this suffix as child node of the BranchNode - get the commitment point
+        // 3. set the existing suffix as the child - get the commitment point
+        // 4. update the internal node with the two commitment points
+        var newStem = new InternalNode(VerkleNodeType.StemNode, traverseContext.Stem.ToArray());
+        FrE deltaFrNewStem = newStem.UpdateCommitment(traverseContext.LeafUpdateDelta);
+        FrE deltaHashNewStem = deltaFrNewStem + newStem.InitCommitmentHash!.Value;
+
+        // creating the stem node for the new suffix node
+        var stemKey = new byte[sharedPathCount + 1];
+        sharedPath.CopyTo(stemKey);
+        stemKey[^1] = newLeafIndex;
+        SetInternalNode(stemKey, newStem);
+        Banderwagon newSuffixCommitmentDelta = Committer.ScalarMul(deltaHashNewStem, newLeafIndex);
+
+        stemKey = new byte[sharedPathCount + 1];
+        sharedPath.CopyTo(stemKey);
+        stemKey[^1] = oldLeafIndex;
+        SetInternalNode(stemKey, node);
+
+        Banderwagon oldSuffixCommitmentDelta =
+            Committer.ScalarMul(node.InternalCommitment.PointAsField, oldLeafIndex);
+
+        Banderwagon deltaCommitment = oldSuffixCommitmentDelta + newSuffixCommitmentDelta;
+
+        Banderwagon internalCommitment =
+            FillSpaceWithBranchNodes(sharedPath, relativePathLength, deltaCommitment);
+
+        stemDeltaHash = internalCommitment - node.InternalCommitment.Point;
     }
 
     private Banderwagon FillSpaceWithBranchNodes(in ReadOnlySpan<byte> path, int length, Banderwagon deltaPoint)

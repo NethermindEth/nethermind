@@ -88,7 +88,7 @@ public partial class VerkleTree
                     CurrentIndex = prefixWithStem.Key.Length - 1,
                     ForSync = true
                 };
-                TraverseBranch(context);
+                TraverseBranch(ref context);
             }
 
             commByPath[prefixWithStem.Key] = GetInternalNode(prefixWithStem.Key)!

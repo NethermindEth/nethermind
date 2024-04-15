@@ -115,7 +115,7 @@ public class InternalNode
         return InternalCommitment.PointAsField - prevCommit;
     }
 
-    public FrE UpdateCommitment(LeafUpdateDelta deltaLeafCommitment)
+    public FrE UpdateCommitment(in LeafUpdateDelta deltaLeafCommitment)
     {
         Debug.Assert(NodeType == VerkleNodeType.StemNode);
         FrE deltaC1Commit = FrE.Zero;

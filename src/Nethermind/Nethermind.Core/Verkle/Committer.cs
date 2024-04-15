@@ -74,14 +74,14 @@ namespace Nethermind.Core.Verkle
             PointAsField = Point.MapToScalarField();
         }
 
-        public void AddPoint(Banderwagon point)
+        public void AddPoint(in Banderwagon point)
         {
             Point += point;
             _pointAsField = null;
             SetCommitmentToField();
         }
 
-        public FrE UpdateCommitmentGetDelta(Banderwagon point)
+        public FrE UpdateCommitmentGetDelta(in Banderwagon point)
         {
             FrE prevPointAsField = PointAsField;
             Point += point;
