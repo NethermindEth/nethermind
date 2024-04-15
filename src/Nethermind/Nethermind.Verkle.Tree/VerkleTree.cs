@@ -29,7 +29,7 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
     /// </summary>
 
     // aggregate the stem commitments here and then update the entire tree when Commit() is called
-    private readonly SpanDictionary<byte, LeafUpdateDelta> _leafUpdateCache = new(Bytes.SpanEqualityComparer);
+    private readonly SpanConcurrentDictionary<byte, LeafUpdateDelta> _leafUpdateCache = new(Bytes.SpanEqualityComparer);
 
     private readonly ILogger _logger = logManager?.GetClassLogger<VerkleTree>() ?? throw new ArgumentNullException(nameof(logManager));
 

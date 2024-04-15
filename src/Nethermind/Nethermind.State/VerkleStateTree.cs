@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -89,6 +90,16 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
             return addressCompare != 0 ? addressCompare : kv1.Key.Index.CompareTo(kv2.Key.Index);
         });
 
+        ActionBlock<(Hash256, Dictionary<byte, byte[]>)> insertStem =
+            new ActionBlock<(Hash256, Dictionary<byte, byte[]>)>((item) =>
+            {
+                InsertStemBatch(item.Item1.Bytes[..31], item.Item2.Select(kv => (kv.Key, kv.Value)));
+            },
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+            });
+
         Hash256 currentStem = Hash256.Zero;
         Dictionary<byte, byte[]> stemValues = new Dictionary<byte, byte[]>();
         foreach (KeyValuePair<StorageCell, byte[]> kv in theList)
@@ -102,8 +113,8 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
                 if (stemValues.Count != 0)
                 {
                     // Stem is different and stemValues have value.
-                    InsertStemBatch(theKey.Bytes[..31], stemValues.Select(kv => (kv.Key, kv.Value)));
-                    stemValues.Clear();
+                    insertStem.Post((currentStem, stemValues));
+                    stemValues = new Dictionary<byte, byte[]>();
                 }
 
                 // And set the next stem
@@ -115,9 +126,11 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
 
         if (stemValues.Count != 0)
         {
-            InsertStemBatch(currentStem.Bytes[..31], stemValues.Select(kv => (kv.Key, kv.Value)));
-            stemValues.Clear();
+            insertStem.Post((currentStem, stemValues));
         }
+
+        insertStem.Complete();
+        insertStem.Completion.Wait();
     }
 
     public static VerkleStateTree CreateStatelessTreeFromExecutionWitness(ExecutionWitness? execWitness, Banderwagon root, ILogManager logManager)
