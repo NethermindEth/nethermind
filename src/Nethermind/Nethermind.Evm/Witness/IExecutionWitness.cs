@@ -51,7 +51,7 @@ public interface IExecutionWitness
     /// <param name="chunkId"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
-    long AccessCodeChunk(Address address, byte chunkId, bool isWrite);
+    long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite);
 
     long AccessForAbsentAccount(Address address);
 

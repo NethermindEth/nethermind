@@ -131,11 +131,11 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     {
         if (startIncluded == endNotIncluded) return true;
 
-        byte startChunkId = CalculateCodeChunkIdFromPc(startIncluded);
-        byte endChunkId = CalculateCodeChunkIdFromPc(endNotIncluded - 1);
+        UInt256 startChunkId = CalculateCodeChunkIdFromPc(startIncluded);
+        UInt256 endChunkId = CalculateCodeChunkIdFromPc(endNotIncluded - 1);
 
         long accGas = 0;
-        for (byte ch = startChunkId; ch <= endChunkId; ch++)
+        for (UInt256 ch = startChunkId; ch <= endChunkId; ch++)
         {
             long gas = AccessCodeChunk(address, ch, isWrite);
             accGas += gas;
@@ -152,7 +152,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     /// <param name="chunkId"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
-    public long AccessCodeChunk(Address address, byte chunkId, bool isWrite)
+    public long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite)
     {
         Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
         // _logger.Info($"AccessCodeChunkKey: {EnumerableExtensions.ToString(key)}");
@@ -219,10 +219,10 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
         return true;
     }
 
-    private static byte CalculateCodeChunkIdFromPc(int pc)
+    private static UInt256 CalculateCodeChunkIdFromPc(int pc)
     {
         int chunkId = pc / 31;
-        return (byte)chunkId;
+        return (UInt256)chunkId;
     }
 
     public byte[][] GetAccessedKeys()
