@@ -255,27 +255,32 @@ jobs:
           }
 
           check_chain_head() {
-            rpc_url=$1
-            etherscan_api_key="$ETHERSCAN_API_KEY"
-            etherscan_api_url="https://api.etherscan.io/api"
+              rpc_url=$1
+              etherscan_api_key="$ETHERSCAN_API_KEY"
+              etherscan_api_url="https://api.etherscan.io/api"
 
-            # Fetch current chain head from node
-            node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
-            node_head_decimal=$(echo $((16#${node_head_hex#0x})))
-            echo "Current chain head at $rpc_url: $node_head_decimal"
+              while true; do
+                  # Fetch current chain head from node
+                  node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
+                  node_head_decimal=$(echo $((16#${node_head_hex#0x})))
+                  echo "Current chain head at $rpc_url: $node_head_decimal"
 
-            # Fetch current chain head from Etherscan API
-            etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
-            etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
-            etherscan_head_decimal=$(echo $((16#${etherscan_head_hex#0x})))
-            echo "Current chain head at Etherscan: $etherscan_head_decimal"
+                  # Fetch current chain head from Etherscan API
+                  etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
+                  etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
+                  etherscan_head_decimal=$(echo $((16#${etherscan_head_hex#0x})))
+                  echo "Current chain head at Etherscan: $etherscan_head_decimal"
 
-            # Compare heads
-            if [ "$node_head_decimal" -ge "$etherscan_head_decimal" ]; then
-              echo "Node at $rpc_url has caught up with the chain."
-            else
-              echo "Node at $rpc_url has not caught up with the chain. Node head: $node_head_decimal, Etherscan head: $etherscan_head_decimal"
-            fi
+                  # Compare heads
+                  if [ "$node_head_decimal" -ge "$etherscan_head_decimal" ]; then
+                      echo "Node at $rpc_url has caught up with the chain."
+                      break
+                  else
+                      echo "Node at $rpc_url has not caught up with the chain. Node head: $node_head_decimal, Etherscan head: $etherscan_head_decimal"
+                      echo "Waiting for 30 seconds before rechecking..."
+                      sleep 30
+                  fi
+              done
           }
 
           # Just an RPC warmup - to make sure no faulty info reached a check
