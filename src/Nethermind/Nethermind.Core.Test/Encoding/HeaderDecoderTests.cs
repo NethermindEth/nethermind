@@ -168,7 +168,7 @@ public class HeaderDecoderTests
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
             .WithDepositsRoot(Keccak.Zero)
             .WithValidatorExitsRoot(TestItem.KeccakA).TestObject;
-  
+
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
