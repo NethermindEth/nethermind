@@ -5,7 +5,6 @@ using System.Text.Json;
 using Ethereum.Test.Base;
 using Evm.JsonTypes;
 using Microsoft.IdentityModel.Tokens;
-using Nethermind.Consensus.AuRa.Rewards;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -20,7 +19,6 @@ using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
-using Nethermind.JsonRpc.Data;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
@@ -120,8 +118,8 @@ public class T8NTool
 
         Transaction[] transactions;
         if (inputTxs.EndsWith(".json")) {
-            var txInfoList = _ethereumJsonSerializer.Deserialize<TransactionForRpc[]>(File.ReadAllText(inputTxs));
-            transactions = txInfoList.Select(txInfo => txInfo.ToTransaction()).ToArray();
+            var txInfoList = _ethereumJsonSerializer.Deserialize<TransactionInfo[]>(File.ReadAllText(inputTxs));
+            transactions = txInfoList.Select(txInfo => txInfo.ConvertToTx()).ToArray();
         } else {
             string rlpRaw = File.ReadAllText(inputTxs).Replace("\"", "").Replace("\n", "");
             RlpStream rlp = new(Bytes.FromHexString(rlpRaw));
