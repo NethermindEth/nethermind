@@ -32,7 +32,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     bool FastBlocks { get; set; }
 
-    [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Goerli, Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
     public bool UseGethLimitsInFastBlocks { get; set; }
 
     [ConfigItem(Description = "Whether to download the old block headers in the Fast sync mode. If `false`, Nethermind downloads only recent blocks headers.", DefaultValue = "true")]
