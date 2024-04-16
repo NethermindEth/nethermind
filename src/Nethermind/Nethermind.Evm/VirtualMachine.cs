@@ -640,16 +640,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 result = UpdateGas(gasCodeOp, ref gasAvailable);
                             }
                             if (!result) break;
-                        }
-                        if (valueTransfer)
-                        {
-                            var gasValueTransfer = vmState.Env.Witness.AccessForBalance(address);
-                            if (gasValueTransfer > 0)
+
+                            if (valueTransfer)
                             {
-                                witnessGasCharged = true;
-                                result = UpdateGas(gasValueTransfer, ref gasAvailable);
+                                var gasValueTransfer = vmState.Env.Witness.AccessForBalance(address);
+                                if (gasValueTransfer > 0)
+                                {
+                                    witnessGasCharged = true;
+                                    result = UpdateGas(gasValueTransfer, ref gasAvailable);
+                                }
                             }
                         }
+                        else
+                        {
+                            witnessGasCharged = true;
+                        }
+
                         break;
                     }
                 case Instruction.EXTCODEHASH:
