@@ -4,6 +4,12 @@
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
+    <ProjectReference Include="..\evm\Evm.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Folder Include="data\" />
   </ItemGroup>
 
     <PropertyGroup>
