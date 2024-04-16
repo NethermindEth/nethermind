@@ -35,7 +35,12 @@ public class Block
 
     public Block(BlockHeader header) : this(
         header,
-        new(null, null, header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>(), header.DepositsRoot is null ? null : Array.Empty<Deposit>(), header.ValidatorExitsRoot is null ? null : Array.Empty<ValidatorExit>())
+        new(
+            null,
+            null,
+            header.WithdrawalsRoot is null ? null : Array.Empty<Withdrawal>(),
+            header.DepositsRoot is null ? null : Array.Empty<Deposit>(),
+            header.ValidatorExitsRoot is null ? null : Array.Empty<ValidatorExit>())
     )
     { }
 
