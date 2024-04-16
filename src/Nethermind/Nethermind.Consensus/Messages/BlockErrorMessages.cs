@@ -121,7 +121,8 @@ public static class BlockErrorMessages
 
     public static string InvalidValidatorExitsRoot(Core.Crypto.Hash256 expected, Core.Crypto.Hash256 actual) =>
         $"InvalidValidatorExitsRoot: expected {expected}, got {actual}";
-    public static string MissingDeposits => "Deposits cannot be null in block when EIP-6110 activated.";
-    public static string DepositsNotEnabled => "Deposits must be null in block when EIP-6110 not activated.";
-    public static string InvalidDepositsRoot(Hash256 expected, Hash256 actual) => $"Deposits root hash mismatch in block: expected {expected}, got {actual}";
+
+    public static string MissingDeposits => "MissingDeposits: Deposits cannot be null in block when EIP-6110 activated.";
+    public static string DepositsNotEnabled => "DepositsNotEnabled: Deposits must be null in block when EIP-6110 not activated.";
+    public static string InvalidDepositsRoot(Hash256 expected, Hash256 actual) => $"InvalidDepositsRoot: Deposits root hash mismatch in block: expected {expected}, got {actual}";
 }
