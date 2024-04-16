@@ -500,7 +500,7 @@ public class BlockValidator : IBlockValidator
     {
         depositsRoot = null;
         if (body.Deposits == null)
-            return header.DepositsRoot == null;
+            return header.DepositsRoot is null;
 
         depositsRoot = new DepositTrie(body.Deposits).RootHash;
 
@@ -516,7 +516,7 @@ public class BlockValidator : IBlockValidator
     {
         validatorExitsRoot = null;
         if (body.ValidatorExits == null)
-            return header.ValidatorExitsRoot == null;
+            return header.ValidatorExitsRoot is null;
 
         validatorExitsRoot = ValidatorExitsTrie.CalculateRoot(body.ValidatorExits);
 
