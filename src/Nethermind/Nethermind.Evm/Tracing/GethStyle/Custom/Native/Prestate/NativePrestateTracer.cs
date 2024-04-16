@@ -146,7 +146,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         {
             if (_worldState!.TryGetAccount(addr, out AccountStruct account))
             {
-                ulong nonce = (ulong)account.Nonce;
+                UInt256 nonce = account.Nonce;
                 byte[]? code = _worldState.GetCode(addr);
                 _prestate.Add(addr, new NativePrestateTracerAccount(account.Balance, nonce, code));
             }

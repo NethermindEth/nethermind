@@ -15,18 +15,18 @@ public class NativePrestateTracerAccount
         Balance = balance;
     }
 
-    public NativePrestateTracerAccount(UInt256 balance, ulong nonce, byte[]? code)
+    public NativePrestateTracerAccount(UInt256 balance, UInt256 nonce, byte[]? code)
     {
         Balance = balance;
         Nonce = nonce > 0 ? nonce : null;
         Code = code is not null && code.Length > 0 ? code : null;
     }
 
-    public UInt256 Balance { get; init; }
+    public UInt256 Balance { get; }
 
-    public ulong? Nonce { get; init; }
+    public UInt256? Nonce { get; }
 
-    public byte[]? Code { get; init; }
+    public byte[]? Code { get; }
 
     public Dictionary<UInt256, UInt256>? Storage { get; set; }
 }
