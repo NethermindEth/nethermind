@@ -43,7 +43,7 @@ public class PaprikaStateFactory : IStateFactory
         _logger = LimboLogs.Instance.GetClassLogger();
     }
 
-    public PaprikaStateFactory(string directory, IPaprikaConfig config, ILogManager logManager)
+    public PaprikaStateFactory(string directory, IPaprikaConfig config, int physicalCores, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
@@ -51,7 +51,7 @@ public class PaprikaStateFactory : IStateFactory
 
         _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
 
-        var parallelism = config.ParallelMerkle ? ComputeMerkleBehavior.ParallelismUnlimited : ComputeMerkleBehavior.ParallelismNone;
+        var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
         ComputeMerkleBehavior merkle = new(parallelism);
         _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);

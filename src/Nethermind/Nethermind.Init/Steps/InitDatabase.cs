@@ -14,6 +14,7 @@ using Nethermind.Db;
 using Nethermind.Db.Rocks;
 using Nethermind.Db.Rocks.Config;
 using Nethermind.Db.Rpc;
+using Nethermind.Init.Cpu;
 using Nethermind.JsonRpc.Client;
 using Nethermind.Logging;
 using Nethermind.Paprika;
@@ -91,7 +92,9 @@ namespace Nethermind.Init.Steps
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
 
                     var statePath = Path.Combine(initConfig.BaseDbPath, "state");
-                    PaprikaStateFactory paprika = new(statePath, paprikaConfig, _api.LogManager);
+                    // Keccak calculation is cpu bound so only use physical cores rather than logical cores
+                    var physicalCores = Math.Max(1, RuntimeInformation.GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount);
+                    PaprikaStateFactory paprika = new(statePath, paprikaConfig, physicalCores, _api.LogManager);
                     _api.RegisterForBlockFinalized((_, e) =>
                     {
                         foreach (BlockHeader finalized in e.FinalizedBlocks)
