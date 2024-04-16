@@ -4,8 +4,9 @@
 using System;
 using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 using NUnit.Framework;
+
 namespace Nethermind.Evm.Test.Tracing;
 
 public class GethLikeNativeTracerFactoryTests

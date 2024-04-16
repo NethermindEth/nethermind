@@ -14,7 +14,7 @@
 // You should have received a copy of the GNU Lesser General Public License
 // along with the go-ethereum library. If not, see <http://www.gnu.org/licenses/>.
 
-// prestateTracer outputs sufficient information to create a local execution of
+// prestateTracer_legacy outputs sufficient information to create a local execution of
 // the transaction from a custom assembled genesis block.
 {
 	// prestate is the genesis that we're building.

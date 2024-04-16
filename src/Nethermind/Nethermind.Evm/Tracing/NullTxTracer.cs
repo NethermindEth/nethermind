@@ -26,7 +26,7 @@ public class NullTxTracer : TxTracer
         => ThrowInvalidOperationException();
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
         => ThrowInvalidOperationException();
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
         => ThrowInvalidOperationException();
 
     public override void ReportOperationError(EvmExceptionType error)

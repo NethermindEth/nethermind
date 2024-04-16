@@ -95,8 +95,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         return txReceipt;
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false) =>
-        _currentTxTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+    public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc) =>
+        _currentTxTracer.StartOperation(env, gas, opcode, pc);
 
     public void ReportOperationError(EvmExceptionType error) =>
         _currentTxTracer.ReportOperationError(error);
