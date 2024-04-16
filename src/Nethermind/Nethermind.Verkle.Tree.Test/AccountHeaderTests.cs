@@ -1,5 +1,8 @@
 using System;
+using System.Numerics;
 using FluentAssertions;
+using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Int256;
@@ -10,6 +13,19 @@ namespace Nethermind.Verkle.Tree.Test;
 [TestFixture]
 public class AccountHeaderTests
 {
+
+    [Test]
+    public void TestGetStorageKeyWithoutOverflow()
+    {
+        var address = new Address(Bytes.FromHexString("0xc2494a4e8eebd8e63bd3a5c91b60206661d396d5"));
+        byte[] data = Bytes.FromHexString("ff0d54412868ab2569622781556c0b41264d9dae313826adad7b60da4b441e67");
+
+        var index = new UInt256(data,true);
+        Hash256? storageKey = AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, index);
+        storageKey.BytesToArray().Should()
+            .BeEquivalentTo(Bytes.FromHexString("0x0beaa63f5273c76e7b673048a478dd85e970f5657bc02dead742b9246e101e67"));
+
+    }
 
     [Test]
     public void TestGetTreeKey()

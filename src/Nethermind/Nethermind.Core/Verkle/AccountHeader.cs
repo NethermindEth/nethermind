@@ -19,7 +19,7 @@ public readonly struct AccountHeader
     private const int CodeOffset = 128;
     private const int VerkleNodeWidth = 256;
 
-    private static readonly UInt256 MainStorageOffset = (UInt256)MainStorageOffsetBase << MainStorageOffsetExponent;
+    private static readonly UInt256 MainStorageOffset = ((UInt256)MainStorageOffsetBase << MainStorageOffsetExponent) >> 8;
 
     private static readonly LruCache<(byte[], UInt256), byte[]> _keyCache = new(1000000, 10000, "Verkle Key Cache");
 
@@ -48,15 +48,13 @@ public readonly struct AccountHeader
 
     public static Hash256 GetTreeKeyForStorageSlot(byte[] address, UInt256 storageKey)
     {
-        UInt256 pos;
+        if (storageKey < (CodeOffset - HeaderStorageOffset))
+            return GetTreeKey(address, UInt256.Zero, (HeaderStorageOffset + storageKey).ToBigEndian()[31]);
 
-        if (storageKey < CodeOffset - HeaderStorageOffset) pos = HeaderStorageOffset + storageKey;
-        else pos = MainStorageOffset + storageKey;
-
-        UInt256 treeIndex = pos / VerkleNodeWidth;
-
-        UInt256.Mod(pos, VerkleNodeWidth, out UInt256 subIndex);
-        return GetTreeKey(address, treeIndex, subIndex.ToBigEndian()[31]);
+        byte subIndex = storageKey.ToBigEndian()[31];
+        UInt256 treeIndex = storageKey >> 8;
+        treeIndex += MainStorageOffset;
+        return GetTreeKey(address, treeIndex, subIndex);
     }
 
     public static void FillTreeAndSubIndexForChunk(UInt256 chunkId, ref Span<byte> subIndexBytes, out UInt256 treeIndex)
