@@ -68,7 +68,7 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         bool isPostMerge = env.IsPostMerge();
         if (CurrentTraceEntry is not null)

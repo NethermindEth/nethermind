@@ -99,7 +99,7 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _log.pc = pc;
         _log.op = new Log.Opcode(opcode);

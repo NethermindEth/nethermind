@@ -29,13 +29,13 @@ public static class GethLikeNativeTracerFactory
         RegisterTracer(NativePrestateTracer.PrestateTracer, (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction.SenderAddress, transaction.To, block.Beneficiary));
     }
 
-    private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerFunc)
+    private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerDelegate)
     {
-        _tracers.Add(tracerName, tracerFunc);
+        _tracers.Add(tracerName, tracerDelegate);
     }
 
     public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
-        _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate tracerFunc)
-            ? tracerFunc(options, block, transaction, worldState)
+        _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate tracerDelegate)
+            ? tracerDelegate(options, block, transaction, worldState)
             : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
 }

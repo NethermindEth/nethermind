@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json;
+using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
@@ -19,19 +20,21 @@ public class UInt256DictionaryKeyConverterTests
     [Test]
     public void ReadJson_NestedValidJson_ReturnsCorrectDictionary()
     {
-        string json = @"{
-            ""blockStateCalls"": [
+        string json = """
+        {
+            "blockStateCalls": [
                 {
-                    ""stateOverrides"": {
-                        ""0xc100000000000000000000000000000000000000"": {
-                            ""state"": {
-                                ""0x0000000000000000000000000000000000000000000000000000000000000000"": ""0x1200000000000000000000000000000000000000000000000000000000000000""
+                    "stateOverrides": {
+                        "0xc100000000000000000000000000000000000000": {
+                            "state": {
+                                "0x0000000000000000000000000000000000000000000000000000000000000000": "0x1200000000000000000000000000000000000000000000000000000000000000"
                             }
                         }
                     }
                 }
             ]
-        }";
+        }
+        """;
 
         var result = JsonSerializer.Deserialize<
             Dictionary<string, List<
@@ -45,44 +48,50 @@ public class UInt256DictionaryKeyConverterTests
             >>
         >(json, Options);
 
-        Assert.That(result, Is.Not.Null);
+        var expectedState = new Dictionary<UInt256, Hash256>
+        {
+            { new UInt256(0), new Hash256("0x1200000000000000000000000000000000000000000000000000000000000000") }
+        };
+        var expectedStateOverrides = new Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>
+        {
+            {
+                new UInt256(Bytes.FromHexString("0xc100000000000000000000000000000000000000")),
+                new Dictionary<string, Dictionary<UInt256, Hash256>>
+                {
+                    {"state", expectedState}
+                }
+            }
+        };
+        var expectedBlockStateCalls = new List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>
+        {
+            new()
+            {
+                {"stateOverrides", expectedStateOverrides}
+            }
+        };
+        var expected = new Dictionary<string, List<Dictionary<string, Dictionary<UInt256, Dictionary<string, Dictionary<UInt256, Hash256>>>>>>
+        {
+            {"blockStateCalls", expectedBlockStateCalls}
+        };
 
-        // Check for correct top-level key
-        Assert.IsTrue(result!.ContainsKey("blockStateCalls"));
-        // Additional assertions to check the structure and data of the nested dictionaries
-        var blockStateCalls = result["blockStateCalls"];
-        Assert.IsNotNull(blockStateCalls);
-        Assert.IsTrue(1 == blockStateCalls.Count);
-
-        var stateOverrides = blockStateCalls[0];
-        Assert.IsNotNull(stateOverrides);
-        Assert.IsTrue(stateOverrides.ContainsKey("stateOverrides"));
-
-        var stateOverridesContents = stateOverrides["stateOverrides"];
-        var soKey = Bytes.FromHexString("0xc100000000000000000000000000000000000000").ToUInt256(); ;
-        var state = stateOverridesContents[soKey];
-        Assert.IsNotNull(state);
-        Assert.IsTrue(state.ContainsKey("state"));
-
-        var stateInner = state["state"];
-        var key = Bytes.FromHexString("0x0000000000000000000000000000000000000000").ToUInt256();
-        var hashValue = stateInner[key];
-        Assert.IsTrue("0x1200000000000000000000000000000000000000000000000000000000000000" == hashValue.ToString());
+        result.Should().BeEquivalentTo(expected);
     }
 
     [Test]
     public void ReadJson_NullJson_ReturnsNull()
     {
         Dictionary<UInt256, Hash256>? result = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>("null", Options);
-        Assert.That(result, Is.Null);
+
+        result.Should().BeNull();
     }
 
     [Test]
     public void ReadJson_EmptyObject_ReturnsEmptyDictionary()
     {
         Dictionary<UInt256, Hash256>? result = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>("{}", Options);
-        Assert.That(result, Is.Not.Null);
-        Assert.That(result, Is.Empty);
+        Dictionary<UInt256, Hash256> empty = new();
+
+        result.Should().BeEquivalentTo(empty);
     }
 
     [Test]
@@ -95,8 +104,7 @@ public class UInt256DictionaryKeyConverterTests
         var serialised = JsonSerializer.Serialize(dictionary, Options);
         var deserialised = JsonSerializer.Deserialize<Dictionary<UInt256, Hash256>>(serialised, Options);
 
-        Assert.IsTrue(deserialised!.ContainsKey(new UInt256(1)));
-        Assert.IsTrue(deserialised!.ContainsValue(new Hash256("0x0000000000000000000000000000000000000000000000000000000000000002")));
+        deserialised.Should().BeEquivalentTo(dictionary);
     }
 
     [Test]
@@ -108,6 +116,12 @@ public class UInt256DictionaryKeyConverterTests
         };
         string serialised = JsonSerializer.Serialize(dictionary, Options);
 
-        Assert.That(serialised, Is.EqualTo("{\n  \"0x1\": \"0x3039\"\n}"));
+        string expected = """
+        {
+          "0x1": "0x3039"
+        }
+        """;
+
+        serialised.Should().BeEquivalentTo(expected);
     }
 }

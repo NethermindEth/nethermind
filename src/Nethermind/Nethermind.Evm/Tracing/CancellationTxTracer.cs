@@ -186,12 +186,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingInstructions)
         {
-            _innerTracer.StartOperation(env, gas, opcode, pc);
+            _innerTracer.StartOperation(pc, opcode, gas, env);
         }
     }
 

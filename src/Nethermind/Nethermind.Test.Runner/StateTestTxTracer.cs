@@ -48,7 +48,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         bool isPostMerge = env.IsPostMerge();
         _gasAlreadySetForCurrentOp = false;

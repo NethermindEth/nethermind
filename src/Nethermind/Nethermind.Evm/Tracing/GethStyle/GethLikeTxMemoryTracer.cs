@@ -34,12 +34,12 @@ public class GethLikeTxMemoryTracer : GethLikeTxTracer<GethTxMemoryTraceEntry>
             .ToHexString(false);
     }
 
-    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         var previousTraceEntry = CurrentTraceEntry;
         var previousDepth = CurrentTraceEntry?.Depth ?? 0;
 
-        base.StartOperation(env, gas, opcode, pc);
+        base.StartOperation(pc, opcode, gas, env);
 
         if (CurrentTraceEntry.Depth > previousDepth)
         {

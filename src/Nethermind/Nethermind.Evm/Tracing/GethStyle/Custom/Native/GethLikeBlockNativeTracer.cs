@@ -3,18 +3,17 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
-public delegate GethLikeNativeTxTracer NaviteTracerFactory(Block block, Transaction transaction);
+public delegate GethLikeNativeTxTracer NativeTracerFactory(Block block, Transaction transaction);
 
 public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLikeNativeTxTracer>
 {
-    private readonly NaviteTracerFactory _txTracerFactory;
+    private readonly NativeTracerFactory _txTracerFactory;
     private Block _block = null!;
 
-    public GethLikeBlockNativeTracer(Hash256? txHash, NaviteTracerFactory txTracerFactory) : base(txHash)
+    public GethLikeBlockNativeTracer(Hash256? txHash, NativeTracerFactory txTracerFactory) : base(txHash)
     {
         _txTracerFactory = txTracerFactory;
     }

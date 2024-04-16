@@ -21,7 +21,8 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     private EvmExceptionType? _error;
     private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = new();
 
-    public NativePrestateTracer(IWorldState worldState,
+    public NativePrestateTracer(
+        IWorldState worldState,
         GethTraceOptions options,
         Address? from,
         Address? to = null,
@@ -35,7 +36,7 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
         _worldState = worldState;
 
-        LookupAccount(from);
+        LookupAccount(from!);
         LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
         LookupAccount(beneficiary ?? Address.Zero);
     }
@@ -50,9 +51,9 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
         return result;
     }
 
-    public override void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
-        base.StartOperation(env, gas, opcode, pc);
+        base.StartOperation(pc, opcode, gas, env);
 
         if (_error is not null) return;
 
