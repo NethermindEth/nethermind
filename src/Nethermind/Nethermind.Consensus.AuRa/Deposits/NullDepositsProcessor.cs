@@ -6,17 +6,12 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.AuRa.Depositss;
+namespace Nethermind.Consensus.AuRa.Deposits;
 
 public class NullDepositsProcessor : IDepositsProcessor
 {
     public void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
     }
-
-    public void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
-    {
-    }
-
     public static IDepositsProcessor Instance { get; } = new NullDepositsProcessor();
 }

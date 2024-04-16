@@ -11,5 +11,4 @@ namespace Nethermind.Consensus.Deposits;
 public interface IDepositsProcessor
 {
     void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
-    void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec);
 }
