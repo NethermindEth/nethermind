@@ -32,7 +32,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
         TestState.Set(storageCell, storageData);
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, context, null, beneficiary: GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
 
         byte[] sstoreCode = Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
@@ -78,7 +78,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             From = TestItem.AddressA,
             To = TestItem.AddressB
         };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, context, null, beneficiary: GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
 
         byte[] deployedCode = new byte[3];
 
@@ -135,7 +135,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
             From = TestItem.AddressA,
             To = TestItem.AddressB
         };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, context, null, beneficiary: GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
 
         byte[] salt = { 4, 5, 6 };
 
@@ -193,7 +193,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         };
         TestState.CreateAccount(TestItem.AddressC, 5.Ether());
         TestState.IncrementNonce(TestItem.AddressC);
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, context, null, beneficiary: GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
 
         GethLikeTxTrace prestateTrace = Execute(
                 tracer,
@@ -228,7 +228,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
         {
             From = TestItem.AddressA
         };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, context, null, beneficiary: GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
 
         GethLikeTxTrace prestateTrace = Execute(
                 tracer,

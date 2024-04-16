@@ -19,12 +19,14 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     private Instruction _op;
     private Address? _executingAccount;
     private EvmExceptionType? _error;
-    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate;
+    private readonly Dictionary<AddressAsKey, NativePrestateTracerAccount> _prestate = new();
 
-    public NativePrestateTracer(
-        IWorldState worldState,
-        NativeTracerContext? context,
-        GethTraceOptions options) : base(options)
+    public NativePrestateTracer(IWorldState worldState,
+        GethTraceOptions options,
+        Address? from,
+        Address? to = null,
+        Address? beneficiary = null)
+        : base(options)
     {
         IsTracingRefunds = true;
         IsTracingActions = true;
@@ -33,11 +35,9 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
 
         _worldState = worldState;
 
-        _prestate = new Dictionary<AddressAsKey, NativePrestateTracerAccount>();
-        if (context is not null)
-        {
-            LookupInitialTransactionAccounts(context.Value);
-        }
+        LookupAccount(from);
+        LookupAccount(to ?? ContractAddress.From(from, _prestate[from].Nonce ?? 0));
+        LookupAccount(beneficiary ?? Address.Zero);
     }
 
     protected override GethLikeTxTrace CreateTrace() => new();
@@ -137,15 +137,6 @@ public sealed class NativePrestateTracer : GethLikeNativeTxTracer
     {
         base.ReportOperationError(error);
         _error = error;
-    }
-
-    private void LookupInitialTransactionAccounts(in NativeTracerContext context)
-    {
-        LookupAccount(context.From);
-        LookupAccount(context.To ?? ContractAddress.From(context.From, _prestate[context.From].Nonce ?? 0));
-
-        // Look up client beneficiary address as well
-        LookupAccount(context.Beneficiary ?? Address.Zero);
     }
 
     private void LookupAccount(Address addr)

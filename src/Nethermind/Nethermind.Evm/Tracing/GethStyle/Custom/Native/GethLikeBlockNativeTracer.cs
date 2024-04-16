@@ -2,28 +2,30 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.State;
+
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
+
+public delegate GethLikeNativeTxTracer NaviteTracerFactory(Block block, Transaction? transaction);
 
 public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLikeNativeTxTracer>
 {
-    private readonly GethTraceOptions _options;
-    private readonly IWorldState _worldState;
-    private NativeTracerContext _context;
+    private readonly NaviteTracerFactory _txTracerFactory;
+    private Block _block = null!;
 
-    public GethLikeBlockNativeTracer(IWorldState worldState, GethTraceOptions options, NativeTracerContext context) : base(options.TxHash)
+    public GethLikeBlockNativeTracer(Hash256? txHash, NaviteTracerFactory txTracerFactory) : base(txHash)
     {
-        _worldState = worldState;
-        _options = options;
-        _context = context;
+        _txTracerFactory = txTracerFactory;
     }
 
-    protected override GethLikeNativeTxTracer OnStart(Transaction? tx)
+    public override void StartNewBlockTrace(Block block)
     {
-        _context.From = tx?.SenderAddress!;
-        _context.To = tx?.To;
-        return GethLikeNativeTracerFactory.CreateTracer(_options, _worldState, _context);
+        _block = block;
+        base.StartNewBlockTrace(block);
     }
+
+    protected override GethLikeNativeTxTracer OnStart(Transaction? tx) => _txTracerFactory(_block, tx);
 
     protected override bool ShouldTraceTx(Transaction? tx) => tx is not null && base.ShouldTraceTx(tx);
 
