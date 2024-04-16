@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Verkle.Tree.Cache;
 using Nethermind.Verkle.Tree.TreeNodes;
 using Nethermind.Verkle.Tree.Utils;
@@ -50,6 +51,17 @@ public partial class VerkleTreeStore<TPersistence>
     {
         // TODO: create a sorted set here - we need it for verkleSync serving
         SortedVerkleMemoryDb cacheBatch = batch.ToSortedVerkleDb();
+
+        if (blockNumber == 22038)
+        {
+            Console.WriteLine($"Insert Batch: {blockNumber}");
+            foreach (KeyValuePair<byte[], byte[]> data in batch.LeafTable)
+            {
+                Console.WriteLine($"key,{data.Key.ToHexString()},Value,{data.Value.ToHexString()}");
+            }
+        }
+
+
 
         if (blockNumber == 0)
         {
