@@ -1,0 +1,18 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc\Nethermind.JsonRpc.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.JsonRpc.Test\Nethermind.JsonRpc.Test.csproj" />
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
+  </ItemGroup>
+
+    <PropertyGroup>
+        <OutputType>Exe</OutputType>
+        <TargetFramework>net8.0</TargetFramework>
+        <ImplicitUsings>enable</ImplicitUsings>
+        <Nullable>enable</Nullable>
+    </PropertyGroup>
+
+
+
+</Project>
