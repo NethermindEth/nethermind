@@ -7,7 +7,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
-public delegate GethLikeNativeTxTracer NaviteTracerFactory(Block block, Transaction? transaction);
+public delegate GethLikeNativeTxTracer NaviteTracerFactory(Block block, Transaction transaction);
 
 public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLikeNativeTxTracer>
 {
@@ -25,7 +25,7 @@ public class GethLikeBlockNativeTracer : BlockTracerBase<GethLikeTxTrace, GethLi
         base.StartNewBlockTrace(block);
     }
 
-    protected override GethLikeNativeTxTracer OnStart(Transaction? tx) => _txTracerFactory(_block, tx);
+    protected override GethLikeNativeTxTracer OnStart(Transaction? tx) => _txTracerFactory(_block, tx!);
 
     protected override bool ShouldTraceTx(Transaction? tx) => tx is not null && base.ShouldTraceTx(tx);
 

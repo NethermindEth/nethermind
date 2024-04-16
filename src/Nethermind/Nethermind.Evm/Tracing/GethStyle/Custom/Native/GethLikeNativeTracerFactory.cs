@@ -10,7 +10,7 @@ using Nethermind.State;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 
-public delegate GethLikeNativeTxTracer GethLikeNativeTracerFactoryDelegate(GethTraceOptions options, Block block, Transaction? transaction, IWorldState worldState);
+public delegate GethLikeNativeTxTracer GethLikeNativeTracerFactoryDelegate(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState);
 
 public static class GethLikeNativeTracerFactory
 {
@@ -26,7 +26,7 @@ public static class GethLikeNativeTracerFactory
     private static void RegisterNativeTracers()
     {
         RegisterTracer(Native4ByteTracer.FourByteTracer, (options, _, _, _) => new Native4ByteTracer(options));
-        RegisterTracer(NativePrestateTracer.PrestateTracer, (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction!.SenderAddress, transaction.To, block.Beneficiary));
+        RegisterTracer(NativePrestateTracer.PrestateTracer, (options, block, transaction, worldState) => new NativePrestateTracer(worldState, options, transaction.SenderAddress, transaction.To, block.Beneficiary));
     }
 
     private static void RegisterTracer(string tracerName, GethLikeNativeTracerFactoryDelegate tracerFunc)
@@ -34,7 +34,7 @@ public static class GethLikeNativeTracerFactory
         _tracers.Add(tracerName, tracerFunc);
     }
 
-    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction? transaction, IWorldState worldState) =>
+    public static GethLikeNativeTxTracer CreateTracer(GethTraceOptions options, Block block, Transaction transaction, IWorldState worldState) =>
         _tracers.TryGetValue(options.Tracer, out GethLikeNativeTracerFactoryDelegate tracerFunc)
             ? tracerFunc(options, block, transaction, worldState)
             : throw new ArgumentException($"Unknown tracer: {options.Tracer}");
