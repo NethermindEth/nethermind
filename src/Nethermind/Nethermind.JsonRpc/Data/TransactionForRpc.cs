@@ -147,10 +147,6 @@ public class TransactionForRpc
 
     public UInt256? R { get; set; }
 
-    public byte[]? SecretKey { get; set; }
-
-    public bool? Protected { get; set; }
-
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public UInt256? YParity { get; set; }
 
@@ -225,22 +221,6 @@ public class TransactionForRpc
             tx.BlobVersionedHashes = BlobVersionedHashes;
         }
         
-        if (SecretKey != null)
-        {
-            var privateKey = new PrivateKey(SecretKey);
-            tx.SenderAddress = privateKey.Address;
-            EthereumEcdsa ecdsa = new(chainId ?? TestBlockchainIds.ChainId, LimboLogs.Instance);
-            ecdsa.Sign(privateKey, tx, Protected ?? true);
-        }
-        else
-        {
-            if (R.HasValue && S.HasValue && V.HasValue)
-            {
-                tx.Signature = new Signature(R.Value, S.Value, V.Value.ToUInt64(null));
-            }
-        }
-        tx.Hash = tx.CalculateHash();
-
         return tx;
     }
 
