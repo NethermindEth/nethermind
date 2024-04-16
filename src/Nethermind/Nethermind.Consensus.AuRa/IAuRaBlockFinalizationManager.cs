@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Blockchain;
+using Nethermind.Consensus.Processing;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.AuRa
@@ -22,5 +23,7 @@ namespace Nethermind.Consensus.AuRa
         /// <param name="level">Level to check when was finalized.</param>
         /// <returns>Level at which finalization happened. Null if checked level is not yet finalized.</returns>
         long? GetFinalizationLevel(long level);
+
+        public void SetMainBlockProcessor(IBlockProcessor blockProcessor);
     }
 }

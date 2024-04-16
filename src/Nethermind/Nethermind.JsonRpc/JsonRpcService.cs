@@ -68,11 +68,6 @@ public class JsonRpcService : IJsonRpcService
                 if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
                 return GetErrorResponse(rpcRequest.Method, ErrorCodes.ModuleTimeout, "Timeout", ex.ToString(), rpcRequest.Id);
             }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.ToString(), rpcRequest.Id);
-            }
         }
         catch (Exception ex)
         {
@@ -126,7 +121,7 @@ public class JsonRpcService : IJsonRpcService
                     // if the null is the default parameter it could be passed in an explicit way as "" or null
                     // or we can treat null as a missing parameter. Two tests for this cases:
                     // Eth_call_is_working_with_implicit_null_as_the_last_argument and Eth_call_is_working_with_explicit_null_as_the_last_argument
-                    bool isExplicit = providedParameters.GetArrayLength() >= parameterIndex + 1;
+                    bool isExplicit = providedParametersLength >= parameterIndex + 1;
                     if (nullable && isExplicit)
                     {
                         explicitNullableParamsCount += 1;
@@ -202,6 +197,11 @@ public class JsonRpcService : IJsonRpcService
         catch (Exception e) when (e.InnerException is InsufficientBalanceException)
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
+        }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
         }
         finally
         {

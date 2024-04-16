@@ -136,7 +136,7 @@ public partial class EthRpcModule : IEthRpcModule
         return ResultWrapper<UInt256?>.Success(gasPriceWithBaseFee);
     }
 
-    public ResultWrapper<FeeHistoryResults> eth_feeHistory(long blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
+    public ResultWrapper<FeeHistoryResults> eth_feeHistory(int blockCount, BlockParameter newestBlock, double[]? rewardPercentiles = null)
     {
         return _feeHistoryOracle.GetFeeHistory(blockCount, newestBlock, rewardPercentiles);
     }
@@ -190,7 +190,7 @@ public partial class EthRpcModule : IEthRpcModule
 
         BlockHeader? header = searchResult.Object;
         ReadOnlySpan<byte> storage = _stateReader.GetStorage(header!.StateRoot!, address, positionIndex);
-        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Array.Empty<byte>() : storage!.PadLeft(32));
+        return ResultWrapper<byte[]>.Success(storage.IsEmpty ? Bytes32.Zero.Unwrap() : storage!.PadLeft(32));
     }
 
     public Task<ResultWrapper<UInt256>> eth_getTransactionCount(Address address, BlockParameter blockParameter)

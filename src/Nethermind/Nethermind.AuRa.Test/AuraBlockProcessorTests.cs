@@ -151,7 +151,7 @@ namespace Nethermind.AuRa.Test
             IWorldState stateProvider = new WorldState(trieStore, codeDb, LimboLogs.Instance);
             ITransactionProcessor transactionProcessor = Substitute.For<ITransactionProcessor>();
             AuRaBlockProcessor processor = new AuRaBlockProcessor(
-                GoerliSpecProvider.Instance,
+                HoleskySpecProvider.Instance,
                 TestBlockValidator.AlwaysValid,
                 NoBlockRewards.Instance,
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
@@ -160,6 +160,7 @@ namespace Nethermind.AuRa.Test
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                null,
                 txFilter,
                 contractRewriter: contractRewriter);
 

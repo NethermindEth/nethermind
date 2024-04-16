@@ -39,6 +39,12 @@ public class SnapTrieNodeRecovery : TrieNodeRecovery<GetTrieNodesRequest>
     {
         if (peer.TryGetSatelliteProtocol(Protocol.Snap, out ISnapSyncPeer? snapPeer))
         {
+            request = new GetTrieNodesRequest()
+            {
+                RootHash = request.RootHash,
+                AccountAndStoragePaths = request.AccountAndStoragePaths.ToPooledList(request.AccountAndStoragePaths.Count),
+            };
+
             IOwnedReadOnlyList<byte[]> rlp = await snapPeer.GetTrieNodes(request, cts.Token);
             if (rlp.Count == 1 && rlp[0]?.Length > 0 && ValueKeccak.Compute(rlp[0]) == rlpHash)
             {

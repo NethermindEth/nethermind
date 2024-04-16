@@ -32,7 +32,7 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Deprecated.", DefaultValue = "false", HiddenFromDocs = true)]
     bool FastBlocks { get; set; }
 
-    [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Goerli, Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
+    [ConfigItem(Description = "Whether to make smaller requests, in Fast Blocks mode, to avoid Geth from disconnecting. On the Geth-heavy networks (e.g., Mainnet), it's  a desired behavior while on Nethermind- or OpenEthereum-heavy networks (Aura), it slows down the sync by a factor of ~4.", DefaultValue = "true")]
     public bool UseGethLimitsInFastBlocks { get; set; }
 
     [ConfigItem(Description = "Whether to download the old block headers in the Fast sync mode. If `false`, Nethermind downloads only recent blocks headers.", DefaultValue = "true")]
@@ -141,6 +141,9 @@ public interface ISyncConfig : IConfig
     [ConfigItem(Description = "Interval, in seconds, between `malloc_trim` calls during sync.", DefaultValue = "300", HiddenFromDocs = true)]
     public int MallocTrimIntervalSec { get; set; }
 
-    [ConfigItem(Description = "_Experimental._ Whether to enable snap serving. WARNING: Very slow on hash db layout.", DefaultValue = "false", HiddenFromDocs = true)]
-    bool SnapServingEnabled { get; set; }
+    [ConfigItem(Description = "_Technical._ Whether to enable snap serving. WARNING: Very slow on hash db layout. Default is to enable on halfpath layout.", DefaultValue = "null", HiddenFromDocs = true)]
+    bool? SnapServingEnabled { get; set; }
+
+    [ConfigItem(Description = "_Technical._ MultiSyncModeSelector sync mode timer loop interval. Used for testing.", DefaultValue = "1000", HiddenFromDocs = true)]
+    int MultiSyncModeSelectorLoopTimerMs { get; set; }
 }
