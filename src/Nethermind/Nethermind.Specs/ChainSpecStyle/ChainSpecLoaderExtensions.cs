@@ -63,10 +63,7 @@ public static class ChainSpecLoaderExtensions
     public static ChainSpec LoadFromFile(this IChainSpecLoader chainSpecLoader, string filePath, ILogger? logger = null)
     {
         filePath = CheckEmbeddedChainSpec(filePath);
-        if (logger is null) return LoadFromFileInternal(chainSpecLoader, filePath);
-
-        ILogger log = logger.Value;
-        if (log.IsInfo) log.Info($"Loading chainspec from file: {filePath}");
+        if (logger?.IsInfo == true) logger.Value.Info($"Loading chainspec from file: {filePath}");
         return LoadFromFileInternal(chainSpecLoader, filePath);
     }
 
