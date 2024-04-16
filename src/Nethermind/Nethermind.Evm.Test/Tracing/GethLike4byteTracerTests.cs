@@ -3,18 +3,33 @@
 
 using System.Collections;
 using System.Collections.Generic;
+using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
+using Nethermind.Evm.Tracing.GethStyle;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
+using Nethermind.Int256;
 using NUnit.Framework;
+
 namespace Nethermind.Evm.Test.Tracing;
 
 [TestFixture]
-public class GethLike4byteTracerTests : GethLikeNativeTracerTestsBase
+public class GethLike4byteTracerTests : VirtualMachineTestsBase
 {
     [TestCaseSource(nameof(FourByteTracerTests))]
     public Dictionary<string, int>? four_byte_tracer_executes_correctly(byte[] code, byte[]? input) =>
-        (Dictionary<string, int>)ExecuteAndTrace(Native4ByteTracer.FourByteTracer, code, input).CustomTracerResult?.Value;
+        (Dictionary<string, int>)ExecuteAndTrace(code, input).CustomTracerResult?.Value;
+
+    private GethLikeTxTrace ExecuteAndTrace(
+        byte[] code,
+        byte[]? input = default,
+        UInt256 value = default)
+    {
+        Native4ByteTracer tracer = new Native4ByteTracer(GethTraceOptions.Default);
+        (Block block, Transaction transaction) = input is null ? PrepareTx(Activation, 100000, code) : PrepareTx(Activation, 100000, code, input, value);
+        _processor.Execute(transaction, block.Header, tracer);
+        return tracer.BuildResult();
+    }
 
     private static IEnumerable FourByteTracerTests
     {

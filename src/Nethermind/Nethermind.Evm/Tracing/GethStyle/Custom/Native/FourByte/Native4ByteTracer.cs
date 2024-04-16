@@ -7,7 +7,8 @@ using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Tracers;
+
+namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 
 // 4byteTracer searches for 4byte-identifiers, and collects them for post-processing.
 // It collects the methods identifiers along with the size of the supplied data, so
@@ -59,7 +60,7 @@ public sealed class Native4ByteTracer : GethLikeNativeTxTracer
         }
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _op = opcode;
     }
