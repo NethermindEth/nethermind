@@ -149,14 +149,14 @@ public class CompositeTxTracer : ITxTracer
         }
     }
 
-    public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.StartOperation(env, gas, opcode, pc);
+                innerTracer.StartOperation(pc, opcode, gas, env);
             }
         }
     }

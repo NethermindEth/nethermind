@@ -229,7 +229,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void StartOperation(in ExecutionEnvironment env, long gas, Instruction opcode, int pc)
+        public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         {
         }
 

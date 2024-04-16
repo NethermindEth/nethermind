@@ -6,7 +6,6 @@ using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
@@ -18,21 +17,17 @@ namespace Nethermind.Evm.Test.Tracing;
 [TestFixture]
 public class GethLikePrestateTracerTests : VirtualMachineTestsBase
 {
-    private static readonly JsonSerializerOptions Options = EthereumJsonSerializer.JsonOptionsIndented;
+    private static readonly JsonSerializerOptions SerializerOptions = EthereumJsonSerializer.JsonOptionsIndented;
+    private readonly GethTraceOptions _gethTraceOptions = GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer };
 
     [Test]
     public void Test_PrestateTrace_SStore()
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
-        NativeTracerContext context = new(Address.Zero)
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB
-        };
         StorageCell storageCell = new StorageCell(TestItem.AddressB, 32);
         byte[] storageData = Bytes.FromHexString("123456789abcdef");
         TestState.Set(storageCell, storageData);
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, _gethTraceOptions, TestItem.AddressA, TestItem.AddressB, Address.Zero);
 
         byte[] sstoreCode = Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
@@ -66,19 +61,14 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
   }
 }
 """;
-        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, Options), Is.EqualTo(expectedPrestateTrace));
+        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedPrestateTrace));
     }
 
     [Test]
     public void Test_PrestateTrace_NestedCalls()
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
-        NativeTracerContext context = new(Address.Zero)
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB
-        };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, _gethTraceOptions, TestItem.AddressA, TestItem.AddressB, Address.Zero);
 
         byte[] deployedCode = new byte[3];
 
@@ -123,19 +113,14 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
   }
 }
 """;
-        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, Options), Is.EqualTo(expectedPrestateTrace));
+        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedPrestateTrace));
     }
 
     [Test]
     public void Test_PrestateTrace_Create2()
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
-        NativeTracerContext context = new(Address.Zero)
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB
-        };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, _gethTraceOptions, TestItem.AddressA, TestItem.AddressB, Address.Zero);
 
         byte[] salt = { 4, 5, 6 };
 
@@ -179,21 +164,16 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
   }
 }
 """;
-        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, Options), Is.EqualTo(expectedPrestateTrace));
+        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedPrestateTrace));
     }
 
     [Test]
     public void Test_PrestateTrace_ExistingAccount()
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
-        NativeTracerContext context = new(Address.Zero)
-        {
-            From = TestItem.AddressA,
-            To = TestItem.AddressB
-        };
         TestState.CreateAccount(TestItem.AddressC, 5.Ether());
         TestState.IncrementNonce(TestItem.AddressC);
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, _gethTraceOptions, TestItem.AddressA, TestItem.AddressB, Address.Zero);
 
         GethLikeTxTrace prestateTrace = Execute(
                 tracer,
@@ -217,18 +197,14 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
   }
 }
 """;
-        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, Options), Is.EqualTo(expectedPrestateTrace));
+        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedPrestateTrace));
     }
 
     [Test]
     public void Test_PrestateTrace_EmptyTo()
     {
         TestState.CreateAccount(Address.Zero, 100.Ether());
-        NativeTracerContext context = new(Address.Zero)
-        {
-            From = TestItem.AddressA
-        };
-        NativePrestateTracer tracer = new(TestState, context, GethTraceOptions.Default with { Tracer = NativePrestateTracer.PrestateTracer });
+        NativePrestateTracer tracer = new(TestState, _gethTraceOptions, TestItem.AddressA, null, Address.Zero);
 
         GethLikeTxTrace prestateTrace = Execute(
                 tracer,
@@ -251,7 +227,7 @@ public class GethLikePrestateTracerTests : VirtualMachineTestsBase
   }
 }
 """;
-        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, Options), Is.EqualTo(expectedPrestateTrace));
+        Assert.That(JsonSerializer.Serialize(prestateTrace.CustomTracerResult?.Value, SerializerOptions), Is.EqualTo(expectedPrestateTrace));
     }
 
     private static byte[] Balance()
