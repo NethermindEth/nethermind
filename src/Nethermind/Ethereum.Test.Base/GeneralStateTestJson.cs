@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
+using Nethermind.Core;
 
 namespace Ethereum.Test.Base
 {
@@ -12,7 +13,7 @@ namespace Ethereum.Test.Base
         public GeneralStateTestInfoJson? Info { get; set; }
         public GeneralStateTestEnvJson? Env { get; set; }
         public Dictionary<string, PostStateJson[]>? Post { get; set; }
-        public Dictionary<string, AccountStateJson>? Pre { get; set; }
+        public Dictionary<Address, AccountState>? Pre { get; set; }
         public string? SealEngine { get; set; }
         public string? LoadFailure { get; set; }
         public TransactionJson? Transaction { get; set; }

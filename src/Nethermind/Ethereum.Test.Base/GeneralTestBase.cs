@@ -78,7 +78,7 @@ namespace Ethereum.Test.Base
                 virtualMachine,
                 _logManager);
 
-            InitializeTestState(test, stateProvider, specProvider);
+            InitializeTestPreState(test.Pre, stateProvider, specProvider);
 
             BlockHeader header = new(
                 test.PreviousHash,
@@ -147,19 +147,24 @@ namespace Ethereum.Test.Base
             return testResult;
         }
 
-        private static void InitializeTestState(GeneralStateTest test, WorldState stateProvider, ISpecProvider specProvider)
+        public static void InitializeTestPreState(Dictionary<Address, AccountState> pre, WorldState stateProvider, ISpecProvider specProvider)
         {
-            foreach (KeyValuePair<Address, AccountState> accountState in test.Pre)
+            foreach (KeyValuePair<Address, AccountState> accountState in pre)
             {
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                if (accountState.Value.Storage is not null)
                 {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
-                        storageItem.Value.WithoutLeadingZeros().ToArray());
+                    foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                    {
+                        stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key),
+                            storageItem.Value.WithoutLeadingZeros().ToArray());
+                    }
                 }
 
-                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
-                stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
-                stateProvider.SetNonce(accountState.Key, accountState.Value.Nonce);
+                stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance, accountState.Value.Nonce);
+                if (accountState.Value.Code is not null)
+                {
+                    stateProvider.InsertCode(accountState.Key, accountState.Value.Code, specProvider.GenesisSpec);
+                }
             }
 
             stateProvider.Commit(specProvider.GenesisSpec);

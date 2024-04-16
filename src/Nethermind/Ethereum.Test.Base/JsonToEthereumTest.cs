@@ -21,13 +21,14 @@ namespace Ethereum.Test.Base
 {
     public static class JsonToEthereumTest
     {
-        private static IReleaseSpec ParseSpec(string network)
+        //TODO: Refactor this to some other class
+        public static IReleaseSpec ParseSpec(string network)
         {
             network = network.Replace("EIP150", "TangerineWhistle");
             network = network.Replace("EIP158", "SpuriousDragon");
             network = network.Replace("DAO", "Dao");
-            network = network.Replace("Merged", "GrayGlacier");
-            network = network.Replace("Merge", "GrayGlacier");
+            network = network.Replace("Merged", "Paris");
+            network = network.Replace("Merge", "Paris");
             network = network.Replace("London+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3540+3670", "Shanghai");
             network = network.Replace("GrayGlacier+3860", "Shanghai");
@@ -56,8 +57,10 @@ namespace Ethereum.Test.Base
                 "Berlin" => Berlin.Instance,
                 "London" => London.Instance,
                 "GrayGlacier" => GrayGlacier.Instance,
+                "Paris" => Paris.Instance,
                 "Shanghai" => Shanghai.Instance,
                 "Cancun" => Cancun.Instance,
+                "ArrowGlacier" => ArrowGlacier.Instance,
                 _ => throw new NotSupportedException()
             };
         }
@@ -158,7 +161,7 @@ namespace Ethereum.Test.Base
             return transaction;
         }
 
-        private static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
+        public static void ProcessAccessList(AccessListItemJson[]? accessList, AccessList.Builder builder)
         {
             foreach (AccessListItemJson accessListItemJson in accessList ?? Array.Empty<AccessListItemJson>())
             {
@@ -170,7 +173,7 @@ namespace Ethereum.Test.Base
             }
         }
 
-        public static Transaction Convert(LegacyTransactionJson transactionJson)
+        private static Transaction Convert(LegacyTransactionJson transactionJson)
         {
             Transaction transaction = new();
             transaction.Value = transactionJson.Value;
@@ -182,20 +185,6 @@ namespace Ethereum.Test.Base
             transaction.Signature = new Signature(transactionJson.R, transactionJson.S, transactionJson.V);
             transaction.Hash = transaction.CalculateHash();
             return transaction;
-        }
-
-        private static AccountState Convert(AccountStateJson accountStateJson)
-        {
-            AccountState state = new();
-            state.Balance = accountStateJson.Balance is not null ? Bytes.FromHexString(accountStateJson.Balance).ToUInt256() : 0;
-            state.Code = accountStateJson.Code is not null ? Bytes.FromHexString(accountStateJson.Code) : Array.Empty<byte>();
-            state.Nonce = accountStateJson.Nonce is not null ? Bytes.FromHexString(accountStateJson.Nonce).ToUInt256() : 0;
-            state.Storage = accountStateJson.Storage is not null
-                ? accountStateJson.Storage.ToDictionary(
-                    p => Bytes.FromHexString(p.Key).ToUInt256(),
-                    p => Bytes.FromHexString(p.Value))
-                : new();
-            return state;
         }
 
         public static IEnumerable<GeneralStateTest> Convert(string name, GeneralStateTestJson testJson)
@@ -235,7 +224,7 @@ namespace Ethereum.Test.Base
                     test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;
                     test.PostHash = stateJson.Hash;
-                    test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                    test.Pre = testJson.Pre;
                     test.Transaction = Convert(stateJson, testJson.Transaction);
 
                     blockchainTests.Add(test);
@@ -262,7 +251,7 @@ namespace Ethereum.Test.Base
             test.GenesisRlp = testJson.GenesisRlp == null ? null : new Rlp(Bytes.FromHexString(testJson.GenesisRlp));
             test.GenesisBlockHeader = testJson.GenesisBlockHeader;
             test.Blocks = testJson.Blocks;
-            test.Pre = testJson.Pre.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+            test.Pre = testJson.Pre;
 
             HalfBlockchainTestJson half = testJson as HalfBlockchainTestJson;
             if (half != null)
@@ -271,7 +260,7 @@ namespace Ethereum.Test.Base
             }
             else
             {
-                test.PostState = testJson.PostState?.ToDictionary(p => new Address(p.Key), p => Convert(p.Value));
+                test.PostState = testJson.PostState;
                 test.PostStateRoot = testJson.PostStateHash;
             }
 

@@ -111,19 +111,9 @@ namespace Ethereum.Test.Base
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            bool isPostMerge = test.Network != London.Instance &&
-                               test.Network != Berlin.Instance &&
-                               test.Network != MuirGlacier.Instance &&
-                               test.Network != Istanbul.Instance &&
-                               test.Network != ConstantinopleFix.Instance &&
-                               test.Network != Constantinople.Instance &&
-                               test.Network != Byzantium.Instance &&
-                               test.Network != SpuriousDragon.Instance &&
-                               test.Network != TangerineWhistle.Instance &&
-                               test.Network != Dao.Instance &&
-                               test.Network != Homestead.Instance &&
-                               test.Network != Frontier.Instance &&
-                               test.Network != Olympic.Instance;
+            bool isPostMerge = test.Network == Paris.Instance
+                               || test.Network == Shanghai.Instance
+                               || test.Network == Cancun.Instance;
             if (isPostMerge)
             {
                 rewardCalculator = NoBlockRewards.Instance;
@@ -314,9 +304,12 @@ namespace Ethereum.Test.Base
             foreach (KeyValuePair<Address, AccountState> accountState in
                 ((IEnumerable<KeyValuePair<Address, AccountState>>)test.Pre ?? Array.Empty<KeyValuePair<Address, AccountState>>()))
             {
-                foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                if (accountState.Value.Storage is not null)
                 {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                    foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
+                    {
+                        stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                    }
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
