@@ -145,15 +145,14 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
+    public IEnumerable<Deposit>? Deposits { get; set; }
+
+    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+    public Hash256? DepositsRoot { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public IEnumerable<ValidatorExit>? ValidatorExits { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ValidatorExitsRoot { get; set; }
-    public IEnumerable<Deposit>? Deposits { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? DepositsRoot { get; set; }
-
 }

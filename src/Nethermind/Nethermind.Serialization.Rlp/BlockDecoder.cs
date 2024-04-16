@@ -67,6 +67,40 @@ namespace Nethermind.Serialization.Rlp
             return new(header, transactions, uncleHeaders, withdrawals, deposits, validatorExits);
         }
 
+
+        private List<Withdrawal>? DecodeWithdrawals(RlpStream rlpStream, int blockCheck)
+        {
+            List<Withdrawal>? withdrawals = null;
+            if (rlpStream.Position != blockCheck)
+            {
+                bool lengthWasRead = true;
+                try
+                {
+                    rlpStream.PeekNextRlpLength();
+                }
+                catch
+                {
+                    lengthWasRead = false;
+                }
+
+                if (lengthWasRead)
+                {
+                    int withdrawalsLength = rlpStream.ReadSequenceLength();
+                    int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
+                    withdrawals = new();
+
+                    while (rlpStream.Position < withdrawalsCheck)
+                    {
+                        withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
+                    }
+
+                    rlpStream.Check(withdrawalsCheck);
+                }
+            }
+
+            return withdrawals;
+        }
+
         private List<Deposit>? DecodeDeposits(RlpStream rlpStream, int blockCheck)
         {
             List<Deposit>? deposits = null;
@@ -133,38 +167,6 @@ namespace Nethermind.Serialization.Rlp
             return validatorExits;
         }
 
-        private List<Withdrawal>? DecodeWithdrawals(RlpStream rlpStream, int blockCheck)
-        {
-            List<Withdrawal>? withdrawals = null;
-            if (rlpStream.Position != blockCheck)
-            {
-                bool lengthWasRead = true;
-                try
-                {
-                    rlpStream.PeekNextRlpLength();
-                }
-                catch
-                {
-                    lengthWasRead = false;
-                }
-
-                if (lengthWasRead)
-                {
-                    int withdrawalsLength = rlpStream.ReadSequenceLength();
-                    int withdrawalsCheck = rlpStream.Position + withdrawalsLength;
-                    withdrawals = new();
-
-                    while (rlpStream.Position < withdrawalsCheck)
-                    {
-                        withdrawals.Add(Rlp.Decode<Withdrawal>(rlpStream));
-                    }
-
-                    rlpStream.Check(withdrawalsCheck);
-                }
-            }
-
-            return withdrawals;
-        }
 
         private (int Total, int Txs, int Uncles, int? Withdrawals, int? Deposits, int? ValidatorExits) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
