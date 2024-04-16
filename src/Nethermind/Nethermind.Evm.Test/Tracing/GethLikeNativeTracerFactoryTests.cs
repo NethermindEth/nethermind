@@ -43,4 +43,20 @@ public class GethLikeNativeTracerFactoryTests
 
         Assert.False(isNativeTracer);
     }
+
+    [Test]
+    public void CreateTracer_TracerNameIsEmpty()
+    {
+        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(string.Empty);
+
+        Assert.False(isNativeTracer);
+    }
+
+    [Test]
+    public void CreateTracer_TracerNameIsNull()
+    {
+        var isNativeTracer = GethLikeNativeTracerFactory.IsNativeTracer(null);
+
+        Assert.False(isNativeTracer);
+    }
 }
