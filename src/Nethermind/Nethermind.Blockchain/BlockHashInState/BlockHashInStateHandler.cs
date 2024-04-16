@@ -2,6 +2,8 @@
 // SPDX-License-Identifier:LGPL-3.0-only
 
 using System;
+using System.IO;
+using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -14,11 +16,31 @@ namespace Nethermind.Blockchain.BlockHashInState;
 
 public interface IBlockHashInStateHandler
 {
+    public void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
     public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer);
 }
 
-public class BlockHashInStateHandler : IBlockHashInStateHandler
+public class BlockHashInStateHandler(IBlockTree blockTree) : IBlockHashInStateHandler
 {
+
+    private readonly IBlockTree _blockTree = blockTree;
+
+    public void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
+    {
+        long current = currentBlock.Number;
+        BlockHeader header = currentBlock;
+        for (var i = 0; i < Math.Min(256, current); i++)
+        {
+            // an extract check - don't think it is needed
+            if (header.IsGenesis) break;
+            AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
+            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            if (header is null)
+            {
+                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+            }
+        }
+    }
 
     public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer)
     {

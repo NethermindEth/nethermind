@@ -278,6 +278,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip2935Enabled { get; }
         Address Eip2935ContractAddress { get; }
+        public ulong Eip2935TransitionTimestamp { get; }
 
         /// <summary>
         /// SELFDESTRUCT only in same transaction

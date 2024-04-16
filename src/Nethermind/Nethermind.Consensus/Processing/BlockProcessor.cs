@@ -75,10 +75,9 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
-
+        _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _blockHashInStateHandlerHandler = new BlockHashInStateHandler(_blockTree);
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -228,23 +227,6 @@ public partial class BlockProcessor : IBlockProcessor
         }
     }
 
-    private void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
-    {
-        long current = currentBlock.Number;
-        BlockHeader header = currentBlock;
-        for (var i = 0; i < Math.Min(256, current); i++)
-        {
-            // an extract check - dont think it is needed
-            if (header.IsGenesis) break;
-            _blockHashInStateHandlerHandler.AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
-            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
-                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
-            }
-        }
-    }
-
     private bool ShouldComputeStateRoot(BlockHeader header) =>
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
@@ -266,9 +248,9 @@ public partial class BlockProcessor : IBlockProcessor
             // TODO: find a better way to handle this - no need to have this check everytime
             //      this would just be true on the fork block
             BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimeStamp)
+            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
             {
-                InitEip2935History(block.Header, spec, _stateProvider);
+                _blockHashInStateHandlerHandler.InitEip2935History(block.Header, spec, _stateProvider);
             }
             else
             {
