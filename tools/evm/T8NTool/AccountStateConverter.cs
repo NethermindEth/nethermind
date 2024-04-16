@@ -1,7 +1,6 @@
 ﻿using Ethereum.Test.Base;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Crypto;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Serialization.Json;
 
 namespace Evm.T8NTool;
