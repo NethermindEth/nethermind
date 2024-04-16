@@ -19,7 +19,7 @@ public static class GethLikeNativeTracerFactory
 
     public static bool IsNativeTracer(string tracerName)
     {
-        return _tracers.ContainsKey(tracerName);
+        return !string.IsNullOrWhiteSpace(tracerName) && _tracers.ContainsKey(tracerName);
     }
 
     private static void RegisterNativeTracers()
