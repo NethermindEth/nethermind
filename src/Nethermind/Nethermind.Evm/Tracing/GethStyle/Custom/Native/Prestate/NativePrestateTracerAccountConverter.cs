@@ -21,7 +21,15 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             writer.WritePropertyName("balance"u8);
             JsonSerializer.Serialize(writer, value.Balance, options);
 
-            ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Decimal;
+            if (value.IsPrestate)
+            {
+                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Decimal;
+            }
+            else
+            {
+                ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
+            }
+
             if (value.Nonce is not null)
             {
                 writer.WritePropertyName("nonce"u8);

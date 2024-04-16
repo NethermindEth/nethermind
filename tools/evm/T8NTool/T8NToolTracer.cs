@@ -13,7 +13,7 @@ namespace Evm.T8NTool
         private readonly BlockReceiptsTracer _receiptTracer = new();
         public TxReceipt LastReceipt => _receiptTracer.LastReceipt;
         public IReadOnlyList<TxReceipt> TxReceipts => _receiptTracer.TxReceipts;
-        public Dictionary<Address, Dictionary<UInt256, byte[]>> storages = new();
+        public Dictionary<Address, Dictionary<UInt256, UInt256>> storages = new();
 
         public void ReportReward(Address author, string rewardType, UInt256 rewardValue)
         {
@@ -40,6 +40,10 @@ namespace Evm.T8NTool
             _receiptTracer.EndBlockTrace();
         }
 
+        public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
+        {
+            _receiptTracer.StartOperation(pc, opcode, gas, env);
+        }
         public bool IsTracingRewards => _receiptTracer.IsTracingRewards;
 
         public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -96,11 +100,6 @@ namespace Evm.T8NTool
             _receiptTracer.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
-        {
-            _receiptTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
-        }
-
         public void ReportOperationError(EvmExceptionType error)
         {
             _receiptTracer.ReportOperationError(error);
@@ -142,7 +141,7 @@ namespace Evm.T8NTool
             {
                 storages[address] = [];
             }
-            storages[address][storageIndex] = newValue.ToArray();
+            storages[address][storageIndex] = new UInt256(newValue, true);
         }
 
         public void LoadOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> value) { }

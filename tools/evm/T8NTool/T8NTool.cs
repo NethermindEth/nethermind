@@ -17,6 +17,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native.Prestate;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -40,7 +41,6 @@ public class T8NTool
     public T8NTool()
     {
         _ethereumJsonSerializer = new EthereumJsonSerializer();
-        EthereumJsonSerializer.AddConverter(new AccountStateJsonConverter());
         EthereumJsonSerializer.AddConverter(new ReceiptJsonConverter());
     }
 
@@ -281,20 +281,41 @@ public class T8NTool
             BlobGasUsed = header.BlobGasUsed
         };
         
-        var accounts = allocJson.Keys.ToDictionary(address => address, address => AccountState.GetFromAccount(address, stateProvider, tracer.storages));
+        var accounts = allocJson.Keys.ToDictionary(address => address, 
+            address => ConvertAccountToNativePrestateTracerAccount(address, stateProvider, tracer.storages));
         foreach (Ommer ommer in envInfo.Ommers)
         {
-            accounts.Add(ommer.Address, AccountState.GetFromAccount(ommer.Address, stateProvider, tracer.storages));
+            accounts.Add(ommer.Address, ConvertAccountToNativePrestateTracerAccount(ommer.Address, stateProvider, tracer.storages));
         }
         if (header.Beneficiary != null)
         {
-            accounts.Add(header.Beneficiary, AccountState.GetFromAccount(header.Beneficiary, stateProvider, tracer.storages));
+            accounts.Add(header.Beneficiary, ConvertAccountToNativePrestateTracerAccount(header.Beneficiary, stateProvider, tracer.storages));
         }
 
-        accounts = accounts.Where(account => !account.Value.IsEmptyAccount()).ToDictionary();
+        accounts = accounts.Where(account => !IsEmptyAccount(account.Value)).ToDictionary();
         var body = Rlp.Encode(successfulTxs.ToArray()).Bytes;
 
         return new T8NExecutionResult(postState, accounts, body);
+    }
+
+    private bool IsEmptyAccount(NativePrestateTracerAccount account)
+    {
+        return account.Balance.IsZero && (!account.Nonce.HasValue || account.Nonce.Value.IsZero)
+                                      && account.Code.IsNullOrEmpty() && account.Storage.IsNullOrEmpty();
+    }
+
+    private NativePrestateTracerAccount ConvertAccountToNativePrestateTracerAccount(Address address, WorldState stateProvider, Dictionary<Address, Dictionary<UInt256, UInt256>> storages)
+    {
+        var account = stateProvider.GetAccount(address);
+        var code = stateProvider.GetCode(address);
+        var accountState = new NativePrestateTracerAccount(account.Balance, account.Nonce, code, false);
+
+        if (storages.TryGetValue(address, out var storage))
+        {
+            accountState.Storage = storage;
+        }
+
+        return accountState;
     }
 
     private void WriteToFile(string filename, string? basedir, object outputObject)

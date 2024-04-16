@@ -87,7 +87,6 @@ namespace Nethermind.Serialization.Json
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
                     new JavaScriptObjectConverter(),
-                    new DictionaryUInt256KeyConverter(),
                 }
             };
 

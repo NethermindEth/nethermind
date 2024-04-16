@@ -111,9 +111,19 @@ namespace Ethereum.Test.Base
 
             DifficultyCalculator.Wrapped = new EthashDifficultyCalculator(specProvider);
             IRewardCalculator rewardCalculator = new RewardCalculator(specProvider);
-            bool isPostMerge = test.Network == Paris.Instance
-                               || test.Network == Shanghai.Instance
-                               || test.Network == Cancun.Instance;
+            bool isPostMerge = test.Network != London.Instance &&
+                               test.Network != Berlin.Instance &&
+                               test.Network != MuirGlacier.Instance &&
+                               test.Network != Istanbul.Instance &&
+                               test.Network != ConstantinopleFix.Instance &&
+                               test.Network != Constantinople.Instance &&
+                               test.Network != Byzantium.Instance &&
+                               test.Network != SpuriousDragon.Instance &&
+                               test.Network != TangerineWhistle.Instance &&
+                               test.Network != Dao.Instance &&
+                               test.Network != Homestead.Instance &&
+                               test.Network != Frontier.Instance &&
+                               test.Network != Olympic.Instance;
             if (isPostMerge)
             {
                 rewardCalculator = NoBlockRewards.Instance;
