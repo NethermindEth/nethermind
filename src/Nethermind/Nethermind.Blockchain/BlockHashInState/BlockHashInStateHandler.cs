@@ -14,12 +14,6 @@ using Nethermind.State;
 
 namespace Nethermind.Blockchain.BlockHashInState;
 
-public interface IBlockHashInStateHandler
-{
-    public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
-    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider);
-}
-
 public class BlockHashInStateHandler : IBlockHashInStateHandler
 {
     public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
