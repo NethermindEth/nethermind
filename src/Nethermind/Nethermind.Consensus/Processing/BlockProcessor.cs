@@ -254,7 +254,7 @@ public partial class BlockProcessor : IBlockProcessor
             }
             else
             {
-                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, _stateProvider, ReceiptsTracer);
+                _blockHashInStateHandlerHandler.AddParentBlockHashToState(block.Header, spec, _stateProvider);
             }
         }
 

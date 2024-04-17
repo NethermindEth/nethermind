@@ -17,7 +17,7 @@ namespace Nethermind.Blockchain.BlockHashInState;
 public interface IBlockHashInStateHandler
 {
     public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
-    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer);
+    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider);
 }
 
 public class BlockHashInStateHandler : IBlockHashInStateHandler
@@ -30,7 +30,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         {
             // an extra check - don't think it is needed
             if (header.IsGenesis) break;
-            AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
+            AddParentBlockHashToState(header, spec, stateProvider);
             header = blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {
@@ -40,7 +40,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         }
     }
 
-    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer)
+    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsEip2935Enabled ||
             blockHeader.IsGenesis ||
