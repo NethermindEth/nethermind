@@ -234,6 +234,18 @@ public class BlockValidator : IBlockValidator
             error = error ?? BlockErrorMessages.InvalidParentBeaconBlockRoot;
         }
 
+        if (processedBlock.Header.DepositsRoot != suggestedBlock.Header.DepositsRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- deposits root : expected {suggestedBlock.Header.DepositsRoot}, got {processedBlock.Header.DepositsRoot}");
+            error = error ?? BlockErrorMessages.InvalidDepositsRoot(suggestedBlock.Header.DepositsRoot, processedBlock.Header.DepositsRoot);
+        }
+
+        if (processedBlock.Header.ValidatorExitsRoot != suggestedBlock.Header.ValidatorExitsRoot)
+        {
+            if (_logger.IsWarn) _logger.Warn($"- exits root : expected {suggestedBlock.Header.ValidatorExitsRoot}, got {processedBlock.Header.ValidatorExitsRoot}");
+            error = error ?? BlockErrorMessages.InvalidValidatorExitsRoot(suggestedBlock.Header.ValidatorExitsRoot, processedBlock.Header.ValidatorExitsRoot);
+        }
+
         for (int i = 0; i < processedBlock.Transactions.Length; i++)
         {
             if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")

@@ -290,7 +290,7 @@ public partial class BlockProcessor : IBlockProcessor
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
-        // Setting canonical is done when the BlockAddedToMain event is firec
+        // Setting canonical is done when the BlockAddedToMain event is fired
         _receiptStorage.Insert(block, txReceipts, false);
     }
 
