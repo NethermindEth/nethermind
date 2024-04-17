@@ -414,11 +414,15 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
+        bool validatorExitsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
         if (depositsEnabled)
             genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
+        
+        if (validatorExitsEnabled)
+            genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -431,13 +435,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
-        }
-
-        bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-
-        if (isEip6110Enabled)
-        {
-            genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
         }
 
         bool isEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
@@ -456,8 +453,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
-                isEip6110Enabled ? Array.Empty<Deposit>() : null,
-                isEip7002Enabled ? Array.Empty<ValidatorExit>() : null);
+                depositsEnabled ? Array.Empty<Deposit>() : null,
+                validatorExitsEnabled ? Array.Empty<ValidatorExit>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);
