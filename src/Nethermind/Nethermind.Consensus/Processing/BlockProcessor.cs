@@ -77,7 +77,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        _blockHashInStateHandlerHandler = new BlockHashInStateHandler(_blockTree);
+        _blockHashInStateHandlerHandler = new BlockHashInStateHandler();
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -250,7 +250,7 @@ public partial class BlockProcessor : IBlockProcessor
             BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
             if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
             {
-                _blockHashInStateHandlerHandler.InitHistoryOnForkBlock(block.Header, spec, _stateProvider);
+                _blockHashInStateHandlerHandler.InitHistoryOnForkBlock(_blockTree, block.Header, spec, _stateProvider);
             }
             else
             {

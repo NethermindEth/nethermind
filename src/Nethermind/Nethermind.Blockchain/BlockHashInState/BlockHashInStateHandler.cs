@@ -16,28 +16,26 @@ namespace Nethermind.Blockchain.BlockHashInState;
 
 public interface IBlockHashInStateHandler
 {
-    public void InitHistoryOnForkBlock(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
+    public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
     public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer);
 }
 
-public class BlockHashInStateHandler(IBlockTree blockTree) : IBlockHashInStateHandler
+public class BlockHashInStateHandler : IBlockHashInStateHandler
 {
-
-    private readonly IBlockTree _blockTree = blockTree;
-
-    public void InitHistoryOnForkBlock(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
+    public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
     {
         long current = currentBlock.Number;
         BlockHeader header = currentBlock;
         for (var i = 0; i < Math.Min(Eip2935Constants.RingBufferSize, current); i++)
         {
-            // an extract check - don't think it is needed
+            // an extra check - don't think it is needed
             if (header.IsGenesis) break;
             AddParentBlockHashToState(header, spec, stateProvider, NullBlockTracer.Instance);
-            header = _blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
+            header = blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {
-                throw new InvalidDataException("Parent header cannot be found when executing BLOCKHASH operation");
+                throw new InvalidDataException(
+                    "Parent header cannot be found when initializing BlockHashInState history");
             }
         }
     }
