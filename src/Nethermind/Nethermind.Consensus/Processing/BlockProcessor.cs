@@ -256,9 +256,8 @@ public partial class BlockProcessor : IBlockProcessor
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        ProcessValidatorExits(block, spec);
-
         _depositsProcessor.ProcessDeposits(block, receipts, spec);
+        ProcessValidatorExits(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);

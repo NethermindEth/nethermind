@@ -23,6 +23,7 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Proofs;
+using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Consensus.Clique;
 
@@ -445,7 +446,9 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             header,
             selectedTxs,
             Array.Empty<BlockHeader>(),
-            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null
+            spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null,
+            spec.IsEip6110Enabled ? Enumerable.Empty<Deposit>() : null,
+            spec.IsEip7002Enabled ? Enumerable.Empty<ValidatorExit>() : null
             );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;
