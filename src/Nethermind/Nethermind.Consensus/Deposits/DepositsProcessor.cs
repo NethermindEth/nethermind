@@ -10,10 +10,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public class DepositsProcessor : IDepositsProcessor
 {
@@ -28,7 +27,7 @@ public class DepositsProcessor : IDepositsProcessor
 
     public void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (!spec.IsEip6110Enabled)
+        if (!spec.DepositsEnabled)
             return;
 
 
@@ -46,10 +45,10 @@ public class DepositsProcessor : IDepositsProcessor
             }
         }
 
-        ProcessDeposits(block, depositList, spec);
+        CalculateDepositsRoot(block, depositList, spec);
     }
 
-    public void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
+    private void CalculateDepositsRoot(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
     {
         block.Header.DepositsRoot = deposits.IsNullOrEmpty()
             ? Keccak.EmptyTreeHash

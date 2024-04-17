@@ -278,12 +278,14 @@ namespace Nethermind.Core.Specs
         /// EIP-6110: Supply validator deposits on chain
         /// </summary>
         bool IsEip6110Enabled { get; }
+        bool DepositsEnabled => IsEip6110Enabled;
         Address Eip6110ContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
+        bool ValidatorExitsEnabled => IsEip7002Enabled;
         Address Eip7002ContractAddress { get; }
 
         /// <summary>

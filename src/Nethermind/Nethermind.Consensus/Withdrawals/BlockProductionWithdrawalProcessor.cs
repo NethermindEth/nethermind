@@ -7,7 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public class BlockProductionWithdrawalProcessor : IWithdrawalProcessor
 {

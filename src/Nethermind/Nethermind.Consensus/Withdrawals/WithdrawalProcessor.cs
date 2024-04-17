@@ -7,7 +7,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public class WithdrawalProcessor : IWithdrawalProcessor
 {

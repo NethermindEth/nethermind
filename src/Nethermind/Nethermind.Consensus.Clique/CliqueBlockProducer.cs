@@ -447,8 +447,8 @@ public class CliqueBlockProducer : ICliqueBlockProducer, IDisposable
             selectedTxs,
             Array.Empty<BlockHeader>(),
             spec.WithdrawalsEnabled ? Enumerable.Empty<Withdrawal>() : null,
-            spec.IsEip6110Enabled ? Enumerable.Empty<Deposit>() : null,
-            spec.IsEip7002Enabled ? Enumerable.Empty<ValidatorExit>() : null
+            spec.DepositsEnabled ? Enumerable.Empty<Deposit>() : null,
+            spec.ValidatorExitsEnabled ? Enumerable.Empty<ValidatorExit>() : null
             );
         header.TxRoot = TxTrie.CalculateRoot(block.Transactions);
         block.Header.Author = _sealer.Address;

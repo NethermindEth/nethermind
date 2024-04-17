@@ -36,8 +36,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     }
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
-        specProvider.GetSpec(BlockNumber, Timestamp).IsEip6110Enabled
-        && specProvider.GetSpec(BlockNumber, Timestamp).IsEip7002Enabled;
+        specProvider.GetSpec(BlockNumber, Timestamp).DepositsEnabled
+        && specProvider.GetSpec(BlockNumber, Timestamp).ValidatorExitsEnabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Deposits"/> as defined in

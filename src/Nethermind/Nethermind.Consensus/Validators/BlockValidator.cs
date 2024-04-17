@@ -294,7 +294,7 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateDeposits(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.IsEip6110Enabled && block.Deposits is null)
+        if (spec.DepositsEnabled && block.Deposits is null)
         {
             error = BlockErrorMessages.MissingDeposits;
 
@@ -303,7 +303,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!spec.IsEip6110Enabled && block.Deposits is not null)
+        if (!spec.DepositsEnabled && block.Deposits is not null)
         {
             error = BlockErrorMessages.DepositsNotEnabled;
 
