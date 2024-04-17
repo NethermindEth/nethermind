@@ -59,7 +59,7 @@ public class OptimismPostMergeBlockProducer : PostMergeBlockProducer
 
         IEnumerable<Transaction> txs = _payloadAttrsTxSource.GetTransactions(parent, attrs.GasLimit, attrs);
 
-        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals, payloadAttributes?.Deposits, payloadAttributes?.ValidatorExits);
+        Block block = new(blockHeader, txs, Array.Empty<BlockHeader>(), payloadAttributes?.Withdrawals);
 
         if (_producingBlockLock.Wait(BlockProductionTimeout))
         {

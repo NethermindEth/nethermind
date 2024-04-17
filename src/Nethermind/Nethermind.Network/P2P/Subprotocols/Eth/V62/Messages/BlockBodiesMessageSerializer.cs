@@ -6,6 +6,7 @@ using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
@@ -59,6 +60,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             private readonly HeaderDecoder _headerDecoder = new();
             private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
 
+            private readonly DepositDecoder _depositDecoder = new();
+
+            private readonly ValidatorExitsDecoder _validatorExitDecoder = new();
+
             public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
             {
                 return Rlp.LengthOfSequence(GetBodyLength(item));
@@ -104,12 +109,24 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Transaction[] transactions = ctx.DecodeArray(_txDecoder);
                 BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
                 Withdrawal[]? withdrawals = null;
+                Deposit[]? deposits = null;
+                ValidatorExit[]? validatorExits = null;
                 if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
                 }
 
-                return new BlockBody(transactions, uncles, withdrawals);
+                if(ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                {
+                    deposits = ctx.DecodeArray(_depositDecoder);
+                }
+
+                if(ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                {
+                    validatorExits = ctx.DecodeArray(_validatorExitDecoder);
+                }
+
+                return new BlockBody(transactions, uncles, withdrawals, deposits, validatorExits);
             }
 
             public void Serialize(RlpStream stream, BlockBody body)

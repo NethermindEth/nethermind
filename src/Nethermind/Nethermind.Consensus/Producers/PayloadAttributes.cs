@@ -26,10 +26,6 @@ public class PayloadAttributes
 
     public Withdrawal[]? Withdrawals { get; set; }
 
-    public Deposit[]? Deposits { get; set; }
-
-    public ValidatorExit[]? ValidatorExits { get; set; }
-
     public Hash256? ParentBeaconBlockRoot { get; set; }
 
     public virtual long? GetGasLimit() => null;
@@ -46,16 +42,6 @@ public class PayloadAttributes
         if (Withdrawals is not null)
         {
             sb.Append($", {nameof(Withdrawals)} count: {Withdrawals.Length}");
-        }
-
-        if (Deposits is not null)
-        {
-            sb.Append($", {nameof(Deposits)} count: {Deposits.Length}");
-        }
-
-        if (ValidatorExits is not null)
-        {
-            sb.Append($", {nameof(ValidatorExits)} count: {ValidatorExits.Length}");
         }
 
         if (ParentBeaconBlockRoot is not null)
@@ -87,8 +73,6 @@ public class PayloadAttributes
         + Keccak.Size // prev randao
         + Address.Size // suggested fee recipient
         + (Withdrawals is null ? 0 : Keccak.Size) // withdrawals root hash
-        + (Deposits is null ? 0 : Keccak.Size) // deposits root hash
-        + (ValidatorExits is null ? 0 : Keccak.Size) // validator exits root hash
         + (ParentBeaconBlockRoot is null ? 0 : Keccak.Size); // parent beacon block root
 
     protected static string ComputePayloadId(Span<byte> inputSpan)
@@ -125,24 +109,6 @@ public class PayloadAttributes
         if (ParentBeaconBlockRoot is not null)
         {
             ParentBeaconBlockRoot.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
-
-        if (Deposits is not null)
-        {
-            Hash256 depositsRootHash = Deposits.Length == 0
-                ? PatriciaTree.EmptyTreeHash
-                : new DepositTrie(Deposits).RootHash;
-            depositsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
-            position += Keccak.Size;
-        }
-
-        if (ValidatorExits is not null)
-        {
-            Hash256 validatorExitsRootHash = ValidatorExits.Length == 0
-                ? PatriciaTree.EmptyTreeHash
-                : ValidatorExitsTrie.CalculateRoot(ValidatorExits);
-            validatorExitsRootHash.Bytes.CopyTo(inputSpan.Slice(position, Keccak.Size));
             position += Keccak.Size;
         }
 
@@ -202,7 +168,6 @@ public static class PayloadAttributesExtensions
     public static int GetVersion(this PayloadAttributes executionPayload) =>
         executionPayload switch
         {
-            { Deposits: not null, ValidatorExits: not null } => EngineApiVersions.Prague,
             { ParentBeaconBlockRoot: not null, Withdrawals: not null } => EngineApiVersions.Cancun,
             { Withdrawals: not null } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
