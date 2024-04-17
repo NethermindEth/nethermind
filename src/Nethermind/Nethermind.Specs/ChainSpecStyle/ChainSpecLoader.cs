@@ -420,7 +420,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
 
         if (depositsEnabled)
             genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
-        
+
         if (validatorExitsEnabled)
             genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
 
