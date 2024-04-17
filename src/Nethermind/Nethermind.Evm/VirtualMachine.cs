@@ -1480,7 +1480,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
+                        Hash256 blockHash = spec.IsBlockHashInStateAvailable
+                            ? GetBlockHashFromState(number)
+                            : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
@@ -1492,6 +1496,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
 
                         break;
+
+                        Hash256? GetBlockHashFromState(long blockNumber)
+                        {
+                            var blockIndex = new UInt256((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
+                            StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockIndex);
+                            ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
+                            if (data.Length < 32) return null;
+                            return new Hash256(data);
+                        }
                     }
                 case Instruction.COINBASE:
                     {

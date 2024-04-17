@@ -250,7 +250,7 @@ public partial class BlockProcessor : IBlockProcessor
             BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
             if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
             {
-                _blockHashInStateHandlerHandler.InitEip2935History(block.Header, spec, _stateProvider);
+                _blockHashInStateHandlerHandler.InitHistoryOnForkBlock(block.Header, spec, _stateProvider);
             }
             else
             {

@@ -16,7 +16,7 @@ namespace Nethermind.Blockchain.BlockHashInState;
 
 public interface IBlockHashInStateHandler
 {
-    public void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
+    public void InitHistoryOnForkBlock(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider);
     public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider, IBlockTracer blockTracer);
 }
 
@@ -25,11 +25,11 @@ public class BlockHashInStateHandler(IBlockTree blockTree) : IBlockHashInStateHa
 
     private readonly IBlockTree _blockTree = blockTree;
 
-    public void InitEip2935History(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
+    public void InitHistoryOnForkBlock(BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
     {
         long current = currentBlock.Number;
         BlockHeader header = currentBlock;
-        for (var i = 0; i < Math.Min(256, current); i++)
+        for (var i = 0; i < Math.Min(Eip2935Constants.RingBufferSize, current); i++)
         {
             // an extract check - don't think it is needed
             if (header.IsGenesis) break;
