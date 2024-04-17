@@ -302,6 +302,10 @@ jobs:
             check_jsonrpc_responding "$url"
             check_chain_head "$url"
           fi
+
+          # Extra wait - nodes need to process a few new blocks - nice to have at least 128 of them after StateHealing
+          # Adding (128 - 32) * 12 seconds (-32 because we always keep 32 blocks to be processed after healing)
+          sleep 1152
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
@@ -400,14 +404,14 @@ jobs:
       - name: Compare to INFURA Endpoint
         if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
-          echo "flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt"
-          flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt
+          echo "flood all ${compare_to_infura_params} --equality | tee output_infura.txt"
+          flood all ${compare_to_infura_params} --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
         if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
-          echo "flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt"
-          flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt
+          echo "flood all ${compare_to_archive_params} --equality | tee output_archive.txt"
+          flood all ${compare_to_archive_params} --equality | tee output_archive.txt
 
       - name: Generate report
         run: |
