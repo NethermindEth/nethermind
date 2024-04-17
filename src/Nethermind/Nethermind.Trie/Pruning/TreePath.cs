@@ -4,16 +4,15 @@
 using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Linq;
 using System.Runtime.Intrinsics;
-
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 
-namespace Nethermind.Trie;
+namespace Nethermind.Trie.Pruning;
 
 /// <summary>
 /// Patricia trie tree path. Can represent up to 64 nibbles in 32+4 byte.

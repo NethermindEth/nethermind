@@ -6,6 +6,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 
@@ -115,10 +116,19 @@ public class TransitionQueryVisitor : ITreeVisitor<TreePathContextWithStorage>, 
     public void VisitLeaf(in TreePathContextWithStorage ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         TreePath path = ctx.Path.Append(node.Key);
-        if (!ShouldVisit(path, trieVisitContext.IsStorage))
-        {
-            return;
-        }
+        // if (trieVisitContext.IsStorage)
+        // {
+        //     CurrentAccountPath = new TreePath(ctx.Storage, 64);
+        //     CurrentStoragePath = new TreePath(path.Path, 64);
+        // }
+        // else
+        // {
+        //     CurrentAccountPath = new TreePath(path.Path, 64);
+        //     CurrentStoragePath = TreePath.Empty;
+        // }
+        // Console.WriteLine($"Before {CurrentAccountPath} {CurrentStoragePath}");
+
+        if (!ShouldVisit(path, trieVisitContext.IsStorage)) return;
 
         switch (trieVisitContext.IsStorage)
         {

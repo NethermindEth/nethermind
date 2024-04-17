@@ -33,6 +33,9 @@ public class TransitionTests
         preImageDb[Keccak.Compute(TestItem.AddressC.Bytes).Bytes] = TestItem.AddressC.Bytes;
         preImageDb[Keccak.Compute(TestItem.AddressD.Bytes).Bytes] = TestItem.AddressD.Bytes;
         preImageDb[Keccak.Compute(TestItem.AddressE.Bytes).Bytes] = TestItem.AddressE.Bytes;
+        preImageDb[Keccak.Compute(UInt256.One.ToBigEndian()).Bytes] = UInt256.One.ToBigEndian();
+        preImageDb[Keccak.Compute(((UInt256)2).ToBigEndian()).Bytes] = ((UInt256)2).ToBigEndian();
+        preImageDb[Keccak.Compute(((UInt256)200).ToBigEndian()).Bytes] = ((UInt256)200).ToBigEndian();
 
         var merkleCodeDb = new MemDb();
         TrieStore trieStore = new(new MemDb(), Logger);
@@ -102,5 +105,7 @@ public class TransitionTests
             .BeEquivalentTo(TestItem.KeccakB.BytesToArray());
         provider.Get(new StorageCell(TestItem.AddressB, (UInt256)2)).ToArray().Should()
             .BeEquivalentTo(TestItem.KeccakA.BytesToArray());
+
+        transitionWorldState.SweepLeaves(5);
     }
 }

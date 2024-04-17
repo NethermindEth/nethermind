@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 public interface INodeStorage
 {

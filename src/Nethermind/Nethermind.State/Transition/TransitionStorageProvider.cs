@@ -18,7 +18,7 @@ internal class TransitionStorageProvider(
 {
     private Hash256 FinalizedMerkleStateRoot { get; } = finalizedStateRoot;
 
-    protected override ReadOnlySpan<byte>  LoadFromTree(StorageCell storageCell)
+    protected override ReadOnlySpan<byte> LoadFromTree(StorageCell storageCell)
     {
         Db.Metrics.StorageTreeReads++;
         Hash256 key = AccountHeader.GetTreeKeyForStorageSlot(storageCell.Address.Bytes, storageCell.Index);

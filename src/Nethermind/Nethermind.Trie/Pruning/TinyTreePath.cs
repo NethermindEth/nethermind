@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Nethermind.Core.Crypto;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie;
 

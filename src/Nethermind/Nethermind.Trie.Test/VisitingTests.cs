@@ -179,7 +179,7 @@ public class VisitingTests
         var collector = new TransitionCollector();
 
         ValueHash256 visitorKey = default;
-        visitorKey.BytesAsSpan[5 / 2] = (byte)(1 << (4 * (1 - 5 % 2)));
+        visitorKey.BytesAsSpan[25 / 2] = (byte)(1 << (4 * (1 - 5 % 2)));
         var visitor = new TransitionQueryVisitor(visitorKey, visitorKey, collector, nodeLimit: 5);
 
         stateTree.Accept(visitor, stateTree.RootHash, options);

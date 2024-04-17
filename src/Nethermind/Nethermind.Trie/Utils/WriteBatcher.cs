@@ -6,6 +6,7 @@ using System.Collections.Concurrent;
 using System.Threading;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
+using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Core.Utils;
 

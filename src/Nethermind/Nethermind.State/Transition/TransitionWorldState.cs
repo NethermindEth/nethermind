@@ -3,11 +3,15 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using Nethermind.Core;
+using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Verkle;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Serialization.Rlp;
+using Nethermind.Trie;
 
 namespace Nethermind.State.Transition;
 
@@ -42,11 +46,14 @@ public class TransitionWorldState(
     ILogManager? logManager)
     : VerkleWorldState(new TransitionStorageProvider(merkleStateReader, finalizedStateRoot, verkleTree, logManager),
         verkleTree,
-        codeDb, logManager)
+        codeDb, logManager), TransitionQueryVisitor.IValueCollector
 {
     private const int NumberOfLeavesToMove = 5000;
     private Hash256 FinalizedMerkleStateRoot { get; } = finalizedStateRoot;
     private readonly IMerkleStateIterator _merkleStateIterator = new MerkleStateIterator(preImageDb);
+
+    private ValueHash256 _startAccountHash = Keccak.Zero;
+    private ValueHash256 _startStorageHash = null;
 
     protected override Account? GetAndAddToCache(Address address)
     {
@@ -79,11 +86,20 @@ public class TransitionWorldState(
         return base.GetCodeChunk(codeOwner, chunkId);
     }
 
+    public void SweepLeaves(long blockNumber)
+    {
+        var options = new VisitingOptions { ExpectAccounts = true };
+        var visitor = new TransitionQueryVisitor(_startAccountHash, _startStorageHash, this, NumberOfLeavesToMove);
+        merkleStateReader.RunTreeVisitor(visitor, FinalizedMerkleStateRoot, options);
+        _startAccountHash = visitor.CurrentAccountPath.Path;
+        _startStorageHash = visitor.CurrentStoragePath.Path;
+    }
+
     /// <summary>
     ///
     /// </summary>
     /// <param name="blockNumber"></param>
-    public void SweepLeaves(long blockNumber)
+    public void SweepLeavesIterator(long blockNumber)
     {
         // have to figure out how to know the starting point
         using IEnumerator<(Address, Account)>?  accountIterator = _merkleStateIterator.GetAccountIterator(Keccak.Zero).GetEnumerator();
@@ -128,6 +144,23 @@ public class TransitionWorldState(
                 }
             }
         }
+    }
+
+    public void CollectAccount(in ValueHash256 path, CappedArray<byte> value)
+    {
+        var addressBytes = preImageDb.Get(path.BytesAsSpan);
+        if (addressBytes is null) throw new ArgumentException("PreImage not found");
+        var address = new Address(addressBytes);
+        SetState(address, AccountDecoder.Instance.Decode(value));
+    }
+
+    public void CollectStorage(in ValueHash256 account, in ValueHash256 path, CappedArray<byte> value)
+    {
+        var addressBytes = preImageDb.Get(account.BytesAsSpan);
+        if (addressBytes is null) throw new ArgumentException("PreImage not found");
+        var address = new Address(addressBytes);
+        var index = preImageDb.Get(path.BytesAsSpan);
+        Set(new StorageCell(address, new UInt256(index, true)), value.ToArray());
     }
 }
 

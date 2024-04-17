@@ -1,3 +1,5 @@
+using Nethermind.Trie.Pruning;
+
 namespace Nethermind.Trie
 {
     public readonly struct NodeCommitInfo
