@@ -45,10 +45,10 @@ public class DepositsProcessor : IDepositsProcessor
             }
         }
 
-        ProcessDeposits(block, depositList, spec);
+        CalculateDepositsRoot(block, depositList, spec);
     }
 
-    public void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
+    private void CalculateDepositsRoot(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
     {
         block.Header.DepositsRoot = deposits.IsNullOrEmpty()
             ? Keccak.EmptyTreeHash
