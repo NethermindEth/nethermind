@@ -305,6 +305,7 @@ jobs:
 
           # Extra wait - nodes need to process a few new blocks - nice to have at least 128 of them after StateHealing
           # Adding (128 - 32) * 12 seconds (-32 because we always keep 32 blocks to be processed after healing)
+          echo "Waiting for (128 - 32) blocks to be synced
           sleep 1152
   
   compare:
