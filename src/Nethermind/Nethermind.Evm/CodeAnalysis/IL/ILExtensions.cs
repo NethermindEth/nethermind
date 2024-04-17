@@ -80,6 +80,48 @@ static class EmitExtensions
         il.StoreLocal(local);
     }
 
+    public static void WhileBranch<T>(this Emit<T> il, Local local, Action<Emit<T>> action)
+    {
+        var start = il.DefineLabel();
+        var end = il.DefineLabel();
+
+        il.MarkLabel(start);
+        il.LoadLocal(local);
+        il.BranchIfFalse(end);
+
+        action(il);
+
+        il.Branch(start);
+        il.MarkLabel(end);
+    }
+
+    public static void ForBranch<T>(this Emit<T> il, Local count, Action<Emit<T>, Local> action)
+    {
+        var start = il.DefineLabel();
+        var end = il.DefineLabel();
+
+        // declare indexer
+        var i = il.DeclareLocal<int>();
+        il.LoadLocal(i);
+        il.LoadConstant(0);
+        il.StoreLocal(i);
+
+        il.MarkLabel(start);
+        il.LoadLocal(i);
+        il.LoadLocal(count);
+        il.BranchIfGreater(end);
+
+        action(il, i);
+
+        il.LoadLocal(i);
+        il.LoadConstant(1);
+        il.Add();
+        il.StoreLocal(i);
+
+        il.MarkLabel(start);
+        il.Branch(start);
+    }
+
     /// <summary>
     /// Loads the previous EVM stack value on top of .NET stack.
     /// </summary>
