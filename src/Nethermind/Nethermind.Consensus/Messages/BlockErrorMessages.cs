@@ -116,7 +116,8 @@ public static class BlockErrorMessages
 
     public const string NegativeGasUsed =
         "NegativeGasUsed: Cannot be negative.";
-
+    public static string MissingValidatorExits => "MissingValidatorExits: Exits cannot be null in block when EIP-7002 activated.";
+    public static string ValidatorExitsNotEnabled => "ValidatorExitsNotEnabled: Exits must be null in block when EIP-7002 not activated.";
     public static string InvalidValidatorExitsRoot(Hash256? expected, Hash256? actual) =>
         $"InvalidValidatorExitsRoot: expected {expected}, got {actual}";
 
