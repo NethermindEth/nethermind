@@ -23,7 +23,7 @@ concurrency:
 
 jobs:
   check-artifacts:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-latest 
     env:
       GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
     outputs:
