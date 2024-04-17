@@ -50,4 +50,14 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
     }
+    
+    public Hash256? GetBlockHashFromState(long blockNumber, IReleaseSpec spec, IWorldState stateProvider)
+    {
+        var blockIndex = new UInt256((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+        ReadOnlySpan<byte> data = stateProvider.Get(blockHashStoreCell);
+        if (data.Length < 32) return null;
+        return new Hash256(data);
+    }
 }
