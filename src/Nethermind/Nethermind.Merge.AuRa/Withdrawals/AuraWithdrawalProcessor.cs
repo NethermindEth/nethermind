@@ -4,7 +4,7 @@
 using System;
 using System.Numerics;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Deposits;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Specs;

@@ -30,7 +30,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using Nethermind.Consensus.AuRa.Depositss;
+using Nethermind.Consensus.AuRa.Deposits;
 
 namespace Nethermind.AuRa.Test.Transactions;
 

@@ -316,7 +316,7 @@ namespace Nethermind.Core.Test.Builders
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedValidatorExits(validatorExits));
 
-            TestObjectInternal.Header.TxRoot = validatorExits is not null ? ValidatorExitsTrie.CalculateRoot(validatorExits) : null;
+            TestObjectInternal.Header.ValidatorExitsRoot = validatorExits is not null ? ValidatorExitsTrie.CalculateRoot(validatorExits) : null;
             return this;
         }
     }

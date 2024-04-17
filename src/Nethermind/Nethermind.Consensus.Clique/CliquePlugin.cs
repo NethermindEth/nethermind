@@ -13,7 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Deposits;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;

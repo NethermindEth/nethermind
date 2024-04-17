@@ -12,7 +12,7 @@ using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Consensus.Deposits;
+using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -256,9 +256,8 @@ public partial class BlockProcessor : IBlockProcessor
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
 
-        ProcessValidatorExits(block, spec);
-
         _depositsProcessor.ProcessDeposits(block, receipts, spec);
+        ProcessValidatorExits(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);

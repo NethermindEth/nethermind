@@ -6,10 +6,9 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public interface IDepositsProcessor
 {
     void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
-    void ProcessDeposits(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec);
 }

@@ -306,7 +306,7 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateDeposits(Block block, IReleaseSpec spec, out string? error)
     {
-        if (spec.IsEip6110Enabled && block.Deposits is null)
+        if (spec.DepositsEnabled && block.Deposits is null)
         {
             error = BlockErrorMessages.MissingDeposits;
 
@@ -315,7 +315,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!spec.IsEip6110Enabled && block.Deposits is not null)
+        if (!spec.DepositsEnabled && block.Deposits is not null)
         {
             error = BlockErrorMessages.DepositsNotEnabled;
 
@@ -348,7 +348,7 @@ public class BlockValidator : IBlockValidator
     {
         if (spec.IsEip7002Enabled && block.ValidatorExits is null)
         {
-            error = $"ValidatorExits cannot be null in block {block.Hash} when EIP-7002 activated.";
+            error = BlockErrorMessages.MissingValidatorExits;
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -357,7 +357,7 @@ public class BlockValidator : IBlockValidator
 
         if (!spec.IsEip7002Enabled && block.ValidatorExits is not null)
         {
-            error = $"ValidatorExits must be null in block {block.Hash} when EIP-7002 not activated.";
+            error = BlockErrorMessages.ValidatorExitsNotEnabled;
 
             if (_logger.IsWarn) _logger.Warn(error);
 
@@ -368,7 +368,7 @@ public class BlockValidator : IBlockValidator
         {
             if (!ValidateValidatorExitsHashMatches(block, out Hash256 validatorExitsRoot))
             {
-                error = $"ValidatorExits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.ValidatorExitsRoot}, got {validatorExitsRoot}";
+                error = BlockErrorMessages.InvalidValidatorExitsRoot(block.Header.ValidatorExitsRoot, validatorExitsRoot);
                 if (_logger.IsWarn) _logger.Warn($"ValidatorExits root hash mismatch in block {block.ToString(Block.Format.FullHashAndNumber)}: expected {block.Header.ValidatorExitsRoot}, got {validatorExitsRoot}");
 
                 return false;
