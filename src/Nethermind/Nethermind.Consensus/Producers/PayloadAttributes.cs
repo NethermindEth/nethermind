@@ -193,7 +193,7 @@ public static class PayloadAttributesExtensions
     public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { IsEip6110Enabled: true } => EngineApiVersions.Prague,
+            { DepositsEnabled: true } => EngineApiVersions.Prague,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris

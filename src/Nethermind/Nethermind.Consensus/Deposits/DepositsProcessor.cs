@@ -27,7 +27,7 @@ public class DepositsProcessor : IDepositsProcessor
 
     public void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (!spec.IsEip6110Enabled)
+        if (!spec.DepositsEnabled)
             return;
 
 

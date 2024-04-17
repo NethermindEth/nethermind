@@ -48,9 +48,9 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Prague
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.IsEip6110Enabled, spec.IsEip6110Enabled);
-            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.IsEip6110Enabled, spec.IsEip6110Enabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.IsEip6110Enabled, spec.IsEip6110Enabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.DepositsEnabled, spec.DepositsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_forkchoiceUpdatedV4)] = (spec.DepositsEnabled, spec.DepositsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.DepositsEnabled, spec.DepositsEnabled);
             #endregion
         }
 

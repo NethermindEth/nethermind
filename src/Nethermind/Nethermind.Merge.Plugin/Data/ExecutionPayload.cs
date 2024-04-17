@@ -210,7 +210,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        if (spec.IsEip6110Enabled)
+        if (spec.DepositsEnabled)
         {
             error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;
