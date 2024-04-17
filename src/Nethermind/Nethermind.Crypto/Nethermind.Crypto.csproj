@@ -16,6 +16,7 @@
     <PackageReference Include="Microsoft.AspNetCore.DataProtection.Extensions" />
     <PackageReference Include="Portable.BouncyCastle" />
     <PackageReference Include="System.Security.Cryptography.ProtectedData" />
+    <PackageReference Include="Nethermind.Crypto.Bls" />
   </ItemGroup>
 
   <ItemGroup>
