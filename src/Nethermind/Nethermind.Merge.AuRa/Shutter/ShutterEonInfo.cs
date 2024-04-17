@@ -24,7 +24,7 @@ public class ShutterEonInfo
     private readonly ILogger _logger;
     private readonly Address KeyBroadcastContractAddress;
     private readonly Address KeyperSetManagerContractAddress;
-    
+
     public ShutterEonInfo(IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogger logger)
     {
         _readOnlyBlockTree = readOnlyBlockTree;
