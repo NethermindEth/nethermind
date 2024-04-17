@@ -6,7 +6,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Serialization.Rlp;
 using System.Collections.Generic;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public interface IDepositsProcessor
 {

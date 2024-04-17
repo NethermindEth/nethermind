@@ -10,10 +10,9 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
-using Nethermind.State;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.Consensus.Deposits;
+namespace Nethermind.Consensus.Withdrawals;
 
 public class DepositsProcessor : IDepositsProcessor
 {
