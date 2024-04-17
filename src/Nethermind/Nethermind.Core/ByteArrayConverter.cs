@@ -84,11 +84,26 @@ public class ByteArrayConverter : JsonConverter<byte[]>
     [SkipLocalsInit]
     public static void Convert(Utf8JsonWriter writer, ReadOnlySpan<byte> bytes, bool skipLeadingZeros = true)
     {
+        Convert(writer,
+            bytes,
+            static (w, h) => w.WriteRawValue(h, skipInputValidation: true), skipLeadingZeros);
+    }
+
+    public delegate void WriteHex(Utf8JsonWriter writer, ReadOnlySpan<byte> hex);
+
+    [SkipLocalsInit]
+    public static void Convert(
+        Utf8JsonWriter writer,
+        ReadOnlySpan<byte> bytes,
+        WriteHex writeAction,
+        bool skipLeadingZeros = true,
+        bool addQuotations = true)
+    {
         const int maxStackLength = 128;
         const int stackLength = 256;
 
         int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingZeros() : 0;
-        int length = bytes.Length * 2 - leadingNibbleZeros + 4;
+        int length = bytes.Length * 2 - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
 
         byte[]? array = null;
         if (length > maxStackLength)
@@ -97,17 +112,23 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         }
 
         Span<byte> hex = (array ?? stackalloc byte[stackLength])[..length];
-        hex[^1] = (byte)'"';
-        hex[0] = (byte)'"';
-        hex[1] = (byte)'0';
-        hex[2] = (byte)'x';
+        int start = 0;
+        Index end = ^0;
+        if (addQuotations)
+        {
+            end = ^1;
+            hex[^1] = (byte)'"';
+            hex[start++] = (byte)'"';
+        }
 
-        Span<byte> output = hex[3..^1];
+        hex[start++] = (byte)'0';
+        hex[start++] = (byte)'x';
 
-        bool extraNibble = (leadingNibbleZeros & 1) != 0;
+        Span<byte> output = hex[start..end];
+
         ReadOnlySpan<byte> input = bytes.Slice(leadingNibbleZeros / 2);
         input.OutputBytesToByteHex(output, extraNibble: (leadingNibbleZeros & 1) != 0);
-        writer.WriteRawValue(hex, skipInputValidation: true);
+        writeAction(writer, hex);
 
         if (array is not null)
         {

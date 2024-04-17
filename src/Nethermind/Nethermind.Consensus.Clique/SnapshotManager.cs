@@ -161,7 +161,7 @@ namespace Nethermind.Consensus.Clique
                     {
                         int signerIndex = 0;
                         string word = countAfter > countBefore ? "added to" : "removed from";
-                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + (KnownAddresses.GoerliValidators.TryGetValue(s.Key, out string value) ? value : s.Key.ToString())))}");
+                        _logger.Info($"At block {number} a signer has been {word} the signer list:{Environment.NewLine}{string.Join(Environment.NewLine, snapshot.Signers.OrderBy(s => s.Key, AddressComparer.Instance).Select(s => $"  Signer {signerIndex++}: " + s.Key))}");
                     }
                 }
 

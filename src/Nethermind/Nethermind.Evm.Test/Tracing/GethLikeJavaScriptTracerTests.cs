@@ -330,7 +330,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void prestate_tracer()
     {
         GethLikeTxTrace traces = ExecuteBlock(
-                GetTracer("prestateTracer"),
+                GetTracer("prestateTracer_legacy"),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation)
             .BuildResult().First();
