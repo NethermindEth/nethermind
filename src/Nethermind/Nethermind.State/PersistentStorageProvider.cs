@@ -161,8 +161,8 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        Db.Metrics.StorageTreeWrites++;
-                        state.SetStorage(change.StorageCell, change.Value);
+                        SaveToTree(state, change);
+
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -184,6 +184,18 @@ namespace Nethermind.State
             }
         }
 
+        private void SaveToTree(IState state, Change change)
+        {
+            if (_originalValues.TryGetValue(change.StorageCell, out EvmWord initialValue) &&
+                initialValue == change.Value)
+            {
+                // no need to update the tree if the value is the same
+                return;
+            }
+
+            Db.Metrics.StorageTreeWrites++;
+            state.SetStorage(change.StorageCell, change.Value);
+        }
 
         private EvmWord LoadFromTree(in StorageCell storageCell)
         {
