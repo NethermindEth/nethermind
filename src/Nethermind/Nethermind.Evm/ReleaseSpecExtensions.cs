@@ -93,10 +93,20 @@ namespace Nethermind.Evm
             spec.IsEip7667Enabled
                 ? GasCostOf.Sha3WordEip7667
                 : GasCostOf.Sha3Word;
-        
+
         public static long GetLogDataCost(this IReleaseSpec spec) =>
             spec.IsEip7667Enabled
                 ? GasCostOf.LogDataEip7667
                 : GasCostOf.LogData;
+
+        public static long GetSha256PrecompileBaseCost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? 300L
+                : 60L;
+
+        public static long GetSha256PrecompileWordCost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? 60L
+                : 12L;
     }
 }
