@@ -68,8 +68,6 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     {
         base.EndBlockTrace();
         Engine.CurrentEngine = null;
-        ArrayPoolList<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
-        list?.Dispose();
     }
 
     protected override bool ShouldTraceTx(Transaction? tx) => base.ShouldTraceTx(tx) && tx is not null;
