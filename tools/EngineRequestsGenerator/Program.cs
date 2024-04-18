@@ -6,6 +6,7 @@ using Evm.JsonTypes;
 using Evm.T8NTool;
 using Microsoft.IdentityModel.Tokens;
 using Microsoft.VisualBasic;
+using Nethermind.Blockchain;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
@@ -32,6 +33,7 @@ using Nethermind.Network.P2P.Subprotocols.Les.Messages;
 using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
@@ -51,13 +53,29 @@ public static class Program
 
 
 
-        string inputAlloc = File.ReadAllText("../../../../data/holeskyGenesisAlloc.json");
-        string inputEnv = File.ReadAllText("../../../../data/holeskyGenesisEnv.json");
+        string inputAlloc = File.ReadAllText("../../../data/holeskyGenesisAlloc.json");
+        Dictionary<Address, AccountState> allocJson = serializer.Deserialize<Dictionary<Address, AccountState>>(inputAlloc);
 
+        // string inputEnv = File.ReadAllText("../../../data/holeskyGenesisEnv.json");
+        //
+        // EnvInfo envInfo = serializer.Deserialize<EnvInfo>(inputEnv);
 
 
         // EngineModuleTests.MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: Cancun.Instance);
-        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(HoleskySpecProvider.Instance);
+
+        // IReleaseSpec spec = Cancun.Instance;
+        // ISpecProvider specProvider = new CustomSpecProvider(((ForkActivation)0, spec), ((ForkActivation)envInfo.CurrentNumber, spec));
+
+
+        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, HoleskySpecProvider.Instance);
+        // chain.Timestamper = timestamper;
+
+        ChainSpecLoader chainSpecLoader = new ChainSpecLoader(serializer);
+        ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile("../../../../../src/Nethermind/Chains/holesky.json", LimboLogs.Instance.GetClassLogger());
+
+        GenesisLoader genesisLoader = new GenesisLoader(chainSpec, HoleskySpecProvider.Instance, chain.State, chain.TxProcessor);
+        Block genesisBlock = genesisLoader.Load();
+
 
         Withdrawal withdrawal = new()
         {
@@ -69,19 +87,49 @@ public static class Program
 
         PayloadAttributes payloadAttributes = new PayloadAttributes()
         {
-            ParentBeaconBlockRoot = Keccak.Zero,
-            PrevRandao = Keccak.Zero,
+            Timestamp = genesisBlock.Timestamp + 7,
+            ParentBeaconBlockRoot = genesisBlock.Hash,
+            PrevRandao = genesisBlock.Hash ?? Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = new []{withdrawal}
         };
 
-        Hash256 genesisHash = new("0x9cbea0de83b440f4462c8280a4b0b4590cdb452069757e2c510cb3456b6c98cc");
-
-        BlockHeader blockHeader = new BlockHeader(genesisHash, )
-
+        // Hash256 parentOfGenesisHash = new("0x0000000000000000000000000000000000000000000000000000000000000000");
+        // Hash256 genesisHash = new("0x9cbea0de83b440f4462c8280a4b0b4590cdb452069757e2c510cb3456b6c98cc");
 
 
-        chain.PayloadPreparationService.StartPreparingPayload()
+        // BlockHeader genesisHeader = new BlockHeader(parentOfGenesisHash, Keccak.OfAnEmptySequenceRlp, Address.Zero, 1, 0,
+        //     25000000000, 1695902100, []);
+
+
+        // if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+        // {
+        //     chain.State.CreateAccount(specProvider.GenesisSpec.Eip4788ContractAddress, 1);
+        // }
+
+        // GeneralStateTestBase.InitializeTestPreState(allocJson, (WorldState)chain.State, HoleskySpecProvider.Instance);
+
+        // genesisHeader.StateRoot = chain.State.StateRoot;
+        // genesisHeader.Hash = genesisHeader.CalculateHash();
+
+
+        stringBuilder.Append("gen hash: ");
+        stringBuilder.Append(genesisBlock.Hash);
+        stringBuilder.AppendLine();
+        stringBuilder.Append("genesis stateRoot: ");
+        stringBuilder.Append(genesisBlock.StateRoot);
+        stringBuilder.AppendLine();
+        stringBuilder.Append("stater root: ");
+        stringBuilder.Append(chain.State.StateRoot);
+        File.WriteAllText("requests.txt", stringBuilder.ToString());
+
+        Block block = chain.PostMergeBlockProducer.PrepareEmptyBlock(genesisBlock.Header, payloadAttributes);
+
+        // chain.PayloadPreparationService.StartPreparingPayload(genesisBlock.Header, payloadAttributes);
+        // Block block = chain.PayloadPreparationService.GetPayload(payloadAttributes.GetPayloadId(genesisBlock.Header)).Result.CurrentBestBlock;
+
+        ExecutionPayload executionPayload = new ExecutionPayloadV3(block);
+
         // IEngineRpcModule rpcModule = CreateEngineModule(chain);
         // JsonRpcConfig jsonRpcConfig = new() { EnabledModules = new[] { ModuleType.Engine } };
         // RpcModuleProvider moduleProvider = new(new FileSystem(), jsonRpcConfig, LimboLogs.Instance);
@@ -91,10 +139,13 @@ public static class Program
         string blobsString = serializer.Serialize(Array.Empty<byte[]>());
         string parentBeaconBlockRootString = TestItem.KeccakA.ToString();
 
-
         JsonObject executionPayloadAsJObject = serializer.Deserialize<JsonObject>(executionPayloadString);
         JsonRpcRequest request = RpcTest.GetJsonRequest(nameof(IEngineRpcModule.engine_newPayloadV3),
                 serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
+
+        string requestString = serializer.Serialize(request);
+
+        File.WriteAllText("requests.txt", requestString);
 
 
         // ExecutionPayloadV3 executionPayload = CreateBlockRequestV3(
@@ -309,13 +360,71 @@ public static class Program
         //         serializer.Serialize(executionPayloadAsJObject), blobsString, parentBeaconBlockRootString);
 
         // string jsonString = serializer.Serialize(request1);
-        File.WriteAllText("requests.txt", stringBuilder.ToString());
+        // File.WriteAllText("requests.txt", stringBuilder.ToString());
     }
 
-    private static BlockHeader GetParentHeader()
-    {
-        throw new NotImplementedException();
-    }
+
+    // private static ExecutionPayloadV3 CreateBlockRequestV3(EngineModuleTests.MergeTestBlockchain chain, ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+    //             ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null)
+    // {
+    //     IBeaconBlockRootHandler beaconBlockRootHandler = new BeaconBlockRootHandler();
+    //
+    //     ExecutionPayloadV3 blockRequestV3 = CreateBlockRequestInternal<ExecutionPayloadV3>(parent, miner, withdrawals, blobGasUsed, excessBlobGas, transactions: transactions, parentBeaconBlockRoot: parentBeaconBlockRoot);
+    //     blockRequestV3.TryGetBlock(out Block? block);
+    //
+    //     Snapshot before = chain.State.TakeSnapshot();
+    //     beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
+    //     chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
+    //
+    //     chain.State.Commit(chain.SpecProvider.GenesisSpec);
+    //     chain.State.RecalculateStateRoot();
+    //     blockRequestV3.StateRoot = chain.State.StateRoot;
+    //     chain.State.Restore(before);
+    //
+    //     TryCalculateHash(blockRequestV3, out Hash256? hash);
+    //     blockRequestV3.BlockHash = hash;
+    //     return blockRequestV3;
+    // }
+    //
+    // private static T CreateBlockRequestInternal<T>(ExecutionPayload parent, Address miner, Withdrawal[]? withdrawals = null,
+    //             ulong? blobGasUsed = null, ulong? excessBlobGas = null, Transaction[]? transactions = null, Hash256? parentBeaconBlockRoot = null) where T : ExecutionPayload, new()
+    // {
+    //     T blockRequest = new()
+    //     {
+    //         ParentHash = parent.BlockHash,
+    //         FeeRecipient = miner,
+    //         StateRoot = parent.StateRoot,
+    //         BlockNumber = parent.BlockNumber + 1,
+    //         GasLimit = parent.GasLimit,
+    //         GasUsed = 0,
+    //         ReceiptsRoot = Keccak.EmptyTreeHash,
+    //         LogsBloom = Bloom.Empty,
+    //         Timestamp = parent.Timestamp + 1,
+    //         Withdrawals = withdrawals,
+    //         BlobGasUsed = blobGasUsed,
+    //         ExcessBlobGas = excessBlobGas,
+    //         ParentBeaconBlockRoot = parentBeaconBlockRoot,
+    //     };
+    //
+    //     blockRequest.SetTransactions(transactions ?? Array.Empty<Transaction>());
+    //     TryCalculateHash(blockRequest, out Hash256? hash);
+    //     blockRequest.BlockHash = hash;
+    //     return blockRequest;
+    // }
+    //
+    // private static bool TryCalculateHash(ExecutionPayload request, out Hash256 hash)
+    // {
+    //     if (request.TryGetBlock(out Block? block) && block is not null)
+    //     {
+    //         hash = block.CalculateHash();
+    //         return true;
+    //     }
+    //     else
+    //     {
+    //         hash = Keccak.Zero;
+    //         return false;
+    //     }
+    // }
 
     private static void WriteJsonRpcRequest(StringBuilder stringBuilder, string methodName, string[]? parameters)
     {
@@ -326,8 +435,8 @@ public static class Program
 
 
 
-    private static string jsonBeginning = "{\"jsonrpc\":\"2.0\",\"method\":\"";
-    private static string jsonEnding = "";
+    // private static string jsonBeginning = "{\"jsonrpc\":\"2.0\",\"method\":\"";
+    // private static string jsonEnding = "";
 
     // private static BlockHeader GetHeader()
     // {
@@ -336,21 +445,21 @@ public static class Program
     //     return blockHeader;
     // }
 
-    private static void ApplyReward(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
-    {
-        var rewardCalculator = new RewardCalculator(specProvider);
-        BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
-
-        foreach (BlockReward reward in rewards)
-        {
-            if (!stateProvider.AccountExists(reward.Address))
-            {
-                stateProvider.CreateAccount(reward.Address, reward.Value);
-            }
-            else
-            {
-                stateProvider.AddToBalance(reward.Address, reward.Value, spec);
-            }
-        }
-    }
+    // private static void ApplyReward(Block block, WorldState stateProvider, IReleaseSpec spec, ISpecProvider specProvider)
+    // {
+    //     var rewardCalculator = new RewardCalculator(specProvider);
+    //     BlockReward[] rewards = rewardCalculator.CalculateRewards(block);
+    //
+    //     foreach (BlockReward reward in rewards)
+    //     {
+    //         if (!stateProvider.AccountExists(reward.Address))
+    //         {
+    //             stateProvider.CreateAccount(reward.Address, reward.Value);
+    //         }
+    //         else
+    //         {
+    //             stateProvider.AddToBalance(reward.Address, reward.Value, spec);
+    //         }
+    //     }
+    // }
 }
