@@ -231,6 +231,7 @@ namespace Nethermind.Evm
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;
+        public Address? Authorized { get; set; }
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
 
