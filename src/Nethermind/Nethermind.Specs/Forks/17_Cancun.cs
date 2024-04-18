@@ -19,6 +19,7 @@ public class Cancun : Shanghai
         IsEip4844Enabled = true;
         IsEip5656Enabled = true;
         IsEip6780Enabled = true;
+        IsEip7667Enabled = true;
         Eip4788ContractAddress = Eip4788Constants.BeaconRootsAddress;
     }
 

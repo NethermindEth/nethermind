@@ -83,5 +83,20 @@ namespace Nethermind.Evm
             spec.UseExpDDosProtection
                 ? GasCostOf.ExpByteEip160
                 : GasCostOf.ExpByte;
+
+        public static long GetSha3Cost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? GasCostOf.Sha3Eip7667
+                : GasCostOf.Sha3;
+
+        public static long GetSha3WordCost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? GasCostOf.Sha3WordEip7667
+                : GasCostOf.Sha3Word;
+        
+        public static long GetLogDataCost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? GasCostOf.LogDataEip7667
+                : GasCostOf.LogData;
     }
 }

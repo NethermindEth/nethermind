@@ -42,9 +42,12 @@ namespace Nethermind.Evm
         public const long BlobHash = 3;
         public const long Log = 375;
         public const long LogTopic = 375;
-        public const long LogData = 10;
-        public const long Sha3 = 300;
-        public const long Sha3Word = 60;
+        public const long LogData = 8;
+        public const long LogDataEip7667 = 10;
+        public const long Sha3 = 30;
+        public const long Sha3Eip7667 = 300;
+        public const long Sha3Word = 6;
+        public const long Sha3WordEip7667 = 60;
         public const long BlockHash = 20;
         public const long SelfDestruct = 0;
         public const long SelfDestructEip150 = 5000;

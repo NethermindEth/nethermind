@@ -1225,7 +1225,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        gasAvailable -= GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in b);
+                        gasAvailable -= spec.GetSha3Cost() + spec.GetSha3WordCost() * EvmPooledMemory.Div32Ceiling(in b);
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, in a, b)) goto OutOfGas;
 
@@ -1824,7 +1824,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
+                        exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction, spec);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
                         break;
                     }
@@ -2560,7 +2560,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction, IReleaseSpec spec)
         where TTracing : struct, IIsTracing
     {
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
@@ -2568,7 +2568,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long topicsCount = instruction - Instruction.LOG0;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
-                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
+                spec.GetLogDataCost() + topicsCount * GasCostOf.LogTopic +
                 (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
