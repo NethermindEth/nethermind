@@ -25,6 +25,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Test.Blockchain;
+using Nethermind.Evm.BlockHashInState;
 
 namespace Nethermind.Merge.Plugin.Test
 {

@@ -21,6 +21,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Blockchain.BlockHashInState;
+using Nethermind.Evm.BlockHashInState;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
@@ -188,6 +190,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private readonly byte[] _chainId;
 
     private readonly IBlockhashProvider _blockhashProvider;
+    private readonly IBlockHashInStateHandler _blockHashInStateHandler = new BlockHashInStateHandler();
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private IWorldState _worldState;
@@ -1482,7 +1485,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
                         Hash256 blockHash = spec.IsBlockHashInStateAvailable
-                            ? GetBlockHashFromState(number)
+                            ? _blockHashInStateHandler.GetBlockHashFromState(number, spec, _worldState)
                             : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
@@ -1496,15 +1499,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
 
                         break;
-
-                        Hash256? GetBlockHashFromState(long blockNumber)
-                        {
-                            var blockIndex = new UInt256((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
-                            StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockIndex);
-                            ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
-                            if (data.Length < 32) return null;
-                            return new Hash256(data);
-                        }
                     }
                 case Instruction.COINBASE:
                     {

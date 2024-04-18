@@ -3,11 +3,11 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.BlockHashInState;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -16,24 +16,6 @@ namespace Nethermind.Blockchain.BlockHashInState;
 
 public class BlockHashInStateHandler : IBlockHashInStateHandler
 {
-    public void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock, IReleaseSpec spec, IWorldState stateProvider)
-    {
-        long current = currentBlock.Number;
-        BlockHeader header = currentBlock;
-        for (var i = 0; i < Math.Min(Eip2935Constants.RingBufferSize, current); i++)
-        {
-            // an extra check - don't think it is needed
-            if (header.IsGenesis) break;
-            AddParentBlockHashToState(header, spec, stateProvider);
-            header = blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            if (header is null)
-            {
-                throw new InvalidDataException(
-                    "Parent header cannot be found when initializing BlockHashInState history");
-            }
-        }
-    }
-
     public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsEip2935Enabled ||
@@ -50,7 +32,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
     }
-    
+
     public Hash256? GetBlockHashFromState(long blockNumber, IReleaseSpec spec, IWorldState stateProvider)
     {
         var blockIndex = new UInt256((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
