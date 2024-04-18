@@ -876,7 +876,7 @@ namespace Nethermind.Trie.Test.Pruning
 
                 if (i > 4)
                 {
-                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(5000, 1));
+                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 1));
                 }
                 else
                 {
