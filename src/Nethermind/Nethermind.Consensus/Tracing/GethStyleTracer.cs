@@ -121,11 +121,15 @@ public class GethStyleTracer : IGethStyleTracer
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
-        _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
-        GethLikeTxTrace trace = blockTracer.BuildResult().SingleOrDefault();
-        blockTracer.TryDispose();
-
-        return trace;
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+            return blockTracer.BuildResult().SingleOrDefault();
+        }
+        finally
+        {
+            blockTracer.TryDispose();
+        }
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
@@ -168,12 +172,15 @@ public class GethStyleTracer : IGethStyleTracer
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-
-        GethLikeTxTrace trace = tracer.BuildResult().SingleOrDefault();
-        tracer.TryDispose();
-
-        return trace;
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult().SingleOrDefault();
+        }
+        finally
+        {
+            tracer.TryDispose();
+        }
     }
 
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
@@ -200,11 +207,15 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-        IReadOnlyCollection<GethLikeTxTrace> traces = tracer.BuildResult();
-        tracer.TryDispose();
-
-        return traces;
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.TryDispose();
+        }
     }
 
     private static Block GetBlockToTrace(Rlp blockRlp)
