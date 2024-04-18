@@ -265,8 +265,17 @@ public partial class EngineModuleTests
             return chain;
         }
 
+        protected override async Task<TestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        {
+            TestBlockchain chain = await base.Build(keepStateEmpty, specProvider, initialValues);
+            return chain;
+        }
+
         public async Task<MergeTestBlockchain> Build(ISpecProvider? specProvider = null) =>
             (MergeTestBlockchain)await Build(specProvider, null);
+
+        public async Task<MergeTestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null) =>
+            (MergeTestBlockchain)await Build(keepStateEmpty, specProvider, null);
     }
 }
 
