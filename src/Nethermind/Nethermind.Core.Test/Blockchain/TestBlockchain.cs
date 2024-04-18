@@ -113,7 +113,11 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
+
     protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
+        => await Build(false, specProvider, initialValues, addBlockOnStart);
+
+    protected virtual async Task<TestBlockchain> Build(bool keepStateEmpty, ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
@@ -123,26 +127,29 @@ public class TestBlockchain : IDisposable
         TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
-        // Eip4788 precompile state account
-        if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+        if (!keepStateEmpty)
         {
-            State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
+            // Eip4788 precompile state account
+            if (specProvider?.GenesisSpec?.IsBeaconBlockRootAvailable ?? false)
+            {
+                State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
+            }
+
+            State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
+            State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
+
+            InitialStateMutator?.Invoke(State);
+
+            byte[] code = Bytes.FromHexString("0xabcd");
+            Hash256 codeHash = Keccak.Compute(code);
+            State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
+
+            State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
+
+            State.Commit(SpecProvider.GenesisSpec);
+            State.CommitTree(0);
         }
-
-        State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
-        State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
-
-        InitialStateMutator?.Invoke(State);
-
-        byte[] code = Bytes.FromHexString("0xabcd");
-        Hash256 codeHash = Keccak.Compute(code);
-        State.InsertCode(TestItem.AddressA, code, SpecProvider.GenesisSpec);
-
-        State.Set(new StorageCell(TestItem.AddressA, UInt256.One), Bytes.FromHexString("0xabcdef"));
-
-        State.Commit(SpecProvider.GenesisSpec);
-        State.CommitTree(0);
 
         ReadOnlyTrieStore = TrieStore.AsReadOnly(new NodeStorage(StateDb));
         WorldStateManager = new WorldStateManager(State, TrieStore, DbProvider, LimboLogs.Instance);
