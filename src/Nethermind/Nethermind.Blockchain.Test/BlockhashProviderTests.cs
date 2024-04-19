@@ -247,7 +247,7 @@ namespace Nethermind.Blockchain.Test
             head = current.Header;
             current = Build.A.Block.WithParent(head!).TestObject;
             BlockHashInStateHandler.AddParentBlockHashToState(current.Header, Prague.Instance, _worldState);
-            result = provider.GetBlockhash(current.Header, chainLength , Prague.Instance, _worldState);
+            result = provider.GetBlockhash(current.Header, chainLength, Prague.Instance, _worldState);
             Assert.That(result, Is.EqualTo(head?.Hash));
         }
     }
