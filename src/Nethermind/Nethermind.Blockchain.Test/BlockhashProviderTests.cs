@@ -5,6 +5,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
+using Nethermind.Evm.BlockHashInState;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
@@ -21,7 +22,9 @@ namespace Nethermind.Blockchain.Test
         public void Setup()
         {
             var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
-            _worldState = new WorldState(trieStore, new MemDb(), SimpleConsoleLogManager.Instance);
+            _worldState = new WorldState(trieStore, new MemDb(), LimboLogs.Instance);
+            _worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+            _worldState.Commit(Frontier.Instance);
         }
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_get_parent_only_headers()
@@ -36,28 +39,6 @@ namespace Nethermind.Blockchain.Test
             BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head!).TestObject;
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
-            Assert.That(result, Is.EqualTo(head?.Hash));
-        }
-
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Can_get_parent_only_headers_post_eip2935()
-        {
-            const int chainLength = 512;
-
-            _worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
-
-            Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
-
-            BlockhashProvider provider = new(tree, SimpleConsoleLogManager.Instance);
-
-            BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
-            Block current = Build.A.Block.WithParent(head!).TestObject;
-
-            BlockHashInStateExtension.InitHistoryOnForkBlock(tree, current.Header, Prague.Instance, _worldState);
-            _worldState.Commit(Prague.Instance);
-
-            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Prague.Instance, _worldState);
             Assert.That(result, Is.EqualTo(head?.Hash));
         }
 
@@ -241,6 +222,33 @@ namespace Nethermind.Blockchain.Test
             Block current = Build.A.Block.WithParent(head).TestObject;
             Hash256? result = provider.GetBlockhash(current.Header, 127, Frontier.Instance);
             Assert.That(result, Is.EqualTo(head.Hash));
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void Eip2935_init_block_history_and_then_get_hash()
+        {
+            const int chainLength = 512;
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+            BlockhashProvider provider = new(tree, LimboLogs.Instance);
+
+            BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            Block current = Build.A.Block.WithParent(head!).TestObject;
+
+            BlockHashInStateExtension.InitHistoryOnForkBlock(tree, current.Header, Prague.Instance, _worldState);
+            _worldState.Commit(Prague.Instance);
+
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Prague.Instance, _worldState);
+            Assert.That(result, Is.EqualTo(head?.Hash));
+
+            tree.SuggestHeader(current.Header);
+            head = current.Header;
+            current = Build.A.Block.WithParent(head!).TestObject;
+            BlockHashInStateHandler.AddParentBlockHashToState(current.Header, Prague.Instance, _worldState);
+            result = provider.GetBlockhash(current.Header, chainLength , Prague.Instance, _worldState);
+            Assert.That(result, Is.EqualTo(head?.Hash));
         }
     }
 }
