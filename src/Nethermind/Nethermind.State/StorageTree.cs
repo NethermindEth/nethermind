@@ -24,15 +24,15 @@ namespace Nethermind.State
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
             Span<byte> buffer = stackalloc byte[32];
-            Dictionary<UInt256, byte[]> cache = new Dictionary<UInt256, byte[]>(LookupSize);
+            Dictionary<UInt256, byte[]> lookup = new Dictionary<UInt256, byte[]>(LookupSize);
             for (int i = 0; i < LookupSize; i++)
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                cache[index] = Keccak.Compute(buffer).BytesToArray();
+                lookup[index] = Keccak.Compute(buffer).BytesToArray();
             }
 
-            return cache.ToFrozenDictionary();
+            return lookup.ToFrozenDictionary();
         }
 
         public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
