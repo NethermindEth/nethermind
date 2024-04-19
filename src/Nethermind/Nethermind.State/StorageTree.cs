@@ -17,18 +17,15 @@ namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree
     {
-        private static readonly UInt256 CacheSize = 1024;
-
-        private static readonly int CacheSizeInt = (int)CacheSize;
-
-        private static readonly FrozenDictionary<UInt256, byte[]> Cache = CreateCache();
+        private static readonly int LookupSize = 1024;
+        private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
         private static readonly byte[] _emptyBytes = { 0 };
 
-        private static FrozenDictionary<UInt256, byte[]> CreateCache()
+        private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
             Span<byte> buffer = stackalloc byte[32];
-            Dictionary<UInt256, byte[]> cache = new Dictionary<UInt256, byte[]>(CacheSizeInt);
-            for (int i = 0; i < CacheSizeInt; i++)
+            Dictionary<UInt256, byte[]> cache = new Dictionary<UInt256, byte[]>(LookupSize);
+            for (int i = 0; i < LookupSize; i++)
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
@@ -51,9 +48,9 @@ namespace Nethermind.State
 
         private static void GetKey(in UInt256 index, ref Span<byte> key)
         {
-            if (index < CacheSizeInt)
+            if (index < LookupSize)
             {
-                key = Cache[index];
+                key = Lookup[index];
                 return;
             }
 
