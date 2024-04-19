@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
@@ -21,11 +20,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Test.Blockchain;
-using Nethermind.Evm.BlockHashInState;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -34,7 +29,6 @@ namespace Nethermind.Merge.Plugin.Test
     {
         private static readonly DateTime Timestamp = DateTimeOffset.FromUnixTimeSeconds(1000).UtcDateTime;
         private static readonly IBeaconBlockRootHandler _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        private static readonly IBlockHashInStateHandler _blockHashInStateHandler = new BlockHashInStateHandler();
         private ITimestamper Timestamper { get; } = new ManualTimestamper(Timestamp);
         private void AssertExecutionStatusChanged(IBlockFinder blockFinder, Hash256 headBlockHash, Hash256 finalizedBlockHash,
              Hash256 safeBlockHash)
@@ -118,7 +112,7 @@ namespace Nethermind.Merge.Plugin.Test
 
             Snapshot before = chain.State.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
-            _blockHashInStateHandler.AddParentBlockHashToState(block!.Header, chain.SpecProvider.GenesisSpec, chain.State);
+            BlockHashInStateHandler.AddParentBlockHashToState(block!.Header, chain.SpecProvider.GenesisSpec, chain.State);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

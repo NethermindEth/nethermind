@@ -7,16 +7,15 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.BlockHashInState;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Blockchain.BlockHashInState;
 
-public class BlockHashInStateHandler : IBlockHashInStateHandler
+public static class BlockHashInStateHandler
 {
-    public void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider)
+    public static void AddParentBlockHashToState(BlockHeader blockHeader, IReleaseSpec spec, IWorldState stateProvider)
     {
         if (!spec.IsEip2935Enabled ||
             blockHeader.IsGenesis ||
@@ -33,7 +32,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
     }
 
-    public Hash256? GetBlockHashFromState(long blockNumber, IReleaseSpec spec, IWorldState stateProvider)
+    public static Hash256? GetBlockHashFromState(long blockNumber, IReleaseSpec spec, IWorldState stateProvider)
     {
         var blockIndex = new UInt256((ulong)((blockNumber - 1) % Eip2935Constants.RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;

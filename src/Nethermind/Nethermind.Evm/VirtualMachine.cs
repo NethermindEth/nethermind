@@ -19,10 +19,8 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Blockchain.BlockHashInState;
-using Nethermind.Evm.BlockHashInState;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
@@ -190,7 +188,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private readonly byte[] _chainId;
 
     private readonly IBlockhashProvider _blockhashProvider;
-    private readonly IBlockHashInStateHandler _blockHashInStateHandler = new BlockHashInStateHandler();
     private readonly ISpecProvider _specProvider;
     private readonly ILogger _logger;
     private IWorldState _worldState;
@@ -1484,9 +1481,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-                        Hash256 blockHash = spec.IsBlockHashInStateAvailable
-                            ? _blockHashInStateHandler.GetBlockHashFromState(number, spec, _worldState)
-                            : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number, spec, _worldState);
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 

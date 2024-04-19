@@ -3,6 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Test
 {
@@ -14,7 +16,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState stateProvider)
         {
             return Keccak.Compute(number.ToString());
         }

@@ -3,17 +3,17 @@
 
 using System;
 using System.IO;
+using Nethermind.Blockchain.BlockHashInState;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Evm.BlockHashInState;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.BlockHashInState;
+namespace Nethermind.Blockchain;
 
 public static class BlockHashInStateExtension
 {
-    public static void InitHistoryOnForkBlock(this IBlockHashInStateHandler handler,IBlockTree blockTree, BlockHeader currentBlock,
+    public static void InitHistoryOnForkBlock(IBlockTree blockTree, BlockHeader currentBlock,
         IReleaseSpec spec, IWorldState stateProvider)
     {
         long current = currentBlock.Number;
@@ -22,7 +22,7 @@ public static class BlockHashInStateExtension
         {
             // an extra check - don't think it is needed
             if (header.IsGenesis) break;
-            handler.AddParentBlockHashToState(header, spec, stateProvider);
+            BlockHashInStateHandler.AddParentBlockHashToState(header, spec, stateProvider);
             header = blockTree.FindParentHeader(currentBlock, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {

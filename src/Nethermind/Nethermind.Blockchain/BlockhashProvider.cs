@@ -3,11 +3,15 @@
 
 using System;
 using System.IO;
+using Nethermind.Blockchain.BlockHashInState;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Evm;
+using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Blockchain
 {
@@ -23,8 +27,15 @@ namespace Nethermind.Blockchain
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState? stateProvider = null)
         {
+
+            if (spec.IsBlockHashInStateAvailable)
+            {
+                ArgumentNullException.ThrowIfNull(stateProvider);
+                return BlockHashInStateHandler.GetBlockHashFromState(number, spec, stateProvider);
+            }
+
             long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
             {
