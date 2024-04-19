@@ -158,8 +158,8 @@ public class TxCertifierFilterTests
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 NullDepositsProcessor.Instance,
-                null
-                );
+                TxProcessor,
+                null);
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

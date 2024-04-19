@@ -102,6 +102,7 @@ public class AuRaContractGasLimitOverrideTests
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
                 NullDepositsProcessor.Instance,
+                TxProcessor,
                 null,
                 null,
                 GasLimitCalculator as AuRaContractGasLimitOverride);

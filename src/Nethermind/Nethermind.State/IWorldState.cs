@@ -83,13 +83,13 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void CreateAccount(Address address, in UInt256 balance, in UInt256 nonce = default);
     void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default);
 
-    void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false);
+    void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall = false, bool isGenesis = false);
 
-    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false);
 
     void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec);
 
-    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec);
+    void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false);
 
     void UpdateStorageRoot(Address address, Hash256 storageRoot);
 

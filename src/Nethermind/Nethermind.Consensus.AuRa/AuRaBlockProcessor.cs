@@ -15,6 +15,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -41,6 +42,7 @@ namespace Nethermind.Consensus.AuRa
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
             IDepositsProcessor depositsProcessor,
+            ITransactionProcessor transactionProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -53,6 +55,7 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                transactionProcessor,
                 logManager,
                 withdrawalProcessor,
                 depositsProcessor)

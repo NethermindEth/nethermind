@@ -11,6 +11,7 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -30,11 +31,12 @@ public class OptimismBlockProcessor : BlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IOPConfigHelper opConfigHelper,
+        ITransactionProcessor txProcessor,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IDepositsProcessor? depositsProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, depositsProcessor, OptimismReceiptsRootCalculator.Instance)
+            stateProvider, receiptStorage, witnessCollector, txProcessor, logManager, withdrawalProcessor, depositsProcessor, null, OptimismReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

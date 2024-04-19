@@ -90,6 +90,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             NullWitnessCollector.Instance,
             logManager,
             _specHelper,
+            readOnlyTxProcessingEnv.TransactionProcessor,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
             new DepositsProcessor(logManager));

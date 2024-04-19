@@ -107,6 +107,7 @@ namespace Nethermind.Consensus.Clique
                 producerEnv.StateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                getFromApi.TransactionProcessor,
                 getFromApi.LogManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)),
                 new DepositsProcessor(getFromApi.LogManager));

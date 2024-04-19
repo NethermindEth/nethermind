@@ -79,7 +79,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     )
                 ),
             new Consensus.Withdrawals.DepositsProcessor(logManager),
-            null);
+            readOnlyTxProcessingEnv.TransactionProcessor, null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
