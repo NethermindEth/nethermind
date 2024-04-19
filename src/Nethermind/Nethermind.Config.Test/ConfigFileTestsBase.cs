@@ -77,10 +77,6 @@ public abstract class ConfigFileTestsBase
     protected IEnumerable<string> ChiadoConfigs
         => Configs.Where(config => config.Contains("chiado"));
 
-    [ConfigFileGroup("goerli")]
-    protected IEnumerable<string> GoerliConfigs
-        => Configs.Where(config => config.Contains("goerli"));
-
     [ConfigFileGroup("holesky")]
     protected IEnumerable<string> HoleskyConfigs
         => Configs.Where(config => config.Contains("holesky"));
@@ -108,10 +104,6 @@ public abstract class ConfigFileTestsBase
     [ConfigFileGroup("aura_non_validating")]
     protected IEnumerable<string> AuraNonValidatingConfigs
         => AuraConfigs.Where(c => !c.Contains("validator"));
-
-    [ConfigFileGroup("clique")]
-    protected IEnumerable<string> CliqueConfigs
-        => GoerliConfigs;
 
     protected IEnumerable<string> Resolve(string configWildcard)
     {

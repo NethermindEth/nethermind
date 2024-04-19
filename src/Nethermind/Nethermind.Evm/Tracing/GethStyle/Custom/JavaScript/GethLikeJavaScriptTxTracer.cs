@@ -99,12 +99,12 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
             : new Log.Contract(from, to, value, isAnyCreate ? null : input);
     }
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _log.pc = pc;
         _log.op = new Log.Opcode(opcode);
         _log.gas = gas;
-        _log.depth = depth;
+        _log.depth = env.GetGethTraceDepth();
         _log.error = null;
         _log.gasCost = null;
     }

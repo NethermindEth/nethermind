@@ -9,7 +9,5 @@ namespace Nethermind.Overseer.Test.Framework
         void SetBuilder(TestBuilder builder);
     }
 
-    public interface ITestState
-    {
-    }
+    public interface ITestState;
 }
