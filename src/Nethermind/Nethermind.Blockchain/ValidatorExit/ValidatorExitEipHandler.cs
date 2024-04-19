@@ -104,4 +104,3 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
         state.Set(exitCountCell, UInt256.Zero.ToLittleEndian());
     }
 }
-z
