@@ -17,9 +17,9 @@ namespace Nethermind.State
 {
     public class StorageTree : PatriciaTree
     {
-        private static readonly int LookupSize = 1024;
+        private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
-        private static readonly byte[] _emptyBytes = { 0 };
+        private static readonly byte[] _emptyBytes = [0];
 
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
@@ -46,14 +46,8 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void GetKey(in UInt256 index, ref Span<byte> key)
+        private static void ComputeKey(in UInt256 index, ref Span<byte> key)
         {
-            if (index < LookupSize)
-            {
-                key = Lookup[index];
-                return;
-            }
-
             index.ToBigEndian(key);
 
             // in situ calculation
@@ -63,10 +57,15 @@ namespace Nethermind.State
         [SkipLocalsInit]
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
-            Span<byte> key = stackalloc byte[32];
-            GetKey(index, ref key);
+            if (index < LookupSize)
+            {
+                return Get(Lookup[index], storageRoot).ToArray();
+            }
 
+            Span<byte> key = stackalloc byte[32];
+            ComputeKey(index, ref key);
             return Get(key, storageRoot).ToArray();
+
         }
 
         public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
@@ -85,9 +84,16 @@ namespace Nethermind.State
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)
         {
-            Span<byte> key = stackalloc byte[32];
-            GetKey(index, ref key);
-            SetInternal(key, value);
+            if (index < LookupSize)
+            {
+                SetInternal(Lookup[index], value);
+            }
+            else
+            {
+                Span<byte> key = stackalloc byte[32];
+                ComputeKey(index, ref key);
+                SetInternal(key, value);
+            }
         }
 
         public void Set(in ValueHash256 key, byte[] value, bool rlpEncode = true)
