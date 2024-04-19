@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Crypto;
@@ -20,18 +21,21 @@ namespace Nethermind.State
 
         private static readonly int CacheSizeInt = (int)CacheSize;
 
-        private static readonly Dictionary<UInt256, byte[]> Cache = new(CacheSizeInt);
+        private static readonly FrozenDictionary<UInt256, byte[]> Cache = CreateCache();
         private static readonly byte[] _emptyBytes = { 0 };
 
-        static StorageTree()
+        private static FrozenDictionary<UInt256, byte[]> CreateCache()
         {
             Span<byte> buffer = stackalloc byte[32];
+            Dictionary<UInt256, byte[]> cache = new Dictionary<UInt256, byte[]>(CacheSizeInt);
             for (int i = 0; i < CacheSizeInt; i++)
             {
                 UInt256 index = (UInt256)i;
                 index.ToBigEndian(buffer);
-                Cache[index] = Keccak.Compute(buffer).BytesToArray();
+                cache[index] = Keccak.Compute(buffer).BytesToArray();
             }
+
+            return cache.ToFrozenDictionary();
         }
 
         public StorageTree(IScopedTrieStore? trieStore, ILogManager? logManager)
@@ -45,11 +49,11 @@ namespace Nethermind.State
             TrieType = TrieType.Storage;
         }
 
-        private static void GetKey(in UInt256 index, in Span<byte> key)
+        private static void GetKey(in UInt256 index, ref Span<byte> key)
         {
-            if (index < CacheSize)
+            if (index < CacheSizeInt)
             {
-                Cache[index].CopyTo(key);
+                key = Cache[index];
                 return;
             }
 
@@ -63,7 +67,7 @@ namespace Nethermind.State
         public byte[] Get(in UInt256 index, Hash256? storageRoot = null)
         {
             Span<byte> key = stackalloc byte[32];
-            GetKey(index, key);
+            GetKey(index, ref key);
 
             return Get(key, storageRoot).ToArray();
         }
@@ -85,7 +89,7 @@ namespace Nethermind.State
         public void Set(in UInt256 index, byte[] value)
         {
             Span<byte> key = stackalloc byte[32];
-            GetKey(index, key);
+            GetKey(index, ref key);
             SetInternal(key, value);
         }
 
