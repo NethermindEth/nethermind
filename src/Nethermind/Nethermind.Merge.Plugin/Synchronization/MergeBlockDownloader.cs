@@ -155,6 +155,8 @@ namespace Nethermind.Merge.Plugin.Synchronization
                 return true;
             }
 
+            long bestProcessedBlock = 0;
+
             while (HasMoreToSync(out BlockHeader[]? headers, out int headersToRequest))
             {
                 if (HasBetterPeer)
@@ -198,8 +200,6 @@ namespace Nethermind.Merge.Plugin.Synchronization
                         _logger.Trace("Break early due to no blocks.");
                     break;
                 }
-
-                long bestProcessedBlock = 0;
 
                 for (int blockIndex = 0; blockIndex < blocks.Length; blockIndex++)
                 {

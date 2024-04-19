@@ -2317,7 +2317,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             outputOffset = 0;
         }
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
         returnData = new EvmState(
             gasLimitUl,
             callEnv,
@@ -2826,7 +2826,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory.GetTrace());
