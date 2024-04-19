@@ -25,7 +25,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head!).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
             Assert.That(result, Is.EqualTo(head?.Hash));
         }
 
@@ -40,7 +40,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
             Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
         }
 
@@ -55,7 +55,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
             long lookupNumber = chainLength - 256;
-            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
             Assert.NotNull(result);
         }
 
@@ -72,7 +72,7 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestBlock(current);
             tree.UpdateMainChain(current);
             long lookupNumber = chainLength - 256;
-            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
             Assert.NotNull(result);
         }
 
@@ -95,7 +95,7 @@ namespace Nethermind.Blockchain.Test
             }
 
             long lookupNumber = current.Number - 256;
-            Hash256 result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, lookupNumber, Frontier.Instance);
             Assert.NotNull(result);
         }
 
@@ -116,7 +116,7 @@ namespace Nethermind.Blockchain.Test
 
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
 
-            Hash256 result = provider.GetBlockhash(current.Header, 509, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, 509, Frontier.Instance);
             Assert.NotNull(result);
         }
 
@@ -132,7 +132,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
             Assert.That(result, Is.EqualTo(head.Hash));
         }
 
@@ -147,7 +147,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength, Frontier.Instance);
             Assert.Null(result);
         }
 
@@ -162,7 +162,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength + 1, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength + 1, Frontier.Instance);
             Assert.Null(result);
         }
 
@@ -177,7 +177,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 256, Frontier.Instance);
             Assert.That(result, Is.EqualTo(tree.FindHeader(256, BlockTreeLookupOptions.None)!.Hash));
         }
 
@@ -192,7 +192,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, chainLength - 257, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 257, Frontier.Instance);
             Assert.Null(result);
         }
 
@@ -207,7 +207,7 @@ namespace Nethermind.Blockchain.Test
             BlockhashProvider provider = new(tree, LimboLogs.Instance);
             BlockHeader head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None)!;
             Block current = Build.A.Block.WithParent(head).TestObject;
-            Hash256 result = provider.GetBlockhash(current.Header, 127, Frontier.Instance);
+            Hash256? result = provider.GetBlockhash(current.Header, 127, Frontier.Instance);
             Assert.That(result, Is.EqualTo(head.Hash));
         }
     }
