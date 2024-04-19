@@ -1,4 +1,4 @@
-name: [TEST] Assertoor tests
+name: Assertoor tests
 
 on:
   workflow_dispatch:
