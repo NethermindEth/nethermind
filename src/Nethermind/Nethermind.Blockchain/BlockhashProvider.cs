@@ -3,13 +3,12 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain.BlockHashInState;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Int256;
+using Nethermind.Evm.BlockHashInState;
 using Nethermind.Logging;
 using Nethermind.State;
 
