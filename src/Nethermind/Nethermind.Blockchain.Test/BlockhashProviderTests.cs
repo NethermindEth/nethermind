@@ -4,8 +4,11 @@
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
+using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
@@ -13,6 +16,13 @@ namespace Nethermind.Blockchain.Test
     [TestFixture]
     public class BlockhashProviderTests
     {
+        private IWorldState _worldState;
+        [SetUp]
+        public void Setup()
+        {
+            var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
+            _worldState = new WorldState(trieStore, new MemDb(), SimpleConsoleLogManager.Instance);
+        }
         [Test, Timeout(Timeout.MaxTestTime)]
         public void Can_get_parent_only_headers()
         {
@@ -26,6 +36,28 @@ namespace Nethermind.Blockchain.Test
             BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
             Block current = Build.A.Block.WithParent(head!).TestObject;
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Frontier.Instance);
+            Assert.That(result, Is.EqualTo(head?.Hash));
+        }
+
+        [Test, Timeout(Timeout.MaxTestTime)]
+        public void Can_get_parent_only_headers_post_eip2935()
+        {
+            const int chainLength = 512;
+
+            _worldState.CreateAccount(Eip2935Constants.BlockHashHistoryAddress, 0, 1);
+
+            Block genesis = Build.A.Block.Genesis.TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
+
+            BlockhashProvider provider = new(tree, SimpleConsoleLogManager.Instance);
+
+            BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            Block current = Build.A.Block.WithParent(head!).TestObject;
+
+            BlockHashInStateExtension.InitHistoryOnForkBlock(tree, current.Header, Prague.Instance, _worldState);
+            _worldState.Commit(Prague.Instance);
+
+            Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1, Prague.Instance, _worldState);
             Assert.That(result, Is.EqualTo(head?.Hash));
         }
 
