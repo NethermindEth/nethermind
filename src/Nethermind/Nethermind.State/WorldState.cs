@@ -114,21 +114,21 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccount(address, balance, nonce);
         }
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isSystemCall, bool isGenesis = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis, isSystemCall);
+            _stateProvider.InsertCode(address, codeHash, code, spec, isGenesis);
         }
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            _stateProvider.AddToBalance(address, balanceChange, spec, isSystemCall);
+            _stateProvider.AddToBalance(address, balanceChange, spec);
         }
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
             _stateProvider.AddToBalanceAndCreateIfNotExists(address, balanceChange, spec);
         }
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec, bool isSystemCall = false)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec spec)
         {
-            _stateProvider.SubtractFromBalance(address, balanceChange, spec, isSystemCall);
+            _stateProvider.SubtractFromBalance(address, balanceChange, spec);
         }
         public void UpdateStorageRoot(Address address, Hash256 storageRoot)
         {

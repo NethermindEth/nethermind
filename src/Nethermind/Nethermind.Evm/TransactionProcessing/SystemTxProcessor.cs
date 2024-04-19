@@ -445,6 +445,11 @@ namespace Nethermind.Evm.TransactionProcessing
             }
         }
 
+        private void SubtractFromBalance(Transaction tx, ReleaseSpec spec)
+        {
+            WorldState.SubtractFromBalance(tx.SenderAddress, tx.Value, spec, true);
+        }
+
         protected virtual void PayFees(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, in TransactionSubstate substate, in long spentGas, in UInt256 premiumPerGas, in byte statusCode)
         {
             return;

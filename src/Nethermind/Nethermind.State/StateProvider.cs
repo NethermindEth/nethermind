@@ -146,10 +146,8 @@ namespace Nethermind.State
             return account?.Balance ?? UInt256.Zero;
         }
 
-        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false, bool isSystemCall = false)
+        public void InsertCode(Address address, Hash256 codeHash, ReadOnlyMemory<byte> code, IReleaseSpec spec, bool isGenesis = false)
         {
-            if (isSystemCall && address == Address.SystemUser) return;
-
             _needsStateRootUpdate = true;
 
             // Don't reinsert if already inserted. This can be the case when the same
@@ -197,14 +195,14 @@ namespace Nethermind.State
             }
         }
 
-        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, bool isSystemCall = false)
+        private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting)
         {
             _needsStateRootUpdate = true;
 
             Account GetThroughCacheCheckExists()
             {
                 Account result = GetThroughCache(address);
-                if (result is null && !isSystemCall)
+                if (result is null)
                 {
                     if (_logger.IsError) _logger.Error("Updating balance of a non-existing account");
                     throw new InvalidOperationException("Updating balance of a non-existing account");
@@ -249,16 +247,16 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemCall = false)
+        public void SubtractFromBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, true, isSystemCall);
+            SetNewBalance(address, balanceChange, releaseSpec, true);
         }
 
-        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSystemCall = false)
+        public void AddToBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec)
         {
             _needsStateRootUpdate = true;
-            SetNewBalance(address, balanceChange, releaseSpec, false, isSystemCall);
+            SetNewBalance(address, balanceChange, releaseSpec, false);
         }
 
         /// <summary>
