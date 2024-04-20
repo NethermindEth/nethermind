@@ -12,30 +12,32 @@ namespace Nethermind.Blockchain.ValidatorExit;
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
 public class ValidatorExitEipHandler : IValidatorExitEipHandler
 {
-    private static readonly UInt256 ExcessExitsStorageSlot = 0;
-    private static readonly UInt256 ExitCountStorageSlot = 1;
-    private static readonly UInt256 ExitMessageQueueHeadStorageSlot = 2;
-    private static readonly UInt256 ExitMessageQueueTailStorageSlot = 3;
-    private static readonly UInt256 ExitMessageQueueStorageOffset = 4;
-    private static readonly UInt256 MaxExitsPerBlock = 16;
-    private static readonly UInt256 TargetExitsPerBlock = 2;
+    private static readonly UInt256 ExcessWithdrawalRequestsStorageSlot = 0;
+    private static readonly UInt256 WithdrawalRequestCountStorageSlot = 1;
+    private static readonly UInt256 WithdrawalRequestQueueHeadStorageSlot = 2;
+    private static readonly UInt256 WithdrawalRequestQueueTailStorageSlot = 3;
+    private static readonly UInt256 WithdrawalRequestQueueStorageOffset = 4;
+    private static readonly UInt256 MaxWithdrawalRequestsPerBlock = 16;
+    private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
+    // private static readonly UInt256 MinWithdrawalRequestFee = 1;
+    // private static readonly UInt256 WithdrawalRequestFeeUpdateFraction = 17;
 
     // Reads validator exit information from the precompile
     public ValidatorExit[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, ExitMessageQueueHeadStorageSlot);
-        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, ExitMessageQueueTailStorageSlot);
+        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
+        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
 
         UInt256 queueHeadIndex = new(state.Get(queueHeadIndexCell));
         UInt256 queueTailIndex = new(state.Get(queueTailIndexCell));
 
         UInt256 numExitsInQueue = queueTailIndex - queueHeadIndex;
-        UInt256 numExitsToDeque = UInt256.Min(numExitsInQueue, MaxExitsPerBlock);
+        UInt256 numExitsToDeque = UInt256.Min(numExitsInQueue, MaxWithdrawalRequestsPerBlock);
 
         var validatorExits = new ValidatorExit[(int)numExitsToDeque];
         for (UInt256 i = 0; i < numExitsToDeque; ++i)
         {
-            UInt256 queueStorageSlot = ExitMessageQueueStorageOffset + (queueHeadIndex + i) * 3;
+            UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
             StorageCell sourceAddressCell = new(spec.Eip7002ContractAddress, queueStorageSlot);
             StorageCell validatorAddressFirstCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 1);
             StorageCell validatorAddressSecondCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 2);
@@ -60,14 +62,14 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
 
     private void UpdateExitQueue(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, ExitMessageQueueHeadStorageSlot);
-        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, ExitMessageQueueTailStorageSlot);
+        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
+        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
 
         UInt256 queueHeadIndex = new(state.Get(queueHeadIndexCell));
         UInt256 queueTailIndex = new(state.Get(queueTailIndexCell));
 
         UInt256 numExitsInQueue = queueTailIndex - queueHeadIndex;
-        UInt256 numExitsDequeued = UInt256.Min(numExitsInQueue, MaxExitsPerBlock);
+        UInt256 numExitsDequeued = UInt256.Min(numExitsInQueue, MaxWithdrawalRequestsPerBlock);
         UInt256 newQueueHeadIndex = queueHeadIndex + numExitsDequeued;
         if (newQueueHeadIndex == queueTailIndex)
         {
@@ -82,16 +84,16 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
 
     private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell previousExcessExitsCell = new(spec.Eip7002ContractAddress, ExcessExitsStorageSlot);
-        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, ExitCountStorageSlot);
+        StorageCell previousExcessExitsCell = new(spec.Eip7002ContractAddress, ExcessWithdrawalRequestsStorageSlot);
+        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
 
         UInt256 previousExcessExits = new(state.Get(previousExcessExitsCell));
         UInt256 exitCount = new(state.Get(exitCountCell));
 
         UInt256 newExcessExits = 0;
-        if (previousExcessExits + exitCount > TargetExitsPerBlock)
+        if (previousExcessExits + exitCount > TargetWithdrawalRequestsPerBlock)
         {
-            newExcessExits = previousExcessExits + exitCount - TargetExitsPerBlock;
+            newExcessExits = previousExcessExits + exitCount - TargetWithdrawalRequestsPerBlock;
         }
 
 
@@ -100,7 +102,7 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
 
     private void ResetExitCount(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, ExitCountStorageSlot);
+        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
         state.Set(exitCountCell, UInt256.Zero.ToLittleEndian());
     }
 }
