@@ -32,7 +32,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
     }
 
     // Reads validator exit information from the precompile
-    public ValidatorExit[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
+    private ValidatorExit[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
         StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
         StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
