@@ -3,7 +3,7 @@
 
 using System;
 using System.Linq;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;

@@ -7,13 +7,14 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.ConsensusRequests;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -41,7 +42,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IValidatorExitEipHandler _validatorExitEipHandler;
+    private readonly IWithdrawalRequestsProcessor _withdrawalRequestsProcessor;
 
     private readonly IDepositsProcessor _depositsProcessor;
     private const int MaxUncommittedBlocks = 64;
@@ -77,7 +78,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _depositsProcessor = depositsProcessor ?? new DepositsProcessor(logManager);
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        _validatorExitEipHandler = new ValidatorExitEipHandler();
+        _withdrawalRequestsProcessor = new WithdrawalRequestsProcessor();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -280,7 +281,7 @@ public partial class BlockProcessor : IBlockProcessor
             return;
         }
 
-        ValidatorExit[] validatorExits = _validatorExitEipHandler.ReadWithdrawalRequests(spec, _stateProvider);
+        ValidatorExit[] validatorExits = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider);
         Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
         block.Body.ValidatorExits = validatorExits;
         block.Header.ValidatorExitsRoot = root;

@@ -2,8 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 

@@ -4,8 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp
 {

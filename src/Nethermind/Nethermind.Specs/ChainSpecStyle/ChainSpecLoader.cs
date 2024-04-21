@@ -11,11 +11,11 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 

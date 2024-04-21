@@ -3,15 +3,16 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.ValidatorExit;
+namespace Nethermind.Blockchain.ConsensusRequests;
 
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
-public class ValidatorExitEipHandler : IValidatorExitEipHandler
+public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
 {
     private static readonly UInt256 ExcessWithdrawalRequestsStorageSlot = 0;
     private static readonly UInt256 WithdrawalRequestCountStorageSlot = 1;
@@ -20,8 +21,6 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
     private static readonly UInt256 WithdrawalRequestQueueStorageOffset = 4;
     private static readonly UInt256 MaxWithdrawalRequestsPerBlock = 16;
     private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
-
-
 
     // Will be moved to system transaction
     public ValidatorExit[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)

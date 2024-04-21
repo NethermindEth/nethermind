@@ -5,7 +5,7 @@ using System;
 using System.IO;
 using System.Net;
 using System.Text.Json;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
 using Nethermind.Int256;

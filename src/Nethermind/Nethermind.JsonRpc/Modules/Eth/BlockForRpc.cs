@@ -13,7 +13,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 

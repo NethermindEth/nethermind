@@ -12,7 +12,6 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.State.Proofs;
 using Nethermind.Trie;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Consensus.Producers;
 

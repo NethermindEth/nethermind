@@ -1,13 +1,13 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.ValidatorExit;
+namespace Nethermind.Blockchain.ConsensusRequests;
 
-public interface IValidatorExitEipHandler
+public interface IWithdrawalRequestsProcessor
 {
     ValidatorExit[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state);
 }

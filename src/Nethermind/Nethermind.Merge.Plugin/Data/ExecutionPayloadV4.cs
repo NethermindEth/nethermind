@@ -3,10 +3,10 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Proofs;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Merge.Plugin.Data;
 
