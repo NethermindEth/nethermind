@@ -98,7 +98,7 @@ public class BlockDecoderTests
                 .WithMixHash(Keccak.EmptyTreeHash)
                 // an empty Deposit array
                 .WithDeposits(0)
-                .WithValidatorExits(new[] { new ValidatorExit(TestItem.AddressA, new byte[48]) })
+                .WithValidatorExits(new[] { new ValidatorExit(TestItem.AddressA, new byte[48], 12) })
                 .TestObject
         };
     }

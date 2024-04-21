@@ -3,6 +3,7 @@
 
 using System.Linq;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -19,11 +20,20 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
     private static readonly UInt256 WithdrawalRequestQueueStorageOffset = 4;
     private static readonly UInt256 MaxWithdrawalRequestsPerBlock = 16;
     private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
-    // private static readonly UInt256 MinWithdrawalRequestFee = 1;
-    // private static readonly UInt256 WithdrawalRequestFeeUpdateFraction = 17;
+
+
+
+    // Will be moved to system transaction
+    public ValidatorExit[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
+    {
+        ValidatorExit[] exits = DequeueWithdrawalRequests(spec, state);
+        UpdateExcessExits(spec, state);
+        ResetExitCount(spec, state);
+        return exits;
+    }
 
     // Reads validator exit information from the precompile
-    public ValidatorExit[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state)
+    public ValidatorExit[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
         StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
         StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
@@ -31,11 +41,11 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
         UInt256 queueHeadIndex = new(state.Get(queueHeadIndexCell));
         UInt256 queueTailIndex = new(state.Get(queueTailIndexCell));
 
-        UInt256 numExitsInQueue = queueTailIndex - queueHeadIndex;
-        UInt256 numExitsToDeque = UInt256.Min(numExitsInQueue, MaxWithdrawalRequestsPerBlock);
+        UInt256 numInQueue = queueTailIndex - queueHeadIndex;
+        UInt256 numDequeued = UInt256.Min(numInQueue, MaxWithdrawalRequestsPerBlock);
 
-        var validatorExits = new ValidatorExit[(int)numExitsToDeque];
-        for (UInt256 i = 0; i < numExitsToDeque; ++i)
+        var validatorExits = new ValidatorExit[(int)numDequeued];
+        for (UInt256 i = 0; i < numDequeued; ++i)
         {
             UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
             StorageCell sourceAddressCell = new(spec.Eip7002ContractAddress, queueStorageSlot);
@@ -46,40 +56,11 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
                 state.Get(validatorAddressFirstCell)[..32].ToArray()
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
+            ulong amount =  state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros();
             validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey };
         }
 
         return validatorExits;
-    }
-
-    // Will be moved to system transaction
-    public void UpdateExitPrecompile(IReleaseSpec spec, IWorldState state)
-    {
-        UpdateExitQueue(spec, state);
-        UpdateExcessExits(spec, state);
-        ResetExitCount(spec, state);
-    }
-
-    private void UpdateExitQueue(IReleaseSpec spec, IWorldState state)
-    {
-        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
-        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
-
-        UInt256 queueHeadIndex = new(state.Get(queueHeadIndexCell));
-        UInt256 queueTailIndex = new(state.Get(queueTailIndexCell));
-
-        UInt256 numExitsInQueue = queueTailIndex - queueHeadIndex;
-        UInt256 numExitsDequeued = UInt256.Min(numExitsInQueue, MaxWithdrawalRequestsPerBlock);
-        UInt256 newQueueHeadIndex = queueHeadIndex + numExitsDequeued;
-        if (newQueueHeadIndex == queueTailIndex)
-        {
-            state.Set(queueHeadIndexCell, UInt256.Zero.ToLittleEndian());
-            state.Set(queueTailIndexCell, UInt256.Zero.ToLittleEndian());
-        }
-        else
-        {
-            state.Set(queueHeadIndexCell, newQueueHeadIndex.ToLittleEndian());
-        }
     }
 
     private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)

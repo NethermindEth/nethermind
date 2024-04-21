@@ -10,7 +10,8 @@ namespace Nethermind.Serialization.Rlp;
 public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValueDecoder<ValidatorExit>, IRlpObjectDecoder<ValidatorExit>
 {
     public int GetLength(ValidatorExit item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOfSequence(Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey));
+        Rlp.LengthOfSequence(Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey)) +
+        Rlp.LengthOf(item.Amount);
 
     public ValidatorExit Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -18,7 +19,8 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValue
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
         byte[] validatorPubkey = rlpStream.DecodeByteArray();
-        return new ValidatorExit(sourceAddress, validatorPubkey);
+        ulong amount = rlpStream.DecodeULong();
+        return new ValidatorExit(sourceAddress, validatorPubkey, amount);
     }
 
     public ValidatorExit Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -27,7 +29,8 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValue
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
         byte[] validatorPubkey = decoderContext.DecodeByteArray();
-        return new ValidatorExit(sourceAddress, validatorPubkey);
+        ulong amount = decoderContext.DecodeULong();
+        return new ValidatorExit(sourceAddress, validatorPubkey, amount);
     }
 
     public void Encode(RlpStream stream, ValidatorExit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -36,6 +39,7 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValue
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
         stream.Encode(item.ValidatorPubkey);
+        stream.Encode(item.Amount);
     }
 
     public Rlp Encode(ValidatorExit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
