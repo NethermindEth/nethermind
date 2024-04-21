@@ -76,25 +76,24 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
 
     private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell previousExcessExitsCell = new(spec.Eip7002ContractAddress, ExcessWithdrawalRequestsStorageSlot);
-        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
+        StorageCell previousExcessCell = new(spec.Eip7002ContractAddress, ExcessWithdrawalRequestsStorageSlot);
+        StorageCell countCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
 
-        UInt256 previousExcessExits = new(state.Get(previousExcessExitsCell));
-        UInt256 exitCount = new(state.Get(exitCountCell));
+        UInt256 previousExcess = new(state.Get(previousExcessCell));
+        UInt256 count = new(state.Get(countCell));
 
-        UInt256 newExcessExits = 0;
-        if (previousExcessExits + exitCount > TargetWithdrawalRequestsPerBlock)
+        UInt256 newExcess = 0;
+        if (previousExcess + count > TargetWithdrawalRequestsPerBlock)
         {
-            newExcessExits = previousExcessExits + exitCount - TargetWithdrawalRequestsPerBlock;
+            newExcess = previousExcess + count - TargetWithdrawalRequestsPerBlock;
         }
 
-
-        state.Set(previousExcessExitsCell, newExcessExits.ToLittleEndian());
+        state.Set(previousExcessCell, newExcess.ToLittleEndian());
     }
 
     private void ResetExitCount(IReleaseSpec spec, IWorldState state)
     {
-        StorageCell exitCountCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
-        state.Set(exitCountCell, UInt256.Zero.ToLittleEndian());
+        StorageCell countCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
+        state.Set(countCell, UInt256.Zero.ToLittleEndian());
     }
 }
