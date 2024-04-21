@@ -56,8 +56,19 @@ public class ValidatorExitEipHandler : IValidatorExitEipHandler
                 state.Get(validatorAddressFirstCell)[..32].ToArray()
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
-            ulong amount =  state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros();
-            validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey };
+            ulong amount =  state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
+            validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
+        }
+
+        UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;
+        if (newQueueHeadIndex == queueTailIndex)
+        {
+            state.Set(queueHeadIndexCell, UInt256.Zero.ToLittleEndian());
+            state.Set(queueTailIndexCell, UInt256.Zero.ToLittleEndian()); // ToDo ToLittleEndian??
+        }
+        else
+        {
+            state.Set(queueHeadIndexCell, newQueueHeadIndex.ToLittleEndian());
         }
 
         return validatorExits;
