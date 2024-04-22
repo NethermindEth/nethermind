@@ -14,11 +14,10 @@ namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
-    public void ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
+    public List<Deposit>? ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (!spec.DepositsEnabled)
-            return;
-
+            return null;
 
         List<Deposit> depositList = [];
         for (int i = 0; i < block.Transactions.Length; i++)
@@ -34,13 +33,6 @@ public class DepositsProcessor : IDepositsProcessor
             }
         }
 
-        CalculateDepositsRoot(block, depositList, spec);
-    }
-
-    private void CalculateDepositsRoot(Block block, IEnumerable<Deposit> deposits, IReleaseSpec spec)
-    {
-        block.Header.DepositsRoot = deposits.IsNullOrEmpty()
-            ? Keccak.EmptyTreeHash
-            : new DepositTrie(deposits.ToArray()!).RootHash;
+        return depositList;
     }
 }

@@ -23,7 +23,8 @@ public class ConsensusRequestsProcessor
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
     {
         // Process deposits
-         _depositsProcessor.ProcessDeposits(block, receipts, spec);
+        var deposits =  _depositsProcessor.ProcessDeposits(block, receipts, spec);
+
 
         // Process withdrawal requests
         if (spec.IsEip7002Enabled)

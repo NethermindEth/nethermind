@@ -64,7 +64,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
         stream.Encode(item.WithdrawalCredentials);
         stream.Encode(item.Amount);
         stream.Encode(item.Signature);
-        stream.Encode(item.Index);
+       // stream.Encode(item.Index); ToDo fix
     }
 
     public Rlp Encode(Deposit? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
