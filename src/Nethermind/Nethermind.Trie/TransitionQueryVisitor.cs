@@ -133,21 +133,29 @@ public class TransitionQueryVisitor : ITreeVisitor<TreePathContextWithStorage>, 
         switch (trieVisitContext.IsStorage)
         {
             case true:
-                _valueCollector.CollectStorage(ctx.Storage, in path.Path, node.Value);
+                if (_skipStorageStartHashComparison)
+                {
+                    _valueCollector.CollectStorage(ctx.Storage, in path.Path, node.Value);
+                    _currentLeafCount++;
+                }
+
                 // We found at least one leaf, don't compare with startHash anymore
                 _skipStorageStartHashComparison = true;
                 CurrentAccountPath = new TreePath(ctx.Storage, 64);
                 CurrentStoragePath = new TreePath(path.Path, 64);
                 break;
             case false:
-                _valueCollector.CollectAccount(in path.Path, node.Value);
+                if (_skipAccountStartHashComparison)
+                {
+                    _valueCollector.CollectAccount(in path.Path, node.Value);
+                    _currentLeafCount++;
+                }
                 // We found at least one leaf, don't compare with startHash anymore
                 _skipAccountStartHashComparison = true;
                 CurrentAccountPath = new TreePath(path.Path, 64);
                 CurrentStoragePath = TreePath.Empty;
                 break;
         }
-        _currentLeafCount++;
     }
 
     public void VisitCode(in TreePathContextWithStorage nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)

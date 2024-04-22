@@ -7,6 +7,7 @@ using System.IO;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -86,10 +87,10 @@ public class TransitionWorldState(
         return base.GetCodeChunk(codeOwner, chunkId);
     }
 
-    public void SweepLeaves(long blockNumber)
+    public void SweepLeaves(int blockNumber)
     {
         var options = new VisitingOptions { ExpectAccounts = true };
-        var visitor = new TransitionQueryVisitor(_startAccountHash, _startStorageHash, this, NumberOfLeavesToMove);
+        var visitor = new TransitionQueryVisitor(_startAccountHash, _startStorageHash, this, blockNumber);
         merkleStateReader.RunTreeVisitor(visitor, FinalizedMerkleStateRoot, options);
         _startAccountHash = visitor.CurrentAccountPath.Path;
         _startStorageHash = visitor.CurrentStoragePath.Path;
@@ -148,6 +149,7 @@ public class TransitionWorldState(
 
     public void CollectAccount(in ValueHash256 path, CappedArray<byte> value)
     {
+        Console.WriteLine($"CollectAccount {path} {value.ToArray().ToHexString()}");
         var addressBytes = preImageDb.Get(path.BytesAsSpan);
         if (addressBytes is null) throw new ArgumentException("PreImage not found");
         var address = new Address(addressBytes);
@@ -156,6 +158,7 @@ public class TransitionWorldState(
 
     public void CollectStorage(in ValueHash256 account, in ValueHash256 path, CappedArray<byte> value)
     {
+        Console.WriteLine($"CollectStorage {account} {path} {value.ToArray().ToHexString()}");
         var addressBytes = preImageDb.Get(account.BytesAsSpan);
         if (addressBytes is null) throw new ArgumentException("PreImage not found");
         var address = new Address(addressBytes);

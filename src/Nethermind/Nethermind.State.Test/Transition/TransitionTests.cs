@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -23,43 +24,57 @@ namespace Nethermind.Store.Test.Transition;
 public class TransitionTests
 {
     private static readonly ILogManager Logger = LimboLogs.Instance;
+    private MemDb _preImageDb;
+
+    private StateReader _merkleReader;
+    private WorldState _merkleState;
+
+    [SetUp]
+    public void SetUp()
+    {
+        _preImageDb = new MemDb();
+        _preImageDb[Keccak.Compute(TestItem.AddressA.Bytes).Bytes] = TestItem.AddressA.Bytes;
+        _preImageDb[Keccak.Compute(TestItem.AddressB.Bytes).Bytes] = TestItem.AddressB.Bytes;
+        _preImageDb[Keccak.Compute(TestItem.AddressC.Bytes).Bytes] = TestItem.AddressC.Bytes;
+        _preImageDb[Keccak.Compute(TestItem.AddressD.Bytes).Bytes] = TestItem.AddressD.Bytes;
+        _preImageDb[Keccak.Compute(TestItem.AddressE.Bytes).Bytes] = TestItem.AddressE.Bytes;
+        _preImageDb[Keccak.Compute(UInt256.One.ToBigEndian()).Bytes] = UInt256.One.ToBigEndian();
+        _preImageDb[Keccak.Compute(((UInt256)2).ToBigEndian()).Bytes] = ((UInt256)2).ToBigEndian();
+        _preImageDb[Keccak.Compute(((UInt256)200).ToBigEndian()).Bytes] = ((UInt256)200).ToBigEndian();
+
+        var merkleCodeDb = new MemDb();
+        TrieStore merkleStore = new(new MemDb(), Logger);
+        _merkleReader = new(merkleStore, merkleCodeDb, Logger);
+        _merkleState = new(merkleStore, merkleCodeDb, Logger);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        _preImageDb.Dispose();
+    }
 
     [Test]
     public void TestProperSequenceOfReads()
     {
-        var preImageDb = new MemDb();
-        preImageDb[Keccak.Compute(TestItem.AddressA.Bytes).Bytes] = TestItem.AddressA.Bytes;
-        preImageDb[Keccak.Compute(TestItem.AddressB.Bytes).Bytes] = TestItem.AddressB.Bytes;
-        preImageDb[Keccak.Compute(TestItem.AddressC.Bytes).Bytes] = TestItem.AddressC.Bytes;
-        preImageDb[Keccak.Compute(TestItem.AddressD.Bytes).Bytes] = TestItem.AddressD.Bytes;
-        preImageDb[Keccak.Compute(TestItem.AddressE.Bytes).Bytes] = TestItem.AddressE.Bytes;
-        preImageDb[Keccak.Compute(UInt256.One.ToBigEndian()).Bytes] = UInt256.One.ToBigEndian();
-        preImageDb[Keccak.Compute(((UInt256)2).ToBigEndian()).Bytes] = ((UInt256)2).ToBigEndian();
-        preImageDb[Keccak.Compute(((UInt256)200).ToBigEndian()).Bytes] = ((UInt256)200).ToBigEndian();
+        _merkleState.CreateAccount(TestItem.AddressA, 1.Ether());
+        _merkleState.CreateAccount(TestItem.AddressB, 2.Ether());
+        _merkleState.CreateAccount(TestItem.AddressC, 3.Ether());
+        _merkleState.CreateAccount(TestItem.AddressD, 4.Ether());
+        _merkleState.CreateAccount(TestItem.AddressE, 5.Ether());
+        _merkleState.Commit(Cancun.Instance);
+        _merkleState.CommitTree(0);
 
-        var merkleCodeDb = new MemDb();
-        TrieStore trieStore = new(new MemDb(), Logger);
-        WorldState provider = new(trieStore, merkleCodeDb, Logger);
+        _merkleState.Set(new StorageCell(TestItem.AddressB, UInt256.One), TestItem.KeccakA.BytesToArray());
+        _merkleState.Set(new StorageCell(TestItem.AddressB, (UInt256)2), TestItem.KeccakA.BytesToArray());
+        _merkleState.Set(new StorageCell(TestItem.AddressB, (UInt256)200), TestItem.KeccakA.BytesToArray());
 
-        provider.CreateAccount(TestItem.AddressA, 1.Ether());
-        provider.CreateAccount(TestItem.AddressB, 2.Ether());
-        provider.CreateAccount(TestItem.AddressC, 3.Ether());
-        provider.CreateAccount(TestItem.AddressD, 4.Ether());
-        provider.CreateAccount(TestItem.AddressE, 5.Ether());
+        _merkleState.Set(new StorageCell(TestItem.AddressC, UInt256.One), TestItem.KeccakA.BytesToArray());
+        _merkleState.Set(new StorageCell(TestItem.AddressC, (UInt256)2), TestItem.KeccakA.BytesToArray());
+        _merkleState.Set(new StorageCell(TestItem.AddressC, (UInt256)200), TestItem.KeccakA.BytesToArray());
 
-        provider.Commit(Prague.Instance);
-        provider.CommitTree(0);
-
-        provider.Set(new StorageCell(TestItem.AddressB, UInt256.One), TestItem.KeccakA.BytesToArray());
-        provider.Set(new StorageCell(TestItem.AddressB, (UInt256)2), TestItem.KeccakA.BytesToArray());
-        provider.Set(new StorageCell(TestItem.AddressB, (UInt256)200), TestItem.KeccakA.BytesToArray());
-
-        provider.Set(new StorageCell(TestItem.AddressC, UInt256.One), TestItem.KeccakA.BytesToArray());
-        provider.Set(new StorageCell(TestItem.AddressC, (UInt256)2), TestItem.KeccakA.BytesToArray());
-        provider.Set(new StorageCell(TestItem.AddressC, (UInt256)200), TestItem.KeccakA.BytesToArray());
-
-        provider.Commit(Prague.Instance);
-        provider.CommitTree(1);
+        _merkleState.Commit(Cancun.Instance);
+        _merkleState.CommitTree(1);
 
         var codeA = new byte[246];
         var codeB = new byte[2460];
@@ -67,16 +82,17 @@ public class TransitionTests
         TestItem.Random.NextBytes(codeA);
         TestItem.Random.NextBytes(codeA);
         TestItem.Random.NextBytes(codeB);
-        provider.InsertCode(TestItem.AddressC, codeA, Prague.Instance);
-        provider.InsertCode(TestItem.AddressE, codeB, Prague.Instance);
-        provider.Commit(Prague.Instance);
-        provider.CommitTree(2);
+        _merkleState.InsertCode(TestItem.AddressC, codeA, Prague.Instance);
+        _merkleState.InsertCode(TestItem.AddressE, codeB, Prague.Instance);
+        _merkleState.Commit(Cancun.Instance);
+        _merkleState.CommitTree(2);
+
 
         var verkleCodeDb = new MemDb();
         IVerkleTreeStore verkleStore = VerkleTestUtils.GetVerkleStoreForTest<PersistEveryBlock>(DbMode.MemDb);
         var verkleTree = new VerkleStateTree(verkleStore, Logger);
         var transitionWorldState = new TransitionWorldState(
-            new StateReader(trieStore, merkleCodeDb, Logger), provider.StateRoot, verkleTree, verkleCodeDb, preImageDb,
+            _merkleReader, _merkleState.StateRoot, verkleTree, verkleCodeDb, _preImageDb,
             Logger);
 
         transitionWorldState.GetBalance(TestItem.AddressA).Should().BeEquivalentTo(1.Ether());
@@ -91,7 +107,7 @@ public class TransitionTests
         transitionWorldState.CommitTree(3);
 
         transitionWorldState.GetBalance(TestItem.AddressE).Should().BeEquivalentTo(3.Ether());
-        provider.GetBalance(TestItem.AddressE).Should().BeEquivalentTo(5.Ether());
+        _merkleState.GetBalance(TestItem.AddressE).Should().BeEquivalentTo(5.Ether());
 
         transitionWorldState.Get(new StorageCell(TestItem.AddressB, (UInt256)2)).ToArray().Should()
             .BeEquivalentTo(TestItem.KeccakA.BytesToArray());
@@ -103,9 +119,47 @@ public class TransitionTests
 
         transitionWorldState.Get(new StorageCell(TestItem.AddressB, (UInt256)2)).ToArray().Should()
             .BeEquivalentTo(TestItem.KeccakB.BytesToArray());
-        provider.Get(new StorageCell(TestItem.AddressB, (UInt256)2)).ToArray().Should()
+        _merkleState.Get(new StorageCell(TestItem.AddressB, (UInt256)2)).ToArray().Should()
             .BeEquivalentTo(TestItem.KeccakA.BytesToArray());
 
-        transitionWorldState.SweepLeaves(5);
+        int x = 0;
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
+        Console.WriteLine($"this is {x++}");
+        transitionWorldState.SweepLeaves(2);
     }
 }
