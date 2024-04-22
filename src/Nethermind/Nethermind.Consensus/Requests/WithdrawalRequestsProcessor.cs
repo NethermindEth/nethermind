@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
@@ -25,9 +26,12 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
     // Will be moved to system transaction
     public WithdrawalRequest[]? ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
-
         if (spec.IsEip7002Enabled == false)
             return null;
+
+        Address eip7002Account = spec.Eip7002ContractAddress;
+        if (!state.AccountExists(eip7002Account))
+            return Array.Empty<WithdrawalRequest>();
 
         WithdrawalRequest[] exits = DequeueWithdrawalRequests(spec, state);
         UpdateExcessExits(spec, state);
