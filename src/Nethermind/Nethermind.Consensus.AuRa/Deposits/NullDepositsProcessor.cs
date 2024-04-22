@@ -1,10 +1,9 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using System.Collections.Generic;
+using Nethermind.Consensus.Requests;
 
 namespace Nethermind.Consensus.AuRa.Deposits;
 

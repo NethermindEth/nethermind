@@ -3,10 +3,8 @@
 
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
-using System.Collections.Generic;
 
-namespace Nethermind.Consensus.Withdrawals;
+namespace Nethermind.Consensus.Requests;
 
 public interface IDepositsProcessor
 {
