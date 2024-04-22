@@ -7,7 +7,6 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.ConsensusRequests;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Requests;

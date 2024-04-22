@@ -5,7 +5,7 @@ using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.ConsensusRequests;
+namespace Nethermind.Consensus.Requests;
 
 public interface IWithdrawalRequestsProcessor
 {

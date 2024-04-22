@@ -8,7 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
-namespace Nethermind.Blockchain.ConsensusRequests;
+namespace Nethermind.Consensus.Requests;
 
 public class ConsensusRequestsProcessor
 {

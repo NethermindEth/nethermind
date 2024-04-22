@@ -9,7 +9,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
-namespace Nethermind.Blockchain.ConsensusRequests;
+namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
 public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
