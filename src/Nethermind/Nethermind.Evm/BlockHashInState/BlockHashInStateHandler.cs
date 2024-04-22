@@ -27,9 +27,14 @@ public static class BlockHashInStateHandler
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
     }
 
-    public static Hash256? GetBlockHashFromState(long blockNumber, IReleaseSpec spec, IWorldState stateProvider)
+    public static Hash256? GetBlockHashFromState(long currentBlockNumber, long requiredBlockNumber, IReleaseSpec spec, IWorldState stateProvider)
     {
-        var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
+        if (requiredBlockNumber >= currentBlockNumber || requiredBlockNumber <
+            currentBlockNumber - Math.Min(currentBlockNumber, Eip2935Constants.RingBufferSize))
+        {
+            return null;
+        }
+        var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = stateProvider.Get(blockHashStoreCell);

@@ -28,14 +28,13 @@ namespace Nethermind.Blockchain
 
         public Hash256? GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState? stateProvider = null)
         {
-
+            long current = currentBlock.Number;
             if (spec.IsBlockHashInStateAvailable)
             {
                 ArgumentNullException.ThrowIfNull(stateProvider);
-                return BlockHashInStateHandler.GetBlockHashFromState(number, spec, stateProvider);
+                return BlockHashInStateHandler.GetBlockHashFromState(current, number, spec, stateProvider);
             }
 
-            long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
             {
                 return null;
