@@ -16,7 +16,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -80,7 +80,7 @@ namespace Nethermind.Serialization.Rlp
 
         public void Encode(Withdrawal value) => _withdrawalDecoder.Encode(this, value);
         public void Encode(Deposit value) => _depositDecoder.Encode(this, value);
-        public void Encode(ValidatorExit value) => _validatorExitsDecoder.Encode(this, value);
+        public void Encode(WithdrawalRequest value) => _validatorExitsDecoder.Encode(this, value);
 
         public void Encode(LogEntry value)
         {

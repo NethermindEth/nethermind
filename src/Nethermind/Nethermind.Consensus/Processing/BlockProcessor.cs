@@ -9,7 +9,7 @@ using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -24,7 +24,6 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -42,9 +41,8 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IValidatorExitEipHandler _validatorExitEipHandler;
 
-    private readonly IDepositsProcessor _depositsProcessor;
+    private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -64,9 +62,9 @@ public partial class BlockProcessor : IBlockProcessor
         ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IDepositsProcessor? depositsProcessor = null,
         IBeaconBlockRootHandler? beaconBlockRootHandler = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -79,8 +77,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
-        _depositsProcessor = depositsProcessor ?? new DepositsProcessor(logManager);
-        _validatorExitEipHandler = new ValidatorExitEipHandler();
+        _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -258,9 +255,8 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _consensusRequestsProcessor.ProcessRequests(spec, _stateProvider, block, receipts);
 
-        _depositsProcessor.ProcessDeposits(block, receipts, spec);
-        ProcessValidatorExits(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
@@ -274,19 +270,6 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.Hash = block.Header.CalculateHash();
 
         return receipts;
-    }
-
-    private void ProcessValidatorExits(Block block, IReleaseSpec spec)
-    {
-        if (!spec.IsEip7002Enabled)
-        {
-            return;
-        }
-
-        ValidatorExit[] validatorExits = _validatorExitEipHandler.CalculateValidatorExits(spec, _stateProvider);
-        Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
-        block.Body.ValidatorExits = validatorExits;
-        block.Header.ValidatorExitsRoot = root;
     }
 
     // TODO: block processor pipeline

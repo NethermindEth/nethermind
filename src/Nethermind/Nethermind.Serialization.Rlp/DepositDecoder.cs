@@ -1,7 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
@@ -64,7 +64,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
         stream.Encode(item.WithdrawalCredentials);
         stream.Encode(item.Amount);
         stream.Encode(item.Signature);
-        stream.Encode(item.Index);
+        // stream.Encode(item.Index); ToDo fix
     }
 
     public Rlp Encode(Deposit? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

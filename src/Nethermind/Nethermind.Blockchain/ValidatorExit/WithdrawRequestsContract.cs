@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Reflection.Metadata;
 using Nethermind.Blockchain.Contracts;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -26,7 +27,7 @@ public class WithdrawRequestsHandler
     {
         _transactionProcessor = transactionProcessor;
     }
-    ValidatorExit[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state, BlockHeader header)
+    WithdrawalRequest[] CalculateValidatorExits(IReleaseSpec spec, IWorldState state, BlockHeader header)
     {
         CallOutputTracer tracer = new();
 
@@ -45,7 +46,7 @@ public class WithdrawRequestsHandler
 
             _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
             var result = tracer.ReturnValue;
-            var withdrawalRequests = new List<ValidatorExit>();
+            var withdrawalRequests = new List<WithdrawalRequest>();
 
 
             return withdrawalRequests.ToArray();

@@ -13,6 +13,7 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
@@ -234,7 +235,7 @@ public partial class EngineModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            DepositsProcessor = new DepositsProcessor(LogManager);
+            DepositsProcessor = new DepositsProcessor();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -245,8 +246,7 @@ public partial class EngineModuleTests
                 NullWitnessCollector.Instance,
                 TxProcessor,
                 LogManager,
-                WithdrawalProcessor,
-                DepositsProcessor);
+                WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

@@ -11,11 +11,11 @@ using System.Text;
 using System.Text.Json;
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle.Json;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Specs.ChainSpecStyle;
 
@@ -156,7 +156,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             Eip6110TransitionTimestamp = chainSpecJson.Params.Eip6110TransitionTimestamp,
             Eip6110ContractAddress = chainSpecJson.Params.Eip6110ContractAddress,
             Eip7002TransitionTimestamp = chainSpecJson.Params.Eip7002TransitionTimestamp,
-            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress,
+            Eip7002ContractAddress = chainSpecJson.Params.Eip7002ContractAddress ?? Eip7002Constants.WithdrawalRequestPredeployAddress,
             Eip1559FeeCollector = chainSpecJson.Params.Eip1559FeeCollector,
             Eip1559FeeCollectorTransition = chainSpecJson.Params.Eip1559FeeCollectorTransition,
             Eip1559BaseFeeMinValueTransition = chainSpecJson.Params.Eip1559BaseFeeMinValueTransition,
@@ -454,7 +454,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
                 depositsEnabled ? Array.Empty<Deposit>() : null,
-                validatorExitsEnabled ? Array.Empty<ValidatorExit>() : null);
+                validatorExitsEnabled ? Array.Empty<WithdrawalRequest>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);

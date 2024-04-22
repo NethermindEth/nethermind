@@ -13,7 +13,7 @@ using Nethermind.Serialization.Json;
 using Nethermind.Serialization.Rlp;
 using System.Text.Json.Serialization;
 using System.Runtime.CompilerServices;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
@@ -151,7 +151,7 @@ public class BlockForRpc
     public Hash256? DepositsRoot { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<ValidatorExit>? ValidatorExits { get; set; }
+    public IEnumerable<WithdrawalRequest>? ValidatorExits { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ValidatorExitsRoot { get; set; }

@@ -41,7 +41,6 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
-            IDepositsProcessor depositsProcessor,
             ITransactionProcessor transactionProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
@@ -57,8 +56,7 @@ namespace Nethermind.Consensus.AuRa
                 NullWitnessCollector.Instance,
                 transactionProcessor,
                 logManager,
-                withdrawalProcessor,
-                depositsProcessor)
+                withdrawalProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

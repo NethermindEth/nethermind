@@ -5,8 +5,8 @@ using System.Linq;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Serialization.Rlp;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 {
@@ -110,18 +110,18 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
                 Withdrawal[]? withdrawals = null;
                 Deposit[]? deposits = null;
-                ValidatorExit[]? validatorExits = null;
+                WithdrawalRequest[]? validatorExits = null;
                 if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
                 }
 
-                if(ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     deposits = ctx.DecodeArray(_depositDecoder);
                 }
 
-                if(ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
+                if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     validatorExits = ctx.DecodeArray(_validatorExitDecoder);
                 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.ComponentModel.DataAnnotations;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -10,14 +9,12 @@ using Nethermind.Abi;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Deposits;
 using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 
 namespace Nethermind.AuRa.Test.Contract;
@@ -101,7 +98,6 @@ public class AuRaContractGasLimitOverrideTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                NullDepositsProcessor.Instance,
                 TxProcessor,
                 null,
                 null,

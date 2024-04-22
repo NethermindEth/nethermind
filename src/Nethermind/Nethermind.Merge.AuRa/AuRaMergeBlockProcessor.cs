@@ -5,6 +5,7 @@ using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Validators;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
@@ -31,7 +32,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
-        IDepositsProcessor depositsProcessor,
         ITransactionProcessor transactionProcessor,
         IAuRaValidator? validator,
         ITxFilter? txFilter = null,
@@ -47,7 +47,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
-            depositsProcessor,
             transactionProcessor,
             validator,
             txFilter,

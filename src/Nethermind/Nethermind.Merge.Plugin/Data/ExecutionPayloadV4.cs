@@ -3,10 +3,10 @@
 
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State.Proofs;
-using Nethermind.Blockchain.ValidatorExit;
 
 namespace Nethermind.Merge.Plugin.Data;
 
@@ -51,5 +51,5 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
     /// </summary>
     [JsonRequired]
-    public override ValidatorExit[]? ValidatorExits { get; set; }
+    public override WithdrawalRequest[]? ValidatorExits { get; set; }
 }

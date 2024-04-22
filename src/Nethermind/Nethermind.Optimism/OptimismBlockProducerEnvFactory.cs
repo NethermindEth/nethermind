@@ -7,6 +7,7 @@ using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
@@ -93,6 +94,6 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
             readOnlyTxProcessingEnv.TransactionProcessor,
             new Create2DeployerContractRewriter(_specHelper, _specProvider, _blockTree),
             new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
-            new DepositsProcessor(logManager));
+            new DepositsProcessor());
     }
 }

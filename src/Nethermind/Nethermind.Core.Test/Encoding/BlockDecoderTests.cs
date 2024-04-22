@@ -3,7 +3,7 @@
 
 using System;
 using System.IO;
-using Nethermind.Blockchain.ValidatorExit;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
@@ -98,7 +98,12 @@ public class BlockDecoderTests
                 .WithMixHash(Keccak.EmptyTreeHash)
                 // an empty Deposit array
                 .WithDeposits(0)
-                .WithValidatorExits(new[] { new ValidatorExit(TestItem.AddressA, new byte[48]) })
+                .WithValidatorExits(new[] { new WithdrawalRequest()
+                {
+                    SourceAddress = TestItem.AddressA,
+                    ValidatorPubkey = new byte[48],
+                    Amount = 12
+                } })
                 .TestObject
         };
     }

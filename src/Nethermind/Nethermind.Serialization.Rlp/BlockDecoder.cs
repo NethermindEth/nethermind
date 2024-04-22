@@ -4,8 +4,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
-using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp
 {
@@ -57,7 +57,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal>? withdrawals = DecodeWithdrawals(rlpStream, blockCheck);
             List<Deposit>? deposits = DecodeDeposits(rlpStream, blockCheck);
-            List<ValidatorExit>? validatorExits = DecodeValidatorExits(rlpStream, blockCheck);
+            List<WithdrawalRequest>? validatorExits = DecodeValidatorExits(rlpStream, blockCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -134,9 +134,9 @@ namespace Nethermind.Serialization.Rlp
             return deposits;
         }
 
-        private List<ValidatorExit>? DecodeValidatorExits(RlpStream rlpStream, int blockCheck)
+        private List<WithdrawalRequest>? DecodeValidatorExits(RlpStream rlpStream, int blockCheck)
         {
-            List<ValidatorExit>? validatorExits = null;
+            List<WithdrawalRequest>? validatorExits = null;
             if (rlpStream.Position != blockCheck)
             {
                 bool lengthWasRead = true;
@@ -320,7 +320,7 @@ namespace Nethermind.Serialization.Rlp
 
             List<Withdrawal>? withdrawals = DecodeWithdrawals(ref decoderContext, blockCheck);
             List<Deposit>? deposits = DecodeDeposits(ref decoderContext, blockCheck);
-            List<ValidatorExit>? validatorExits = DecodeValidatorExits(ref decoderContext, blockCheck);
+            List<WithdrawalRequest>? validatorExits = DecodeValidatorExits(ref decoderContext, blockCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
@@ -371,9 +371,9 @@ namespace Nethermind.Serialization.Rlp
 
             return deposits;
         }
-        private List<ValidatorExit>? DecodeValidatorExits(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
+        private List<WithdrawalRequest>? DecodeValidatorExits(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
         {
-            List<ValidatorExit>? validatorExits = null;
+            List<WithdrawalRequest>? validatorExits = null;
 
             if (decoderContext.Position != blockCheck)
             {

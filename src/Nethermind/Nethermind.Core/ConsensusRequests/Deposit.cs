@@ -4,18 +4,45 @@
 using Nethermind.Core.Extensions;
 using System.Text;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.ConsensusRequests;
 
 /// <summary>
 /// Represents a Deposit that has been validated at the consensus layer.
 /// </summary>
-public class Deposit
+public class Deposit : ConsensusRequest
 {
-    public byte[]? PubKey { get; set; }
-    public byte[]? WithdrawalCredentials { get; set; }
-    public ulong Amount { get; set; }
-    public byte[]? Signature { get; set; }
-    public ulong Index { get; set; }
+    public Deposit()
+    {
+        Type = RequestsType.Deposit;
+    }
+    public byte[]? PubKey
+    {
+        get { return PubKeyField; }
+        set { PubKeyField = value; }
+    }
+
+    public byte[]? WithdrawalCredentials
+    {
+        get { return WithdrawalCredentialsField; }
+        set { WithdrawalCredentialsField = value; }
+    }
+
+    public ulong Amount
+    {
+        get { return AmountField; }
+        set { AmountField = value; }
+    }
+
+    public byte[]? Signature
+    {
+        get { return SignatureField; }
+        set { SignatureField = value; }
+    }
+    public ulong? Index
+    {
+        get { return IndexField; }
+        set { IndexField = value; }
+    }
     public override string ToString() => ToString(string.Empty);
 
     public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(Deposit)} {{")
@@ -25,4 +52,6 @@ public class Deposit
         .Append($"{nameof(Signature)}: {Signature?.ToHexString()}, ")
         .Append($"{nameof(PubKey)}: {PubKey?.ToHexString()}}}")
         .ToString();
+
+
 }
