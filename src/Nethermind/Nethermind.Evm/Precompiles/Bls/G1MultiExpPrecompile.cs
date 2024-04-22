@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
+
+using G1 = Nethermind.Crypto.Bls.P1;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -53,6 +56,17 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
         {
             result = (Array.Empty<byte>(), false);
         }
+
+        // try
+        // {
+        //     G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG2]);
+        //     G1 res = x.mult(inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray());
+        //     result = (res.ToBytesUntrimmed(), true);
+        // }
+        // catch (Exception)
+        // {
+        //     result = (Array.Empty<byte>(), false);
+        // }
 
         return result;
     }

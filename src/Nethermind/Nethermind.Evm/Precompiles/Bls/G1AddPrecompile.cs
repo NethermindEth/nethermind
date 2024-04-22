@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 
@@ -35,33 +34,25 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp;
+        const int expectedInputLength = 2 * BlsParams.LenG1;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        G1 x = new(inputData[..(2 * BlsParams.LenFp)].ToArray());
-        G1 y = new(inputData[(2 * BlsParams.LenFp)..].ToArray());
-        G1 res = x.add(y);
-        res.serialize().CopyTo(output);
-        result = (output.ToArray(), true);
-
-        // bool success = Pairings.BlsG1Add(inputData.Span, output);
-        // if (success)
-        // {
-        //     result = (output.ToArray(), true);
-        // }
-        // else
-        // {
-        //     result = (Array.Empty<byte>(), false);
-        // }
+        try
+        {
+            G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
+            G1 y = BlsExtensions.G1FromUntrimmed(inputData[BlsParams.LenG1..]);
+            G1 res = x.add(y);
+            result = (res.ToBytesUntrimmed(), true);
+        }
+        catch (Exception)
+        {
+            result = (Array.Empty<byte>(), false);
+        }
 
         return result;
     }

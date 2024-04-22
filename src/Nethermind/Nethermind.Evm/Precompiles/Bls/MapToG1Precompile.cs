@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 
+using G1 = Nethermind.Crypto.Bls.P1;
+
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>
@@ -38,9 +40,6 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
         {
             return (Array.Empty<byte>(), false);
         }
-
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
 
         (byte[], bool) result;
 

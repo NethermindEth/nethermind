@@ -6,6 +6,8 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 
+using G2 = Nethermind.Crypto.Bls.P2;
+
 namespace Nethermind.Evm.Precompiles.Bls;
 
 /// <summary>

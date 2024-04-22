@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
+
+using G2 = Nethermind.Crypto.Bls.P2;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -33,24 +35,21 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        const int expectedInputLength = 4 * BlsParams.LenFp + BlsParams.LenFr;
+        const int expectedInputLength = BlsParams.LenG2 + BlsParams.LenFr;
         if (inputData.Length != expectedInputLength)
         {
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[4 * BlsParams.LenFp + BlsParams.LenFr];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = Pairings.BlsG2Mul(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G2 x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
+            G2 res = x.mult(inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray());
+            result = (res.ToBytesUntrimmed(), true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }
