@@ -10,8 +10,8 @@ namespace Nethermind.Serialization.Rlp;
 public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpValueDecoder<WithdrawalRequest>, IRlpObjectDecoder<WithdrawalRequest>
 {
     public int GetLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey) +
-        Rlp.LengthOf(item.Amount);
+        Rlp.LengthOfSequence(Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey) +
+        Rlp.LengthOf(item.Amount));
 
     public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -54,8 +54,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
 
     public Rlp Encode(WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetLength(item, rlpBehaviors);
-        RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));
+        RlpStream rlpStream = new(GetLength(item, rlpBehaviors));
 
         Encode(rlpStream, item, rlpBehaviors);
 

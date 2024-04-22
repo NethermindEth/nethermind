@@ -26,7 +26,7 @@ public class ConsensusRequestDecoderTests
             Amount = int.MaxValue
         };
 
-        byte[] rlp = Rlp.Encode(deposit).Bytes; 
+        byte[] rlp = Rlp.Encode(deposit).Bytes;
         ConsensusRequest decoded = Rlp.Decode<ConsensusRequest>(rlp);
 
         decoded.Should().BeEquivalentTo(deposit);
@@ -101,7 +101,7 @@ public class ConsensusRequestDecoderTests
             PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
-            Amount =  int.MaxValue
+            Amount = int.MaxValue
         };
         byte[] rlp1 = new ConsensusRequestDecoder().Encode((Deposit)deposit).Bytes;
         byte[] rlp2 = Rlp.Encode(deposit).Bytes;
@@ -109,11 +109,9 @@ public class ConsensusRequestDecoderTests
         rlp1.Should().BeEquivalentTo(rlp2);
     }
 
-    [Test]
+        [Test]
     public void Should_encode_withdrawalRequest_same_for_Rlp_Encode_and_DepositDecoder_Encode()
     {
-        byte[] validatorPubkey = new byte[48];
-        validatorPubkey[11] = 11;
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()
         {
             SourceAddress = TestItem.AddressA,
