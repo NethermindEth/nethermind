@@ -2,13 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
-namespace Nethermind.Core.ConsensusRequests;
+namespace Nethermind.Core;
 using Nethermind.Core.Extensions;
 using System.Text;
 
-public struct WithdrawalRequest
+public struct ConsensusRequest
 {
-    public WithdrawalRequest(
+    public ConsensusRequest(
         ulong amount,
         Address? sourceAddress,
         byte[]? validatorPubkey,
@@ -34,7 +34,7 @@ public struct WithdrawalRequest
     public ulong? Index { get; set; }
     public override string ToString() => ToString(string.Empty);
 
-     public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(WithdrawalRequest)} {{")
+     public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(ConsensusRequest)} {{")
         .Append($"{nameof(Amount)}: {Amount}, ")
         .Append($"{nameof(Index)}: {Index}, ")
         .Append($"{nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, ")
