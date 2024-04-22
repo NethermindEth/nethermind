@@ -1,6 +1,8 @@
 ﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
@@ -22,18 +24,21 @@ public class ConsensusRequestsProcessor
     }
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
     {
+        if (spec.IsEip6110Enabled == false && spec.IsEip7002Enabled == false)
+            return;
+
+        List<ConsensusRequest> consensusRequests = [];
         // Process deposits
-        var deposits =  _depositsProcessor.ProcessDeposits(block, receipts, spec);
+        List<Deposit>? deposits = _depositsProcessor.ProcessDeposits(block, receipts, spec);
+        if (deposits is { Count: > 0 })
+            consensusRequests.AddRange(deposits);
 
+        WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state);
+        if (withdrawalRequests is { Length: > 0 })
+            consensusRequests.AddRange(withdrawalRequests);
 
-        // Process withdrawal requests
-        if (spec.IsEip7002Enabled)
-        {
-            WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state);
-            Hash256 root = ValidatorExitsTrie.CalculateRoot(withdrawalRequests);
-            block.Body.ValidatorExits = withdrawalRequests;
-            block.Header.ValidatorExitsRoot = root;
-        }
-
+        Hash256 root = ValidatorExitsTrie.CalculateRoot(withdrawalRequests); // ToDo Rohit - we have to change root calculations here
+        block.Body.ValidatorExits = withdrawalRequests;
+        block.Header.ValidatorExitsRoot = root;
     }
 }

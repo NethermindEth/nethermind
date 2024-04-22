@@ -23,8 +23,12 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
     private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
 
     // Will be moved to system transaction
-    public WithdrawalRequest[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
+    public WithdrawalRequest[]? ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
+
+        if (spec.IsEip7002Enabled == false)
+            return null;
+
         WithdrawalRequest[] exits = DequeueWithdrawalRequests(spec, state);
         UpdateExcessExits(spec, state);
         ResetExitCount(spec, state);
