@@ -75,7 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-        _consensusRequestsProcessor =  consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
+        _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         _withdrawalRequestsProcessor = new WithdrawalRequestsProcessor();
 

@@ -18,11 +18,12 @@ public class ValidatorExitDecoderTests
     {
         byte[] validatorPubkey = new byte[48];
         validatorPubkey[11] = 11;
-        WithdrawalRequest exit = new() {
-                SourceAddress = TestItem.AddressA,
-                ValidatorPubkey = validatorPubkey,
-                Amount = 0
-            };
+        WithdrawalRequest exit = new()
+        {
+            SourceAddress = TestItem.AddressA,
+            ValidatorPubkey = validatorPubkey,
+            Amount = 0
+        };
 
         Rlp encoded = _decoder.Encode(exit);
         WithdrawalRequest decoded = _decoder.Decode(encoded.Bytes);
@@ -35,7 +36,8 @@ public class ValidatorExitDecoderTests
     public void GetLength_should_be_72()
     {
         byte[] validatorPubkey = new byte[48];
-        WithdrawalRequest exit = new() {
+        WithdrawalRequest exit = new()
+        {
             SourceAddress = TestItem.AddressA,
             ValidatorPubkey = validatorPubkey,
             Amount = 0

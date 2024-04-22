@@ -21,11 +21,11 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpV
         byte[] validatorPubkey = rlpStream.DecodeByteArray();
         ulong amount = rlpStream.DecodeULong();
         return new WithdrawalRequest()
-            {
-                SourceAddress = sourceAddress,
-                ValidatorPubkey = validatorPubkey,
-                Amount = amount
-            };
+        {
+            SourceAddress = sourceAddress,
+            ValidatorPubkey = validatorPubkey,
+            Amount = amount
+        };
     }
 
     public WithdrawalRequest Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -36,11 +36,11 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpV
         byte[] validatorPubkey = decoderContext.DecodeByteArray();
         ulong amount = decoderContext.DecodeULong();
         return new WithdrawalRequest()
-            {
-                SourceAddress = sourceAddress,
-                ValidatorPubkey = validatorPubkey,
-                Amount = amount
-            };
+        {
+            SourceAddress = sourceAddress,
+            ValidatorPubkey = validatorPubkey,
+            Amount = amount
+        };
     }
 
     public void Encode(RlpStream stream, WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

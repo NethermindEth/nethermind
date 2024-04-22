@@ -63,7 +63,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
                 state.Get(validatorAddressFirstCell)[..32].ToArray()
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
-            ulong amount =  state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
+            ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
             validatorExits[(int)i] = new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
         }
 
