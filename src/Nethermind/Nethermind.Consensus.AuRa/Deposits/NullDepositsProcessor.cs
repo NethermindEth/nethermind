@@ -5,6 +5,7 @@ using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Consensus.Requests;
+using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Consensus.AuRa.Deposits;
 

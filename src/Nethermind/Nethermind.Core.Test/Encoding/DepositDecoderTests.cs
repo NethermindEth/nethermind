@@ -3,6 +3,7 @@
 
 using System;
 using FluentAssertions;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Serialization.Rlp;

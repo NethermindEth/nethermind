@@ -5,7 +5,7 @@ using Nethermind.Core.Extensions;
 using System.Text;
 using Nethermind.Core.ConsensusRequests;
 
-namespace Nethermind.Core;
+namespace Nethermind.Core.ConsensusRequests;
 
 /// <summary>
 /// Represents a Deposit that has been validated at the consensus layer.

@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.ConsensusRequests;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Trie;
 
