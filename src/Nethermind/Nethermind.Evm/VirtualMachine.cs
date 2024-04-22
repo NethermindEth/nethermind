@@ -2568,8 +2568,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long topicsCount = instruction - Instruction.LOG0;
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
-                spec.GetLogDataCost() + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
+                (long)length * spec.GetLogDataCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
