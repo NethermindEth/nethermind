@@ -31,6 +31,7 @@ using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
@@ -74,8 +75,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
-                transactionProcessor,
-                LimboLogs.Instance);
+                LimboLogs.Instance,
+                new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
 
             RecoverSignatures txRecovery = new(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, specProvider, LimboLogs.Instance);
             _processor = new BlockchainProcessor(_blockTree, blockProcessor, txRecovery, _stateReader, LimboLogs.Instance, BlockchainProcessor.Options.NoReceipts);

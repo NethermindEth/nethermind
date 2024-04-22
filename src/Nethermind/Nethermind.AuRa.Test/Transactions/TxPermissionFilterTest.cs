@@ -30,6 +30,7 @@ using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.AuRa.Test.Transactions;
 
@@ -297,7 +298,7 @@ public class TxPermissionFilterTest
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                TxProcessor,
+                new BeaconBlockRootHandler(TxProcessor, LimboLogs.Instance),
                 null,
                 PermissionBasedTxFilter);
         }

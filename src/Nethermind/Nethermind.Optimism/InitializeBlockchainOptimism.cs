@@ -104,7 +104,6 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             _api.WitnessCollector,
             _api.LogManager,
             _api.SpecHelper,
-            _api.TransactionProcessor,
             contractRewriter);
     }
 

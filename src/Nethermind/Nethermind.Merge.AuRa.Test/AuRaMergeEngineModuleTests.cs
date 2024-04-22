@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -122,6 +123,11 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     LogManager
             );
 
+            BeaconBlockRootHandler = new BeaconBlockRootHandler(
+                _api.TransactionProcessor!,
+                LogManager
+            );
+
             BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
@@ -131,8 +137,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 State,
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
-                TxProcessor,
                 LogManager,
+                BeaconBlockRootHandler,
                 WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

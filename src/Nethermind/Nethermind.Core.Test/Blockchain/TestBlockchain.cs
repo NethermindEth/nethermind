@@ -354,8 +354,8 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
-            TxProcessor,
-            LogManager);
+            LogManager,
+            new BeaconBlockRootHandler(TxProcessor, LogManager));
 
     public async Task WaitForNewHead()
     {

@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Receipts;
@@ -228,8 +229,8 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
-                _api.TransactionProcessor,
-                _api.LogManager);
+                _api.LogManager,
+                new BeaconBlockRootHandler(_api.TransactionProcessor, _api.LogManager));
         }
 
         // TODO: remove from here - move to consensus?
