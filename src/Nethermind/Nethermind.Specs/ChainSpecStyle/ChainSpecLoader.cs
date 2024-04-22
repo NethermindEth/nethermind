@@ -454,7 +454,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
                 depositsEnabled ? Array.Empty<Deposit>() : null,
-                validatorExitsEnabled ? Array.Empty<ValidatorExit>() : null);
+                validatorExitsEnabled ? Array.Empty<WithdrawalRequest>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);

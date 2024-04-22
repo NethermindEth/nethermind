@@ -51,5 +51,5 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
     /// </summary>
     [JsonRequired]
-    public override ValidatorExit[]? ValidatorExits { get; set; }
+    public override WithdrawalRequest[]? ValidatorExits { get; set; }
 }

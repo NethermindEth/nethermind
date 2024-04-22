@@ -15,7 +15,6 @@ public class ConsensusRequest
     public RequestsType Type { get; protected set; }
     public ulong AmountField { get; protected set; }
     public Address? SourceAddressField { get; protected set; }
-    public byte[]? ValidatorPubkeyField { get; protected set; }
     public byte[]? PubKeyField { get; set; }
     public byte[]? WithdrawalCredentialsField { get; protected set; }
     public byte[]? SignatureField { get; protected set; }

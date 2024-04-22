@@ -151,7 +151,7 @@ public class BlockForRpc
     public Hash256? DepositsRoot { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<ValidatorExit>? ValidatorExits { get; set; }
+    public IEnumerable<WithdrawalRequest>? ValidatorExits { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ValidatorExitsRoot { get; set; }

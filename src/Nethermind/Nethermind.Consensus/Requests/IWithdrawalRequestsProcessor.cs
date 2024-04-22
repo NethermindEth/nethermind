@@ -9,5 +9,5 @@ namespace Nethermind.Consensus.Requests;
 
 public interface IWithdrawalRequestsProcessor
 {
-    ValidatorExit[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state);
+    WithdrawalRequest[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state);
 }

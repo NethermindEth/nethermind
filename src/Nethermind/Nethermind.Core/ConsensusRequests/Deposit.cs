@@ -3,7 +3,6 @@
 
 using Nethermind.Core.Extensions;
 using System.Text;
-using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Core.ConsensusRequests;
 

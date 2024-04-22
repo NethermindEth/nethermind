@@ -110,7 +110,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
                 Withdrawal[]? withdrawals = null;
                 Deposit[]? deposits = null;
-                ValidatorExit[]? validatorExits = null;
+                WithdrawalRequest[]? validatorExits = null;
                 if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);

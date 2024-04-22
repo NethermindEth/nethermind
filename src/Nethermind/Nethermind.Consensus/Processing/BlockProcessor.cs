@@ -281,7 +281,7 @@ public partial class BlockProcessor : IBlockProcessor
             return;
         }
 
-        ValidatorExit[] validatorExits = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider);
+        WithdrawalRequest[] validatorExits = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider);
         Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
         block.Body.ValidatorExits = validatorExits;
         block.Header.ValidatorExitsRoot = root;

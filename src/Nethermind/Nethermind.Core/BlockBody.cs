@@ -8,7 +8,7 @@ namespace Nethermind.Core
 {
     public class BlockBody
     {
-        public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, Deposit[]? deposits = null, ValidatorExit[]? validatorExits = null)
+        public BlockBody(Transaction[]? transactions, BlockHeader[]? uncles, Withdrawal[]? withdrawals = null, Deposit[]? deposits = null, WithdrawalRequest[]? validatorExits = null)
         {
             Transactions = transactions ?? Array.Empty<Transaction>();
             Uncles = uncles ?? Array.Empty<BlockHeader>();
@@ -25,7 +25,7 @@ namespace Nethermind.Core
 
         public BlockBody WithChangedWithdrawals(Withdrawal[]? withdrawals) => new(Transactions, Uncles, withdrawals, Deposits, ValidatorExits);
         public BlockBody WithChangedDeposits(Deposit[]? deposits) => new(Transactions, Uncles, Withdrawals, deposits, ValidatorExits);
-        public BlockBody WithChangedValidatorExits(ValidatorExit[]? validatorExits) => new(Transactions, Uncles, Withdrawals, Deposits, validatorExits);
+        public BlockBody WithChangedValidatorExits(WithdrawalRequest[]? validatorExits) => new(Transactions, Uncles, Withdrawals, Deposits, validatorExits);
 
         public static BlockBody WithOneTransactionOnly(Transaction tx) => new(new[] { tx }, null, null);
 
@@ -35,7 +35,7 @@ namespace Nethermind.Core
 
         public Withdrawal[]? Withdrawals { get; }
 
-        public ValidatorExit[]? ValidatorExits { get; set; }
+        public WithdrawalRequest[]? ValidatorExits { get; set; }
         public Deposit[]? Deposits { get; }
 
         public bool IsEmpty => Transactions.Length == 0 && Uncles.Length == 0 && (Withdrawals?.Length ?? 0) == 0 && (Deposits?.Length ?? 0) == 0 && (ValidatorExits?.Length ?? 0) == 0;

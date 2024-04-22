@@ -311,7 +311,7 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithValidatorExits(ValidatorExit[]? validatorExits)
+        public BlockBuilder WithValidatorExits(WithdrawalRequest[]? validatorExits)
         {
             TestObjectInternal = TestObjectInternal.WithReplacedBody(
                 TestObjectInternal.Body.WithChangedValidatorExits(validatorExits));

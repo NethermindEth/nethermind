@@ -103,7 +103,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// Gets or sets a collection of <see cref="ValidatorExits"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
     /// </summary>
-    public virtual ValidatorExit[]? ValidatorExits { get; set; }
+    public virtual WithdrawalRequest[]? ValidatorExits { get; set; }
 
 
     /// <summary>

@@ -7,33 +7,43 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Serialization.Rlp;
 
-public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValueDecoder<ValidatorExit>, IRlpObjectDecoder<ValidatorExit>
+public class ValidatorExitsDecoder : IRlpStreamDecoder<WithdrawalRequest>, IRlpValueDecoder<WithdrawalRequest>, IRlpObjectDecoder<WithdrawalRequest>
 {
-    public int GetLength(ValidatorExit item, RlpBehaviors rlpBehaviors) =>
+    public int GetLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOfSequence(Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey)) +
         Rlp.LengthOf(item.Amount);
 
-    public ValidatorExit Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
         byte[] validatorPubkey = rlpStream.DecodeByteArray();
         ulong amount = rlpStream.DecodeULong();
-        return new ValidatorExit(sourceAddress, validatorPubkey, amount);
+        return new WithdrawalRequest()
+            {
+                SourceAddress = sourceAddress,
+                ValidatorPubkey = validatorPubkey,
+                Amount = amount
+            };
     }
 
-    public ValidatorExit Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public WithdrawalRequest Decode(ref Rlp.ValueDecoderContext decoderContext, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int _ = decoderContext.ReadSequenceLength();
         Address sourceAddress = decoderContext.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
         byte[] validatorPubkey = decoderContext.DecodeByteArray();
         ulong amount = decoderContext.DecodeULong();
-        return new ValidatorExit(sourceAddress, validatorPubkey, amount);
+        return new WithdrawalRequest()
+            {
+                SourceAddress = sourceAddress,
+                ValidatorPubkey = validatorPubkey,
+                Amount = amount
+            };
     }
 
-    public void Encode(RlpStream stream, ValidatorExit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public void Encode(RlpStream stream, WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
@@ -42,7 +52,7 @@ public class ValidatorExitsDecoder : IRlpStreamDecoder<ValidatorExit>, IRlpValue
         stream.Encode(item.Amount);
     }
 
-    public Rlp Encode(ValidatorExit item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    public Rlp Encode(WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         int contentLength = GetLength(item, rlpBehaviors);
         RlpStream rlpStream = new(Rlp.LengthOfSequence(contentLength));

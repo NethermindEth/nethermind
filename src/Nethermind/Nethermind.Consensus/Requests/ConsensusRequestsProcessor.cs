@@ -29,7 +29,7 @@ public class ConsensusRequestsProcessor
         // Process withdrawal requests
         if (spec.IsEip7002Enabled)
         {
-            ValidatorExit[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state);
+            WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state);
             Hash256 root = ValidatorExitsTrie.CalculateRoot(withdrawalRequests);
             block.Body.ValidatorExits = withdrawalRequests;
             block.Header.ValidatorExitsRoot = root;

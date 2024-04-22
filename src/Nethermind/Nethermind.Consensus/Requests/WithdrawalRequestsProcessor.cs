@@ -23,16 +23,16 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
     private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
 
     // Will be moved to system transaction
-    public ValidatorExit[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
+    public WithdrawalRequest[] ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
-        ValidatorExit[] exits = DequeueWithdrawalRequests(spec, state);
+        WithdrawalRequest[] exits = DequeueWithdrawalRequests(spec, state);
         UpdateExcessExits(spec, state);
         ResetExitCount(spec, state);
         return exits;
     }
 
     // Reads validator exit information from the precompile
-    private ValidatorExit[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
+    private WithdrawalRequest[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
     {
         StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
         StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
@@ -43,7 +43,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
         UInt256 numInQueue = queueTailIndex - queueHeadIndex;
         UInt256 numDequeued = UInt256.Min(numInQueue, MaxWithdrawalRequestsPerBlock);
 
-        var validatorExits = new ValidatorExit[(int)numDequeued];
+        var validatorExits = new WithdrawalRequest[(int)numDequeued];
         for (UInt256 i = 0; i < numDequeued; ++i)
         {
             UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
@@ -56,7 +56,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
             ulong amount =  state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
-            validatorExits[(int)i] = new ValidatorExit { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
+            validatorExits[(int)i] = new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
         }
 
         UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;

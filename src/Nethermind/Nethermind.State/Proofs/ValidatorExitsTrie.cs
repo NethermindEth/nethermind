@@ -11,27 +11,27 @@ using Nethermind.Trie;
 
 namespace Nethermind.State.Proofs;
 
-public class ValidatorExitsTrie : PatriciaTrie<ValidatorExit>
+public class ValidatorExitsTrie : PatriciaTrie<WithdrawalRequest>
 {
     private static readonly ValidatorExitsDecoder _codec = new();
 
-    public ValidatorExitsTrie(ValidatorExit[]? validatorExits, bool canBuildProof, ICappedArrayPool? bufferPool = null)
+    public ValidatorExitsTrie(WithdrawalRequest[]? validatorExits, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(validatorExits, canBuildProof, bufferPool)
     {
         ArgumentNullException.ThrowIfNull(validatorExits);
     }
 
-    protected override void Initialize(ValidatorExit[] validatorExits)
+    protected override void Initialize(WithdrawalRequest[] validatorExits)
     {
         var key = 0;
 
-        foreach (ValidatorExit exit in validatorExits)
+        foreach (WithdrawalRequest exit in validatorExits)
         {
             Set(Rlp.Encode(key++).Bytes, _codec.Encode(exit).Bytes);
         }
     }
 
-    public static Hash256 CalculateRoot(ValidatorExit[] validatorExits)
+    public static Hash256 CalculateRoot(WithdrawalRequest[] validatorExits)
     {
         using TrackingCappedArrayPool cappedArray = new(validatorExits.Length * 4);
         Hash256 rootHash = new ValidatorExitsTrie(validatorExits, canBuildProof: false, bufferPool: cappedArray).RootHash;
