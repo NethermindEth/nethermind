@@ -26,7 +26,8 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong BeaconChainGenesisTimestamp = 0x5fc63057;
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
-    public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
+    //TODO correct this timestamp!
+    public const ulong PragueBlockTimestamp = 0x674C6BE0;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>
@@ -47,7 +48,8 @@ public class MainnetSpecProvider : ISpecProvider
             { BlockNumber: < ParisBlockNumber } => GrayGlacier.Instance,
             { Timestamp: null } or { Timestamp: < ShanghaiBlockTimestamp } => Paris.Instance,
             { Timestamp: < CancunBlockTimestamp } => Shanghai.Instance,
-            _ => Cancun.Instance
+            { Timestamp: < PragueBlockTimestamp } => Cancun.Instance,
+            _ => Prague.Instance
         };
 
     public void UpdateMergeTransitionInfo(long? blockNumber, UInt256? terminalTotalDifficulty = null)

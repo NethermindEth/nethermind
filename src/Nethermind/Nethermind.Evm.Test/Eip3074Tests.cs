@@ -43,69 +43,6 @@ namespace Nethermind.Evm.Test
                 .. TestState.GetNonce(signer.Address).PaddedBytes(32),
                 .. SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
             ];
-                        
-            byte[] commit = new byte[32];
-            commit[0] = 0xff;
-            msg.AddRange(commit);
-
-            Hash256 msgDigest = Keccak.Compute(msg.ToArray());
-            EthereumEcdsa ecdsa = new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance);
-
-            Signature signature = ecdsa.Sign(signer, msgDigest);
-            //Recovery id/yParity needs to be at index 0
-            var data = signature.BytesWithRecovery[64..]
-                .Concat(signature.BytesWithRecovery[..64])
-                .Concat(commit).ToArray();
-
-            byte[] code = Prepare.EvmCode
-                .PushData(data[..32])
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.MSTORE)
-                .PushData(data[32..64])
-                .PushSingle(32)
-                .Op(Instruction.MSTORE)
-                .PushData(data[64..96])
-                .PushSingle(64)
-                .Op(Instruction.MSTORE)
-
-                //AUTH params
-                .PushSingle((UInt256)data.Length)
-                .Op(Instruction.PUSH0)
-                .PushData(authority)
-                .Op(Instruction.AUTH)
-
-                //Return the result of AUTH
-                .Op(Instruction.PUSH0)
-                .Op (Instruction.MSTORE8)
-                .PushSingle(1)
-                .Op(Instruction.PUSH0)
-                .Op (Instruction.RETURN)
-                .Done;
-
-            var result = Execute(code);
-
-            Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
-        }
-
-        [TestCase(true, 0)]
-        [TestCase(false, 1)]
-        public void ExecuteAuth_SignerNonceIsIncrementedAfterAUTH_ReturnsZero(bool incrementNonce, int expected)
-        {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
-
-            TestState.CreateAccount(TestItem.AddressB, 1.Ether());
-
-            if (incrementNonce)
-                TestState.IncrementNonce(TestItem.AddressB);
-
-            List<byte> msg =
-            [
-                Eip3074Constants.AuthMagic,
-                .. ((UInt256)SpecProvider.ChainId).ToBigEndian().PadLeft(32),
-                .. new byte[32],
-                .. SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
-            ];
 
             byte[] commit = new byte[32];
             commit[0] = 0xff;
@@ -150,33 +87,55 @@ namespace Nethermind.Evm.Test
             Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
         }
 
-        [Test]
-        public void ExecuteAUTHCALL()
+        [TestCase(true, 0)]
+        [TestCase(false, 1)]
+        public void ExecuteAuth_SignerNonceIsIncrementedAfterSigning_ReturnsZero(bool incrementNonce, int expected)
         {
             var signer = TestItem.PrivateKeyB;
             var authority = TestItem.AddressB;
 
+            var data = CreateSignedCommitMessage(signer);
 
-            List<byte> msg =
-            [
-                Eip3074Constants.AuthMagic,
-                .. ((UInt256)SpecProvider.ChainId).ToBigEndian().PadLeft(32),
-                .. TestState.GetNonce(signer.Address).PaddedBytes(32),
-                .. SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
-            ];
+            TestState.CreateAccount(TestItem.AddressB, 1.Ether());
+            if (incrementNonce)
+                TestState.IncrementNonce(TestItem.AddressB);
 
-            byte[] commit = new byte[32];
-            commit[0] = 0xff;
-            msg.AddRange(commit);
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
 
-            Hash256 msgDigest = Keccak.Compute(msg.ToArray());
-            EthereumEcdsa ecdsa = new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance);
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
 
-            Signature signature = ecdsa.Sign(signer, msgDigest);
-            //Recovery id/yParity needs to be at index 0
-            var data = signature.BytesWithRecovery[64..]
-                .Concat(signature.BytesWithRecovery[..64])
-                .Concat(commit).ToArray();
+                //Return the result of AUTH
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushSingle(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+        }
+
+        [Test]
+        public void ExecuteAUTHCALL_TransactionReturnsTheCurrentCallerAfterAuthCall_SignerIsReturned()
+        {
+            var signer = TestItem.PrivateKeyB;
+            var authority = TestItem.AddressB;
+            var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
                 .PushData(data[..32])
@@ -197,20 +156,62 @@ namespace Nethermind.Evm.Test
 
                 //Just throw away the result
                 .POP()
+
                 //AUTHCALL params
-                .PushData(0)
+                .PushData(20)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(TestItem.AddressC)
                 .PushData(1000000)
+                .Op(Instruction.AUTHCALL)
+                .PushSingle(20)
+                .PushSingle(0)
+                .Op(Instruction.RETURN)
                 .Done;
+
+            //Simply returns the current caller
+            byte[] codeReturnCaller = Prepare.EvmCode
+                .CALLER()
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushSingle(20)
+                .PushSingle(12)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(codeReturnCaller), codeReturnCaller, Spec);
 
             var result = Execute(code);
 
+            Assert.That(new Address(result.ReturnValue), Is.EqualTo(TestItem.AddressB));
         }
 
+        private byte[] CreateSignedCommitMessage(PrivateKey signer)
+        {
+            List<byte> msg =
+            [
+                Eip3074Constants.AuthMagic,
+                .. ((UInt256)SpecProvider.ChainId).ToBigEndian().PadLeft(32),
+                .. TestState.GetNonce(signer.Address).PaddedBytes(32),
+                .. SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
+            ];
 
+            byte[] commit = new byte[32];
+            commit[0] = 0xff;
+            msg.AddRange(commit);
+
+            Hash256 msgDigest = Keccak.Compute(msg.ToArray());
+            EthereumEcdsa ecdsa = new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance);
+
+            Signature signature = ecdsa.Sign(signer, msgDigest);
+            //Recovery id/yParity needs to be at index 0
+            var data = signature.BytesWithRecovery[64..]
+                .Concat(signature.BytesWithRecovery[..64])
+                .Concat(commit).ToArray();
+            return data;
+        }
     }
 }

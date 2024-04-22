@@ -217,6 +217,7 @@ namespace Nethermind.Evm
                     case ExecutionType.CREATE:
                     case ExecutionType.CREATE2:
                     case ExecutionType.TRANSACTION:
+                    case ExecutionType.AUTHCALL:
                         return Env.Caller;
                     case ExecutionType.DELEGATECALL:
                         return Env.ExecutingAccount;
