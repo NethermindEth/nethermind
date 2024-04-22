@@ -13,18 +13,17 @@ namespace Nethermind.Consensus.Requests;
 public class ConsensusRequestsProcessor
 {
     private readonly WithdrawalRequestsProcessor _withdrawalRequestsProcessor;
-   // private readonly IDepositsProcessor _depositsProcessor;
-
+    private readonly IDepositsProcessor _depositsProcessor;
 
     public ConsensusRequestsProcessor()
     {
         _withdrawalRequestsProcessor = new WithdrawalRequestsProcessor();
-
+        _depositsProcessor = new DepositsProcessor();
     }
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
     {
         // Process deposits
-        // _depositsProcessor.ProcessDeposits(block, receipts, spec);
+         _depositsProcessor.ProcessDeposits(block, receipts, spec);
 
         // Process withdrawal requests
         if (spec.IsEip7002Enabled)

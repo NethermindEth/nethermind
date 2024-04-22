@@ -234,7 +234,7 @@ public partial class EngineModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            DepositsProcessor = new DepositsProcessor(LogManager);
+            DepositsProcessor = new DepositsProcessor();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
