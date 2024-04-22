@@ -36,6 +36,7 @@ using Nethermind.State;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Ethereum.Test.Base
 {
@@ -167,8 +168,8 @@ namespace Ethereum.Test.Base
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                txProcessor,
-                _logManager);
+                _logManager,
+                new BeaconBlockRootHandler(txProcessor, _logManager));
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
                 blockTree,
