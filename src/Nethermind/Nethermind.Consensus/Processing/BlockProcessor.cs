@@ -272,19 +272,6 @@ public partial class BlockProcessor : IBlockProcessor
         return receipts;
     }
 
-    private void ProcessValidatorExits(Block block, IReleaseSpec spec)
-    {
-        if (!spec.IsEip7002Enabled)
-        {
-            return;
-        }
-
-        WithdrawalRequest[] validatorExits = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, _stateProvider);
-        Hash256 root = ValidatorExitsTrie.CalculateRoot(validatorExits);
-        block.Body.ValidatorExits = validatorExits;
-        block.Header.ValidatorExitsRoot = root;
-    }
-
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)
     {
