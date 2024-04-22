@@ -65,5 +65,14 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long Blake2GFRoundEip7667 = 10;
+        public const long Blake2GFRound = 1;
+
+        public const long Sha256PrecompileBaseCostEip7667 = 300L;
+        public const long Sha256PrecompileBaseCost = 60L;
+
+        public const long Sha256PrecompileWordCostEip7667 = 60L;
+        public const long Sha256PrecompileWordCost = 12L;
     }
 }

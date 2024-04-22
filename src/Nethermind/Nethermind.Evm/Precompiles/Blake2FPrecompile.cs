@@ -36,7 +36,7 @@ namespace Nethermind.Evm.Precompiles
 
             uint rounds = inputData[..4].Span.ReadEthUInt32();
 
-            return rounds;
+            return rounds * releaseSpec.GetBlake2GFRoundDataCost();
         }
 
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

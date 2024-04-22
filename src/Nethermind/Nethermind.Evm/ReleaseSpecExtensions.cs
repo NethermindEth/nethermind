@@ -101,12 +101,17 @@ namespace Nethermind.Evm
 
         public static long GetSha256PrecompileBaseCost(this IReleaseSpec spec) =>
             spec.IsEip7667Enabled
-                ? 300L
-                : 60L;
+                ? GasCostOf.Sha256PrecompileBaseCostEip7667
+                : GasCostOf.Sha256PrecompileBaseCost;
 
         public static long GetSha256PrecompileWordCost(this IReleaseSpec spec) =>
             spec.IsEip7667Enabled
-                ? 60L
-                : 12L;
+                ? GasCostOf.Sha256PrecompileWordCostEip7667
+                : GasCostOf.Sha256PrecompileWordCost;
+
+        public static long GetBlake2GFRoundDataCost(this IReleaseSpec spec) =>
+            spec.IsEip7667Enabled
+                ? GasCostOf.Blake2GFRoundEip7667
+                : GasCostOf.Blake2GFRound;
     }
 }
