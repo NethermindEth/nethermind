@@ -36,8 +36,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         IAuRaValidator? validator,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
-        ContractRewriter? contractRewriter = null
-    ) : base(
+        ContractRewriter? contractRewriter = null) : base(
             specProvider,
             blockValidator,
             rewardCalculator,
@@ -51,8 +50,7 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             validator,
             txFilter,
             gasLimitOverride,
-            contractRewriter
-        )
+            contractRewriter)
     { }
 
     protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options) =>

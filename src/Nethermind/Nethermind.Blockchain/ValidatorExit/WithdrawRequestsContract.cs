@@ -46,13 +46,28 @@ public class WithdrawRequestsHandler
 
             _transactionProcessor.Execute(transaction, new BlockExecutionContext(header), tracer);
             var result = tracer.ReturnValue;
-            var withdrawalRequests = new List<WithdrawalRequest>();
+            if (result == null || result.Length == 0)
+                return Array.Empty<WithdrawalRequest>();
 
+            var withdrawalRequests = new List<WithdrawalRequest>();
+            int sizeOfClass = 20 + 48 + 8;
+            int count = result.Length / sizeOfClass;
+            for (int i = 0; i < count; ++i)
+            {
+                WithdrawalRequest request = new();
+                Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
+                request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
+                request.ValidatorPubkey = span.Slice(20, 48).ToArray();
+                request.Amount = BitConverter.ToUInt64(span.Slice(68, 8));
+
+                withdrawalRequests.Add(request);
+            }
 
             return withdrawalRequests.ToArray();
         }
         catch (Exception)
         {
+            // add logger
             return null;
         }
     }
