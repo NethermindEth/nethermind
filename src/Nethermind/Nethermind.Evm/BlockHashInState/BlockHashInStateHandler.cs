@@ -29,8 +29,8 @@ public static class BlockHashInStateHandler
 
     public static Hash256? GetBlockHashFromState(long currentBlockNumber, long requiredBlockNumber, IReleaseSpec spec, IWorldState stateProvider)
     {
-        if (requiredBlockNumber >= currentBlockNumber || requiredBlockNumber <
-            currentBlockNumber - Math.Min(currentBlockNumber, Eip2935Constants.RingBufferSize))
+        if (requiredBlockNumber >= currentBlockNumber ||
+            requiredBlockNumber + Eip2935Constants.RingBufferSize < currentBlockNumber)
         {
             return null;
         }
