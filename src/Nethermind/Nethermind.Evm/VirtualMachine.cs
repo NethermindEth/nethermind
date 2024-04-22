@@ -2449,7 +2449,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long gasCost = GasCostOf.Create +
                        (spec.IsEip3860Enabled ? GasCostOf.InitCodeWord * EvmPooledMemory.Div32Ceiling(initCodeLength) : 0) +
                        (instruction == Instruction.CREATE2
-                           ? GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(initCodeLength)
+                           ? spec.GetSha3WordCost() * EvmPooledMemory.Div32Ceiling(initCodeLength)
                            : 0);
 
         if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
@@ -2569,7 +2569,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
         if (!UpdateGas(
                 GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * spec.GetLogDataCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
         ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
         Hash256[] topics = new Hash256[topicsCount];
