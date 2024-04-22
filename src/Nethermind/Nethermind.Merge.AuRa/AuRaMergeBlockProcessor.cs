@@ -46,7 +46,6 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             logManager,
             blockTree,
             withdrawalProcessor,
-            depositsProcessor,
             validator,
             txFilter,
             gasLimitOverride,

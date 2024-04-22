@@ -44,7 +44,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
     private readonly IWithdrawalRequestsProcessor _withdrawalRequestsProcessor;
 
-    private readonly IDepositsProcessor _depositsProcessor;
+    private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -53,8 +53,7 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; }
 
-    public BlockProcessor(
-        ISpecProvider? specProvider,
+    public BlockProcessor(ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
@@ -63,8 +62,8 @@ public partial class BlockProcessor : IBlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IDepositsProcessor? depositsProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -76,7 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
-        _depositsProcessor = depositsProcessor ?? new DepositsProcessor();
+        _consensusRequestsProcessor =  consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         _withdrawalRequestsProcessor = new WithdrawalRequestsProcessor();
 
@@ -256,9 +255,8 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _consensusRequestsProcessor.ProcessRequests(spec, _stateProvider, block, receipts);
 
-        _depositsProcessor.ProcessDeposits(block, receipts, spec);
-        ProcessValidatorExits(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);

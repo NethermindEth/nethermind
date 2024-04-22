@@ -136,8 +136,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor,
-                depositsProcessor);
+                WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }

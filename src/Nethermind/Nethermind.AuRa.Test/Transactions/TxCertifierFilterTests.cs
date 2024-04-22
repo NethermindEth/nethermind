@@ -8,7 +8,6 @@ using Nethermind.Abi;
 using Nethermind.AuRa.Test.Contract;
 using Nethermind.Consensus.AuRa;
 using Nethermind.Consensus.AuRa.Contracts;
-using Nethermind.Consensus.AuRa.Deposits;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.AuRa.Withdrawals;
 using Nethermind.Consensus.Processing;
@@ -19,7 +18,6 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Logging;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NSubstitute;
 using NSubstitute.ExceptionExtensions;
@@ -157,7 +155,6 @@ public class TxCertifierFilterTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                NullDepositsProcessor.Instance,
                 null
                 );
         }

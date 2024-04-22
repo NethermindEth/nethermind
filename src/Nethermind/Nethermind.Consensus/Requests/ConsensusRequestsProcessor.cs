@@ -12,7 +12,7 @@ using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Requests;
 
-public class ConsensusRequestsProcessor
+public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
 {
     private readonly WithdrawalRequestsProcessor _withdrawalRequestsProcessor;
     private readonly IDepositsProcessor _depositsProcessor;

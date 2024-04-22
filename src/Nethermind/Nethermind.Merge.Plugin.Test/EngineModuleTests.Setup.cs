@@ -244,8 +244,7 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor,
-                DepositsProcessor);
+                WithdrawalProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
