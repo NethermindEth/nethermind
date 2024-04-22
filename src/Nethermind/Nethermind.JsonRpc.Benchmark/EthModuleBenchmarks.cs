@@ -37,6 +37,7 @@ using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Blockchain.BeaconBlockRoot;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -93,7 +94,7 @@ namespace Nethermind.JsonRpc.Benchmark
 
             IBlockProcessor.IBlockTransactionsExecutor transactionsExecutor = new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider);
             BlockProcessor blockProcessor = new(specProvider, Always.Valid, new RewardCalculator(specProvider), transactionsExecutor,
-                stateProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, transactionProcessor, LimboLogs.Instance);
+                stateProvider, NullReceiptStorage.Instance, NullWitnessCollector.Instance, LimboLogs.Instance, new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
 
             EthereumEcdsa ecdsa = new(specProvider.ChainId, LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(
