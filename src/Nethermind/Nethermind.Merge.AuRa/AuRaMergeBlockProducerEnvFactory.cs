@@ -79,7 +79,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                     )
                 ),
-            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor,  logManager), null);
+            new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, logManager), null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
