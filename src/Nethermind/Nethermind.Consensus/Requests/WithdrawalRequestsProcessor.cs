@@ -70,12 +70,12 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
         UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;
         if (newQueueHeadIndex == queueTailIndex)
         {
-            state.Set(queueHeadIndexCell, UInt256.Zero.ToLittleEndian());
-            state.Set(queueTailIndexCell, UInt256.Zero.ToLittleEndian()); // ToDo ToLittleEndian??
+            state.Set(queueHeadIndexCell, UInt256.Zero.ToBigEndian());
+            state.Set(queueTailIndexCell, UInt256.Zero.ToBigEndian());
         }
         else
         {
-            state.Set(queueHeadIndexCell, newQueueHeadIndex.ToLittleEndian());
+            state.Set(queueHeadIndexCell, newQueueHeadIndex.ToBigEndian());
         }
 
         return validatorExits;
@@ -95,12 +95,12 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
             newExcess = previousExcess + count - TargetWithdrawalRequestsPerBlock;
         }
 
-        state.Set(previousExcessCell, newExcess.ToLittleEndian());
+        state.Set(previousExcessCell, newExcess.ToBigEndian());
     }
 
     private void ResetExitCount(IReleaseSpec spec, IWorldState state)
     {
         StorageCell countCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
-        state.Set(countCell, UInt256.Zero.ToLittleEndian());
+        state.Set(countCell, UInt256.Zero.ToBigEndian());
     }
 }
