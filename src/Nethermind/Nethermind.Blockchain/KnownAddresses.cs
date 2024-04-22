@@ -8,30 +8,7 @@ namespace Nethermind.Blockchain
 {
     public static class KnownAddresses
     {
-        public static string GetDescription(Address address)
-        {
-            if (GoerliValidators.TryGetValue(address, out string value))
-            {
-                return value;
-            }
-
-            return "?";
-        }
-
-        public static Dictionary<Address, string> GoerliValidators = new()
-        {
-            { new Address("0xa6DD2974B96e959F2c8930024451a30aFEC24203"), "Ethereum/Geth" },
-            { new Address("0x000000568b9b5A365eaa767d42e74ED88915C204"), "POA Network" },
-            { new Address("0x631AE5c534fE7b35aaF5243b54e5ac0CFc44E04C"), "Yucong Sun" },
-            { new Address("0xD9A5179F091d85051d3C982785Efd1455CEc8699"), "Prysmatic Labs" },
-            { new Address("0xA8e8F14732658E4B51E8711931053a8A69BaF2B1"), "DAPowerPlay" },
-            { new Address("0x8b24Eb4E6aAe906058242D83e51fB077370c4720"), "Infura" },
-            { new Address("0x4c2ae482593505f0163cdeFc073e81c63CdA4107"), "Nethermind" },
-            { new Address("0x22eA9f6b28DB76A7162054c05ed812dEb2f519Cd"), "ConsenSys/Besu" },
-            { new Address("0xe0a2Bd4258D2768837BAa26A28fE71Dc079f84c7"), "Goerli/Afri" },
-            { new Address("0x9d525e28fe5830ee92d7aa799c4d21590567b595"), "Goerli/Ronin" },
-            { new Address("0x73625f59cadc5009cb458b751b3e7b6b48c06f2c"), "Flashbots" }
-        };
+        public static string GetDescription(Address _) => "?";
 
         public static Dictionary<Address, string> KnownMiners = new()
         {

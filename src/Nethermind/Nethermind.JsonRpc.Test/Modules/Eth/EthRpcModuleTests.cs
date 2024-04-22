@@ -301,14 +301,14 @@ public partial class EthRpcModuleTests
         var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
-        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+        void handleNewBlock(object? sender, BlockEventArgs e)
         {
             blockHash = e.Block.Hash;
-            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+            test.BlockTree.NewHeadBlock -= handleNewBlock;
         }
-        test.BlockTree.BlockAddedToMain += handleNewBlock;
+        test.BlockTree.NewHeadBlock += handleNewBlock;
 
-        var newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", "{\"fromBlock\":\"latest\"}");
+        using JsonRpcResponse newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", "{\"fromBlock\":\"latest\"}");
         string getFilterLogsSerialized1 = await test.TestEthRpc("eth_getFilterChanges", (newFilterResp as JsonRpcSuccessResponse)!.Result?.ToString() ?? "0x0");
 
         //expect empty - no changes so far
@@ -491,21 +491,22 @@ public partial class EthRpcModuleTests
             .WithCode(logCreateCode)
             .WithNonce(3).WithGasLimit(210200).WithGasPrice(20.GWei()).TestObject;
 
-        var test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
+        TestRpcBlockchain? test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).Build(initialValues: 2.Ether());
 
         Hash256? blockHash = Keccak.Zero;
-        void handleNewBlock(object? sender, BlockReplacementEventArgs e)
+
+        void HandleNewBlock(object? sender, BlockReplacementEventArgs e)
         {
             blockHash = e.Block.Hash;
-            test.BlockTree.BlockAddedToMain -= handleNewBlock;
+            test.BlockTree.BlockAddedToMain -= HandleNewBlock;
         }
-        test.BlockTree.BlockAddedToMain += handleNewBlock;
+        test.BlockTree.BlockAddedToMain += HandleNewBlock;
 
         await test.AddBlock(createCodeTx);
 
         string getLogsSerialized = await test.TestEthRpc("eth_getLogs", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
-        var newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
+        using JsonRpcResponse? newFilterResp = await RpcTest.TestRequest(test.EthRpcModule, "eth_newFilter", $"{{\"fromBlock\":\"{blockHash}\"}}");
 
         Assert.IsTrue(newFilterResp is not null && newFilterResp is JsonRpcSuccessResponse);
 
@@ -1252,7 +1253,7 @@ public partial class EthRpcModuleTests
         public static async Task<Context> Create(ISpecProvider? specProvider = null, IBlockchainBridge? blockchainBridge = null) =>
             new()
             {
-                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).Build(specProvider),
+                Test = await TestRpcBlockchain.ForTest(SealEngineType.NethDev).WithBlockchainBridge(blockchainBridge!).WithConfig(new JsonRpcConfig() { EstimateErrorMargin = 0 }).Build(specProvider),
                 AuraTest = await TestRpcBlockchain.ForTest(SealEngineType.AuRa).Build(specProvider)
             };
 
