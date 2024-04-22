@@ -171,7 +171,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.RETURN)
                 .Done;
 
-            //Simply returns the current caller
+            //Simply returns the current msg.caller
             byte[] codeReturnCaller = Prepare.EvmCode
                 .CALLER()
                 .Op(Instruction.PUSH0)
@@ -187,6 +187,98 @@ namespace Nethermind.Evm.Test
             var result = Execute(code);
 
             Assert.That(new Address(result.ReturnValue), Is.EqualTo(TestItem.AddressB));
+        }
+
+        [Test]
+        public void ExecuteAUTHCALLAndDELEGATECALL_TransactionReturnsTheCurrentCallerAfterAuthCallAndDelegateCall_ContractAddressIsReturned()
+        {
+            var signer = TestItem.PrivateKeyB;
+            var authority = TestItem.AddressB;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Just throw away the result
+                .POP()
+
+                //AUTHCALL params
+                .PushData(20)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressC)
+                .PushData(1000000)
+                .Op(Instruction.AUTHCALL)
+                .PushSingle(20)
+                .PushSingle(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            byte[] firstrDeletegateCallCode = Prepare.EvmCode
+                .PushData(20)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressD)
+                .PushData(1000000)
+                .Op(Instruction.CALL)
+                .PushSingle(20)
+                .PushSingle(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            byte[] secondDeletegateCallCode = Prepare.EvmCode
+                .PushData(20)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressE)
+                .PushData(1000000)
+                .Op(Instruction.DELEGATECALL)
+                .PushSingle(20)
+                .PushSingle(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            //Simply returns the current msg.caller
+            byte[] codeReturnCaller = Prepare.EvmCode
+                .CALLER()
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.SSTORE)
+                .Op(Instruction.STOP)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(firstrDeletegateCallCode), firstrDeletegateCallCode, Spec);
+
+            TestState.CreateAccount(TestItem.AddressD, 0);
+            TestState.InsertCode(TestItem.AddressD, Keccak.Compute(secondDeletegateCallCode), secondDeletegateCallCode, Spec);
+
+            TestState.CreateAccount(TestItem.AddressE, 0);
+            TestState.InsertCode(TestItem.AddressE, Keccak.Compute(codeReturnCaller), codeReturnCaller, Spec);
+
+            Execute(code);
+
+            var result = TestState.Get(new StorageCell(TestItem.AddressD, 0));
+
+            Assert.That(new Address(result.ToArray()), Is.EqualTo(TestItem.AddressC));
         }
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)

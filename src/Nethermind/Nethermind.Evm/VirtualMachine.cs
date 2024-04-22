@@ -2150,9 +2150,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 msg[shift + 96] = commit[i];
                             }
                         }
-
+                        
                         Hash256 digest = Keccak.Compute(msg);
-                        //TODO handle exception
+                        //TODO handle exception will crash the process
                         Address recovered = _ecdsa.RecoverPublicKey(signature, digest).Address;
 
                         if (recovered == authority)
