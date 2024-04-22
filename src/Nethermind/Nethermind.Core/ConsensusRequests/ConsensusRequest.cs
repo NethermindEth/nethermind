@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Core.ConsensusRequests;
 
-public enum ConsensusRequestsType: byte
+public enum ConsensusRequestsType : byte
 {
     Deposit = 0,
     WithdrawalRequest = 1

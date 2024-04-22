@@ -109,7 +109,7 @@ public class ConsensusRequestDecoderTests
         rlp1.Should().BeEquivalentTo(rlp2);
     }
 
-        [Test]
+    [Test]
     public void Should_encode_withdrawalRequest_same_for_Rlp_Encode_and_DepositDecoder_Encode()
     {
         ConsensusRequest withdrawalRequest = new WithdrawalRequest()

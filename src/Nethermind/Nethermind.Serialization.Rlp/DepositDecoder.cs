@@ -76,12 +76,12 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
         return new(stream.Data.ToArray());
     }
 
-    private static int GetContentLength(Deposit item) =>
+    public int GetContentLength(Deposit item, RlpBehaviors rlpBehaviors) =>
         Rlp.LengthOf(item.PubKey) +
         Rlp.LengthOf(item.WithdrawalCredentials) +
         Rlp.LengthOf(item.Amount) +
         Rlp.LengthOf(item.Signature) +
         Rlp.LengthOf(item.Index);
 
-    public int GetLength(Deposit item, RlpBehaviors _) => Rlp.LengthOfSequence(GetContentLength(item));
+    public int GetLength(Deposit item, RlpBehaviors rlpBehaviors) => Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 }

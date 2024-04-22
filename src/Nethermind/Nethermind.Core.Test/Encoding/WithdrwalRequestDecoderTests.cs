@@ -33,7 +33,7 @@ public class ValidatorExitDecoderTests
     }
 
     [Test]
-    public void GetLength_should_be_72()
+    public void GetLength_should_be_73()
     {
         byte[] validatorPubkey = new byte[48];
         WithdrawalRequest exit = new()
@@ -42,6 +42,6 @@ public class ValidatorExitDecoderTests
             ValidatorPubkey = validatorPubkey,
             Amount = 0
         };
-        Assert.That(_decoder.GetLength(exit, RlpBehaviors.None), Is.EqualTo(72), "GetLength");
+        Assert.That(_decoder.GetLength(exit, RlpBehaviors.None), Is.EqualTo(73), "GetLength");
     }
 }

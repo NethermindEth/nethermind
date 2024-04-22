@@ -10,19 +10,24 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
 {
     private readonly WithdrawalRequestDecoder _withdrawalRequestDecoder = new();
     private readonly DepositDecoder _depositDecoder = new();
-    public int GetLength(ConsensusRequest item, RlpBehaviors rlpBehaviors)
+    public int GetContentLength(ConsensusRequest item, RlpBehaviors rlpBehaviors)
     {
         int length = Rlp.LengthOf((byte)item.Type);
         switch (item.Type)
         {
             case ConsensusRequestsType.WithdrawalRequest:
-                length += _withdrawalRequestDecoder.GetLength((WithdrawalRequest)item, rlpBehaviors);
+                length += _withdrawalRequestDecoder.GetContentLength((WithdrawalRequest)item, rlpBehaviors);
                 break;
             case ConsensusRequestsType.Deposit:
-                length += _depositDecoder.GetLength((Deposit)item, rlpBehaviors);
+                length += _depositDecoder.GetContentLength((Deposit)item, rlpBehaviors);
                 break;
         }
         return length;
+    }
+
+    public int GetLength(ConsensusRequest item, RlpBehaviors rlpBehaviors)
+    {
+        return Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
     }
 
     public ConsensusRequest? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -43,8 +48,8 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
         {
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.Decode(rlpStream, rlpBehaviors),
             ConsensusRequestsType.Deposit => _depositDecoder.Decode(rlpStream, rlpBehaviors),
- 
-             _ => throw new RlpException($"Unsupported consensus request type {consensusRequestsType}")
+
+            _ => throw new RlpException($"Unsupported consensus request type {consensusRequestsType}")
         };
 
         return result;
