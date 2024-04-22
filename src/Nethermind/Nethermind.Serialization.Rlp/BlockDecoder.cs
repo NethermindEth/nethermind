@@ -15,7 +15,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly TxDecoder _txDecoder = new();
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
         private readonly DepositDecoder _depositDecoder = new();
-        private readonly ValidatorExitsDecoder _validatorExitsDecoder = new();
+        private readonly WithdrawalRequestDecoder _WithdrawalRequestDecoder = new();
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -157,7 +157,7 @@ namespace Nethermind.Serialization.Rlp
 
                     while (rlpStream.Position < validatorExistsCheck)
                     {
-                        validatorExits.Add(_validatorExitsDecoder.Decode(rlpStream));
+                        validatorExits.Add(_WithdrawalRequestDecoder.Decode(rlpStream));
                     }
 
                     rlpStream.Check(validatorExistsCheck);
@@ -217,7 +217,7 @@ namespace Nethermind.Serialization.Rlp
 
             for (int i = 0, count = item.ValidatorExits.Length; i < count; i++)
             {
-                validatorExistsLength += _validatorExitsDecoder.GetLength(item.ValidatorExits[i], rlpBehaviors);
+                validatorExistsLength += _WithdrawalRequestDecoder.GetLength(item.ValidatorExits[i], rlpBehaviors);
             }
 
             return validatorExistsLength;
@@ -383,7 +383,7 @@ namespace Nethermind.Serialization.Rlp
 
                 while (decoderContext.Position < validatorExitsCheck)
                 {
-                    validatorExits.Add(_validatorExitsDecoder.Decode(ref decoderContext));
+                    validatorExits.Add(_WithdrawalRequestDecoder.Decode(ref decoderContext));
                 }
 
                 decoderContext.Check(validatorExitsCheck);
@@ -453,7 +453,7 @@ namespace Nethermind.Serialization.Rlp
 
                 for (int i = 0; i < item.ValidatorExits!.Length; i++)
                 {
-                    _validatorExitsDecoder.Encode(stream, item.ValidatorExits[i]);
+                    _WithdrawalRequestDecoder.Encode(stream, item.ValidatorExits[i]);
                 }
             }
         }

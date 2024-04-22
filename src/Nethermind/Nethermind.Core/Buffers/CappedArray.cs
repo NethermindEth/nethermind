@@ -98,7 +98,7 @@ public readonly struct CappedArray<T>
 
     public readonly Span<T> AsSpan(int start, int length)
     {
-        return _array.AsSpan(start, length);
+         return _array.AsSpan(start, length);
     }
 
     public readonly T[]? ToArray()

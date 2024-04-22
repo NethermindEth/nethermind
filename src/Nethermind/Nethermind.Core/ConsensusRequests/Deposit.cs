@@ -13,7 +13,7 @@ public class Deposit : ConsensusRequest
 {
     public Deposit()
     {
-        Type = RequestsType.Deposit;
+        Type = ConsensusRequestsType.Deposit;
     }
     public byte[]? PubKey
     {

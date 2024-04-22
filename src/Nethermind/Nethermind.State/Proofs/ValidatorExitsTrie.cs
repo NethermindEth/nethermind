@@ -13,7 +13,7 @@ namespace Nethermind.State.Proofs;
 
 public class ValidatorExitsTrie : PatriciaTrie<WithdrawalRequest>
 {
-    private static readonly ValidatorExitsDecoder _codec = new();
+    private static readonly WithdrawalRequestDecoder _codec = new();
 
     public ValidatorExitsTrie(WithdrawalRequest[]? validatorExits, bool canBuildProof, ICappedArrayPool? bufferPool = null)
         : base(validatorExits, canBuildProof, bufferPool)

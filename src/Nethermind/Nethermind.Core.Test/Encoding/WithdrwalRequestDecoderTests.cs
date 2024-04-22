@@ -11,7 +11,7 @@ namespace Nethermind.Core.Test.Encoding;
 [TestFixture]
 public class ValidatorExitDecoderTests
 {
-    private static ValidatorExitsDecoder _decoder = new();
+    private static WithdrawalRequestDecoder _decoder = new();
 
     [Test]
     public void Roundtrip()

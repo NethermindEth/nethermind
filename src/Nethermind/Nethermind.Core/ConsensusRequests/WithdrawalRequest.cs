@@ -13,7 +13,7 @@ public class WithdrawalRequest : ConsensusRequest
 {
     public WithdrawalRequest()
     {
-        Type = RequestsType.WithdrawalRequest;
+        Type = ConsensusRequestsType.WithdrawalRequest;
     }
     public Address? SourceAddress
     {

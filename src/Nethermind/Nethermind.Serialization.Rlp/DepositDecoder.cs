@@ -16,7 +16,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
             return null;
         }
 
-        rlpStream.ReadSequenceLength();
+        // rlpStream.ReadSequenceLength();
 
         return new()
         {
@@ -37,7 +37,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
             return null;
         }
 
-        decoderContext.ReadSequenceLength();
+        // decoderContext.ReadSequenceLength();
 
         return new()
         {
@@ -57,14 +57,14 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
             return;
         }
 
-        var contentLength = GetContentLength(item);
+        // var contentLength = GetContentLength(item);
 
-        stream.StartSequence(contentLength);
+        // stream.StartSequence(contentLength);
         stream.Encode(item.PubKey);
         stream.Encode(item.WithdrawalCredentials);
         stream.Encode(item.Amount);
         stream.Encode(item.Signature);
-        // stream.Encode(item.Index); ToDo fix
+        stream.Encode(item.Index.Value);
     }
 
     public Rlp Encode(Deposit? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

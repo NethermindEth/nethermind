@@ -6,7 +6,7 @@ using System.Text.Json.Serialization;
 
 namespace Nethermind.Core.ConsensusRequests;
 
-public enum RequestsType
+public enum ConsensusRequestsType: byte
 {
     Deposit = 0,
     WithdrawalRequest = 1
@@ -15,7 +15,7 @@ public enum RequestsType
 public class ConsensusRequest
 {
     [JsonIgnore]
-    public RequestsType Type { get; protected set; }
+    public ConsensusRequestsType Type { get; protected set; }
 
     [JsonIgnore]
     public ulong AmountField { get; protected set; }

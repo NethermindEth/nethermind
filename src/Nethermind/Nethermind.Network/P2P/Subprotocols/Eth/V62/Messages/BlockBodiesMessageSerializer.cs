@@ -62,7 +62,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             private readonly DepositDecoder _depositDecoder = new();
 
-            private readonly ValidatorExitsDecoder _validatorExitDecoder = new();
+            private readonly WithdrawalRequestDecoder _validatorExitDecoder = new();
 
             public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
             {
