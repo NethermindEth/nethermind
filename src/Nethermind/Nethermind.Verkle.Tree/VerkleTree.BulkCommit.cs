@@ -6,8 +6,10 @@ using System.Buffers;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Threading;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Fields.FrEElement;
 using Nethermind.Verkle.Tree.TreeNodes;
@@ -31,9 +33,65 @@ public partial class VerkleTree
         // Sort the leaf delta first
         leafDeltas.AsSpan().Sort((kv1, kv2) => Bytes.BytesComparer.Compare(kv1.Key, kv2.Key));
 
-        _ = CalculateDelta(leafDeltas.AsSpan(), 0);
+        _ = CalculateDeltaParallel(leafDeltas, 0);
 
         _leafUpdateCache.Clear();
+    }
+
+    // Note, parallel is only on first level
+    private FrE CalculateDeltaParallel(ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
+    {
+        var key = leafDeltas[0].Key.AsSpan()[..depth];
+        InternalNode node = GetInternalNode(key);
+
+        if (node?.IsBranchNode != true)
+        {
+            return CalculateDelta(leafDeltas.AsSpan(), depth);
+        }
+
+        int sectionStart = 0;
+        byte sectionStartByte = leafDeltas[0].Key[depth];
+
+        McsLock deltaLock = new McsLock();
+        Banderwagon delta = Banderwagon.Identity;
+
+        ActionBlock<(int, int, byte)> accumulateDelta = new ActionBlock<(int, int, byte)>(input =>
+            {
+                (int start, int end, byte sectionByte) = input;
+                // Get the delta for the previous section
+                FrE sectionDelta = CalculateDelta(leafDeltas.AsSpan()[start..end], depth + 1);
+
+                using McsLock.Disposable _ = deltaLock.Acquire();
+                delta += Committer.ScalarMul(sectionDelta, sectionByte);
+            },
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount,
+            });
+
+        // TODO: Can use binary search
+        for (int i = 0; i < leafDeltas.Count; i++)
+        {
+            if (leafDeltas[i].Key[depth] != sectionStartByte)
+            {
+                accumulateDelta.Post((sectionStart, i, sectionStartByte));
+
+                // Start a new section
+                sectionStartByte = leafDeltas[i].Key[depth];
+                sectionStart = i;
+            }
+        }
+
+        {
+            accumulateDelta.Post((sectionStart, leafDeltas.Count, sectionStartByte));
+        }
+
+        accumulateDelta.Complete();
+        accumulateDelta.Completion.Wait();
+
+        FrE deltaFre = node.UpdateCommitment(delta);
+        SetInternalNode(key, node);
+        return deltaFre;
     }
 
     private FrE CalculateDelta(ReadOnlySpan<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
