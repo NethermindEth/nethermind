@@ -2124,16 +2124,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         ReadOnlySpan<byte> commit;
 
                         //TODO bounds check - check GETH
-                        var data = vmState.Memory.Load(in a, b);
+                        ReadOnlyMemory<byte> memData = vmState.Memory.Load(in a, b);
              
-                        var yParity = data.Span[0];
+                        byte yParity = memData.Span[0];
 
-                        Signature signature = new Signature(data[1..65].Span, yParity);
+                        Signature signature = new Signature(memData[1..65].Span, yParity);
 
-                        if (data.Length > 65)
-                            commit = data[65..].Span;
+                        if (memData.Length > 65)
+                            commit = memData[65..].Span;
                         else
-                            commit = new ReadOnlySpan<byte>();
+                            commit = new ReadOnlySpan<byte>();  
 
                         byte[] chainId = _chainId.PadLeft(32);
                         byte[] authorityNonce = _state.GetNonce(authority).PaddedBytes(32);
@@ -2155,10 +2155,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         
                         Hash256 digest = Keccak.Compute(msg);
+
                         //TODO handle exception will crash the process
                         Address recovered = _ecdsa.RecoverPublicKey(signature, digest).Address;
 
-                        //TODO tx.Origin == authority, EIP states ???
                         if (recovered == authority)
                         {
                             stack.PushUInt256(1);

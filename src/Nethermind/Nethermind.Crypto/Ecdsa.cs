@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Core;
+using System.Security.Cryptography;
 using Nethermind.Core.Crypto;
 
 namespace Nethermind.Crypto
@@ -46,6 +48,16 @@ namespace Nethermind.Crypto
 #endif
 
             return signature;
+        }
+
+        public PublicKey? TryRecoverPublicKey(ReadOnlySpan<byte> r, ReadOnlySpan<byte> s, byte v, Hash256 message)
+        {
+            if (v != 27 && v != 28)
+            {
+                return null;
+            }
+            Signature signature = new(r, s, v);
+            return RecoverPublicKey(signature, message);
         }
 
         public PublicKey? RecoverPublicKey(Signature signature, Hash256 message)

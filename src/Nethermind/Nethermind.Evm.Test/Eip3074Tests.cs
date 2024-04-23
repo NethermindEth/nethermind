@@ -25,6 +25,8 @@ namespace Nethermind.Evm.Test
         protected override ForkActivation Activation => MainnetSpecProvider.PragueActivation;
         protected override ulong Timestamp => MainnetSpecProvider.PragueBlockTimestamp;
 
+        protected override TestAllTracerWithOutput CreateTracer() => new() { IsTracingAccess = false };
+
         public static IEnumerable<object[]> AuthCases()
         {
             yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
@@ -112,6 +114,52 @@ namespace Nethermind.Evm.Test
             var result = Execute(code);
 
             Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+        }
+
+        [TestCase(97, 3100 + 2600)]
+        [TestCase(160, 3103 + 2600)]
+        [TestCase(192, 3106 + 2600)]
+        [TestCase(193, 3109 + 2600)]
+        public void ExecuteAuth_AUTHExpandsMemory_AUTHGasCosts3100PlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, int expectedGas)
+        {
+            var data = CreateSignedCommitMessage(TestItem.PrivateKeyF);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+                .PushData(data[96..])
+                .PushSingle(96)
+                .Op(Instruction.MSTORE)
+
+                .PushSingle((UInt256)authMemoryLength)
+                .Op(Instruction.PUSH0)
+                .PushData(TestItem.AddressF)
+                .Done;
+
+            var authCode =
+                code.Concat(
+                    Prepare.EvmCode
+                    .Op(Instruction.AUTH)
+                    .Done
+                    ).ToArray();
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(code), code, Spec);
+
+            TestState.CreateAccount(TestItem.AddressD, 0);
+            TestState.InsertCode(TestItem.AddressD, Keccak.Compute(authCode), authCode, Spec);
+
+            var resultNoAuth = Execute(code);
+            var resultWithAuth = Execute(authCode);
+
+            Assert.That(resultWithAuth.GasSpent - resultNoAuth.GasSpent, Is.EqualTo(expectedGas));
         }
 
         [Test]
@@ -280,13 +328,12 @@ namespace Nethermind.Evm.Test
             Assert.That(new Address(resultE.ToArray()), Is.EqualTo(TestItem.AddressD));
         }
 
-        [TestCase(97, 3100)]
-        [TestCase(160, 3103)]
-        [TestCase(192, 3106)]
-        [TestCase(193, 3109)]
-        public void ExecuteAuth_AUTHDoesExpandMemory_AUTHCosts3100GasPlusMemoryExpansion(int authMemoryLength, int expectedGas)
+        [TestCase(1)]
+        public void ExecuteAUTHCALL_(int expectedCost)
         {
-            var data = CreateSignedCommitMessage(TestItem.PrivateKeyB);
+            var signer = TestItem.PrivateKeyF;
+            var authority = TestItem.AddressF;
+            var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
                 .PushData(data[..32])
@@ -298,33 +345,43 @@ namespace Nethermind.Evm.Test
                 .PushData(data[64..96])
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
-                .PushData(data[96..])
-                .PushSingle(96)
-                .Op(Instruction.MSTORE)
 
-                .PushSingle((UInt256)authMemoryLength)
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(TestItem.AddressB)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Just throw away the result
+                .POP()
+
+                //AUTHCALL params
+                .PushData(20)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressC)
+                .PushData(1000000)
                 .Done;
 
-            var authCode =
-                code.Concat(
-                    Prepare.EvmCode
-                    .Op(Instruction.AUTH)
-                    .Done
-                    ).ToArray();
+            var codeWithAuthCall = code.Concat(
+                Prepare.EvmCode
+                .Op(Instruction.AUTHCALL)
+                .Done).ToArray();                
 
             TestState.CreateAccount(TestItem.AddressC, 0);
             TestState.InsertCode(TestItem.AddressC, Keccak.Compute(code), code, Spec);
 
             TestState.CreateAccount(TestItem.AddressD, 0);
-            TestState.InsertCode(TestItem.AddressD, Keccak.Compute(authCode), authCode, Spec);
+            TestState.InsertCode(TestItem.AddressD, Keccak.Compute(codeWithAuthCall), codeWithAuthCall, Spec);
 
-            var resultNoAuth = Execute(code);
-            var resultWithAuth = Execute(authCode);
+            var result = Execute(code);
+            var resultWithAuthCall = Execute(codeWithAuthCall);
 
-            Assert.That(resultWithAuth.GasSpent - resultNoAuth.GasSpent, Is.EqualTo(expectedGas));
+            Assert.That(resultWithAuthCall.GasSpent - result.GasSpent, Is.EqualTo(expectedCost));
         }
+
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
         {
