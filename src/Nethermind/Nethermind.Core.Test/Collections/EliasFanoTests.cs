@@ -71,7 +71,7 @@ public class EliasFanoTests
         ef.Rank(3).Should().Be(1);
         ef.Rank(4).Should().Be(3);
         ef.Rank(8).Should().Be(4);
-        Assert.Throws<ArgumentException>(() => ef.Rank(9));
+        Assert.Throws<EliasFanoQueryException>(() => ef.Rank(9));
     }
 
     [Test]
@@ -130,7 +130,7 @@ public class EliasFanoTests
         ef.Rank(904).Should().Be(13);
         ef.Rank(905).Should().Be(13);
         ef.Rank(1000).Should().Be(14);
-        Assert.Throws<ArgumentException>(() => ef.Rank(1001));
+        Assert.Throws<EliasFanoQueryException>(() => ef.Rank(1001));
     }
 
     [Test]

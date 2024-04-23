@@ -19,7 +19,7 @@ namespace Nethermind.Verkle.Tree.Test
         {
             byte[] hash = PedersenHash.Hash(_testAddressBytesZero, UInt256.Zero);
             hash[31] = 0;
-            Convert.ToHexString(hash).Should().BeEquivalentTo("bf101a6e1c8e83c11bd203a582c7981b91097ec55cbd344ce09005c1f26d1900");
+            Convert.ToHexString(hash).Should().BeEquivalentTo("1A100684FD68185060405F3F160E4BB6E034194336B547BDAE323F888D533200");
         }
 
         [Test]
@@ -28,7 +28,7 @@ namespace Nethermind.Verkle.Tree.Test
             Span<byte> address32 = Convert.FromHexString("71562b71999873DB5b286dF957af199Ec94617f7");
             byte[] hash = PedersenHash.Hash(address32, UInt256.Zero);
             hash[31] = 0;
-            Convert.ToHexString(hash).Should().BeEquivalentTo("274cde18dd9dbb04caf16ad5ee969c19fe6ca764d5688b5e1d419f4ac6cd1600");
+            Convert.ToHexString(hash).Should().BeEquivalentTo("1540DFAD7755B40BE0768C6AA0A5096FBF0215E0E8CF354DD928A17834646600");
         }
 
     }

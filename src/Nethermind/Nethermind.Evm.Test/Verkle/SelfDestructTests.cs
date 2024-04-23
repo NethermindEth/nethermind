@@ -58,7 +58,7 @@ public class SelfDestructTests : VerkleVirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(callTxn, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(96648));
+        Assert.That(tracer.GasSpent, Is.EqualTo(79148));
 
         TestState.GetBalance(_contractAddress).Should().Be(0);
         TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
@@ -94,7 +94,7 @@ public class SelfDestructTests : VerkleVirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(tx1, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(69748));
+        Assert.That(tracer.GasSpent, Is.EqualTo(73148));
         TestState.GetBalance(_contractAddress).Should().Be(99.Ether()); // not burnt
         AssertCodeHash(_contractAddress, Keccak.Compute(selfDestructCode.AsSpan()));
     }
@@ -124,7 +124,7 @@ public class SelfDestructTests : VerkleVirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(createTx, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(140304));
+        Assert.That(tracer.GasSpent, Is.EqualTo(84304));
         TestState.AccountExists(contractAddress).Should().BeFalse();
         TestState.GetBalance(contractAddress).Should().Be(0);
         TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
@@ -152,7 +152,7 @@ public class SelfDestructTests : VerkleVirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(createTx, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(134749));
+        Assert.That(tracer.GasSpent, Is.EqualTo(82649));
         TestState.AccountExists(contractAddress).Should().BeFalse();
         TestState.GetBalance(contractAddress).Should().Be(0);
         TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());
@@ -172,7 +172,7 @@ public class SelfDestructTests : VerkleVirtualMachineTestsBase
         TestAllTracerWithOutput tracer = CreateTracer();
         _processor.Execute(createTx, block.Header, tracer);
 
-        Assert.That(tracer.GasSpent, Is.EqualTo(93857));
+        Assert.That(tracer.GasSpent, Is.EqualTo(72757));
         TestState.AccountExists(_contractAddress).Should().BeFalse();
         TestState.GetBalance(_contractAddress).Should().Be(0);
         TestState.GetBalance(TestItem.PrivateKeyB.Address).Should().Be(99.Ether());

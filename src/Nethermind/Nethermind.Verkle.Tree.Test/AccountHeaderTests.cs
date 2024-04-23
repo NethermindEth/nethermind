@@ -42,7 +42,7 @@ public class AccountHeaderTests
         byte[] key = PedersenHash.Hash(addr, n);
         key[31] = 1;
 
-        key.ToHexString().Should().BeEquivalentTo("f42f932f43faf5d14b292b9009c45c28da61dbf66e20dbedc2e02dfd64ff5a01");
+        key.ToHexString().Should().BeEquivalentTo("6ede905763d5856cd2d67936541e82aa78f7141bf8cd5ff6c962170f3e9dc201");
     }
 
     [Test]

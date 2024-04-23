@@ -25,7 +25,7 @@ public class OpCodesGasTests : VerkleVirtualMachineTestsBase
             .Done;
 
         TestAllTracerWithOutput result = Execute(code);
-        AssertGas(result, 21000 + GasCostOf.VeryLow + GasCostOf.ColdAccountAccess +
+        AssertGas(result, 21000 + GasCostOf.VeryLow +
                           GasCostOf.WitnessChunkRead + // this chunk cost is for code chunk read
                           GasCostOf.WitnessBranchRead + GasCostOf.WitnessChunkRead); // this is for the balance access cost
     }

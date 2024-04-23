@@ -296,7 +296,7 @@ public class VerkleProofTest
         state.CommitTree(257);
         var stateRoot = state.StateRoot;
         stateRoot.ToString().Should()
-            .BeEquivalentTo("0x5bf12e46f1ce048f74229eb6fb4bbdb715eb615e0b79abf32a53712a9f643de7");
+            .BeEquivalentTo("0x5f8ddd98ea9608577ba161510d6c2284361ba55cab91ee2e6407ee2fe5a54cff");
     }
 
 

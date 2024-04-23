@@ -19,6 +19,10 @@ public class Prague : Cancun
         IsVerkleTreeEipEnabled = true;
         IsEip2935Enabled = true;
         IsEip6780Enabled = true;
+        IsEip1153Enabled = false;
+        IsEip4788Enabled = false;
+        IsEip4844Enabled = false;
+        IsEip5656Enabled = false;
     }
 
     public static new IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
