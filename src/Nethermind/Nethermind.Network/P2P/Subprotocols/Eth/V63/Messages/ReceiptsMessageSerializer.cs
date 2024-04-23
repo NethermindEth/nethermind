@@ -11,7 +11,6 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    // 3% (2GB) allocation of Goerli 3m fast sync that can be improved by implementing ZeroMessageSerializer here
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;

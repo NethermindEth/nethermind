@@ -397,7 +397,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
             _peerRefresher = peerRefresher;
             _api.DisposeStack.Push(peerRefresher);
-            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
 
             MergeHeaderValidator headerValidator = new(
                     _poSSwitcher,
@@ -441,6 +441,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

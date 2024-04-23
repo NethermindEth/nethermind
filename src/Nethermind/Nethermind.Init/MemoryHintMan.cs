@@ -243,8 +243,7 @@ namespace Nethermind.Init
 
             // Arena count is capped because if its too high, the memory budget per arena can get too low causing
             // a very small chunk size. Any allocation of size higher than a chunk will essentially be unpooled triggering LOH.
-            // For example, on 16C32T machine, the default arena count is 64. Goerli with its default 128MB budget will
-            // cause the chunk size to be 2 MB. Mainnet with its 383MB budget will cause the chunk size to be 4 MB (lower
+            // For example, on 16C32T machine, the default arena count is 64. Mainnet with its 383MB budget will cause the chunk size to be 4 MB (lower
             // power of two from 5.9 MB).
             //
             // When a thread first try to allocate from the pooled byte buffer, a threadlocal is created and pick

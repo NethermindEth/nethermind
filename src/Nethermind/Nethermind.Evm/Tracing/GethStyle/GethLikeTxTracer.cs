@@ -68,13 +68,14 @@ public abstract class GethLikeTxTracer<TEntry> : GethLikeTxTracer where TEntry :
     protected GethLikeTxTracer(GethTraceOptions options) : base(options) { }
     private bool _gasCostAlreadySetForCurrentOp;
 
-    public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
+        bool isPostMerge = env.IsPostMerge();
         if (CurrentTraceEntry is not null)
             AddTraceEntry(CurrentTraceEntry);
 
         CurrentTraceEntry = CreateTraceEntry(opcode);
-        CurrentTraceEntry.Depth = depth;
+        CurrentTraceEntry.Depth = env.GetGethTraceDepth();
         CurrentTraceEntry.Gas = gas;
         CurrentTraceEntry.Opcode = opcode.GetName(isPostMerge);
         CurrentTraceEntry.ProgramCounter = pc;

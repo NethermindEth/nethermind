@@ -29,7 +29,6 @@ using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
-using NUnit.Framework.Constraints;
 
 namespace Nethermind.Merge.Plugin.Test;
 
@@ -58,7 +57,7 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV2(executionPayload);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     [TestCaseSource(nameof(CancunFieldsTestSource))]
@@ -85,27 +84,27 @@ public partial class EngineModuleTests
 
         ResultWrapper<PayloadStatusV1> result = await rpcModule.engine_newPayloadV3(executionPayload, new byte[0][], executionPayload.ParentBeaconBlockRoot);
 
-        Assert.That(result.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+        Assert.That(result.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     [Test]
     public async Task GetPayloadV3_should_decline_pre_cancun_payloads()
     {
-        (IEngineRpcModule rpcModule, string payloadId, _, _) = await BuildAndGetPayloadV3Result(Shanghai.Instance);
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Shanghai.Instance);
         ResultWrapper<GetPayloadV3Result?> getPayloadResult =
-            await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+            await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!));
         Assert.That(getPayloadResult.ErrorCode,
-            Is.EqualTo(ErrorCodes.UnsupportedFork));
+            Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     [Test]
     public async Task GetPayloadV2_should_decline_post_cancun_payloads()
     {
-        (IEngineRpcModule rpcModule, string payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance);
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance);
         ResultWrapper<GetPayloadV2Result?> getPayloadResult =
-            await rpcModule.engine_getPayloadV2(Bytes.FromHexString(payloadId));
+            await rpcModule.engine_getPayloadV2(Bytes.FromHexString(payloadId!));
         Assert.That(getPayloadResult.ErrorCode,
-            Is.EqualTo(ErrorCodes.UnsupportedFork));
+            Is.EqualTo(MergeErrorCodes.UnsupportedFork));
     }
 
     [Test]
@@ -129,8 +128,8 @@ public partial class EngineModuleTests
     [TestCase(4)]
     public async Task GetPayloadV3_should_return_all_the_blobs(int blobTxCount)
     {
-        (IEngineRpcModule rpcModule, string payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
-        ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId));
+        (IEngineRpcModule rpcModule, string? payloadId, _, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, blobTxCount);
+        ResultWrapper<GetPayloadV3Result?> result = await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!));
         BlobsBundleV1 getPayloadResultBlobsBundle = result.Data!.BlobsBundle!;
         Assert.That(result.Data.ExecutionPayload.BlobGasUsed, Is.EqualTo(BlobGasCalculator.CalculateBlobGas(blobTxCount)));
         Assert.That(getPayloadResultBlobsBundle.Blobs!.Length, Is.EqualTo(blobTxCount));
@@ -142,9 +141,9 @@ public partial class EngineModuleTests
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_mempool_encoding(bool inMempoolForm, string expectedPayloadStatus)
     {
-        (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
 
-        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         TxDecoder rlpEncoder = new();
         RlpBehaviors rlpBehaviors = (inMempoolForm ? RlpBehaviors.InMempoolForm : RlpBehaviors.None) | RlpBehaviors.SkipTypedWrapping;
@@ -161,8 +160,8 @@ public partial class EngineModuleTests
     [TestCase(true, PayloadStatus.Invalid)]
     public virtual async Task NewPayloadV3_should_decline_incorrect_blobgasused(bool isBlobGasUsedBroken, string expectedPayloadStatus)
     {
-        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
-        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         if (isBlobGasUsedBroken)
         {
@@ -184,8 +183,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_WrongBlockNumber_BlockIsRejectedWithCorrectErrorMessage()
     {
-        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
-        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.BlockNumber = 2;
         payload.TryGetBlock(out Block? b);
@@ -202,8 +201,8 @@ public partial class EngineModuleTests
     [Test]
     public async Task NewPayloadV3_WrongStateRoot_CorrectErrorIsReturnedAfterProcessing()
     {
-        (IEngineRpcModule prevRpcModule, string payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
-        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        (IEngineRpcModule prevRpcModule, string? payloadId, Transaction[] transactions, _) = await BuildAndGetPayloadV3Result(Cancun.Instance, 1);
+        ExecutionPayloadV3 payload = (await prevRpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         payload.StateRoot = Keccak.Zero;
         payload.TryGetBlock(out Block? b);
@@ -318,10 +317,10 @@ public partial class EngineModuleTests
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: releaseSpec);
         IEngineRpcModule rpcModule = CreateEngineModule(chain);
-        ForkchoiceStateV1 fcuState = new(Keccak.Zero, Keccak.Zero, Keccak.Zero);
+        ForkchoiceStateV1 fcuState = new(chain.BlockTree.HeadHash, chain.BlockTree.HeadHash, chain.BlockTree.HeadHash);
         PayloadAttributes payloadAttributes = new()
         {
-            Timestamp = chain.BlockTree.Head!.Timestamp,
+            Timestamp = chain.BlockTree.Head!.Timestamp + 1,
             PrevRandao = Keccak.Zero,
             SuggestedFeeRecipient = Address.Zero,
             Withdrawals = Array.Empty<Withdrawal>(),
@@ -426,9 +425,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_invalid_params_but_change_latest_block()
     {
-        (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
+        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
             await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
-        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         ForkchoiceStateV1 fcuState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
         PayloadAttributes payloadAttributes = new()
@@ -445,7 +444,7 @@ public partial class EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(ErrorCodes.InvalidParams));
+            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.InvalidPayloadAttributes));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
         });
     }
@@ -453,9 +452,9 @@ public partial class EngineModuleTests
     [Test]
     public async Task ForkChoiceUpdated_should_return_unsupported_fork_but_change_latest_block()
     {
-        (IEngineRpcModule rpcModule, string payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
+        (IEngineRpcModule rpcModule, string? payloadId, Transaction[] transactions, MergeTestBlockchain chain) =
                 await BuildAndGetPayloadV3Result(Cancun.Instance, 0);
-        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId))).Data!.ExecutionPayload;
+        ExecutionPayloadV3 payload = (await rpcModule.engine_getPayloadV3(Bytes.FromHexString(payloadId!))).Data!.ExecutionPayload;
 
         ForkchoiceStateV1 fcuState = new(payload.BlockHash, payload.BlockHash, payload.BlockHash);
         PayloadAttributes payloadAttributes = new()
@@ -471,7 +470,7 @@ public partial class EngineModuleTests
         Assert.Multiple(() =>
         {
             Assert.That(fcuResponse.Result.ResultType, Is.EqualTo(ResultType.Failure));
-            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(ErrorCodes.UnsupportedFork));
+            Assert.That(fcuResponse.ErrorCode, Is.EqualTo(MergeErrorCodes.UnsupportedFork));
             Assert.That(chain.BlockTree.Head!.Hash, Is.EqualTo(payload.BlockHash));
         });
     }
@@ -480,36 +479,36 @@ public partial class EngineModuleTests
     {
         get
         {
+            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
+                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+            };
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Zero Beacon Root",
+                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
+            };
+            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), false)
+            {
+                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Null Beacon Root",
+                ExpectedResult = MergeErrorCodes.UnsupportedFork,
+            };
+
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), false)
             {
-                TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Nil Beacon Root",
-                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Null Beacon Root",
+                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
             };
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), true)
             {
                 TestName = "ForkchoiceUpdatedV3 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = ErrorCodes.UnsupportedFork,
-            };
-            yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
-            {
-                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Zero Beacon Root",
-                ExpectedResult = ErrorCodes.InvalidParams,
-            };
-
-            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), true)
-            {
-                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Zero Beacon Root",
-                ExpectedResult = ErrorCodes.InvalidParams,
-            };
-            yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), false)
-            {
-                TestName = "ForkchoiceUpdatedV2 To Request Cancun Payload, Nil Beacon Root",
-                ExpectedResult = ErrorCodes.UnsupportedFork,
+                ExpectedResult = MergeErrorCodes.UnsupportedFork,
             };
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), false)
             {
-                TestName = "ForkchoiceUpdatedV3 To Request Cancun Payload, Nil Beacon Root",
-                ExpectedResult = ErrorCodes.InvalidParams,
+                TestName = "ForkchoiceUpdatedV3 To Request Cancun Payload, Null Beacon Root",
+                ExpectedResult = MergeErrorCodes.InvalidPayloadAttributes,
             };
         }
     }
@@ -520,9 +519,10 @@ public partial class EngineModuleTests
         {
             yield return new TestCaseData(Shanghai.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV2), false)
             {
-                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Nil Beacon Root",
+                TestName = "ForkchoiceUpdatedV2 To Request Shanghai Payload, Null Beacon Root",
                 ExpectedResult = ErrorCodes.None,
             };
+
             yield return new TestCaseData(Cancun.Instance, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), true)
             {
                 TestName = "ForkchoiceUpdatedV3 To Request Cancun Payload, Zero Beacon Root",
@@ -638,7 +638,7 @@ public partial class EngineModuleTests
         return executionPayload;
     }
 
-    private async Task<(IEngineRpcModule, string, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
+    private async Task<(IEngineRpcModule, string?, Transaction[], MergeTestBlockchain chain)> BuildAndGetPayloadV3Result(
         IReleaseSpec spec, int transactionCount = 0)
     {
         MergeTestBlockchain chain = await CreateBlockchain(releaseSpec: spec, null);
@@ -670,9 +670,9 @@ public partial class EngineModuleTests
         };
         Hash256 currentHeadHash = chain.BlockTree.HeadHash;
         ForkchoiceStateV1 forkchoiceState = new(currentHeadHash, currentHeadHash, currentHeadHash);
-        string payloadId = spec.IsBeaconBlockRootAvailable
-            ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result.Data.PayloadId!
-            : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result.Data.PayloadId!;
+        string? payloadId = spec.IsBeaconBlockRootAvailable
+            ? rpcModule.engine_forkchoiceUpdatedV3(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId
+            : rpcModule.engine_forkchoiceUpdatedV2(forkchoiceState, payloadAttributes).Result?.Data?.PayloadId;
         return (rpcModule, payloadId, txs, chain);
     }
 }

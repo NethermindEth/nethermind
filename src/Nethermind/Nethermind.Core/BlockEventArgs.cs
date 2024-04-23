@@ -5,13 +5,8 @@ using System;
 
 namespace Nethermind.Core
 {
-    public class BlockEventArgs : EventArgs
+    public class BlockEventArgs(Block block) : EventArgs
     {
-        public Block Block { get; }
-
-        public BlockEventArgs(Block block)
-        {
-            Block = block;
-        }
+        public Block Block { get; } = block;
     }
 }

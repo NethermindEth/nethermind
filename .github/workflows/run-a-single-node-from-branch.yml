@@ -12,14 +12,11 @@ on:
           - mainnet
           - gnosis
           - sepolia
-          - goerli
           - chiado
           - holesky
           - op-mainnet
-          - op-goerli
           - op-sepolia
           - base-mainnet
-          - base-goerli
           - base-sepolia
           - energyweb
           - volta
@@ -63,10 +60,14 @@ on:
         required: false
       additional_options:
         description: "A Json property which allows to customize node even more"
-        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
       additional_optimism_options:
         description: "Extra options to configure optimism node"
         default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
+      convert_to_paprika:
+        description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
+        default: false
+        type: boolean
   workflow_call:
     inputs:
       smoke_tests_ref:
@@ -121,13 +122,17 @@ on:
       additional_options:
         type: string
         description: "A Json property which allows to customize node even more"
-        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":""}'
+        default: '{"timeout":"24", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"", "custom_machine_type": ""}'
         required: false
       additional_optimism_options:
         type: string
         description: "Extra options to configure optimism node"
         default: '{"l1_nethermind_image":"", "op_node_image":"", "op_el_extra_flags":"", "op_cl_extra_flags":"", "layer1_el_endpoint":"", "layer1_cl_endpoint":""}'
         required: false
+      convert_to_paprika:
+        description: "If checked, will attempt to convert node to paprika schema using 'paprika' branch."
+        default: false
+        type: boolean
     outputs:
       base_tag:
         description: ""
@@ -148,7 +153,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -193,7 +198,7 @@ jobs:
         fi
 
         if 
-        [[ "$ref" == "refs/heads/master" ]] && 
+        [[ "$ref" == "refs/heads/master" || $ref == refs/heads/release* || "$ref" == "refs/heads/paprika" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.dockerfile }}" == "Dockerfile" ]] && 
         [[ "${{ steps.extract_dockerfile.outputs.build-config }}" == "release" ]]; then
           echo "skip_docker_build=true" >> $GITHUB_OUTPUT
@@ -208,7 +213,7 @@ jobs:
         ADDITIONAL_OPTIONS: ${{ inputs.additional_options }}
       with:
           workflow: publish-docker.yml
-          ref: "${{ github.ref }}"
+          ref: "${{ inputs.nethermind_repo_ref || github.ref }}"
           token: "${{ secrets.REPOSITORY_DISPATCH_TOKEN }}"
           inputs: '{
               "tag": "${{ env.CLEAN_REF }}",
@@ -226,7 +231,7 @@ jobs:
         TIMEOUT: '10'
         ORG_NAME: ${{ env.ORG_NAME }}
         REPO_NAME: ${{ env.REPO_NAME }}
-        REF: ${{ github.ref }}
+        REF: ${{ inputs.nethermind_repo_ref || github.ref }}
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
         ./scripts/wait-for-workflow-completed.sh
@@ -239,7 +244,7 @@ jobs:
     - name: Checkout repository
       uses: actions/checkout@v4
       with:
-        ref: ${{ inputs.nethermind_repo_ref }}
+        ref: ${{ github.ref }}
 
     - name: Prepare docker tag
       id: prepare_ref
@@ -256,6 +261,7 @@ jobs:
         echo "timeout=$(echo '${{ inputs.additional_options }}' | jq -r .timeout)" >> $GITHUB_OUTPUT
         echo "ssh_keys=$(echo '${{ inputs.additional_options }}' | jq -r .ssh_keys)" >> $GITHUB_OUTPUT
         echo "allowed_ips=$(echo '${{ inputs.additional_options }}' | jq -r .allowed_ips)" >> $GITHUB_OUTPUT
+        echo "custom_machine_type=$(echo '${{ inputs.additional_options }}' | jq -r .custom_machine_type)" >> $GITHUB_OUTPUT
         echo "l1_nethermind_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .l1_nethermind_image)" >> $GITHUB_OUTPUT
         echo "op_node_image=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_node_image)" >> $GITHUB_OUTPUT
         echo "op_el_extra_flags=$(echo '${{ inputs.additional_optimism_options }}' | jq -r .op_el_extra_flags)" >> $GITHUB_OUTPUT
@@ -283,7 +289,7 @@ jobs:
                      "nethermind_branch": "${{ env.CLEAN_REF }}",
                      "network": "${{ inputs.network }}",
                      "cl_client": "${{ inputs.cl_client }}",
-                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\"}",
+                     "additional_options": "{\"cl_custom_image\":\"${{ inputs.cl_custom_image }}\", \"timeout\":\"${{ steps.extract_variables.outputs.timeout }}\", \"non_validator_mode\":${{ steps.extract_variables.outputs.NON_VALIDATOR_MODE }}, \"additional_nethermind_flags\":\"${{ inputs.additional_nethermind_flags }}\", \"additional_cl_flags\":\"${{ inputs.additional_cl_flags }}\", \"ssh_keys\":\"${{ steps.extract_variables.outputs.ssh_keys }}\", \"allowed_ips\":\"${{ steps.extract_variables.outputs.allowed_ips }}\", \"custom_machine_type\":\"${{ steps.extract_variables.outputs.custom_machine_type }}\", \"convert_to_paprika\": \"${{ inputs.convert_to_paprika }}\"}",
                      "additional_optimism_options": "{\"l1_nethermind_image\":\"${{ steps.extract_variables.outputs.l1_nethermind_image}}\", \"op_node_image\":\"${{ steps.extract_variables.outputs.op_node_image}}\", \"op_el_extra_flags\":\"${{ steps.extract_variables.outputs.op_el_extra_flags}}\", \"op_cl_extra_flags\":\"${{ steps.extract_variables.outputs.op_cl_extra_flags}}\", \"layer1_el_endpoint\":\"${{ steps.extract_variables.outputs.layer1_el_endpoint}}\", \"layer1_cl_endpoint\":\"${{ steps.extract_variables.outputs.layer1_cl_endpoint}}\"}"
                    }'
 
@@ -296,6 +302,7 @@ jobs:
         TIMEOUT: '20'
         ORG_NAME: 'NethermindEth'
         REPO_NAME: 'post-merge-smoke-tests'
+        NAME_FILTER: ${{ env.BASE_TAG }}
         REF: 'main'
       run: |
         chmod +x scripts/wait-for-workflow-completed.sh
@@ -326,7 +333,7 @@ jobs:
         echo "${{ env.RPC_URL }}" > rpc_url%${{ env.CLEAN_REF }}%${{ inputs.custom_run_id }}.txt
 
     - name: Upload RPC URL
-      uses: actions/upload-artifact@v3
+      uses: actions/upload-artifact@v4
       if: inputs.custom_run_id != ''
       with:
         name: rpc-url___${{ env.CLEAN_REF }}___${{ inputs.custom_run_id }}

@@ -13,4 +13,6 @@ public class KeepLastNPruningStrategy(IPruningStrategy baseStrategy, int depth) 
     {
         return baseStrategy.ShouldPrune(in currentMemory);
     }
+
+    public int TrackedPastKeyCount => baseStrategy.TrackedPastKeyCount;
 }

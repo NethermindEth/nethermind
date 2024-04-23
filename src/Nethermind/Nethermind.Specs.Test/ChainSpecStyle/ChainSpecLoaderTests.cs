@@ -118,38 +118,6 @@ public class ChainSpecLoaderTests
     }
 
     [Test]
-    public void Can_load_goerli()
-    {
-        string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/goerli.json");
-        ChainSpec chainSpec = LoadChainSpec(path);
-
-        Assert.That(chainSpec.Parameters.Eip1559BaseFeeInitialValue, Is.EqualTo(1.GWei()), $"fork base fee");
-        Assert.That(chainSpec.NetworkId, Is.EqualTo(5), $"{nameof(chainSpec.NetworkId)}");
-        Assert.That(chainSpec.Name, Is.EqualTo("Görli Testnet"), $"{nameof(chainSpec.Name)}");
-        Assert.That(chainSpec.DataDir, Is.EqualTo("goerli"), $"{nameof(chainSpec.DataDir)}");
-        Assert.That(chainSpec.SealEngineType, Is.EqualTo(SealEngineType.Clique), "engine");
-
-        Assert.That(chainSpec.Clique.Period, Is.EqualTo(15UL));
-        Assert.That(chainSpec.Clique.Epoch, Is.EqualTo(30000UL));
-        Assert.That(chainSpec.Clique.Reward, Is.EqualTo(UInt256.Zero));
-
-        chainSpec.HomesteadBlockNumber.Should().Be(0);
-        chainSpec.DaoForkBlockNumber.Should().Be(null);
-        chainSpec.TangerineWhistleBlockNumber.Should().Be(0);
-        chainSpec.SpuriousDragonBlockNumber.Should().Be(0);
-        chainSpec.ByzantiumBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleBlockNumber.Should().Be(0);
-        chainSpec.ConstantinopleFixBlockNumber.Should().Be(0);
-        chainSpec.IstanbulBlockNumber.Should().Be(GoerliSpecProvider.IstanbulBlockNumber);
-        chainSpec.MuirGlacierNumber.Should().Be(null);
-        chainSpec.BerlinBlockNumber.Should().Be(GoerliSpecProvider.BerlinBlockNumber);
-        chainSpec.LondonBlockNumber.Should().Be(GoerliSpecProvider.LondonBlockNumber);
-        chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.ShanghaiTimestamp);
-        chainSpec.ShanghaiTimestamp.Should().Be(GoerliSpecProvider.Instance.TimestampFork);
-        chainSpec.CancunTimestamp.Should().Be(GoerliSpecProvider.CancunTimestamp);
-    }
-
-    [Test]
     public void Can_load_gnosis()
     {
         string path = Path.Combine(TestContext.CurrentContext.WorkDirectory, "../../../../", "Chains/gnosis.json");

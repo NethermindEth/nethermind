@@ -8,7 +8,6 @@ namespace Nethermind.Core
     /// 0: Olympic, Ethereum public pre-release PoW testnet
     /// 1: Expanse, an alternative Ethereum implementation, chain ID 2
     /// 2: Morden Classic, the public Ethereum Classic PoW testnet
-    /// 5: Goerli, the public cross-client PoA testnet
     /// 42: Kovan, the public Parity-only PoA testnet
     /// 60: GoChain, the GoChain networks mainnet
     /// 99: Core, the public POA Network main network
@@ -36,6 +35,9 @@ namespace Nethermind.Core
         public const int Volta = 73799;
         public const int Sepolia = 11155111;
         public const int Holesky = 17000;
+
+        // A generic network that does not exist and id is not claimed by any other actual network
+        public const int GenericNonRealNetwork = 9999;
 
         public static string GetBlockchainName(ulong networkId)
         {
