@@ -115,6 +115,9 @@ public class Block
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
+    public Hash256? RequestsRoot => Header.RequestsRoot; // do not add setter here
+
+
     public override string ToString() => ToString(Format.Short);
 
     public string ToString(Format format) => format switch

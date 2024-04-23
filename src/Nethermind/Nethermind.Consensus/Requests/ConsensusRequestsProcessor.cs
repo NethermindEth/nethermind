@@ -27,18 +27,19 @@ public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
         if (spec.IsEip6110Enabled == false && spec.IsEip7002Enabled == false)
             return;
 
-        List<ConsensusRequest> requests = [];
+        List<ConsensusRequest> requestsList = [];
         // Process deposits
         List<Deposit>? deposits = _depositsProcessor.ProcessDeposits(block, receipts, spec);
         if (deposits is { Count: > 0 })
-            requests.AddRange(deposits);
+            requestsList.AddRange(deposits);
 
         WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state, block);
         if (withdrawalRequests is { Length: > 0 })
-            requests.AddRange(withdrawalRequests);
+            requestsList.AddRange(withdrawalRequests);
 
-        Hash256 root = new RequestsTrie(requests.ToArray()).RootHash;
-        // block.Body.Requests = requests; ToDo think about it
+        ConsensusRequest[]? requests = requestsList.ToArray();
+        Hash256 root = new RequestsTrie(requests).RootHash;
+        block.Body.Requests = requests; // ToDo think about it
         block.Header.RequestsRoot = root;
     }
 }
