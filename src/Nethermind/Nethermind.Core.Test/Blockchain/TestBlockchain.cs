@@ -215,10 +215,12 @@ public class TestBlockchain : IDisposable
             _suggestedBlockResetEvent.Set();
         };
 
-        Block? genesis = GetGenesisBlock();
-        BlockTree.SuggestBlock(genesis);
-
-        await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        if (!keepStateEmpty)
+        {
+            Block? genesis = GetGenesisBlock();
+            BlockTree.SuggestBlock(genesis);
+            await WaitAsync(_resetEvent, "Failed to process genesis in time.");
+        }
 
         if (addBlockOnStart)
             await AddBlocksOnStart();
