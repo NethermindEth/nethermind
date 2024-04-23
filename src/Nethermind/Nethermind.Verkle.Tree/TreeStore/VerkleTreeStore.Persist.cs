@@ -52,17 +52,6 @@ public partial class VerkleTreeStore<TPersistence>
         // TODO: create a sorted set here - we need it for verkleSync serving
         SortedVerkleMemoryDb cacheBatch = batch.ToSortedVerkleDb();
 
-        if (blockNumber == 22038)
-        {
-            Console.WriteLine($"Insert Batch: {blockNumber}");
-            foreach (KeyValuePair<byte[], byte[]> data in batch.LeafTable)
-            {
-                Console.WriteLine($"key,{data.Key.ToHexString()},Value,{data.Value.ToHexString()}");
-            }
-        }
-
-
-
         if (blockNumber == 0)
         {
             if (_logger.IsDebug) _logger.Debug("Persisting the changes for block 0");
