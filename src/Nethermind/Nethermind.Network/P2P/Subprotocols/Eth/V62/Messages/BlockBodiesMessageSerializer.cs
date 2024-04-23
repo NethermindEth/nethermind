@@ -59,10 +59,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             private readonly TxDecoder _txDecoder = new();
             private readonly HeaderDecoder _headerDecoder = new();
             private readonly WithdrawalDecoder _withdrawalDecoderDecoder = new();
-
-            private readonly DepositDecoder _depositDecoder = new();
-
-            private readonly WithdrawalRequestDecoder _validatorExitDecoder = new();
+            private readonly ConsensusRequestDecoder _requestsDecoder = new();
 
             public int GetLength(BlockBody item, RlpBehaviors rlpBehaviors)
             {
@@ -109,8 +106,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Transaction[] transactions = ctx.DecodeArray(_txDecoder);
                 BlockHeader[] uncles = ctx.DecodeArray(_headerDecoder);
                 Withdrawal[]? withdrawals = null;
-                Deposit[]? deposits = null;
-                WithdrawalRequest[]? validatorExits = null;
+                ConsensusRequest[]? requests = null;
                 if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
                     withdrawals = ctx.DecodeArray(_withdrawalDecoderDecoder);
@@ -118,15 +114,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
                 if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
                 {
-                    deposits = ctx.DecodeArray(_depositDecoder);
+                    requests = ctx.DecodeArray(_requestsDecoder);
                 }
 
-                if (ctx.PeekNumberOfItemsRemaining(startingPosition + sequenceLength, 1) > 0)
-                {
-                    validatorExits = ctx.DecodeArray(_validatorExitDecoder);
-                }
-
-                return new BlockBody(transactions, uncles, withdrawals, deposits, validatorExits);
+                return new BlockBody(transactions, uncles, withdrawals, requests);
             }
 
             public void Serialize(RlpStream stream, BlockBody body)

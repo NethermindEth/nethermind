@@ -14,8 +14,7 @@ namespace Nethermind.Serialization.Rlp
         private readonly HeaderDecoder _headerDecoder = new();
         private readonly TxDecoder _txDecoder = new();
         private readonly WithdrawalDecoder _withdrawalDecoder = new();
-        private readonly DepositDecoder _depositDecoder = new();
-        private readonly WithdrawalRequestDecoder _WithdrawalRequestDecoder = new();
+        private readonly ConsensusRequestDecoder _consensusRequestsDecoder = new();
 
         public Block? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
@@ -56,15 +55,14 @@ namespace Nethermind.Serialization.Rlp
             rlpStream.Check(unclesCheck);
 
             List<Withdrawal>? withdrawals = DecodeWithdrawals(rlpStream, blockCheck);
-            List<Deposit>? deposits = DecodeDeposits(rlpStream, blockCheck);
-            List<WithdrawalRequest>? validatorExits = DecodeValidatorExits(rlpStream, blockCheck);
+            List<ConsensusRequest>? requests = DecodeRequests(rlpStream, blockCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 rlpStream.Check(blockCheck);
             }
 
-            return new(header, transactions, uncleHeaders, withdrawals, deposits, validatorExits);
+            return new(header, transactions, uncleHeaders, withdrawals, requests);
         }
 
 
@@ -101,9 +99,9 @@ namespace Nethermind.Serialization.Rlp
             return withdrawals;
         }
 
-        private List<Deposit>? DecodeDeposits(RlpStream rlpStream, int blockCheck)
+        private List<ConsensusRequest>? DecodeRequests(RlpStream rlpStream, int blockCheck)
         {
-            List<Deposit>? deposits = null;
+            List<ConsensusRequest>? requests = null;
             if (rlpStream.Position != blockCheck)
             {
                 bool lengthWasRead = true;
@@ -118,57 +116,24 @@ namespace Nethermind.Serialization.Rlp
 
                 if (lengthWasRead)
                 {
-                    int depositsLength = rlpStream.ReadSequenceLength();
-                    int depositsCheck = rlpStream.Position + depositsLength;
-                    deposits = new();
+                    int requestsLength = rlpStream.ReadSequenceLength();
+                    int requestsCheck = rlpStream.Position + requestsLength;
+                    requests = new();
 
-                    while (rlpStream.Position < depositsCheck)
+                    while (rlpStream.Position < requestsCheck)
                     {
-                        deposits.Add(Rlp.Decode<Deposit>(rlpStream));
+                        requests.Add(Rlp.Decode<ConsensusRequest>(rlpStream));
                     }
 
-                    rlpStream.Check(depositsCheck);
+                    rlpStream.Check(requestsCheck);
                 }
             }
 
-            return deposits;
-        }
-
-        private List<WithdrawalRequest>? DecodeValidatorExits(RlpStream rlpStream, int blockCheck)
-        {
-            List<WithdrawalRequest>? validatorExits = null;
-            if (rlpStream.Position != blockCheck)
-            {
-                bool lengthWasRead = true;
-                try
-                {
-                    rlpStream.PeekNextRlpLength();
-                }
-                catch
-                {
-                    lengthWasRead = false;
-                }
-
-                if (lengthWasRead)
-                {
-                    int validatorExistsLength = rlpStream.ReadSequenceLength();
-                    int validatorExistsCheck = rlpStream.Position + validatorExistsLength;
-                    validatorExits = new();
-
-                    while (rlpStream.Position < validatorExistsCheck)
-                    {
-                        validatorExits.Add(_WithdrawalRequestDecoder.Decode(rlpStream));
-                    }
-
-                    rlpStream.Check(validatorExistsCheck);
-                }
-            }
-
-            return validatorExits;
+            return requests;
         }
 
 
-        private (int Total, int Txs, int Uncles, int? Withdrawals, int? Deposits, int? ValidatorExits) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
+        private (int Total, int Txs, int Uncles, int? Withdrawals, int? Requests) GetContentLength(Block item, RlpBehaviors rlpBehaviors)
         {
             int contentLength = _headerDecoder.GetLength(item.Header, rlpBehaviors);
 
@@ -187,40 +152,16 @@ namespace Nethermind.Serialization.Rlp
                     contentLength += Rlp.LengthOfSequence(withdrawalsLength.Value);
             }
 
-            int? depositsLength = null;
-            if (item.Deposits is not null)
+            int? consensusRequestsLength = null;
+            if (item.Requests is not null)
             {
-                depositsLength = GetDepositsLength(item, rlpBehaviors);
+                consensusRequestsLength = GetConsensusRequestsLength(item, rlpBehaviors);
 
-                if (depositsLength.HasValue)
-                    contentLength += Rlp.LengthOfSequence(depositsLength.Value);
+                if (consensusRequestsLength.HasValue)
+                    contentLength += Rlp.LengthOfSequence(consensusRequestsLength.Value);
             }
 
-            int? validatorExitsLength = null;
-            if (item.ValidatorExits is not null)
-            {
-                validatorExitsLength = GetValidatorExitsLength(item, rlpBehaviors);
-
-                if (validatorExitsLength is not null)
-                    contentLength += Rlp.LengthOfSequence(validatorExitsLength.Value);
-            }
-
-            return (contentLength, txLength, unclesLength, withdrawalsLength, depositsLength, validatorExitsLength);
-        }
-
-        private int? GetValidatorExitsLength(Block item, RlpBehaviors rlpBehaviors)
-        {
-            if (item.ValidatorExits is null)
-                return null;
-
-            int validatorExistsLength = 0;
-
-            for (int i = 0, count = item.ValidatorExits.Length; i < count; i++)
-            {
-                validatorExistsLength += _WithdrawalRequestDecoder.GetLength(item.ValidatorExits[i], rlpBehaviors);
-            }
-
-            return validatorExistsLength;
+            return (contentLength, txLength, unclesLength, withdrawalsLength, consensusRequestsLength);
         }
 
         private int GetUnclesLength(Block item, RlpBehaviors rlpBehaviors)
@@ -260,19 +201,19 @@ namespace Nethermind.Serialization.Rlp
             return withdrawalLength;
         }
 
-        private int? GetDepositsLength(Block item, RlpBehaviors rlpBehaviors)
+        private int? GetConsensusRequestsLength(Block item, RlpBehaviors rlpBehaviors)
         {
-            if (item.Deposits is null)
+            if (item.Requests is null)
                 return null;
 
-            var depositsLength = 0;
+            var consensusRequestsLength = 0;
 
-            for (int i = 0, count = item.Deposits.Length; i < count; i++)
+            for (int i = 0, count = item.Requests.Length; i < count; i++)
             {
-                depositsLength += _depositDecoder.GetLength(item.Deposits[i], rlpBehaviors);
+                consensusRequestsLength += _consensusRequestsDecoder.GetLength(item.Requests[i], rlpBehaviors);
             }
 
-            return depositsLength;
+            return consensusRequestsLength;
         }
 
         public int GetLength(Block? item, RlpBehaviors rlpBehaviors)
@@ -319,15 +260,14 @@ namespace Nethermind.Serialization.Rlp
             decoderContext.Check(unclesCheck);
 
             List<Withdrawal>? withdrawals = DecodeWithdrawals(ref decoderContext, blockCheck);
-            List<Deposit>? deposits = DecodeDeposits(ref decoderContext, blockCheck);
-            List<WithdrawalRequest>? validatorExits = DecodeValidatorExits(ref decoderContext, blockCheck);
+            List<ConsensusRequest>? requests = DecodeRequests(ref decoderContext, blockCheck);
 
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(blockCheck);
             }
 
-            return new(header, transactions, uncleHeaders, withdrawals, deposits, validatorExits);
+            return new(header, transactions, uncleHeaders, withdrawals, requests);
         }
 
         private List<Withdrawal>? DecodeWithdrawals(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
@@ -351,45 +291,25 @@ namespace Nethermind.Serialization.Rlp
             return withdrawals;
         }
 
-        private List<Deposit>? DecodeDeposits(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
+        private List<ConsensusRequest>? DecodeRequests(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
         {
-            List<Deposit>? deposits = null;
+            List<ConsensusRequest>? requests = null;
 
             if (decoderContext.Position != blockCheck)
             {
-                int depositsLength = decoderContext.ReadSequenceLength();
-                int depositsCheck = decoderContext.Position + depositsLength;
-                deposits = new();
+                int requestsLength = decoderContext.ReadSequenceLength();
+                int requestsCheck = decoderContext.Position + requestsLength;
+                requests = new();
 
-                while (decoderContext.Position < depositsCheck)
+                while (decoderContext.Position < requestsCheck)
                 {
-                    deposits.Add(Rlp.Decode<Deposit>(ref decoderContext));
+                    requests.Add(Rlp.Decode<ConsensusRequest>(ref decoderContext));
                 }
 
-                decoderContext.Check(depositsCheck);
+                decoderContext.Check(requestsCheck);
             }
 
-            return deposits;
-        }
-        private List<WithdrawalRequest>? DecodeValidatorExits(ref Rlp.ValueDecoderContext decoderContext, int blockCheck)
-        {
-            List<WithdrawalRequest>? validatorExits = null;
-
-            if (decoderContext.Position != blockCheck)
-            {
-                int validatorExitLength = decoderContext.ReadSequenceLength();
-                int validatorExitsCheck = decoderContext.Position + validatorExitLength;
-                validatorExits = new();
-
-                while (decoderContext.Position < validatorExitsCheck)
-                {
-                    validatorExits.Add(_WithdrawalRequestDecoder.Decode(ref decoderContext));
-                }
-
-                decoderContext.Check(validatorExitsCheck);
-            }
-
-            return validatorExits;
+            return requests;
         }
 
         public Rlp Encode(Block? item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -412,7 +332,7 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? depositsLength, int? validatorExitsLength) = GetContentLength(item, rlpBehaviors);
+            (int contentLength, int txsLength, int unclesLength, int? withdrawalsLength, int? requestsLength) = GetContentLength(item, rlpBehaviors);
             stream.StartSequence(contentLength);
             stream.Encode(item.Header);
             stream.StartSequence(txsLength);
@@ -437,23 +357,13 @@ namespace Nethermind.Serialization.Rlp
                 }
             }
 
-            if (depositsLength.HasValue)
+            if (requestsLength.HasValue)
             {
-                stream.StartSequence(depositsLength.Value);
+                stream.StartSequence(requestsLength.Value);
 
-                for (int i = 0; i < item.Deposits.Length; i++)
+                for (int i = 0; i < item.Requests.Length; i++)
                 {
-                    stream.Encode(item.Deposits[i]);
-                }
-            }
-
-            if (validatorExitsLength.HasValue)
-            {
-                stream.StartSequence(validatorExitsLength.Value);
-
-                for (int i = 0; i < item.ValidatorExits!.Length; i++)
-                {
-                    _WithdrawalRequestDecoder.Encode(stream, item.ValidatorExits[i]);
+                    stream.Encode(item.Requests[i]);
                 }
             }
         }

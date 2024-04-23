@@ -96,14 +96,8 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
-                // an empty Deposit array
-                .WithDeposits(0)
-                .WithValidatorExits(new[] { new WithdrawalRequest()
-                {
-                    SourceAddress = TestItem.AddressA,
-                    ValidatorPubkey = new byte[48],
-                    Amount = 12
-                } })
+                // an empty requests array
+                .WithConsensusRequests(0)
                 .TestObject
         };
     }

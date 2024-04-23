@@ -28,7 +28,7 @@ public class BlockHeader
         ulong? blobGasUsed = null,
         ulong? excessBlobGas = null,
         Hash256? parentBeaconBlockRoot = null,
-        Hash256? validatorExitsRoot = null)
+        Hash256? requestsRoot = null)
     {
         ParentHash = parentHash;
         UnclesHash = unclesHash;
@@ -39,7 +39,7 @@ public class BlockHeader
         Timestamp = timestamp;
         ExtraData = extraData;
         ParentBeaconBlockRoot = parentBeaconBlockRoot;
-        ValidatorExitsRoot = validatorExitsRoot;
+        RequestsRoot = requestsRoot;
         BlobGasUsed = blobGasUsed;
         ExcessBlobGas = excessBlobGas;
     }
@@ -71,16 +71,14 @@ public class BlockHeader
     public long? AuRaStep { get; set; }
     public UInt256 BaseFeePerGas { get; set; }
     public Hash256? WithdrawalsRoot { get; set; }
-    public Hash256? ValidatorExitsRoot { get; set; }
     public Hash256? ParentBeaconBlockRoot { get; set; }
-    public Hash256? DepositsRoot { get; set; }
+    public Hash256? RequestsRoot { get; set; }
     public ulong? BlobGasUsed { get; set; }
     public ulong? ExcessBlobGas { get; set; }
     public bool HasBody => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash)
                            || (UnclesHash is not null && UnclesHash != Keccak.OfAnEmptySequenceRlp)
                            || (WithdrawalsRoot is not null && WithdrawalsRoot != Keccak.EmptyTreeHash)
-                           || (DepositsRoot is not null && DepositsRoot != Keccak.EmptyTreeHash)
-                           || (ValidatorExitsRoot is not null && ValidatorExitsRoot != Keccak.EmptyTreeHash);
+                           || (RequestsRoot is not null && RequestsRoot != Keccak.EmptyTreeHash);
 
     public bool HasTransactions => (TxRoot is not null && TxRoot != Keccak.EmptyTreeHash);
 
@@ -121,14 +119,11 @@ public class BlockHeader
         }
         builder.AppendLine($"{indent}IsPostMerge: {IsPostMerge}");
         builder.AppendLine($"{indent}TotalDifficulty: {TotalDifficulty}");
-        if (DepositsRoot is not null)
+        if (RequestsRoot is not null)
         {
-            builder.AppendLine($"{indent}DepositsRoot: {DepositsRoot}");
+            builder.AppendLine($"{indent}RequestsRoot: {RequestsRoot}");
         }
-        if (ValidatorExitsRoot is not null)
-        {
-            builder.AppendLine($"{indent}ValidatorExitsRoot: {ValidatorExitsRoot}");
-        }
+
         return builder.ToString();
     }
 

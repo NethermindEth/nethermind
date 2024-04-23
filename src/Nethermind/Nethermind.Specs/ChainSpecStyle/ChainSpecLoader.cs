@@ -414,15 +414,12 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         genesisHeader.BaseFeePerGas = baseFee;
         bool withdrawalsEnabled = chainSpecJson.Params.Eip4895TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4895TransitionTimestamp;
         bool depositsEnabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        bool validatorExitsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
+        bool withdrawalRequestsEnabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
-        if (depositsEnabled)
-            genesisHeader.DepositsRoot = Keccak.EmptyTreeHash;
-
-        if (validatorExitsEnabled)
-            genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
+        if (depositsEnabled || withdrawalRequestsEnabled)
+            genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
         if (isEip4844Enabled)
@@ -438,10 +435,10 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         }
 
         bool isEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
-
-        if (isEip7002Enabled)
+        bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
+        if (isEip6110Enabled || isEip7002Enabled)
         {
-            genesisHeader.ValidatorExitsRoot = Keccak.EmptyTreeHash;
+            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
         genesisHeader.AuRaStep = step;
@@ -453,8 +450,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
-                depositsEnabled ? Array.Empty<Deposit>() : null,
-                validatorExitsEnabled ? Array.Empty<WithdrawalRequest>() : null);
+                depositsEnabled ? Array.Empty<Deposit>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);

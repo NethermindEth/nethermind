@@ -19,8 +19,9 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
 
     public ExecutionPayloadV4(Block block) : base(block)
     {
-        Deposits = block.Deposits;
-        ValidatorExits = block.ValidatorExits;
+        // ToDo
+        // Deposits = block.Requests;
+        // ValidatorExits = block.ValidatorExits;
     }
 
     public override bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
@@ -29,9 +30,8 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
         {
             return false;
         }
-
-        block!.Header.DepositsRoot = Deposits is null ? null : new DepositTrie(Deposits).RootHash;
-        block!.Header.ValidatorExitsRoot = ValidatorExits is null ? null : ValidatorExitsTrie.CalculateRoot(ValidatorExits);
+ // ToDo
+       //  block!.Header.RequestsRoot = Deposits is null ? null : new RequestsTrie(Deposits).RootHash;
         return true;
     }
 
@@ -40,7 +40,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
         && specProvider.GetSpec(BlockNumber, Timestamp).ValidatorExitsEnabled;
 
     /// <summary>
-    /// Gets or sets <see cref="Block.Deposits"/> as defined in
+    /// Gets or sets <see cref="Block.Requests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
     /// </summary>
     [JsonRequired]

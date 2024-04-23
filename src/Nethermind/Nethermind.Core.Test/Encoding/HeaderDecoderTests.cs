@@ -166,14 +166,12 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithDepositsRoot(Keccak.Zero)
-            .WithValidatorExitsRoot(TestItem.KeccakA).TestObject;
+            .WithDepositsRoot(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
         blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
-        blockHeader.ValidatorExitsRoot.Should().Be(TestItem.KeccakA);
     }
 
     [Test]
@@ -186,14 +184,12 @@ public class HeaderDecoderTests
             .WithBlobGasUsed(0)
             .WithExcessBlobGas(0)
             .WithParentBeaconBlockRoot(TestItem.KeccakB)
-            .WithDepositsRoot(Keccak.Zero)
-            .WithValidatorExitsRoot(null).TestObject;
+            .WithDepositsRoot(Keccak.Zero).TestObject;
 
         Rlp rlp = Rlp.Encode(header);
         BlockHeader blockHeader = Rlp.Decode<BlockHeader>(rlp.Bytes.AsSpan());
 
         blockHeader.ParentBeaconBlockRoot.Should().Be(TestItem.KeccakB);
-        blockHeader.ValidatorExitsRoot.Should().BeNull();
     }
 
     public static IEnumerable<object?[]> CancunFieldsSource()

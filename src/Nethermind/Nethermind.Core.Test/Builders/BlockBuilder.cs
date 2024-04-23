@@ -217,7 +217,7 @@ namespace Nethermind.Core.Test.Builders
 
         public BlockBuilder WithDepositRoot(Hash256? depositsRoot)
         {
-            TestObjectInternal.Header.DepositsRoot = depositsRoot;
+            TestObjectInternal.Header.RequestsRoot = depositsRoot;
 
             return this;
         }
@@ -283,24 +283,24 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithDeposits(int count)
+        public BlockBuilder WithConsensusRequests(int count)
         {
-            var deposits = new Deposit[count];
+            var consensusRequests = new ConsensusRequest[count];
 
             for (var i = 0; i < count; i++)
-                deposits[i] = new();
+                consensusRequests[i] = new();
 
-            return WithDeposits(deposits);
+            return WithConsensusRequests(consensusRequests);
         }
 
-        public BlockBuilder WithDeposits(params Deposit[]? deposits)
+        public BlockBuilder WithConsensusRequests(params ConsensusRequest[]? requests)
         {
             TestObjectInternal = TestObjectInternal
-                .WithReplacedBody(TestObjectInternal.Body.WithChangedDeposits(deposits));
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedDeposits(requests));
 
-            TestObjectInternal.Header.DepositsRoot = deposits is null
+            TestObjectInternal.Header.RequestsRoot = requests is null
                 ? null
-                : new DepositTrie(deposits).RootHash;
+                : new RequestsTrie(requests).RootHash;
 
             return this;
         }
@@ -308,15 +308,6 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithParentBeaconBlockRoot(Hash256? parentBeaconBlockRoot)
         {
             TestObjectInternal.Header.ParentBeaconBlockRoot = parentBeaconBlockRoot;
-            return this;
-        }
-
-        public BlockBuilder WithValidatorExits(WithdrawalRequest[]? validatorExits)
-        {
-            TestObjectInternal = TestObjectInternal.WithReplacedBody(
-                TestObjectInternal.Body.WithChangedValidatorExits(validatorExits));
-
-            TestObjectInternal.Header.ValidatorExitsRoot = validatorExits is not null ? ValidatorExitsTrie.CalculateRoot(validatorExits) : null;
             return this;
         }
     }

@@ -308,10 +308,9 @@ public partial class BlockProcessor : IBlockProcessor
             ReceiptsRoot = bh.ReceiptsRoot,
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
-            DepositsRoot = bh.DepositsRoot,
+            RequestsRoot = bh.RequestsRoot,
             IsPostMerge = bh.IsPostMerge,
-            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
-            ValidatorExitsRoot = bh.ValidatorExitsRoot
+            ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot
         };
 
         if (!ShouldComputeStateRoot(bh))

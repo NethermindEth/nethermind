@@ -27,18 +27,18 @@ public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
         if (spec.IsEip6110Enabled == false && spec.IsEip7002Enabled == false)
             return;
 
-        List<ConsensusRequest> consensusRequests = [];
+        List<ConsensusRequest> requests = [];
         // Process deposits
         List<Deposit>? deposits = _depositsProcessor.ProcessDeposits(block, receipts, spec);
         if (deposits is { Count: > 0 })
-            consensusRequests.AddRange(deposits);
+            requests.AddRange(deposits);
 
-        WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state);
+        WithdrawalRequest[]? withdrawalRequests = _withdrawalRequestsProcessor.ReadWithdrawalRequests(spec, state, block);
         if (withdrawalRequests is { Length: > 0 })
-            consensusRequests.AddRange(withdrawalRequests);
+            requests.AddRange(withdrawalRequests);
 
-        Hash256 root = ValidatorExitsTrie.CalculateRoot(withdrawalRequests); // ToDo Rohit - we have to change root calculations here
-        block.Body.ValidatorExits = withdrawalRequests;
-        block.Header.ValidatorExitsRoot = root;
+        Hash256 root = new RequestsTrie(requests.ToArray()).RootHash;
+        // block.Body.Requests = requests; ToDo think about it
+        block.Header.RequestsRoot = root;
     }
 }

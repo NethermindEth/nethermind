@@ -30,14 +30,12 @@ namespace Nethermind.Consensus.Producers
             }
         }
 
-        public BlockToProduce(
-            BlockHeader blockHeader,
+        public BlockToProduce(BlockHeader blockHeader,
             IEnumerable<Transaction> transactions,
             IEnumerable<BlockHeader> uncles,
             IEnumerable<Withdrawal>? withdrawals = null,
-            IEnumerable<Deposit>? deposits = null,
-            IEnumerable<WithdrawalRequest>? validatorExits = null)
-            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals, deposits, validatorExits)
+            IEnumerable<ConsensusRequest>? requests = null)
+            : base(blockHeader, Array.Empty<Transaction>(), uncles, withdrawals, requests)
         {
             Transactions = transactions;
         }

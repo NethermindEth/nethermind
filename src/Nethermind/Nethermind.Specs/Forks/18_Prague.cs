@@ -16,6 +16,7 @@ public class Prague : Cancun
         Name = "Prague";
         IsEip6110Enabled = true;
         IsEip7002Enabled = true;
+        Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());

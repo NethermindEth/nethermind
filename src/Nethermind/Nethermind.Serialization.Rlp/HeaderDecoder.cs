@@ -92,12 +92,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (itemsRemaining >= 5 && decoderContext.Position != headerCheck)
                 {
-                    blockHeader.DepositsRoot = decoderContext.DecodeKeccak();
-                }
-
-                if (itemsRemaining == 6 && decoderContext.Position != headerCheck)
-                {
-                    blockHeader.ValidatorExitsRoot = decoderContext.DecodeKeccak();
+                    blockHeader.RequestsRoot = decoderContext.DecodeKeccak();
                 }
             }
 
@@ -189,12 +184,7 @@ namespace Nethermind.Serialization.Rlp
 
                 if (itemsRemaining >= 5 && rlpStream.Position != headerCheck)
                 {
-                    blockHeader.DepositsRoot = rlpStream.DecodeKeccak();
-                }
-
-                if (itemsRemaining == 6 && rlpStream.Position != headerCheck)
-                {
-                    blockHeader.ValidatorExitsRoot = rlpStream.DecodeKeccak();
+                    blockHeader.RequestsRoot = rlpStream.DecodeKeccak();
                 }
             }
 
@@ -266,14 +256,9 @@ namespace Nethermind.Serialization.Rlp
                 rlpStream.Encode(header.ParentBeaconBlockRoot);
             }
 
-            if (header.DepositsRoot is not null)
+            if (header.RequestsRoot is not null)
             {
-                rlpStream.Encode(header.DepositsRoot);
-            }
-
-            if (header.ValidatorExitsRoot is not null)
-            {
-                rlpStream.Encode(header.ValidatorExitsRoot);
+                rlpStream.Encode(header.RequestsRoot);
             }
         }
 
@@ -317,8 +302,7 @@ namespace Nethermind.Serialization.Rlp
                                 + (item.ParentBeaconBlockRoot is null ? 0 : Rlp.LengthOfKeccakRlp)
                                 + (item.BlobGasUsed is null ? 0 : Rlp.LengthOf(item.BlobGasUsed.Value))
                                 + (item.ExcessBlobGas is null ? 0 : Rlp.LengthOf(item.ExcessBlobGas.Value))
-                                + (item.DepositsRoot is null ? 0 : Rlp.LengthOf(item.DepositsRoot))
-                                + (item.ValidatorExitsRoot is null ? 0 : Rlp.LengthOf(item.ValidatorExitsRoot));
+                                + (item.RequestsRoot is null ? 0 : Rlp.LengthOf(item.RequestsRoot));
 
             if (notForSealing)
             {

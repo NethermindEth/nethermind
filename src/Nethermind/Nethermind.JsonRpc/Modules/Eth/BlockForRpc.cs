@@ -84,10 +84,8 @@ public class BlockForRpc
         Uncles = block.Uncles.Select(o => o.Hash);
         Withdrawals = block.Withdrawals;
         WithdrawalsRoot = block.Header.WithdrawalsRoot;
-        ValidatorExits = block.ValidatorExits;
-        ValidatorExitsRoot = block.Header.ValidatorExitsRoot;
-        Deposits = block.Deposits;
-        DepositsRoot = block.Header.DepositsRoot;
+        Requests = block.Requests;
+        RequestsRoot = block.Header.RequestsRoot;
     }
 
     public Address Author { get; set; }
@@ -145,14 +143,8 @@ public class BlockForRpc
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
     public Hash256? ParentBeaconBlockRoot { get; set; }
-    public IEnumerable<Deposit>? Deposits { get; set; }
+    public IEnumerable<ConsensusRequest>? Requests { get; set; }
 
     [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? DepositsRoot { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public IEnumerable<WithdrawalRequest>? ValidatorExits { get; set; }
-
-    [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
-    public Hash256? ValidatorExitsRoot { get; set; }
+    public Hash256? RequestsRoot { get; set; }
 }
