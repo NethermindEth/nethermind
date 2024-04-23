@@ -2103,7 +2103,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.AUTH:
                     {
-                        //if (!spec.AuthCallsEnabled) goto InvalidInstruction;
+                        if (!spec.AuthCallsEnabled) goto InvalidInstruction;
                         Address authority = stack.PopAddress();
 
                         if (authority is null) goto StackUnderflow;
@@ -2116,6 +2116,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Auth;
 
                         if (!UpdateMemoryCost(vmState, ref gasAvailable, a, b))
+                            goto OutOfGas;
+
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
                             goto OutOfGas;
 
                         ReadOnlySpan<byte> commit;
@@ -2155,6 +2158,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         //TODO handle exception will crash the process
                         Address recovered = _ecdsa.RecoverPublicKey(signature, digest).Address;
 
+                        //TODO tx.Origin == authority, EIP states ???
                         if (recovered == authority)
                         {
                             stack.PushUInt256(1);
