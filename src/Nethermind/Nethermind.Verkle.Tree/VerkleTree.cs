@@ -118,6 +118,18 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
 
     public void Commit(bool forSync = false)
     {
+        if (forSync)
+        {
+            CommitOneByOne(forSync);
+        }
+        else
+        {
+            CommitBulk();
+        }
+    }
+
+    private void CommitOneByOne(bool forSync = false)
+    {
         if (_logger.IsDebug) _logger.Debug($"VT Commit: SubTree Count:{_leafUpdateCache.Count}");
         foreach (KeyValuePair<byte[], LeafUpdateDelta> leafDelta in _leafUpdateCache)
         {
