@@ -20,10 +20,10 @@ namespace Nethermind.Merge.Plugin.Test;
 public partial class EngineModuleTests
 {
     [TestCase(
-        "0x1c53bdbf457025f80c6971a9cf50986974eed02f0a9acaeeb49cafef10efd133",
+        "0x948f67f47376af5d09cc39ec25a84c84774f14b2e80289064c2de73db33cc573",
         "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
         "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
-        "0xabd41416f2618ad0")]
+        "0x96b752d22831ad92")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
     {
@@ -49,7 +49,8 @@ public partial class EngineModuleTests
             timestamp = timestamp.ToHexString(true),
             prevRandao = prevRandao.ToString(),
             suggestedFeeRecipient = feeRecipient.ToString(),
-            withdrawals
+            withdrawals,
+            parentBeaconBLockRoot = Keccak.Zero
         };
         string?[] @params = new string?[]
         {
@@ -100,7 +101,7 @@ public partial class EngineModuleTests
             Array.Empty<Transaction>(),
             Array.Empty<BlockHeader>(),
             withdrawals);
-        GetPayloadV2Result expectedPayload = new(block, UInt256.Zero);
+        GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);

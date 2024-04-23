@@ -155,7 +155,7 @@ public class PayloadAttributes
             apiVersion: apiVersion,
             actualVersion: this.GetVersion(),
             timestampVersion: specProvider.GetSpec(ForkActivation.TimestampOnly(Timestamp))
-                .ExpectedEngineSpecVersion(),
+                .ExpectedPayloadAttributesVersion(),
             "PayloadAttributesV",
             out error);
 }
@@ -172,10 +172,9 @@ public static class PayloadAttributesExtensions
             _ => EngineApiVersions.Paris
         };
 
-    public static int ExpectedEngineSpecVersion(this IReleaseSpec spec) =>
+    public static int ExpectedPayloadAttributesVersion(this IReleaseSpec spec) =>
         spec switch
         {
-            { DepositsEnabled: true, ValidatorExitsEnabled: true } => EngineApiVersions.Prague,
             { IsEip4844Enabled: true } => EngineApiVersions.Cancun,
             { WithdrawalsEnabled: true } => EngineApiVersions.Shanghai,
             _ => EngineApiVersions.Paris
