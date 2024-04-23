@@ -21,7 +21,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Evm;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
