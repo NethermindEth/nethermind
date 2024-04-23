@@ -142,6 +142,8 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
+        public static CallResult AuthorizedNotSet => new(EvmExceptionType.AuthorizedNotSet);
+
         public static CallResult Empty => new(Array.Empty<byte>(), null);
 
         public CallResult(EvmState stateToExecute)
@@ -2863,6 +2865,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            EvmExceptionType.AuthorizedNotSet => CallResult.AuthorizedNotSet,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }

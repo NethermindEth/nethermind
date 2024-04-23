@@ -116,11 +116,58 @@ namespace Nethermind.Evm.Test
             Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
         }
 
-        [TestCase(97, 3100 + 2600)]
-        [TestCase(160, 3103 + 2600)]
-        [TestCase(192, 3106 + 2600)]
-        [TestCase(193, 3109 + 2600)]
-        public void ExecuteAuth_AUTHExpandsMemory_AUTHGasCosts3100PlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, int expectedGas)
+        [Test]
+        public void ExecuteAuth_InvalidAuthorityAfterValid_CorrectErrorIsReturned()
+        {
+            var signer = TestItem.PrivateKeyB;
+            var authority = TestItem.AddressB;
+
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Wrong authority
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(TestItem.AddressF)
+                .Op(Instruction.AUTH)
+
+                .PushData(20)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressC)
+                .PushData(1000000)
+                .Op(Instruction.AUTHCALL)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.StatusCode, Is.EqualTo(0));
+            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.AuthorizedNotSet.ToString()));
+        }
+
+        [TestCase(97, GasCostOf.Auth + GasCostOf.ColdAccountAccess)]
+        [TestCase(160, GasCostOf.Auth + GasCostOf.Memory + GasCostOf.ColdAccountAccess)]
+        [TestCase(192, GasCostOf.Auth + GasCostOf.Memory * 2 + GasCostOf.ColdAccountAccess)]
+        [TestCase(193, GasCostOf.Auth + GasCostOf.Memory * 3 + GasCostOf.ColdAccountAccess)]
+        public void ExecuteAuth_AUTHExpandsMemory_AUTHGasCosts3100PlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, long expectedGas)
         {
             var data = CreateSignedCommitMessage(TestItem.PrivateKeyF);
 
