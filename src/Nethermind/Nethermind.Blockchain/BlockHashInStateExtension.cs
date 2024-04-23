@@ -18,7 +18,7 @@ public static class BlockHashInStateExtension
     {
         long current = currentBlock.Number;
         BlockHeader header = currentBlock;
-        for (var i = 0; i < Math.Min(Eip2935Constants.BlockHashOldWindow, current); i++)
+        for (var i = 0; i < Math.Min(Eip2935Constants.RingBufferSize, current); i++)
         {
             // an extra check - don't think it is needed
             if (header.IsGenesis) break;

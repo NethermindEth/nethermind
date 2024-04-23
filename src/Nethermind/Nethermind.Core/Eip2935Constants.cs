@@ -16,5 +16,4 @@ public static class Eip2935Constants
     public static readonly Address BlockHashHistoryAddress = new("0x25a219378dad9b3503c8268c9ca836a52427a4fb");
 
     public static readonly long RingBufferSize = 8192;
-    public static readonly long BlockHashOldWindow = 256;
 }
