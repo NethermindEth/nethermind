@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Verkle.Tree.Cache;
 using Nethermind.Verkle.Tree.TreeNodes;
 using Nethermind.Verkle.Tree.Utils;

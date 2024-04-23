@@ -30,7 +30,7 @@ public class NoExecWitness: IExecutionWitness
     public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite,
         ref long unspentGas) => true;
 
-    public long AccessCodeChunk(Address address, byte chunkId, bool isWrite) => 0;
+    public long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite) => 0;
 
     public long AccessForAbsentAccount(Address address) => 0;
 

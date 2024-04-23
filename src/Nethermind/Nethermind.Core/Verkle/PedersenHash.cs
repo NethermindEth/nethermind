@@ -11,7 +11,7 @@ public static class PedersenHash
     public static byte[] Hash(UInt256[] inputElements)
     {
         int inputLength = inputElements.Length;
-        FrE[] pedersenVec = new FrE[1 + 2 * inputLength];
+        var pedersenVec = new FrE[1 + 2 * inputLength];
         pedersenVec[0] = FrE.SetElement((ulong)(2 + 256 * inputLength * 32));
 
         for (int i = 0; i < inputElements.Length; i++)
@@ -27,7 +27,7 @@ public static class PedersenHash
             res += crs.BasisG[i] * pedersenVec[i];
         }
 
-        return res.ToBytesLittleEndian();
+        return res.MapToScalarField().ToBytes();
     }
 
     public static void ComputeHashBytesToSpan(ReadOnlySpan<byte> address20, UInt256 treeIndex, Span<byte> output)
@@ -68,6 +68,6 @@ public static class PedersenHash
                           + crs.BasisG[3] * FrE.SetElement(treeIndex.u0, treeIndex.u1)
                           + crs.BasisG[4] * FrE.SetElement(treeIndex.u2, treeIndex.u3);
 
-        return res.ToBytesLittleEndian();
+        return res.MapToScalarField().ToBytes();
     }
 }

@@ -418,7 +418,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             currentState.GasAvailable -= gasAvailableForCodeDeposit;
                             worldState.Restore(previousState.Snapshot);
-                            if (!previousState.IsCreateOnPreExistingAccount)
+                            if (!previousState.IsCreateOnPreExistingAccount && !spec.IsVerkleTreeEipEnabled)
                             {
                                 _state.DeleteAccount(callCodeOwner);
                             }
@@ -640,16 +640,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 result = UpdateGas(gasCodeOp, ref gasAvailable);
                             }
                             if (!result) break;
-                        }
-                        if (valueTransfer)
-                        {
-                            var gasValueTransfer = vmState.Env.Witness.AccessForBalance(address);
-                            if (gasValueTransfer > 0)
+
+                            if (valueTransfer)
                             {
-                                witnessGasCharged = true;
-                                result = UpdateGas(gasValueTransfer, ref gasAvailable);
+                                var gasValueTransfer = vmState.Env.Witness.AccessForBalance(address);
+                                if (gasValueTransfer > 0)
+                                {
+                                    witnessGasCharged = true;
+                                    result = UpdateGas(gasValueTransfer, ref gasAvailable);
+                                }
                             }
                         }
+                        else
+                        {
+                            witnessGasCharged = true;
+                        }
+
                         break;
                     }
                 case Instruction.EXTCODEHASH:
@@ -713,6 +719,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             storageAccessType == StorageAccessType.SSTORE);
         if (!UpdateGas(storageWitnessGas, ref gasAvailable)) return false;
 
+        bool witnessGasCharged = storageWitnessGas != 0;
         bool result = true;
         if (spec.UseHotAndColdStorage)
         {
@@ -721,7 +728,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 vmState.WarmUp(in storageCell);
             }
 
-            if (vmState.IsCold(in storageCell))
+            if (witnessGasCharged)
+            {
+                vmState.WarmUp(in storageCell);
+            }
+            else if (vmState.IsCold(in storageCell))
             {
                 // after verkle is enabled we dont charge cost cost as it is replace by verkle access costs
                 result = spec.IsVerkleTreeEipEnabled || UpdateGas(GasCostOf.ColdSLoad, ref gasAvailable);
@@ -2685,19 +2696,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return (EvmExceptionType.None, null);
         }
 
-        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
-        // todo: === below is a new call - refactor / move
-
-        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
-        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
-
         Address contractAddress = instruction == Instruction.CREATE
             ? ContractAddress.From(env.ExecutingAccount, _state.GetNonce(env.ExecutingAccount))
             : ContractAddress.From(env.ExecutingAccount, salt, initCode.Span);
 
         var contractCreationInitCost =
             env.Witness.AccessForContractCreationInit(contractAddress, !vmState.Env.Value.IsZero);
-        if (!UpdateGas(contractCreationInitCost, ref callGas)) return (EvmExceptionType.OutOfGas, null);
+        if (!UpdateGas(contractCreationInitCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
+
+        if (typeof(TTracing) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
+        // todo: === below is a new call - refactor / move
+
+        long callGas = spec.Use63Over64Rule ? gasAvailable - gasAvailable / 64L : gasAvailable;
+        if (!UpdateGas(callGas, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
         if (spec.UseHotAndColdStorage)
         {
@@ -2833,14 +2844,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
         // fail fast before the first storage read if gas is not enough even for reset
-        if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
-
-        if (spec.UseNetGasMeteringWithAStipendFix)
+        if (!spec.IsVerkleTreeEipEnabled)
         {
-            if (typeof(TTracingRefunds) == typeof(IsTracing))
-                _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
-            if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
+            if (!spec.UseNetGasMetering && !UpdateGas(spec.GetSStoreResetCost(), ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+            if (spec.UseNetGasMeteringWithAStipendFix)
+            {
+                if (typeof(TTracingRefunds) == typeof(IsTracing))
+                    _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend - spec.GetNetMeteredSStoreCost() + 1);
+                if (gasAvailable <= GasCostOf.CallStipend) return EvmExceptionType.OutOfGas;
+            }
         }
+
 
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
         ReadOnlySpan<byte> bytes = stack.PopWord256();
@@ -2857,7 +2872,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 spec)) return EvmExceptionType.OutOfGas;
 
         ReadOnlySpan<byte> currentValue = _state.Get(in storageCell);
-        // Console.WriteLine($"current: {currentValue.ToHexString()} newValue {newValue.ToHexString()}");
         bool currentIsZero = currentValue.IsZero();
 
         bool newSameAsCurrent = (newIsZero && currentIsZero) || Bytes.AreEqual(currentValue, bytes);

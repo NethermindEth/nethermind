@@ -91,8 +91,8 @@ namespace Nethermind.Core
             _storageRoot = account._storageRoot;
             Nonce = nonce;
             Balance = balance;
-            CodeSize = 0;
-            Version = 0;
+            CodeSize = account.CodeSize;
+            Version = account.Version;
         }
 
         public bool HasCode => _codeHash is not null;
