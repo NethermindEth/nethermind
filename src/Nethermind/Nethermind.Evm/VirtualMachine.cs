@@ -40,6 +40,7 @@ using System.Threading;
 
 using Int256;
 using Nethermind.Crypto;
+using Newtonsoft.Json.Linq;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -2123,26 +2124,39 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
                             goto OutOfGas;
 
-                        ReadOnlySpan<byte> commit;
+                        ReadOnlySpan<byte> memData = vmState.Memory.Load(in a, b).Span;
 
-                        //TODO bounds check - check GETH
-                        ReadOnlyMemory<byte> memData = vmState.Memory.Load(in a, b);
-             
-                        byte yParity = memData.Span[0];
+                        byte yParity = 0;
+                        Span<byte> sigData = stackalloc byte[64];
+                        Span<byte> commit = stackalloc byte[32];
+                        //Skip init flag is active so we have to iterate all data
+                        for (int i = 0; i < 97; i++)
+                        {
+                            byte data = 0;
+                            if (i < b)
+                                data = memData[i];
+                            switch (i)
+                            {
+                                case 0:
+                                    yParity = data;
+                                    break;
+                                case >= 1 and <= 64:
+                                    sigData[i - 1] = data;
+                                    break;
+                                default:
+                                    commit[i - 65] = data;
+                                    break;
+                            }
+                        }
 
-                        Signature signature = new Signature(memData[1..65].Span, yParity);
-
-                        if (memData.Length > 65)
-                            commit = memData[65..].Span;
-                        else
-                            commit = new ReadOnlySpan<byte>();  
+                        Signature signature = new Signature(sigData, yParity);
 
                         byte[] chainId = _chainId.PadLeft(32);
                         byte[] authorityNonce = _state.GetNonce(authority).PaddedBytes(32);
                         //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
                         byte[] invokerAddress = vmState.Env.ExecutingAccount.Bytes.PadLeft(32);
 
-                        Span<byte> msg = stackalloc byte[1 + 32 + 32 + 32 + commit.Length];
+                        Span<byte> msg = stackalloc byte[1 + 32 + 32 + 32 + 32];
                         msg[0] = Eip3074Constants.AuthMagic;
                         for (int i = 0; i < 32; i++)
                         {
@@ -2159,9 +2173,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         Hash256 digest = Keccak.Compute(msg);
 
                         //TODO handle exception will crash the process
-                        Address recovered = _ecdsa.RecoverPublicKey(signature, digest).Address;
+                        PublicKey publicKey = _ecdsa.RecoverPublicKey(signature, digest);
 
-                        if (recovered == authority)
+                        if (publicKey != null && publicKey.Address == authority)
                         {
                             stack.PushUInt256(1);
                             vmState.Authorized = authority;

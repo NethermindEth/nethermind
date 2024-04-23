@@ -163,11 +163,53 @@ namespace Nethermind.Evm.Test
             Assert.That(result.Error, Is.EqualTo(EvmExceptionType.AuthorizedNotSet.ToString()));
         }
 
+        [TestCase(66, 1)]
+        [TestCase(65, 1)]
+        [TestCase(256, 1)]
+        [TestCase(64, 0)]
+        [TestCase(0, 0)]
+        public void ExecuteAuth_ParamLengthIsLessOrGreaterThanValidSignature_ReturnsExpected(int paramLength, int expected)
+        {
+            var signer = TestItem.PrivateKeyB;
+            var authority = TestItem.AddressB;
+
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)paramLength)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Return the result of AUTH
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushSingle(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+        }
+
         [TestCase(97, GasCostOf.Auth + GasCostOf.ColdAccountAccess)]
         [TestCase(160, GasCostOf.Auth + GasCostOf.Memory + GasCostOf.ColdAccountAccess)]
         [TestCase(192, GasCostOf.Auth + GasCostOf.Memory * 2 + GasCostOf.ColdAccountAccess)]
         [TestCase(193, GasCostOf.Auth + GasCostOf.Memory * 3 + GasCostOf.ColdAccountAccess)]
-        public void ExecuteAuth_AUTHExpandsMemory_AUTHGasCosts3100PlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, long expectedGas)
+        public void ExecuteAuth_AUTHExpandsMemory_GasCostIsAUTHPlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, long expectedGas)
         {
             var data = CreateSignedCommitMessage(TestItem.PrivateKeyF);
 
@@ -429,7 +471,6 @@ namespace Nethermind.Evm.Test
             Assert.That(resultWithAuthCall.GasSpent - result.GasSpent, Is.EqualTo(expectedCost));
         }
 
-
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
         {
             List<byte> msg =
@@ -441,7 +482,6 @@ namespace Nethermind.Evm.Test
             ];
 
             byte[] commit = new byte[32];
-            commit[0] = 0xff;
             msg.AddRange(commit);
 
             Hash256 msgDigest = Keccak.Compute(msg.ToArray());
