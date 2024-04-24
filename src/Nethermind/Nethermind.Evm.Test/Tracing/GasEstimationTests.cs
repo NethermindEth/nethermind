@@ -155,9 +155,9 @@ namespace Nethermind.Evm.Test.Tracing
             testEnvironment.tracer.ReportAction(gasLeft, 0, Address.Zero, Address.Zero, Array.Empty<byte>(),
                 _executionType, false);
 
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert);
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert);
-            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 96000000);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 98000000);
+            testEnvironment.tracer.ReportActionError(EvmExceptionType.Revert, 99000000);
             testEnvironment.estimator.Estimate(tx, block.Header, testEnvironment.tracer).Should().Be(35146L);
         }
 
