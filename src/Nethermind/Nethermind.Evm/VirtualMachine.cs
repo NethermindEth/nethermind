@@ -2968,34 +2968,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer.ReportOperationError(evmExceptionType);
     }
 
-    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction == Instruction.CALL)
+    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
+        instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction == Instruction.DELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction == Instruction.STATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction == Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else if (instruction == Instruction.AUTHCALL)
-        {
-            executionType = ExecutionType.AUTHCALL;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            Instruction.AUTHCALL => ExecutionType.AUTHCALL,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }
