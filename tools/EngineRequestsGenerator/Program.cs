@@ -31,26 +31,14 @@ public static class Program
 
         ChainSpecLoader chainSpecLoader = new(serializer);
         ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile("../../../../../src/Nethermind/Chains/holesky.json", LimboLogs.Instance.GetClassLogger());
-
         ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
 
         EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, chainSpecBasedSpecProvider);
 
         GenesisLoader genesisLoader = new(chainSpec, chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
         Block genesisBlock = genesisLoader.Load();
+
         chain.BlockTree.SuggestBlock(genesisBlock);
-
-        Thread.Sleep(200);
-
-        // stringBuilder.Append("gen hash: ");
-        // stringBuilder.Append(genesisBlock.Hash);
-        // stringBuilder.AppendLine();
-        // stringBuilder.Append("genesis stateRoot: ");
-        // stringBuilder.Append(genesisBlock.StateRoot);
-        // stringBuilder.AppendLine();
-        // stringBuilder.Append("stater root: ");
-        // stringBuilder.Append(chain.State.StateRoot);
-        // File.WriteAllText("requests.txt", stringBuilder.ToString());
 
         Withdrawal withdrawal = new()
         {
@@ -64,7 +52,6 @@ public static class Program
         Block previousBlock = genesisBlock;
 
 
-
         for (ulong i = 0; i < numberOfBlocksToProduce; i++)
         {
             PayloadAttributes payloadAttributes = new()
@@ -73,8 +60,10 @@ public static class Program
                 ParentBeaconBlockRoot = previousBlock.Hash,
                 PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                 SuggestedFeeRecipient = Address.Zero,
-                Withdrawals = new []{withdrawal}
+                Withdrawals = []
             };
+
+            payloadAttributes.Withdrawals = new[] { withdrawal };
 
             if (i > 0)
             {
@@ -95,36 +84,6 @@ public static class Program
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
 
             ExecutionPayloadV3 executionPayload = new(block);
-            // executionPayload.TryGetBlock(out var returnedBlock, genesisBlock.TotalDifficulty);
-            // executionPayload.BlockHash = returnedBlock.CalculateHash();
-
-
-            // stringBuilder.Append("blockhash: ");
-            // stringBuilder.Append(block.Hash);
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("payload hash: ");
-            // stringBuilder.Append(executionPayload.BlockHash);
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("calculated hash: ");
-            // stringBuilder.Append(block.Header.CalculateHash());
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("txs: ");
-            // stringBuilder.Append(block.Transactions.Length);
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("block from payload: ");
-            // stringBuilder.Append(returnedBlock.CalculateHash());
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("uncles hash: ");
-            // stringBuilder.Append(block.UnclesHash);
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("uncles: ");
-            // stringBuilder.Append(block.Uncles.Length);
-            // stringBuilder.AppendLine();
-            // stringBuilder.Append("empty hash: ");
-            // stringBuilder.Append(Keccak.OfAnEmptySequenceRlp);
-            // stringBuilder.Append("   ");
-            // stringBuilder.Append(Keccak.OfAnEmptyString);
-            // stringBuilder.AppendLine();
 
             string executionPayloadString = serializer.Serialize(executionPayload);
             string blobsString = serializer.Serialize(Array.Empty<byte[]>());
@@ -142,10 +101,6 @@ public static class Program
 
             previousBlock = block;
         }
-
-        // at the end reorg to genesis block
-        // ForkchoiceStateV1 reorgedForkchoiceState = new ForkchoiceStateV1(genesisBlock.Hash, Keccak.Zero, Keccak.Zero);
-        // WriteJsonRpcRequest(stringBuilder, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), serializer.Serialize(reorgedForkchoiceState));
 
         await File.WriteAllTextAsync("requests.txt", stringBuilder.ToString());
     }
