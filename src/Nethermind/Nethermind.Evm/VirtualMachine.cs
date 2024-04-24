@@ -21,6 +21,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
+using Nethermind.Trie;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
@@ -771,15 +772,33 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // which use shared generics.
         if (!_txTracer.IsTracingRefunds)
         {
-            return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            if (!_txTracer.IsTracingOpLevelStorage)
+            {
+                return _txTracer.IsTracingOpLevelLogs ?
+                    ExecuteCode<TTracingInstructions, NotTracing, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                    ExecuteCode<TTracingInstructions, NotTracing, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            }
+            else
+            {
+                return _txTracer.IsTracingOpLevelLogs ?
+                    ExecuteCode<TTracingInstructions, NotTracing, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                    ExecuteCode<TTracingInstructions, NotTracing, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            }
         }
         else
         {
-            return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
-                ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            if (!_txTracer.IsTracingOpLevelStorage)
+            {
+                return _txTracer.IsTracingOpLevelLogs ?
+                    ExecuteCode<TTracingInstructions, IsTracing, NotTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                    ExecuteCode<TTracingInstructions, IsTracing, NotTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            }
+            else
+            {
+                return _txTracer.IsTracingOpLevelLogs ?
+                    ExecuteCode<TTracingInstructions, IsTracing, IsTracing, IsTracing>(vmState, ref stack, gasAvailable, spec) :
+                    ExecuteCode<TTracingInstructions, IsTracing, IsTracing, NotTracing>(vmState, ref stack, gasAvailable, spec);
+            }
         }
     Empty:
         return CallResult.Empty;
@@ -788,10 +807,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
+    private CallResult ExecuteCode<TTracingInstructions, TTracingRefunds, TTracingStorage, TTracingLogs>(EvmState vmState, scoped ref EvmStack<TTracingInstructions> stack, long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
+        where TTracingLogs : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
         ref readonly ExecutionEnvironment env = ref vmState.Env;
@@ -1824,7 +1844,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (vmState.IsStatic) goto StaticCallViolation;
 
-                        exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
+                        exceptionType = InstructionLog<TTracingInstructions, TTracingLogs>(vmState, ref stack, ref gasAvailable, instruction);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
                         break;
                     }
@@ -2560,8 +2580,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
-        where TTracing : struct, IIsTracing
+    private EvmExceptionType InstructionLog<TTracingInstructions, TTracingLogs>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, Instruction instruction)
+        where TTracingInstructions : struct, IIsTracing
+        where TTracingLogs : struct, IIsTracing
     {
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
@@ -2583,6 +2604,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             data.ToArray(),
             topics);
         vmState.Logs.Add(logEntry);
+
+        if (typeof(TTracingLogs) == typeof(IsTracing))
+        {
+            _txTracer.ReportOperationLog(logEntry);
+        }
 
         return EvmExceptionType.None;
     }

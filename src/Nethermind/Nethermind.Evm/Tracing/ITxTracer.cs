@@ -125,6 +125,15 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </remarks>
     bool IsTracingFees { get; }
 
+    /// <summary>
+    /// Traces operation logs
+    /// </summary>
+    /// <remarks>
+    /// Controls
+    /// - <see cref="ReportOperationLog"/>
+    /// </remarks>
+    bool IsTracingOpLevelLogs { get; }
+
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
                       || IsTracingOpLevelStorage
@@ -135,7 +144,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingStack
                       || IsTracingBlockHash
                       || IsTracingAccess
-                      || IsTracingFees;
+                      || IsTracingFees
+                      || IsTracingOpLevelLogs;
 
     /// <summary>
     /// Transaction completed successfully
@@ -182,6 +192,14 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gas"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
     void ReportOperationRemainingGas(long gas);
+
+
+    /// <summary>
+    ///
+    /// </summary>
+    /// <param name="log"></param>
+    /// <remarks>Depends on <see cref="IsTracingOpLevelLogs"/></remarks>
+    void ReportOperationLog(LogEntry log);
 
     /// <summary>
     ///
@@ -348,7 +366,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <param name="gasLeft"></param>
     /// <param name="output"></param>
     /// <remarks>Depends on <see cref="IsTracingActions"/></remarks>
-    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+    // void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
+    void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output);
 
     /// <summary>
     ///

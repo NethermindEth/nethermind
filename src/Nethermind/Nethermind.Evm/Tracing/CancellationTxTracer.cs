@@ -27,6 +27,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     private readonly bool _isTracingBlockHash;
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
+    private readonly bool _isTracingOpLevelLogs;
 
     public ITxTracer InnerTracer => _innerTracer;
 
@@ -112,6 +113,11 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
     {
         get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
+    }
+    public bool IsTracingOpLevelLogs
+    {
+        get => _isTracingOpLevelLogs || _innerTracer.IsTracingOpLevelLogs;
+        init => _isTracingOpLevelLogs = value;
     }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
@@ -210,6 +216,15 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         if (_innerTracer.IsTracingInstructions)
         {
             _innerTracer.ReportOperationRemainingGas(gas);
+        }
+    }
+
+    public void ReportOperationLog(LogEntry log)
+    {
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingInstructions && _innerTracer.IsTracingOpLevelLogs)
+        {
+            _innerTracer.ReportOperationLog(log);
         }
     }
 
@@ -357,7 +372,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportActionRevert(long gasLeft, byte[] output)
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingActions)

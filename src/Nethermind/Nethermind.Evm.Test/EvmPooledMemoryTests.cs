@@ -217,7 +217,19 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracingOpLevelLogs => false;
+        public bool IsTracing => IsTracingReceipt
+                                 || IsTracingActions
+                                 || IsTracingOpLevelStorage
+                                 || IsTracingMemory
+                                 || IsTracingInstructions
+                                 || IsTracingRefunds
+                                 || IsTracingCode
+                                 || IsTracingStack
+                                 || IsTracingBlockHash
+                                 || IsTracingAccess
+                                 || IsTracingFees
+                                 || IsTracingOpLevelLogs;
 
         public string lastmemline;
 
@@ -238,6 +250,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportOperationRemainingGas(long gas)
+        {
+        }
+
+        public void ReportOperationLog(LogEntry log)
         {
         }
 
@@ -316,6 +332,11 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
         {
             throw new NotSupportedException();
         }
