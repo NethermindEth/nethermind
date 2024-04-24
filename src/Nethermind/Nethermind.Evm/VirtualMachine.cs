@@ -2106,85 +2106,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.AUTH:
                     {
-                        if (!spec.AuthCallsEnabled) goto InvalidInstruction;
-                        Address authority = stack.PopAddress();
-
-                        if (authority is null) goto StackUnderflow;
-
-                        //a = offset
-                        //b = length
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-
-                        gasAvailable -= GasCostOf.Auth;
-
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, a, b))
-                            goto OutOfGas;
-
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
-                            goto OutOfGas;
-
-                        ReadOnlySpan<byte> memData = vmState.Memory.Load(in a, b).Span;
-
-                        byte yParity = 0;
-                        Span<byte> sigData = stackalloc byte[64];
-                        Span<byte> commit = stackalloc byte[32];
-                        //Skip init flag is active so we have to iterate all data
-                        for (int i = 0; i < 97; i++)
-                        {
-                            byte data = 0;
-                            if (i < b)
-                                data = memData[i];
-                            switch (i)
-                            {
-                                case 0:
-                                    yParity = data;
-                                    break;
-                                case >= 1 and <= 64:
-                                    sigData[i - 1] = data;
-                                    break;
-                                default:
-                                    commit[i - 65] = data;
-                                    break;
-                            }
-                        }
-
-                        Signature signature = new Signature(sigData, yParity);
-
-                        byte[] chainId = _chainId.PadLeft(32);
-                        byte[] authorityNonce = _state.GetNonce(authority).PaddedBytes(32);
-                        //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
-                        byte[] invokerAddress = vmState.Env.ExecutingAccount.Bytes.PadLeft(32);
-
-                        Span<byte> msg = stackalloc byte[1 + 32 + 32 + 32 + 32];
-                        msg[0] = Eip3074Constants.AuthMagic;
-                        for (int i = 0; i < 32; i++)
-                        {
-                            int shift = i + 1;
-                            msg[shift] = chainId[i];
-                            msg[shift + 32] = authorityNonce[i];
-                            msg[shift + 64] = invokerAddress[i];
-                            if (i < commit.Length)
-                            {
-                                msg[shift + 96] = commit[i];
-                            }
-                        }
-                        
-                        Hash256 digest = Keccak.Compute(msg);
-
-                        //TODO handle exception will crash the process
-                        PublicKey publicKey = _ecdsa.RecoverPublicKey(signature, digest);
-
-                        if (publicKey != null && publicKey.Address == authority)
-                        {
-                            stack.PushUInt256(1);
-                            vmState.Authorized = authority;
-                        }
-                        else
-                        {
-                            stack.PushUInt256(0);
-                            vmState.Authorized = null;
-                        }
+                        exceptionType = InstructionAuth(vmState, ref stack, ref gasAvailable, spec);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 
                         break;
                     }
@@ -2259,6 +2182,91 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType InstructionAuth<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    {
+        if (!spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
+        Address authority = stack.PopAddress();
+
+        if (authority is null) return EvmExceptionType.StackUnderflow;
+
+        UInt256 offset;
+        UInt256 length;
+        if (!stack.PopUInt256(out offset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out length)) return EvmExceptionType.StackUnderflow;
+
+        gasAvailable -= GasCostOf.Auth;
+
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, offset, length))
+            return EvmExceptionType.OutOfGas;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
+            return EvmExceptionType.OutOfGas;
+
+        ReadOnlySpan<byte> memData = vmState.Memory.Load(in offset, length).Span;
+
+        byte yParity = 0;
+        Span<byte> sigData = stackalloc byte[64];
+        Span<byte> commit = stackalloc byte[32];
+        //SkipLocalsInit flag is active so we have to iterate all data
+        for (int i = 0; i < 97; i++)
+        {
+            byte data = 0;
+            if (i < length)
+                data = memData[i];
+            switch (i)
+            {
+                case 0:
+                    yParity = data;
+                    break;
+                case >= 1 and <= 64:
+                    sigData[i - 1] = data;
+                    break;
+                default:
+                    commit[i - 65] = data;
+                    break;
+            }
+        }
+
+        Signature signature = new Signature(sigData, yParity);
+
+        byte[] chainId = _chainId.PadLeft(32);
+        byte[] authorityNonce = _state.GetNonce(authority).PaddedBytes(32);
+        //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
+        byte[] invokerAddress = vmState.Env.ExecutingAccount.Bytes.PadLeft(32);
+
+        Span<byte> msg = stackalloc byte[1 + 32 + 32 + 32 + 32];
+        msg[0] = Eip3074Constants.AuthMagic;
+        for (int i = 0; i < 32; i++)
+        {
+            int shift = i + 1;
+            msg[shift] = chainId[i];
+            msg[shift + 32] = authorityNonce[i];
+            msg[shift + 64] = invokerAddress[i];
+            if (i < commit.Length)
+            {
+                msg[shift + 96] = commit[i];
+            }
+        }
+
+        Hash256 digest = Keccak.Compute(msg);
+
+        //TODO handle exception will crash the process
+        PublicKey publicKey = _ecdsa.RecoverPublicKey(signature, digest);
+
+        if (publicKey != null && publicKey.Address == authority)
+        {
+            stack.PushUInt256(1);
+            vmState.Authorized = authority;
+        }
+        else
+        {
+            stack.PushUInt256(0);
+            vmState.Authorized = null;
+        }
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
