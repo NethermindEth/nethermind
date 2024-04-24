@@ -111,6 +111,7 @@ namespace Nethermind.Synchronization
             IBetterPeerStrategy betterPeerStrategy,
             ChainSpec chainSpec,
             IStateReader stateReader,
+            IStateFactory stateFactory,
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
@@ -134,6 +135,7 @@ namespace Nethermind.Synchronization
             ProgressTracker progressTracker = new(
                 blockTree,
                 new MemDb(), // TODO: replace with proper state
+                stateFactory,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
             //SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);

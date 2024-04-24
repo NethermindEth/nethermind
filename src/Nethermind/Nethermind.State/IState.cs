@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
+using Paprika.Chain;
 
 namespace Nethermind.State;
 
@@ -12,7 +13,6 @@ public interface IState : IReadOnlyState
 {
     void Set(Address address, Account? account);
     void Set(ValueHash256 hash, Account? account);
-    void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
 
     void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value);
 
@@ -45,6 +45,13 @@ public interface IReadOnlyState : IDisposable
     Hash256 StateRoot { get; }
 }
 
+public interface IRawState : IReadOnlyState
+{
+    void SetAccount(ValueHash256 hash, Account? account);
+    void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
+    void Commit();
+}
+
 /// <summary>
 /// The factory allowing to get a state at the given keccak.
 /// </summary>
@@ -53,6 +60,8 @@ public interface IStateFactory : IAsyncDisposable
     IState Get(Hash256 stateRoot);
 
     IReadOnlyState GetReadOnly(Hash256 stateRoot);
+
+    public IRawState GetRaw();
 
     bool HasRoot(Hash256 stateRoot);
 

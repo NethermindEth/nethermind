@@ -23,7 +23,7 @@ namespace Nethermind.Synchronization.SnapSync
     {
         public static (AddRangeResult result, bool moreChildrenToRight, List<PathWithAccount> storageRoots, List<ValueHash256> codeHashes) AddAccountRange(
             //StateTree tree,
-            IState state,
+            IRawState state,
             long blockNumber,
             in ValueHash256 expectedRootHash,
             in ValueHash256 startingHash,
@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.SnapSync
                 //{
                 //    Interlocked.Add(ref Metrics.SnapStateSynced, rlp.Bytes.Length);
                 //}
-                state.Set(account.Path, account.Account);
+                state.SetAccount(account.Path, account.Account);
             }
 
             Span<byte> lastPath = stackalloc byte[64];
@@ -92,7 +92,7 @@ namespace Nethermind.Synchronization.SnapSync
                         {
                             if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
                             {
-                                state.Set(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
+                                state.SetAccountHash(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
                             }
                         }
                     }
@@ -101,6 +101,7 @@ namespace Nethermind.Synchronization.SnapSync
             }
 
             //tree.UpdateRootHash();
+            state.Commit();
             if (state.StateRoot != expectedRootHash)
             {
                 return (AddRangeResult.DifferentRootHash, true, null, null);
@@ -109,7 +110,6 @@ namespace Nethermind.Synchronization.SnapSync
             //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             //tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
-            state.Commit(blockNumber);
 
             //return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
             return (AddRangeResult.OK, true, accountsWithStorage, codeHashes);
