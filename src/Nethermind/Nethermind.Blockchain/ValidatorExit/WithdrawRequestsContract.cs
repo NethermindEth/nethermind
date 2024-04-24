@@ -49,9 +49,9 @@ public class WithdrawRequestsHandler
             if (result == null || result.Length == 0)
                 return Array.Empty<WithdrawalRequest>();
 
-            var withdrawalRequests = new List<WithdrawalRequest>();
             int sizeOfClass = 20 + 48 + 8;
             int count = result.Length / sizeOfClass;
+            var withdrawalRequests = new List<WithdrawalRequest>(count);
             for (int i = 0; i < count; ++i)
             {
                 WithdrawalRequest request = new();
