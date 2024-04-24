@@ -279,7 +279,7 @@ namespace Nethermind.Core.Specs
         /// </summary>
         bool IsEip6110Enabled { get; }
         bool DepositsEnabled => IsEip6110Enabled;
-        Address Eip6110ContractAddress { get; }
+        Address DepositContractAddress { get; }
 
         /// <summary>
         /// Execution layer triggerable exits

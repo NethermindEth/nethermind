@@ -17,17 +17,20 @@ public class DepositsProcessor : IDepositsProcessor
             return null;
 
         List<Deposit> depositList = [];
+
         for (int i = 0; i < block.Transactions.Length; i++)
         {
-            foreach (var log in receipts[i].Logs)
-            {
-                if (log.LoggersAddress == spec.Eip6110ContractAddress)
+            LogEntry[]? logEntries = receipts[i].Logs;
+            if (logEntries != null)
+                foreach (LogEntry? log in logEntries)
                 {
-                    var depositDecoder = new DepositDecoder();
-                    Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                    depositList.Add(deposit);
+                    if (log!=null && log.LoggersAddress == spec.DepositContractAddress)
+                    {
+                        var depositDecoder = new DepositDecoder();
+                        Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
+                        depositList.Add(deposit);
+                    }
                 }
-            }
         }
 
         return depositList;

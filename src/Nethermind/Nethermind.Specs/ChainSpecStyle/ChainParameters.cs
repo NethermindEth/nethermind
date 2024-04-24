@@ -118,7 +118,7 @@ public class ChainParameters
     public ulong? Eip4788TransitionTimestamp { get; set; }
     public Address Eip4788ContractAddress { get; set; }
     public ulong? Eip6110TransitionTimestamp { get; set; }
-    public Address Eip6110ContractAddress { get; set; }
+    public Address DepositContractAddress { get; set; }
     public ulong? Eip7002TransitionTimestamp { get; set; }
     public Address Eip7002ContractAddress { get; set; }
 

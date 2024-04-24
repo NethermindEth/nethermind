@@ -96,11 +96,11 @@ namespace Nethermind.Specs
 
         public bool IsEip6110Enabled { get; set; }
 
-        private Address _eip6110ContractAddress;
-        public Address Eip6110ContractAddress
+        private Address _depositContractAddress;
+        public Address DepositContractAddress
         {
-            get => IsEip6110Enabled ? _eip6110ContractAddress : null;
-            set => _eip6110ContractAddress = value;
+            get => IsEip6110Enabled ? _depositContractAddress : null;
+            set => _depositContractAddress = value;
         }
     }
 }
