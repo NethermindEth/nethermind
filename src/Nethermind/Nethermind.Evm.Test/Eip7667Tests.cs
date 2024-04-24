@@ -1,4 +1,4 @@
-﻿using Nethermind.Core.Specs;
+using Nethermind.Core.Specs;
 using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Specs.Forks;
@@ -72,9 +72,9 @@ public class Eip7667Tests : VirtualMachineTestsBase
             .STOP()
             .Done;
 
-        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation) 1, code);
+        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation)1, code);
         Setup();
-        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation) 2, code);
+        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation)2, code);
 
         long gasDifference = Eip7667Spec.Instance.GetSha3Cost() - Cancun.Instance.GetSha3Cost()
                              + Eip7667Spec.Instance.GetSha3WordCost() - Cancun.Instance.GetSha3WordCost();
@@ -90,12 +90,12 @@ public class Eip7667Tests : VirtualMachineTestsBase
         byte[] initCode = Prepare.EvmCode.ForInitOf(deployedCode).Done;
         byte[] createCode = Prepare.EvmCode.Create2(initCode, salt, 0).STOP().Done;
 
-        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation) 1, DefaultBlockGasLimit, createCode);
+        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation)1, DefaultBlockGasLimit, createCode);
         Setup();
-        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation) 2, DefaultBlockGasLimit, createCode);
+        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation)2, DefaultBlockGasLimit, createCode);
 
         long gasDifference = (Eip7667Spec.Instance.GetSha3WordCost() - Cancun.Instance.GetSha3WordCost())
-                             * EvmPooledMemory.Div32Ceiling((UInt256) initCode.Length);
+                             * EvmPooledMemory.Div32Ceiling((UInt256)initCode.Length);
 
         Assert.That(resultEipEnabled.GasSpent - resultEipDisabled.GasSpent, Is.EqualTo(gasDifference));
     }
@@ -111,9 +111,9 @@ public class Eip7667Tests : VirtualMachineTestsBase
             .STOP()
             .Done;
 
-        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation) 1, DefaultBlockGasLimit, createCode);
+        TestAllTracerWithOutput resultEipDisabled = Execute((ForkActivation)1, DefaultBlockGasLimit, createCode);
         Setup();
-        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation) 2, DefaultBlockGasLimit, createCode);
+        TestAllTracerWithOutput resultEipEnabled = Execute((ForkActivation)2, DefaultBlockGasLimit, createCode);
 
         long gasDifference = (Eip7667Spec.Instance.GetLogDataCost() - Cancun.Instance.GetLogDataCost()) * length;
 
@@ -134,7 +134,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         var bytes = new byte[1];
         Assert.That(sha256Precompile.DataGasCost(bytes, Eip7667Spec.Instance),
             Is.EqualTo(Eip7667Spec.Instance.GetSha256PrecompileWordCost()));
-        
+
         Assert.That(sha256Precompile.DataGasCost(bytes, Cancun.Instance),
             Is.EqualTo(Cancun.Instance.GetSha256PrecompileWordCost()));
     }
@@ -149,7 +149,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
 
         Assert.That(blake2FPrecompile.DataGasCost(bytes, Eip7667Spec.Instance),
             Is.EqualTo(Eip7667Spec.Instance.GetBlake2GFRoundDataCost()));
-        
+
         Assert.That(blake2FPrecompile.DataGasCost(bytes, Cancun.Instance),
             Is.EqualTo(Cancun.Instance.GetBlake2GFRoundDataCost()));
     }

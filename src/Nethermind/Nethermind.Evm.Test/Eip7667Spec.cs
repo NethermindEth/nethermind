@@ -1,4 +1,4 @@
-﻿using System.Threading;
+using System.Threading;
 using Nethermind.Core.Specs;
 using Nethermind.Specs.Forks;
 
