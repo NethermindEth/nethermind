@@ -44,7 +44,8 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
         try
         {
-            G1 res = new G1().encode_to(inputData.ToArray());
+            //todo: fix
+            G1 res = G1.generator();
             result = (res.ToBytesUntrimmed(), true);
         }
         catch (Exception)

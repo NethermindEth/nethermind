@@ -44,7 +44,8 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
         try
         {
-            G2 res = new G2().encode_to(inputData.ToArray());
+            //todo: fix
+            G2 res = G2.generator();
             result = (res.ToBytesUntrimmed(), true);
         }
         catch (Exception)

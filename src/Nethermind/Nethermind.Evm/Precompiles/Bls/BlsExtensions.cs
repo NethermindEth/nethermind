@@ -52,10 +52,10 @@ public static class BlsExtensions
         }
 
         byte[] trimmed = new byte[BlsParams.LenG2Trimmed];
-        untrimmed[BlsParams.LenFpPad..BlsParams.LenFp].CopyTo(trimmed.AsMemory());
-        untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
-        untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 2)..]);
-        untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 3)..]);
+        untrimmed[BlsParams.LenFpPad..BlsParams.LenFp].CopyTo(trimmed.AsMemory()[BlsParams.LenFpTrimmed..]);
+        untrimmed[(BlsParams.LenFp + BlsParams.LenFpPad)..(2 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory());
+        untrimmed[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..(3 * BlsParams.LenFp)].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 3)..]);
+        untrimmed[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..].CopyTo(trimmed.AsMemory()[(BlsParams.LenFpTrimmed * 2)..]);
         return new(trimmed);
     }
 
@@ -63,10 +63,10 @@ public static class BlsExtensions
     {
         byte[] untrimmed = new byte[BlsParams.LenG2];
         Span<byte> trimmed = p.serialize();
-        trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
-        trimmed[BlsParams.LenFpTrimmed..(2 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        trimmed[(2 * BlsParams.LenFpTrimmed)..(3 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
-        trimmed[(3 * BlsParams.LenFpTrimmed)..].CopyTo(untrimmed.AsSpan()[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        trimmed[..BlsParams.LenFpTrimmed].CopyTo(untrimmed.AsSpan()[(BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        trimmed[BlsParams.LenFpTrimmed..(2 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[BlsParams.LenFpPad..BlsParams.LenFp]);
+        trimmed[(2 * BlsParams.LenFpTrimmed)..(3 * BlsParams.LenFpTrimmed)].CopyTo(untrimmed.AsSpan()[(3 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
+        trimmed[(3 * BlsParams.LenFpTrimmed)..].CopyTo(untrimmed.AsSpan()[(2 * BlsParams.LenFp + BlsParams.LenFpPad)..]);
         return untrimmed;
     }
 }
