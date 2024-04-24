@@ -1,23 +1,18 @@
 ﻿using System.Text;
 using FluentAssertions;
-using Microsoft.Extensions.Primitives;
-using Microsoft.VisualStudio.TestPlatform.ObjectModel;
 using Nethermind.Blockchain;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
-using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
-using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
 
@@ -25,16 +20,30 @@ namespace EngineRequestsGenerator;
 
 public static class Program
 {
+    private static int _numberOfBlocksToProduce;
     private static int _maxNumberOfWithdrawalsPerBlock;
     private static int _numberOfWithdrawals;
+    private static int _txsPerBlock;
+
+    private static TaskCompletionSource<bool>? _taskCompletionSource;
+    private static Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
     static async Task Main(string[] args)
     {
+        // draft of setup options
+        _numberOfBlocksToProduce = 1000;
+        _txsPerBlock = 1000;
+        _maxNumberOfWithdrawalsPerBlock = 16;
+        _numberOfWithdrawals = 1600;
+        string chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
+
+
+        // chain initialization
         StringBuilder stringBuilder = new();
         EthereumJsonSerializer serializer = new(unsafeRelaxedJsonEscaping: true);
 
         ChainSpecLoader chainSpecLoader = new(serializer);
-        ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile("../../../../../src/Nethermind/Chains/holesky.json", LimboLogs.Instance.GetClassLogger());
+        ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(chainSpecPath, LimboLogs.Instance.GetClassLogger());
         ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
 
         EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, chainSpecBasedSpecProvider);
@@ -44,31 +53,17 @@ public static class Program
 
         chain.BlockTree.SuggestBlock(genesisBlock);
 
-        _maxNumberOfWithdrawalsPerBlock = 16;
-        int numberOfBlocksToProduce = 10;
-        _numberOfWithdrawals = 16000;
-
-
-        int numberOfKeysToGenerate = _maxNumberOfWithdrawalsPerBlock * numberOfBlocksToProduce;
-
 
 
         // prepare private keys - up to 16_777_216 (2^24)
+        int numberOfKeysToGenerate = _maxNumberOfWithdrawalsPerBlock * _numberOfBlocksToProduce;
         PrivateKey[] privateKeys = PreparePrivateKeys(numberOfKeysToGenerate).ToArray();
 
+        chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
 
-        // Withdrawal withdrawal = new()
-        // {
-        //     Address = TestItem.AddressA,
-        //     AmountInGwei = 1_000_000_000_000, // 1000 eth
-        //     ValidatorIndex = 1,
-        //     Index = 1
-        // };
-
+        // producing blocks and printing engine requests
         Block previousBlock = genesisBlock;
-
-
-        for (int i = 0; i < numberOfBlocksToProduce; i++)
+        for (int i = 0; i < _numberOfBlocksToProduce; i++)
         {
             PayloadAttributes payloadAttributes = new()
             {
@@ -76,31 +71,15 @@ public static class Program
                 ParentBeaconBlockRoot = previousBlock.Hash,
                 PrevRandao = previousBlock.Hash ?? Keccak.Zero,
                 SuggestedFeeRecipient = Address.Zero,
-                Withdrawals = []
+                Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray()
             };
 
-            payloadAttributes.Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray();
-
-            // if (i > 0)
-            // {
-            //     Transaction tx = Build.A.Transaction
-            //         .WithNonce((UInt256)(i - 1))
-            //         .WithType(TxType.EIP1559)
-            //         .WithMaxFeePerGas(1.GWei())
-            //         .WithMaxPriorityFeePerGas(1.GWei())
-            //         .WithTo(TestItem.AddressB)
-            //         .WithChainId(BlockchainIds.Holesky)
-            //         .SignedAndResolved(TestItem.PrivateKeyA)
-            //         .TestObject;
-            //
-            //     chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            // }
+            SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals);
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
 
             ExecutionPayloadV3 executionPayload = new(block);
-
             string executionPayloadString = serializer.Serialize(executionPayload);
             string blobsString = serializer.Serialize(Array.Empty<byte[]>());
             string parentBeaconBlockRootString = serializer.Serialize(previousBlock.Hash);
@@ -110,15 +89,54 @@ public static class Program
             ForkchoiceStateV1 forkchoiceState = new(block.Hash, Keccak.Zero, Keccak.Zero);
             WriteJsonRpcRequest(stringBuilder, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), serializer.Serialize(forkchoiceState));
 
-            //ToDo: wait for ProcessingQueueEmpty event after suggesting block to avoid double processing
+            _taskCompletionSource = new TaskCompletionSource<bool>();
             chain.BlockTree.SuggestBlock(block);
-            // chain.BlockchainProcessor.Process(block, ProcessingOptions.EthereumMerge, NullBlockTracer.Instance);
-            Thread.Sleep(200);
+
+            if (!WaitForProcessingBlock.IsCompleted)
+            {
+                await WaitForProcessingBlock;
+            }
 
             previousBlock = block;
         }
 
         await File.WriteAllTextAsync("requests.txt", stringBuilder.ToString());
+    }
+
+    private static void OnEmptyProcessingQueue(object? sender, EventArgs e)
+    {
+        _taskCompletionSource?.SetResult(true);
+    }
+
+    private static void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals)
+    {
+        int txsPerAddress = _txsPerBlock / _maxNumberOfWithdrawalsPerBlock;
+        int txsLeft = _txsPerBlock % _maxNumberOfWithdrawalsPerBlock;
+
+        foreach (Withdrawal previousBlockWithdrawal in previousBlockWithdrawals)
+        {
+            int additionalTx = (int)previousBlockWithdrawal.ValidatorIndex % _maxNumberOfWithdrawalsPerBlock < txsLeft
+                ? 1
+                : 0;
+            for (int i = 0; i < txsPerAddress + additionalTx; i++)
+            {
+                Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i);
+                txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            }
+        }
+    }
+
+    private static Transaction GetTx(PrivateKey privateKey, int nonce)
+    {
+        return Build.A.Transaction
+            .WithNonce((UInt256)nonce)
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithTo(TestItem.AddressB)
+            .WithChainId(BlockchainIds.Holesky)
+            .SignedAndResolved(privateKey)
+            .TestObject;
     }
 
     private static IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
