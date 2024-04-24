@@ -8,9 +8,11 @@ using Paprika.Chain;
 using Paprika.Data;
 using Paprika.Merkle;
 using Paprika.Store;
+using IRawState = Paprika.Chain.IRawState;
 using IWorldState = Paprika.Chain.IWorldState;
 using PaprikaKeccak = Paprika.Crypto.Keccak;
 using PaprikaAccount = Paprika.Account;
+using Org.BouncyCastle.Crypto;
 
 namespace Nethermind.Paprika;
 
@@ -26,23 +28,24 @@ public class PaprikaStateFactory : IStateFactory
 
     public PaprikaStateFactory(string directory)
     {
-        _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, true);
+        _db = PagedDb.MemoryMappedDb((long)_sepolia, 64, directory, true);
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(100, 1000));
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }
 
     public PaprikaStateFactory()
     {
-        _db = PagedDb.NativeMemoryDb((ulong)64.MB());
+        _db = PagedDb.NativeMemoryDb(64.MB());
         ComputeMerkleBehavior merkle = new(1, 1);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(1000));
+        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, new CacheBudget.Options(100,1000));
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
     }
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
+    public Nethermind.State.IRawState GetRaw() => new RawState(_blockchain.StartRaw(), this);
 
     public IReadOnlyState GetReadOnly(Hash256 stateRoot) =>
         new ReadOnlyState(_blockchain.StartReadOnly(Convert(stateRoot)));
@@ -205,27 +208,10 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
-        {
-            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
-            _wrapped.SetAccountHash(path, Convert(keccak));
-        }
-
         public Account? Get(Address address)
         {
-            PaprikaAccount account = _wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (account.Balance.IsZero &&
-                account.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-                return null;
-
-            if (hasEmptyStorageAndCode)
-                return new Account(account.Nonce, account.Balance);
-
-            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
-                Convert(account.CodeHash));
+            ValueHash256 hash = ValueKeccak.Compute(address.Bytes);
+            return Get(hash);
         }
 
         public Account? Get(ValueHash256 hash)
@@ -278,6 +264,86 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         public void Reset() => _wrapped.Reset();
+
+        public Hash256 StateRoot => Convert(_wrapped.Hash);
+
+        public void Dispose() => _wrapped.Dispose();
+    }
+
+    class RawState : Nethermind.State.IRawState
+    {
+        private readonly IRawState _wrapped;
+        private readonly PaprikaStateFactory _factory;
+
+        public RawState(IRawState wrapped, PaprikaStateFactory factory)
+        {
+            _wrapped = wrapped;
+            _factory = factory;
+        }
+
+        public Account? Get(Address address)
+        {
+            ValueHash256 hash = ValueKeccak.Compute(address.Bytes);
+            return Get(hash);
+        }
+
+        public Account? Get(ValueHash256 hash)
+        {
+            PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
+            bool hasEmptyStorageAndCode = account.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          account.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (account.Balance.IsZero &&
+                account.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+                return null;
+
+            if (hasEmptyStorageAndCode)
+                return new Account(account.Nonce, account.Balance);
+
+            return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
+                Convert(account.CodeHash));
+        }
+
+        public byte[] GetStorageAt(in StorageCell cell)
+        {
+            // bytes are used for two purposes, first for the key encoding and second, for the result handling
+            Span<byte> bytes = stackalloc byte[32];
+            GetKey(cell.Index, bytes);
+
+            Span<byte> value = _wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+        }
+
+        public byte[] GetStorageAt(Address address, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            Span<byte> value = _wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+        }
+
+        public void SetAccount(ValueHash256 hash, Account? account)
+        {
+            PaprikaKeccak key = Convert(hash);
+
+            if (account == null)
+            {
+                _wrapped.DestroyAccount(key);
+            }
+            else
+            {
+                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
+                    Convert(account.StorageRoot));
+                _wrapped.SetAccount(key, actual);
+            }
+        }
+
+        public void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            _wrapped.SetBoundary(path, Convert(keccak));
+        }
+
+        public void Commit() => _wrapped.Commit();
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 
