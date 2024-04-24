@@ -285,7 +285,7 @@ namespace Nethermind.Core.Specs
         /// Execution layer triggerable exits
         /// </summary>
         bool IsEip7002Enabled { get; }
-        bool ValidatorExitsEnabled => IsEip7002Enabled;
+        bool WithdrawalRequestsEnabled => IsEip7002Enabled;
         Address Eip7002ContractAddress { get; }
 
         /// <summary>

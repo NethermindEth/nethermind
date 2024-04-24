@@ -157,7 +157,7 @@ public class HeaderDecoderTests
     }
 
     [Test]
-    public void Can_encode_decode_with_ValidatorExitRoot()
+    public void Can_encode_decode_with_WithdrawalRequestRoot()
     {
         BlockHeader header = Build.A.BlockHeader
             .WithTimestamp(ulong.MaxValue)

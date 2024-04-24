@@ -51,7 +51,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
         UInt256 numInQueue = queueTailIndex - queueHeadIndex;
         UInt256 numDequeued = UInt256.Min(numInQueue, MaxWithdrawalRequestsPerBlock);
 
-        var validatorExits = new WithdrawalRequest[(int)numDequeued];
+        var withdrawalRequests = new WithdrawalRequest[(int)numDequeued];
         for (UInt256 i = 0; i < numDequeued; ++i)
         {
             UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
@@ -64,7 +64,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
                     .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
                     .ToArray();
             ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
-            validatorExits[(int)i] = new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
+            withdrawalRequests[(int)i] = new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
         }
 
         UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;
@@ -78,7 +78,7 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
             state.Set(queueHeadIndexCell, newQueueHeadIndex.ToBigEndian());
         }
 
-        return validatorExits;
+        return withdrawalRequests;
     }
 
     private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)

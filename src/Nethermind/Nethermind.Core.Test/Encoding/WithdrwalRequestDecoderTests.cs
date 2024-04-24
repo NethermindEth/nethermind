@@ -9,7 +9,7 @@ using NUnit.Framework;
 namespace Nethermind.Core.Test.Encoding;
 
 [TestFixture]
-public class ValidatorExitDecoderTests
+public class WithdrawalRequestsDecoderTests
 {
     private static WithdrawalRequestDecoder _decoder = new();
 

@@ -83,7 +83,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
 
     public override bool ValidateFork(ISpecProvider specProvider) =>
         specProvider.GetSpec(BlockNumber, Timestamp).DepositsEnabled
-        && specProvider.GetSpec(BlockNumber, Timestamp).ValidatorExitsEnabled;
+        && specProvider.GetSpec(BlockNumber, Timestamp).WithdrawalRequestsEnabled;
 
     /// <summary>
     /// Gets or sets <see cref="Block.Requests"/> as defined in
@@ -93,7 +93,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     public override Deposit[]? Deposits { get; set; }
 
     /// <summary>
-    /// Gets or sets <see cref="Block.ValidatorExits"/> as defined in
+    /// Gets or sets <see cref="Block.WithdrawalRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
     /// </summary>
     [JsonRequired]
