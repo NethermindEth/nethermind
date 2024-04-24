@@ -2192,10 +2192,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (authority is null) return EvmExceptionType.StackUnderflow;
 
-        UInt256 offset;
-        UInt256 length;
-        if (!stack.PopUInt256(out offset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out length)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 offset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
 
         gasAvailable -= GasCostOf.Auth;
 
