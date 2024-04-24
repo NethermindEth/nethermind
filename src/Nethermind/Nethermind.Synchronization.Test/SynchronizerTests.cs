@@ -375,6 +375,7 @@ namespace Nethermind.Synchronization.Test
                         new ChainSpec(),
                         No.BeaconSync,
                         reader,
+                        stateFactory,
                         _logManager);
                 }
                 else
@@ -400,6 +401,7 @@ namespace Nethermind.Synchronization.Test
                         bestPeerStrategy,
                         new ChainSpec(),
                         reader,
+                        stateFactory,
                         _logManager);
                 }
 

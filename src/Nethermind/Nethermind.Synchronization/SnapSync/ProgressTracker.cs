@@ -14,6 +14,7 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.State;
 using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
@@ -57,12 +58,16 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly Pivot _pivot;
 
-        public ProgressTracker(IBlockTree blockTree, IDb db, ILogManager logManager, int accountRangePartitionCount = 8)
+        private readonly IStateFactory _stateFactory;
+        private IRawState? _rawState;
+
+        public ProgressTracker(IBlockTree blockTree, IDb db, IStateFactory stateFactory, ILogManager logManager, int accountRangePartitionCount = 8)
         {
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _db = db ?? throw new ArgumentNullException(nameof(db));
 
             _pivot = new Pivot(blockTree, logManager);
+            _stateFactory = stateFactory;
 
             if (accountRangePartitionCount < 1 || accountRangePartitionCount > 256)
                 throw new ArgumentException("Account range partition must be between 1 to 256.");
@@ -127,6 +132,11 @@ namespace Nethermind.Synchronization.SnapSync
             if (_logger.IsInfo) _logger.Info($"Starting the Snap data sync from the {header.ToString(BlockHeader.Format.Short)} {header.StateRoot} root");
 
             return true;
+        }
+
+        public IRawState GetSyncState()
+        {
+            return _rawState ??= _stateFactory.GetRaw();
         }
 
         public void UpdatePivot()

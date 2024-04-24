@@ -5,6 +5,7 @@ using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
+using Paprika.Chain;
 using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State;
@@ -54,6 +55,13 @@ public interface IReadOnlyState : IDisposable
     Hash256 StateRoot { get; }
 }
 
+public interface IRawState : IReadOnlyState
+{
+    void SetAccount(ValueHash256 hash, Account? account);
+    void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
+    void Commit();
+}
+
 /// <summary>
 /// The factory allowing to get a state at the given keccak.
 /// </summary>
@@ -62,6 +70,8 @@ public interface IStateFactory : IAsyncDisposable
     IState Get(Hash256 stateRoot);
 
     IReadOnlyState GetReadOnly(Hash256 stateRoot);
+
+    public IRawState GetRaw();
 
     bool HasRoot(Hash256 stateRoot);
 

@@ -48,8 +48,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
@@ -69,8 +69,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, Keccak.Zero, TestItem.Tree.SlotsWithPaths, proof!.StorageProofs![0].Proof!.Concat(proof!.StorageProofs![1].Proof!).ToArray());
@@ -86,8 +86,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new MemDb();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             var result = snapProvider.AddStorageRange(1, null, rootHash, TestItem.Tree.SlotsWithPaths[0].Path, TestItem.Tree.SlotsWithPaths);
@@ -104,8 +104,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new MemDb();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });
@@ -140,8 +140,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             MemDb db = new MemDb();
             DbProvider dbProvider = new();
             dbProvider.RegisterDb(DbNames.State, db);
-            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
             IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
             SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
 
             AccountProofCollector accountProofCollector = new(TestItem.Tree.AccountAddress0.Bytes, new ValueHash256[] { Keccak.Zero, TestItem.Tree.SlotsWithPaths[1].Path });

@@ -83,6 +83,7 @@ namespace Nethermind.Synchronization.Test
                 bestPeerStrategy,
                 new ChainSpec(),
                 stateReader,
+                stateFactory,
                 LimboLogs.Instance);
             _syncServer = new SyncServer(
                 trieStore.TrieNodeRlpStore,
