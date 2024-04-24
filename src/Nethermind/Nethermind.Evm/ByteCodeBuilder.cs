@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 
@@ -211,6 +212,34 @@ namespace Nethermind.Evm
             PushData(address);
             PushData(gasLimit);
             Op(callType);
+            return this;
+        }
+
+        public Prepare Log(int size, int position, Hash256[]? topics = null)
+        {
+            if (topics?.Length > 4)
+            {
+                throw new ArgumentException("Too many topics - must be 4 or less");
+            }
+            int numTopics = topics?.Length ?? 0;
+            if (topics is not null)
+            {
+                foreach (Hash256 topic in topics)
+                {
+                    PushData(topic.Bytes.ToArray());
+                }
+            }
+            PushData(size);
+            PushData(position);
+            Op(Instruction.LOG0 + (byte)numTopics);
+            return this;
+        }
+
+        public Prepare Revert(int size, int position)
+        {
+            PushData(size);
+            PushData(position);
+            Op(Instruction.REVERT);
             return this;
         }
 

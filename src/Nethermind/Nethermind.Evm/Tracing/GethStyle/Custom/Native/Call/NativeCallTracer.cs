@@ -156,7 +156,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private void OnExit(long gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
-        if (!_onlyTopCall &&  Depth > 0)
+        if (!_onlyTopCall && Depth > 0)
         {
             NativeCallTracerCallFrame callFrame = _callStack[^1];
 
