@@ -68,7 +68,7 @@ public class TxTracer : ITxTracer
     public virtual void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) { }
     public virtual void ReportActionError(EvmExceptionType evmExceptionType) { }
     public virtual void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) { }
-    public virtual void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) { }
+    public virtual void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => ReportActionError(EvmExceptionType.Revert);
     public virtual void ReportBlockHash(Hash256 blockHash) { }
     public virtual void ReportByteCode(ReadOnlyMemory<byte> byteCode) { }
     public virtual void ReportGasUpdateForVmTrace(long refund, long gasAvailable) { }
