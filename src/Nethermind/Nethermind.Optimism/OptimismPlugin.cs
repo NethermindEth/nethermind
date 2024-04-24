@@ -166,6 +166,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
             _api.ChainSpec,
             _beaconSync,
             _api.StateReader!,
+            _api.StateFactory!,
             _api.LogManager
         );
 

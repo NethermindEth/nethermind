@@ -56,6 +56,7 @@ public class MergeSynchronizer : Synchronizer
         ChainSpec chainSpec,
         IBeaconSyncStrategy beaconSync,
         IStateReader stateReader,
+        IStateFactory stateFactory,
         ILogManager logManager)
         : base(
             dbProvider,
@@ -71,6 +72,7 @@ public class MergeSynchronizer : Synchronizer
             betterPeerStrategy,
             chainSpec,
             stateReader,
+            stateFactory,
             logManager)
     {
         _invalidChainTracker = invalidChainTracker;

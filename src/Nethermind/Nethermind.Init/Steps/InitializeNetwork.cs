@@ -158,6 +158,7 @@ public class InitializeNetwork : IStep
                 _api.BetterPeerStrategy,
                 _api.ChainSpec,
                 _api.StateReader!,
+                _api.StateFactory!,
                 _api.LogManager);
         }
 
