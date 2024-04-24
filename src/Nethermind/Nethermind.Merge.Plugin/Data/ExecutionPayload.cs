@@ -100,10 +100,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
-    /// Gets or sets a collection of <see cref="ValidatorExits"/> as defined in
+    /// Gets or sets a collection of <see cref="WithdrawalRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-7002">EIP-7002</see>.
     /// </summary>
-    public virtual WithdrawalRequest[]? ValidatorExits { get; set; }
+    public virtual WithdrawalRequest[]? WithdrawalRequests { get; set; }
 
 
     /// <summary>
@@ -163,7 +163,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
                 WithdrawalsRoot = Withdrawals is null ? null : new WithdrawalTrie(Withdrawals).RootHash,
             };
 
-            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals, Deposits);
+            block = new(header, transactions, Array.Empty<BlockHeader>(), Withdrawals);
 
             return true;
         }
@@ -239,7 +239,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     {
         return this switch
         {
-            { Deposits: not null, ValidatorExits: not null } => 4,
+            { Deposits: not null, WithdrawalRequests: not null } => 4,
             { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
             { Withdrawals: not null } => 2,
             _ => 1

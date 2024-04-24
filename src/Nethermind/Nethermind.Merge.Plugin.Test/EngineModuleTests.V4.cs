@@ -21,8 +21,8 @@ public partial class EngineModuleTests
 {
     [TestCase(
         "0x948f67f47376af5d09cc39ec25a84c84774f14b2e80289064c2de73db33cc573",
-        "0x6d8a107ccab7a785de89f58db49064ee091df5d2b6306fe55db666e75a0e9f68",
-        "0x03e662d795ee2234c492ca4a08de03b1d7e3e0297af81a76582e16de75cdfc51",
+        "0x9293c385458977100c54efd4f61180ccff47ad2f081db181a9f1ebeaff3e0999",
+        "0x30f4339ed858007f3f9e87b0342598bae47836fd89f1b84f42a16b90e583c47c",
         "0x96b752d22831ad92")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
@@ -90,11 +90,14 @@ public partial class EngineModuleTests
                 Bytes.FromHexString("0x4e65746865726d696e64") // Nethermind
             )
             {
+                BlobGasUsed = 0,
+                ExcessBlobGas = 0,
                 BaseFeePerGas = 0,
                 Bloom = Bloom.Empty,
                 GasUsed = 0,
                 Hash = expectedBlockHash,
                 MixHash = prevRandao,
+                ParentBeaconBlockRoot = Keccak.Zero,
                 ReceiptsRoot = chain.BlockTree.Head!.ReceiptsRoot!,
                 StateRoot = new(stateRoot),
             },
@@ -114,7 +117,7 @@ public partial class EngineModuleTests
         }));
 
         response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
-            chain.JsonSerializer.Serialize(new ExecutionPayload(block)));
+            chain.JsonSerializer.Serialize(new ExecutionPayloadV4(block)), "[]" , Keccak.Zero.ToString(true));
         successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
