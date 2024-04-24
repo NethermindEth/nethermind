@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G2 = Nethermind.Crypto.Bls.P2;
 
@@ -41,18 +40,14 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[2 * BlsParams.LenFp];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = Pairings.BlsMapToG2(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G2 res = new G2().encode_to(inputData.ToArray());
+            result = (res.ToBytesUntrimmed(), true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }

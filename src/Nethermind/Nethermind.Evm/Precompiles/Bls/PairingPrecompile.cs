@@ -4,10 +4,10 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 using G2 = Nethermind.Crypto.Bls.P2;
+using GT = Nethermind.Crypto.Bls.PT;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -40,13 +40,27 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[32];
-        bool success = Pairings.BlsPairing(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            GT acc = new();
+            for (int i = 0; i < inputData.Length / PairSize; i++)
+            {
+                int offset = i * PairSize;
+                G1 x = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                G2 y = BlsExtensions.G2FromUntrimmed(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
+                acc.mul(new GT(y, x));
+            }
+
+            bool verified = acc.final_exp().is_one();
+            byte[] res = new byte[32];
+            if (verified)
+            {
+                res[31] = 1;
+            }
+
+            result = (res, true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }

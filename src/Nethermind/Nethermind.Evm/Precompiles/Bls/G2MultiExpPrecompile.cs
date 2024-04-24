@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
@@ -45,13 +46,20 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = Pairings.BlsG2MultiExp(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G2 acc = G2.generator();
+            for (int i = 0; i < inputData.Length / ItemSize; i++)
+            {
+                int offset = i * ItemSize;
+                G2 x = BlsExtensions.G2FromUntrimmed(inputData[offset..(offset + BlsParams.LenG2)]);
+                G2 res = x.mult(inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].ToArray().Reverse().ToArray());
+                acc.add(res);
+            }
+
+            result = (acc.ToBytesUntrimmed(), true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }

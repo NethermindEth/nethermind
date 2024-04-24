@@ -4,7 +4,6 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G1 = Nethermind.Crypto.Bls.P1;
 
@@ -43,13 +42,12 @@ public class MapToG1Precompile : IPrecompile<MapToG1Precompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[128];
-        bool success = Pairings.BlsMapToG1(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G1 res = new G1().encode_to(inputData.ToArray());
+            result = (res.ToBytesUntrimmed(), true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }

@@ -46,27 +46,23 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
 
         (byte[], bool) result;
 
-        Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1MultiExp(inputData.Span, output);
-        if (success)
+        try
         {
-            result = (output.ToArray(), true);
+            G1 acc = G1.generator();
+            for (int i = 0; i < inputData.Length / ItemSize; i++)
+            {
+                int offset = i * ItemSize;
+                G1 x = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                G1 res = x.mult(inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].ToArray().Reverse().ToArray());
+                acc.add(res);
+            }
+
+            result = (acc.ToBytesUntrimmed(), true);
         }
-        else
+        catch (Exception)
         {
             result = (Array.Empty<byte>(), false);
         }
-
-        // try
-        // {
-        //     G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG2]);
-        //     G1 res = x.mult(inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray());
-        //     result = (res.ToBytesUntrimmed(), true);
-        // }
-        // catch (Exception)
-        // {
-        //     result = (Array.Empty<byte>(), false);
-        // }
 
         return result;
     }
