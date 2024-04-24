@@ -457,7 +457,7 @@ namespace Nethermind.Evm.Test
             var codeWithAuthCall = code.Concat(
                 Prepare.EvmCode
                 .Op(Instruction.AUTHCALL)
-                .Done).ToArray();                
+                .Done).ToArray();
 
             TestState.CreateAccount(TestItem.AddressC, 0);
             TestState.InsertCode(TestItem.AddressC, Keccak.Compute(code), code, Spec);
