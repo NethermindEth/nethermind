@@ -2380,9 +2380,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
-        UInt256 balanceToDebit = instruction == Instruction.AUTHCALL ? _state.GetBalance(vmState.Authorized) : _state.GetBalance(env.ExecutingAccount);
-        if (env.CallDepth >= MaxCallDepth ||
-            !transferValue.IsZero && balanceToDebit < transferValue)
+
+        Address accountToDebit = instruction == Instruction.AUTHCALL ? vmState.Authorized! : env.ExecutingAccount;
+        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(accountToDebit) < transferValue)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
