@@ -9,7 +9,6 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
@@ -31,7 +30,7 @@ public static class Program
     static async Task Main(string[] args)
     {
         // draft of setup options
-        _numberOfBlocksToProduce = 1000;
+        _numberOfBlocksToProduce = 10;
         _txsPerBlock = 1000;
         _maxNumberOfWithdrawalsPerBlock = 16;
         _numberOfWithdrawals = 1600;
@@ -40,7 +39,7 @@ public static class Program
 
         // chain initialization
         StringBuilder stringBuilder = new();
-        EthereumJsonSerializer serializer = new(unsafeRelaxedJsonEscaping: true);
+        EthereumJsonSerializer serializer = new();
 
         ChainSpecLoader chainSpecLoader = new(serializer);
         ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(chainSpecPath, LimboLogs.Instance.GetClassLogger());
@@ -84,10 +83,10 @@ public static class Program
             string blobsString = serializer.Serialize(Array.Empty<byte[]>());
             string parentBeaconBlockRootString = serializer.Serialize(previousBlock.Hash);
 
-            WriteJsonRpcRequest(stringBuilder, nameof(IEngineRpcModule.engine_newPayloadV3), executionPayloadString, blobsString, parentBeaconBlockRootString);
+            WriteJsonRpcRequest(stringBuilder, "engine_newPayloadV3", executionPayloadString, blobsString, parentBeaconBlockRootString);
 
             ForkchoiceStateV1 forkchoiceState = new(block.Hash, Keccak.Zero, Keccak.Zero);
-            WriteJsonRpcRequest(stringBuilder, nameof(IEngineRpcModule.engine_forkchoiceUpdatedV3), serializer.Serialize(forkchoiceState));
+            WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", serializer.Serialize(forkchoiceState));
 
             _taskCompletionSource = new TaskCompletionSource<bool>();
             chain.BlockTree.SuggestBlock(block);
