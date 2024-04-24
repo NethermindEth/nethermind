@@ -64,7 +64,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
                 requests[i] = Deposits![i];
             }
 
-            for (;i < requestsCount; ++i)
+            for (; i < requestsCount; ++i)
             {
                 requests[i] = WithdrawalRequests![i - depositsLength - 1];
             }
