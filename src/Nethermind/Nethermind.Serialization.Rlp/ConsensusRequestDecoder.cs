@@ -41,9 +41,6 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
         rlpStream.ReadSequenceLength();
 
         ConsensusRequestsType consensusRequestsType = (ConsensusRequestsType)rlpStream.ReadByte();
-
-        Console.WriteLine("ConsensusRequestsType: " + consensusRequestsType);
-
         ConsensusRequest result = consensusRequestsType switch
         {
             ConsensusRequestsType.WithdrawalRequest => _withdrawalRequestDecoder.Decode(rlpStream, rlpBehaviors),
@@ -95,8 +92,6 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
     public Rlp Encode(ConsensusRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         RlpStream rlpStream = new RlpStream(GetLength(item, rlpBehaviors));
-        // debug getLength
-        Console.WriteLine("GetLength: " + GetLength(item, rlpBehaviors));
         Encode(rlpStream, item, rlpBehaviors);
         return new Rlp(rlpStream.Data.ToArray());
     }

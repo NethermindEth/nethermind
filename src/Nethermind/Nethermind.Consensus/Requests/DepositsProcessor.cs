@@ -24,7 +24,7 @@ public class DepositsProcessor : IDepositsProcessor
             if (logEntries != null)
                 foreach (LogEntry? log in logEntries)
                 {
-                    if (log!=null && log.LoggersAddress == spec.DepositContractAddress)
+                    if (log != null && log.LoggersAddress == spec.DepositContractAddress)
                     {
                         var depositDecoder = new DepositDecoder();
                         Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
