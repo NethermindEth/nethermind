@@ -33,20 +33,25 @@ public partial class VerkleTree
         // Sort the leaf delta first
         leafDeltas.AsSpan().Sort((kv1, kv2) => Bytes.BytesComparer.Compare(kv1.Key, kv2.Key));
 
-        _ = CalculateDeltaParallel(leafDeltas, 0);
+        _ = CommitBulkParallel(leafDeltas, 0);
 
         _leafUpdateCache.Clear();
     }
 
-    // Note, parallel is only on first level
-    private FrE CalculateDeltaParallel(ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
+    /// <summary>
+    /// Parallel version of `CommitBulk`. Only parallelize current (top) level.
+    /// </summary>
+    /// <param name="leafDeltas"></param>
+    /// <param name="depth"></param>
+    /// <returns></returns>
+    private FrE CommitBulkParallel(ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
     {
-        var key = leafDeltas[0].Key.AsSpan()[..depth];
+        Span<byte> key = leafDeltas[0].Key.AsSpan()[..depth];
         InternalNode node = GetInternalNode(key);
 
-        if (node?.IsBranchNode != true)
+        if (node?.IsBranchNode != true || leafDeltas.Count == 1)
         {
-            return CalculateDelta(leafDeltas.AsSpan(), depth);
+            return CommitBulkRecursive(leafDeltas.AsSpan(), depth);
         }
 
         int sectionStart = 0;
@@ -59,10 +64,11 @@ public partial class VerkleTree
             {
                 (int start, int end, byte sectionByte) = input;
                 // Get the delta for the previous section
-                FrE sectionDelta = CalculateDelta(leafDeltas.AsSpan()[start..end], depth + 1);
+                FrE sectionDelta = CommitBulkRecursive(leafDeltas.AsSpan()[start..end], depth + 1);
+                Banderwagon multipliedDelta = Committer.ScalarMul(sectionDelta, sectionByte);
 
                 using McsLock.Disposable _ = deltaLock.Acquire();
-                delta += Committer.ScalarMul(sectionDelta, sectionByte);
+                delta += multipliedDelta;
             },
             new ExecutionDataflowBlockOptions()
             {
@@ -94,9 +100,17 @@ public partial class VerkleTree
         return deltaFre;
     }
 
-    private FrE CalculateDelta(ReadOnlySpan<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
+    /// <summary>
+    /// Commit all `leafDeltas` at once. `leafDeltas` must be sorted by key. It work by partitioning `leafDeltas` by its
+    /// key at the specified depth and recursively commit the partitioned section, returning the delta which get multiplied
+    /// by the partition key and the applied to the branch which is the current node.
+    /// </summary>
+    /// <param name="leafDeltas"></param>
+    /// <param name="depth"></param>
+    /// <returns></returns>
+    private FrE CommitBulkRecursive(ReadOnlySpan<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode?)>> leafDeltas, int depth)
     {
-        var key = leafDeltas[0].Key.AsSpan()[..depth];
+        Span<byte> key = leafDeltas[0].Key.AsSpan()[..depth];
         InternalNode node = GetInternalNode(key);
 
         if (leafDeltas.Length == 1)
@@ -140,8 +154,14 @@ public partial class VerkleTree
         int sectionStart = 0;
         byte sectionStartByte = leafDeltas[0].Key[depth];
 
+        // When the current node is a stem, this key will be replaced with a branch, and the current stem
+        // need to be moved to a different key. To do that, the current stem is added as part of a new partition
+        // backed by a new list.
         bool checkStem = node?.IsStem == true;
         ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>>? newSection = null;
+
+        // If the current section byte is the same as the stem, we create a `newSection` which indicate that this section
+        // is not backed by the original span.
         if (checkStem && node.Stem!.Bytes[depth] == sectionStartByte) newSection = new ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>>(0);
 
         // TODO: Can use binary search
@@ -160,45 +180,49 @@ public partial class VerkleTree
 
             if (newSection == null) continue;
 
-            if (checkStem)
-            {
-                int compare = Bytes.BytesComparer.Compare(node.Stem.Bytes, leafDeltas[i].Key);
-                if (compare == 0)
-                {
-                    // It match exactly? Then its an update, so we ignore setting a new one.
-                    checkStem = false;
-                    InternalNode clonedNode = node.Clone();
-                    clonedNode.UpdateCommitment(leafDeltas[i].Value.Item1!.Value);
-                    newSection.Add(new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(leafDeltas[i].Key, (null, clonedNode)));
-                }
-                else if (compare < 0)
-                {
-                    // The current stem is less than the leaf update delta, so add the current stem first.
-                    newSection.Add(new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(node.Stem.Bytes, (null, node)));
-                    checkStem = false;
-                    newSection.Add(leafDeltas[i]);
-                }
-                else
-                {
-                    newSection.Add(leafDeltas[i]);
-                }
-            }
-            else
+            if (!checkStem)
             {
                 newSection.Add(leafDeltas[i]);
+                continue;
+            }
+
+            int compare = Bytes.BytesComparer.Compare(node.Stem.Bytes, leafDeltas[i].Key);
+            switch (compare)
+            {
+                case 0:
+                {
+                    // It match exactly? Then its an update, we update the current stem and add it to the new section
+                    InternalNode clonedNode = node.Clone();
+                    clonedNode.UpdateCommitment(leafDeltas[i].Value.Item1!.Value);
+
+                    checkStem = false;
+                    newSection.Add(
+                        new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(leafDeltas[i].Key,
+                            (null, clonedNode)));
+                    break;
+                }
+                case < 0:
+                    // The current stem is less than the leaf update delta, so add the current stem first.
+                    newSection.Add(
+                        new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(node.Stem.Bytes, (null, node)));
+                    checkStem = false;
+                    newSection.Add(leafDeltas[i]);
+                    break;
+                default:
+                    newSection.Add(leafDeltas[i]);
+                    break;
             }
         }
 
-        {
-            AddDelta(leafDeltas.Length, leafDeltas);
-        }
+        // Last section
+        AddDelta(leafDeltas.Length, leafDeltas);
 
         // The current stem is still not set.
         if (checkStem)
         {
             newSection = new ArrayPoolList<KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>>(1);
             newSection.Add(new KeyValuePair<byte[], (LeafUpdateDelta?, InternalNode)>(node.Stem.Bytes, (null, node)));
-            var recursiveDelta = CalculateDelta(newSection.AsSpan(), depth + 1);
+            var recursiveDelta = CommitBulkRecursive(newSection.AsSpan(), depth + 1);
             var mulDelta = Committer.ScalarMul(recursiveDelta, node.Stem.Bytes[depth]);
 
             delta += mulDelta;
@@ -216,10 +240,10 @@ public partial class VerkleTree
                 checkStem = false;
             }
 
-            // Get the delta for the previous section
+            // Recursively calculate the delta
             FrE sectionDelta = newSection != null
-                ? CalculateDelta(newSection.AsSpan(), depth + 1)
-                : CalculateDelta(leafDeltas[sectionStart..newSectionStart], depth + 1);
+                ? CommitBulkRecursive(newSection.AsSpan(), depth + 1)
+                : CommitBulkRecursive(leafDeltas[sectionStart..newSectionStart], depth + 1);
 
             if (newSection != null)
             {
@@ -232,8 +256,8 @@ public partial class VerkleTree
 
         if (node == null || node?.IsBranchNode == true)
         {
-            if (node == null) node = new InternalNode(VerkleNodeType.BranchNode);
-            var deltaFre = node.UpdateCommitment(delta);
+            node ??= new InternalNode(VerkleNodeType.BranchNode);
+            FrE deltaFre = node.UpdateCommitment(delta);
             SetInternalNode(key, node);
             return deltaFre;
         }
@@ -244,6 +268,8 @@ public partial class VerkleTree
             node = new InternalNode(VerkleNodeType.BranchNode);
             FrE deltaFre = node.UpdateCommitment(delta);
             SetInternalNode(key, node);
+
+            // Need to subtract the original stem commitment
             deltaFre -= originalStem.InternalCommitment.PointAsField;
 
             return deltaFre;
