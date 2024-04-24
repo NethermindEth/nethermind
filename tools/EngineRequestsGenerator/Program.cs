@@ -11,6 +11,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.Data;
@@ -24,6 +25,9 @@ namespace EngineRequestsGenerator;
 
 public static class Program
 {
+    private static int _maxNumberOfWithdrawalsPerBlock;
+    private static int _numberOfWithdrawals;
+
     static async Task Main(string[] args)
     {
         StringBuilder stringBuilder = new();
@@ -40,19 +44,31 @@ public static class Program
 
         chain.BlockTree.SuggestBlock(genesisBlock);
 
-        Withdrawal withdrawal = new()
-        {
-            Address = TestItem.AddressA,
-            AmountInGwei = 1_000_000_000_000, // 1000 eth
-            ValidatorIndex = 1,
-            Index = 1
-        };
+        _maxNumberOfWithdrawalsPerBlock = 16;
+        int numberOfBlocksToProduce = 10;
+        _numberOfWithdrawals = 16000;
 
-        ulong numberOfBlocksToProduce = 10;
+
+        int numberOfKeysToGenerate = _maxNumberOfWithdrawalsPerBlock * numberOfBlocksToProduce;
+
+
+
+        // prepare private keys - up to 16_777_216 (2^24)
+        PrivateKey[] privateKeys = PreparePrivateKeys(numberOfKeysToGenerate).ToArray();
+
+
+        // Withdrawal withdrawal = new()
+        // {
+        //     Address = TestItem.AddressA,
+        //     AmountInGwei = 1_000_000_000_000, // 1000 eth
+        //     ValidatorIndex = 1,
+        //     Index = 1
+        // };
+
         Block previousBlock = genesisBlock;
 
 
-        for (ulong i = 0; i < numberOfBlocksToProduce; i++)
+        for (int i = 0; i < numberOfBlocksToProduce; i++)
         {
             PayloadAttributes payloadAttributes = new()
             {
@@ -63,22 +79,22 @@ public static class Program
                 Withdrawals = []
             };
 
-            payloadAttributes.Withdrawals = new[] { withdrawal };
+            payloadAttributes.Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray();
 
-            if (i > 0)
-            {
-                Transaction tx = Build.A.Transaction
-                    .WithNonce(i - 1)
-                    .WithType(TxType.EIP1559)
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(TestItem.AddressB)
-                    .WithChainId(BlockchainIds.Holesky)
-                    .SignedAndResolved(TestItem.PrivateKeyA)
-                    .TestObject;
-
-                chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-            }
+            // if (i > 0)
+            // {
+            //     Transaction tx = Build.A.Transaction
+            //         .WithNonce((UInt256)(i - 1))
+            //         .WithType(TxType.EIP1559)
+            //         .WithMaxFeePerGas(1.GWei())
+            //         .WithMaxPriorityFeePerGas(1.GWei())
+            //         .WithTo(TestItem.AddressB)
+            //         .WithChainId(BlockchainIds.Holesky)
+            //         .SignedAndResolved(TestItem.PrivateKeyA)
+            //         .TestObject;
+            //
+            //     chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            // }
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
@@ -104,6 +120,62 @@ public static class Program
 
         await File.WriteAllTextAsync("requests.txt", stringBuilder.ToString());
     }
+
+    private static IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
+    {
+        if (alreadyProducedBlocks * _maxNumberOfWithdrawalsPerBlock >= _numberOfWithdrawals) yield break;
+
+        for (int i = 0; i < _maxNumberOfWithdrawalsPerBlock; i++)
+        {
+            int currentPrivateKeyIndex = alreadyProducedBlocks * _maxNumberOfWithdrawalsPerBlock + i;
+
+            yield return new Withdrawal
+            {
+                Address = privateKeys[currentPrivateKeyIndex].Address,
+                AmountInGwei = 1_000_000_000_000, // 1000 eth
+                ValidatorIndex = (ulong)(currentPrivateKeyIndex + 1),
+                Index = (ulong)(i % 16 + 1)
+            };
+        }
+    }
+
+    private static IEnumerable<PrivateKey> PreparePrivateKeys(int numberOfKeysToGenerate)
+    {
+        int numberOfKeys = 0;
+        for (byte i = 1; i > 0; i++)
+        {
+            for (byte j = 1; j > 0; j++)
+            {
+                for (byte k = 1; k > 0; k++)
+                {
+                    if (numberOfKeys++ >= numberOfKeysToGenerate)
+                    {
+                        yield break;
+                    }
+
+                    byte[] bytes = new byte[32];
+                    bytes[29] = i;
+                    bytes[30] = j;
+                    bytes[31] = k;
+                    yield return new PrivateKey(bytes);
+                }
+            }
+        }
+    }
+
+    // private static IEnumerable<Withdrawal> PrepareWithdrawals(PrivateKey[] privateKeys)
+    // {
+    //     for (int i = 0; i < _numberOfWithdrawals; i++)
+    //     {
+    //         yield return new Withdrawal
+    //         {
+    //             Address = privateKeys[i].Address,
+    //             AmountInGwei = 1_000_000_000_000, // 1000 eth
+    //             ValidatorIndex = (ulong)(i + 1),
+    //             Index = (ulong)(i % 16 + 1)
+    //         };
+    //     }
+    // }
 
     private static void WriteJsonRpcRequest(StringBuilder stringBuilder, string methodName, params  string[]? parameters)
     {
