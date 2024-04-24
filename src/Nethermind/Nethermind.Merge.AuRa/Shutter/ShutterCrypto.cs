@@ -25,9 +25,12 @@ using GT = Bls.PT;
 
 internal class ShutterCrypto
 {
-    internal static readonly BigInteger BlsSubgroupOrder = new([0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true, true);
+    internal static readonly UInt256 BlsSubgroupOrder = new((byte[])[0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true);
+    internal static readonly byte CryptoVersion = 0x2;
+
     public struct EncryptedMessage
     {
+        public byte VersionId;
         public G2 c1;
         public Bytes32 c2;
         public IEnumerable<Bytes32> c3;
@@ -49,7 +52,9 @@ internal class ShutterCrypto
         IEnumerable<Bytes32> decryptedBlocks = Enumerable.Zip(keys, encryptedMessage.c3, XorBlocks);
         byte[] msg = UnpadAndJoin(decryptedBlocks);
 
-        UInt256 r = ComputeR(sigma, msg);
+        UInt256 r;
+        ComputeR(sigma, msg, out r);
+
         G2 expectedC1 = ComputeC1(r);
         if (!expectedC1.is_equal(encryptedMessage.c1))
         {
@@ -61,6 +66,11 @@ internal class ShutterCrypto
 
     public static EncryptedMessage DecodeEncryptedMessage(ReadOnlySpan<byte> bytes)
     {
+        if (bytes[0] != CryptoVersion)
+        {
+            throw new Exception("Encrypted message had wrong crypto id.");
+        }
+
         ReadOnlySpan<byte> c3Bytes = bytes[(96 + 32)..];
         List<Bytes32> c3 = [];
         for (int i = 0; i < c3Bytes.Length / 32; i++)
@@ -70,6 +80,7 @@ internal class ShutterCrypto
 
         return new()
         {
+            VersionId = bytes[0],
             c1 = new G2(bytes[..96].ToArray()),
             c2 = new Bytes32(bytes[96..(96 + 32)]),
             c3 = c3
@@ -79,14 +90,17 @@ internal class ShutterCrypto
     public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
         GT p = new(decryptionKey, encryptedMessage.c1);
-        Bytes32 key = HashGTToBlock(p);
+        Bytes32 key = Hash2(p);
         Bytes32 sigma = XorBlocks(encryptedMessage.c2, key);
         return sigma;
     }
 
-    public static UInt256 ComputeR(Bytes32 sigma, ReadOnlySpan<byte> msg)
+    public static void ComputeR(Bytes32 sigma, ReadOnlySpan<byte> msg, out UInt256 res)
     {
-        return HashBlocksToInt([sigma, HashBytesToBlock(msg)]);
+        Span<byte> preimage = stackalloc byte[32 + msg.Length];
+        sigma.Unwrap().CopyTo(preimage);
+        msg.CopyTo(preimage[32..]);
+        Hash3(preimage, out res);
     }
 
     public static G2 ComputeC1(UInt256 r)
@@ -116,7 +130,7 @@ internal class ShutterCrypto
             Span<byte> preimage = stackalloc byte[36];
             sigma.Unwrap().CopyTo(preimage);
             BinaryPrimitives.WriteInt32BigEndian(preimage[32..], suffix);
-            return HashBytesToBlock(preimage);
+            return Hash4(preimage);
         });
     }
 
@@ -160,24 +174,38 @@ internal class ShutterCrypto
         return new(Keccak.Compute(bytes).Bytes);
     }
 
-    public static UInt256 HashBlocksToInt(IEnumerable<Bytes32> blocks)
+    public static G1 Hash1(ReadOnlySpan<byte> bytes)
     {
-        Span<byte> combinedBlocks = stackalloc byte[blocks.Count() * 32];
-
-        for (int i = 0; i < blocks.Count(); i++)
-        {
-            blocks.ElementAt(i).Unwrap().CopyTo(combinedBlocks[(32 * i)..]);
-        }
-
-        Span<byte> hash = Keccak.Compute(combinedBlocks).Bytes;
-        BigInteger v = new BigInteger(hash, true, true) % BlsSubgroupOrder;
-
-        return new(v.ToBigEndianByteArray(32));
+        byte[] preimage = new byte[bytes.Length + 1];
+        preimage[0] = 0x1;
+        bytes.CopyTo(preimage.AsSpan()[1..]);
+        return new G1().hash_to(preimage);
     }
 
-    public static Bytes32 HashGTToBlock(GT p)
+    public static Bytes32 Hash2(GT p)
     {
-        return HashBytesToBlock(p.final_exp().to_bendian());
+        Span<byte> preimage = stackalloc byte[577];
+        preimage[0] = 0x2;
+        p.final_exp().to_bendian().CopyTo(preimage[1..]);
+        return HashBytesToBlock(preimage);
+    }
+
+    public static void Hash3(ReadOnlySpan<byte> bytes, out UInt256 res)
+    {
+        byte[] preimage = new byte[bytes.Length + 1];
+        preimage[0] = 0x3;
+        bytes.CopyTo(preimage.AsSpan()[1..]);
+        Span<byte> hash = Keccak.Compute(preimage).Bytes;
+        UInt256.Mod(new UInt256(hash), BlsSubgroupOrder, out res);
+    }
+
+    public static Bytes32 Hash4(ReadOnlySpan<byte> bytes)
+    {
+        byte[] preimage = new byte[bytes.Length + 1];
+        preimage[0] = 0x4;
+        bytes.CopyTo(preimage.AsSpan()[1..]);
+        Span<byte> hash = Keccak.Compute(preimage).Bytes;
+        return new(hash);
     }
 
     public static GT GTExp(GT x, UInt256 exp)

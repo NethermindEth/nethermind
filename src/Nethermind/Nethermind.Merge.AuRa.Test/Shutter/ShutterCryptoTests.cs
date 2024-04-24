@@ -32,9 +32,9 @@ class ShutterCryptoTests
         G1 key = identity.dup().mult(sk.ToLittleEndian());
 
         GT p1 = new(key, G2.generator().mult(r.ToLittleEndian()));
-        Bytes32 h1 = ShutterCrypto.HashGTToBlock(p1);
+        Bytes32 h1 = ShutterCrypto.Hash2(p1);
         GT p2 = ShutterCrypto.GTExp(new GT(identity, eonKey), r);
-        Bytes32 h2 = ShutterCrypto.HashGTToBlock(p2);
+        Bytes32 h2 = ShutterCrypto.Hash2(p2);
 
         Assert.That(h1, Is.EqualTo(h2));
     }
@@ -93,9 +93,12 @@ class ShutterCryptoTests
 
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
     {
-        UInt256 r = ShutterCrypto.ComputeR(sigma, msg);
+        UInt256 r;
+        ShutterCrypto.ComputeR(sigma, msg, out r);
+
         EncryptedMessage c = new()
         {
+            VersionId = 0x2,
             c1 = ShutterCrypto.ComputeC1(r),
             c2 = ComputeC2(sigma, r, identity, eonKey),
             c3 = ComputeC3(PadAndSplit(msg), sigma)
@@ -105,14 +108,15 @@ class ShutterCryptoTests
 
     internal static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
     {
-        byte[] bytes = new byte[96 + 32 + (encryptedMessage.c3.Count() * 32)];
+        byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.c3.Count() * 32)];
 
-        encryptedMessage.c1.compress().CopyTo(bytes.AsSpan());
-        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[96..]);
+        bytes[0] = encryptedMessage.VersionId;
+        encryptedMessage.c1.compress().CopyTo(bytes.AsSpan()[1..]);
+        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 96)..]);
 
         foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
         {
-            int offset = 96 + 32 + (32 * i);
+            int offset = 1 + 96 + 32 + (32 * i);
             block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
         }
 
@@ -123,7 +127,7 @@ class ShutterCryptoTests
     {
         GT p = new(identity, eonKey);
         GT preimage = ShutterCrypto.GTExp(p, r);
-        Bytes32 key = ShutterCrypto.HashGTToBlock(preimage);
+        Bytes32 key = ShutterCrypto.Hash2(preimage);
         return ShutterCrypto.XorBlocks(sigma, key);
     }
 
