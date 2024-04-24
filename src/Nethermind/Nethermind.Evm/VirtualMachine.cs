@@ -2256,7 +2256,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         //TODO handle exception will crash the process
         PublicKey publicKey = _ecdsa.RecoverPublicKey(signature, digest);
 
-        if (publicKey != null && publicKey.Address == authority)
+        if (publicKey is not null && publicKey.Address == authority)
         {
             stack.PushUInt256(1);
             vmState.Authorized = authority;
@@ -2293,7 +2293,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled ||
             instruction == Instruction.AUTHCALL && !spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
 
-        if (instruction == Instruction.AUTHCALL && vmState.Authorized == null)
+        if (instruction == Instruction.AUTHCALL && vmState.Authorized is null)
             return EvmExceptionType.AuthorizedNotSet;
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
@@ -2324,15 +2324,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
-        Address caller;
-        if (instruction == Instruction.DELEGATECALL)
-            caller = env.Caller;
-        else if (instruction == Instruction.AUTHCALL)
-            caller = vmState.Authorized;
-        else
-            caller = env.ExecutingAccount;
+        Address caller = instruction switch
+        {
+            Instruction.DELEGATECALL => env.Caller,
+            Instruction.AUTHCALL => vmState.Authorized,
+            _ => env.ExecutingAccount
+        };
 
-        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
+        Address target = instruction is Instruction.CALL or Instruction.STATICCALL
             ? codeSource
             : env.ExecutingAccount;
 
@@ -2349,10 +2348,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!transferValue.IsZero)
         {
-            if (instruction == Instruction.AUTHCALL)
-                gasExtra += GasCostOf.CallValue - GasCostOf.CallStipend;
-            else
-                gasExtra += GasCostOf.CallValue;
+            gasExtra += instruction == Instruction.AUTHCALL ? GasCostOf.CallValue - GasCostOf.CallStipend : GasCostOf.CallValue;
         }
 
         if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
