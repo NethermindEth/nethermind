@@ -18,7 +18,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
 
     public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        // int _ = rlpStream.ReadSequenceLength();
+        int _ = rlpStream.ReadSequenceLength();
         Address sourceAddress = rlpStream.DecodeAddress();
         ArgumentNullException.ThrowIfNull(sourceAddress);
         byte[] validatorPubkey = rlpStream.DecodeByteArray();
@@ -48,7 +48,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
 
     public void Encode(RlpStream stream, WithdrawalRequest item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
-        int contentLength = GetLength(item, rlpBehaviors);
+        int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
         stream.Encode(item.ValidatorPubkey);

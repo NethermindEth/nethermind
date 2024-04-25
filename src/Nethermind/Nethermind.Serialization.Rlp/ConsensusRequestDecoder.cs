@@ -46,13 +46,12 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
             return null;
         }
 
-        ConsensusRequestsType consensusRequestsType = ConsensusRequestsType.Deposit;
-
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
         {
             rlpStream.ReadPrefixAndContentLength();
-            consensusRequestsType = (ConsensusRequestsType)rlpStream.ReadByte();
         }
+
+        ConsensusRequestsType consensusRequestsType = (ConsensusRequestsType)rlpStream.ReadByte();
 
         ConsensusRequest result = consensusRequestsType switch
         {
@@ -73,13 +72,12 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
             return null;
         }
 
-        ConsensusRequestsType consensusRequestsType = ConsensusRequestsType.Deposit;
-
-        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
+        if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.None)
         {
             decoderContext.ReadPrefixAndContentLength();
-            consensusRequestsType = (ConsensusRequestsType)decoderContext.ReadByte();
         }
+
+        ConsensusRequestsType consensusRequestsType = (ConsensusRequestsType)decoderContext.ReadByte();
 
         ConsensusRequest result = consensusRequestsType switch
         {
