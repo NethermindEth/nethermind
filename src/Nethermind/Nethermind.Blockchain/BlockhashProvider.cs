@@ -3,6 +3,8 @@
 
 using System;
 using System.IO;
+using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -27,7 +29,7 @@ namespace Nethermind.Blockchain
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider;
             _worldState = worldState;
-            _blockhashStore = new BlockhashStore(blockTree, specProvider, worldState);
+            _blockhashStore = new Blocks.BlockhashStore(blockTree, specProvider, worldState);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
