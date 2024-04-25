@@ -14,28 +14,28 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJump<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
+    public static (EvmExceptionType, int) InstructionJump<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, int programCounter)
         where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= GasCostOf.Mid;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        if (!Jump(result, ref programCounter, in vmState.Env)) return EvmExceptionType.InvalidJumpDestination;
+        if (!stack.PopUInt256(out UInt256 result)) return (EvmExceptionType.StackUnderflow, programCounter);
+        if (!Jump(result, ref programCounter, in vmState.Env)) return (EvmExceptionType.InvalidJumpDestination, programCounter);
 
-        return EvmExceptionType.None;
+        return (EvmExceptionType.None, programCounter);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpI<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
+    public static (EvmExceptionType, int) InstructionJumpI<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, int programCounter)
         where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= GasCostOf.High;
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 result)) return (EvmExceptionType.StackUnderflow, programCounter);
         if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
         {
-            if (!Jump(result, ref programCounter, in vmState.Env)) return EvmExceptionType.InvalidJumpDestination;
+            if (!Jump(result, ref programCounter, in vmState.Env)) return (EvmExceptionType.InvalidJumpDestination, programCounter);
         }
 
-        return EvmExceptionType.None;
+        return (EvmExceptionType.None, programCounter);
     }
 
     [SkipLocalsInit]
@@ -50,40 +50,40 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionReturnSub<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter, IReleaseSpec spec)
+    public static (EvmExceptionType, int) InstructionReturnSub<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, int programCounter, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
-        if (!spec.SubroutinesEnabled) return EvmExceptionType.BadInstruction;
+        if (!spec.SubroutinesEnabled) return (EvmExceptionType.BadInstruction, programCounter);
 
         gasAvailable -= GasCostOf.Low;
 
         if (vmState.ReturnStackHead == 0)
         {
-            return EvmExceptionType.InvalidSubroutineReturn;
+            return (EvmExceptionType.InvalidSubroutineReturn, programCounter);
         }
 
         programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
 
-        return EvmExceptionType.None;
+        return (EvmExceptionType.None, programCounter);
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpSub<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter, IReleaseSpec spec)
+    public static (EvmExceptionType, int) InstructionJumpSub<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, int programCounter, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
-        if (!spec.SubroutinesEnabled) return EvmExceptionType.BadInstruction;
+        if (!spec.SubroutinesEnabled) return (EvmExceptionType.BadInstruction, programCounter);
 
         gasAvailable -= GasCostOf.High;
 
-        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) return EvmExceptionType.StackOverflow;
+        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) return (EvmExceptionType.StackOverflow, programCounter);
 
         vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
-        if (!stack.PopUInt256(out var result)) return EvmExceptionType.StackUnderflow;
-        if (!Jump(result, ref programCounter, in vmState.Env, isSubroutine: true)) return EvmExceptionType.InvalidJumpDestination;
+        if (!stack.PopUInt256(out var result)) return (EvmExceptionType.StackUnderflow, programCounter);
+        if (!Jump(result, ref programCounter, in vmState.Env, isSubroutine: true)) return (EvmExceptionType.InvalidJumpDestination, programCounter);
         programCounter++;
 
-        return EvmExceptionType.None;
+        return (EvmExceptionType.None, programCounter);
     }
 
     [SkipLocalsInit]

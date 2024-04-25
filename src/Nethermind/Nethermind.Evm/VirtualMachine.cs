@@ -971,10 +971,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.JUMP:
-                    exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
+                    (exceptionType, programCounter) = InstructionJump(vmState, ref stack, ref gasAvailable, programCounter);
                     break;
                 case Instruction.JUMPI:
-                    exceptionType = InstructionJumpI(vmState, ref stack, ref gasAvailable, ref programCounter);
+                    (exceptionType, programCounter) = InstructionJumpI(vmState, ref stack, ref gasAvailable, programCounter);
                     break;
                 case Instruction.PC:
                     gasAvailable -= GasCostOf.Base;
@@ -1153,7 +1153,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                     else
                     {
-                        exceptionType = InstructionReturnSub(vmState, ref stack, ref gasAvailable, ref programCounter, spec);
+                        (exceptionType, programCounter) = InstructionReturnSub(vmState, ref stack, ref gasAvailable, programCounter, spec);
                     }
                     break;
                 case Instruction.JUMPSUB or Instruction.MCOPY:
@@ -1163,7 +1163,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                     else
                     {
-                        exceptionType = InstructionJumpSub(vmState, ref stack, ref gasAvailable, ref programCounter, spec);
+                        (exceptionType, programCounter) = InstructionJumpSub(vmState, ref stack, ref gasAvailable, programCounter, spec);
                     }
                     break;
                 default:
@@ -1198,7 +1198,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return CallResult.Empty;
     DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
-    DataReturnNoTrace:
+        DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
