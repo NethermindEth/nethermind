@@ -1639,7 +1639,7 @@ namespace Nethermind.TxPool.Test
         }
 
         [Test]
-        public void Should_correctly_add_tx_to_local_pool_when_underpaid([Values]TxType txType)
+        public void Should_correctly_add_tx_to_local_pool_when_underpaid([Values] TxType txType)
         {
             // Should only add non-blob transactions to local pool when underpaid
             bool expectedResult = txType != TxType.Blob;
