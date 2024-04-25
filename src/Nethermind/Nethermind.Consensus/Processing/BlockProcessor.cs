@@ -42,7 +42,6 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-    private readonly IWithdrawalRequestsProcessor _withdrawalRequestsProcessor;
 
     private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
     private const int MaxUncommittedBlocks = 64;
@@ -77,7 +76,6 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
-        _withdrawalRequestsProcessor = new WithdrawalRequestsProcessor();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
