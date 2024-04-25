@@ -16,6 +16,8 @@ namespace Nethermind.Blockchain.Blocks;
 public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldState worldState)
     : IBlockhashStore
 {
+    private static readonly byte[] _emptyBytes = [0];
+
     public void InitHistoryOnForkBlock(BlockHeader currentBlock)
     {
         long current = currentBlock.Number;
@@ -35,7 +37,7 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
     }
     public void AddParentBlockHashToState(BlockHeader blockHeader)
     {
-        var spec = specProvider.GetSpec(blockHeader);
+        IReleaseSpec? spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
 
@@ -45,12 +47,12 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.Set(blockHashStoreCell, parentBlockHash.BytesToArray());
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
     {
-        var spec = specProvider.GetSpec(currentHeader);
+        IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
         if (requiredBlockNumber >= currentHeader.Number ||
             requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
         {
@@ -60,6 +62,6 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.Length < 32 ? null : new Hash256(data);
+        return data.SequenceEqual(_emptyBytes) ? null : new Hash256(data);
     }
 }
