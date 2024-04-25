@@ -776,9 +776,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingStorage : struct, IIsTracing
     {
         int programCounter = vmState.ProgramCounter;
-        ref readonly ExecutionEnvironment env = ref vmState.Env;
-        ref readonly TxExecutionContext txCtx = ref env.TxExecutionContext;
-        ReadOnlySpan<byte> code = env.CodeInfo.MachineCode.Span;
+        ReadOnlySpan<byte> code = vmState.Env.CodeInfo.MachineCode.Span;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
 #if DEBUG
@@ -1011,39 +1009,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.SELFBALANCE:
-                    {
-                        if (!spec.SelfBalanceOpcodeEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.SelfBalance;
-
-                        result = _state.GetBalance(env.ExecutingAccount);
-                        stack.PushUInt256(in result);
-                        break;
-                    }
+                    exceptionType = InstructionSelfBalance(vmState, ref stack, ref gasAvailable, spec, _state);
+                    break;
                 case Instruction.BASEFEE:
+                    if (!spec.BaseFeeEnabled) goto InvalidInstruction;
                     InstructionEnvUInt256<OpBaseFee, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.BLOBHASH:
-                    {
-                        if (!spec.IsEip4844Enabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.BlobHash;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-
-                        if (txCtx.BlobVersionedHashes is not null && result < txCtx.BlobVersionedHashes.Length)
-                        {
-                            stack.PushBytes(txCtx.BlobVersionedHashes[result.u0]);
-                        }
-                        else
-                        {
-                            stack.PushZero();
-                        }
-                        break;
-                    }
+                    exceptionType = InstructionBlobHash(vmState, ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.BLOBBASEFEE:
-                    if (!spec.BlobBaseFeeEnabled || !txCtx.BlockExecutionContext.BlobBaseFee.HasValue) goto InvalidInstruction;
-                    InstructionEnvUInt256<OpBlobBaseFee, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
+                    exceptionType = InstructionBlobBaseFee<TTracingInstructions>(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.POP:
                     {
@@ -1072,7 +1048,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.Mid;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+                        if (!Jump(result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
                         break;
                     }
                 case Instruction.JUMPI:
@@ -1083,7 +1059,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
                         {
-                            if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
+                            if (!Jump(result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
                         }
 
                         break;
@@ -1099,15 +1075,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     InstructionEnvUInt256<OpMSize, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.GAS:
-                    {
-                        gasAvailable -= GasCostOf.Base;
-                        // Ensure gas is positive before pushing to stack
-                        if (gasAvailable < 0) goto OutOfGas;
-
-                        result = (UInt256)gasAvailable;
-                        stack.PushUInt256(in result);
-                        break;
-                    }
+                    exceptionType = InstructionGas<TTracingInstructions>(ref stack, ref gasAvailable);
+                    break;
                 case Instruction.JUMPDEST:
                     {
                         gasAvailable -= GasCostOf.JumpDest;
@@ -1362,7 +1331,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
                         if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
-                        if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
+                        if (!Jump(jumpDest, ref programCounter, in vmState.Env, true)) goto InvalidJumpDestination;
                         programCounter++;
 
                         break;
