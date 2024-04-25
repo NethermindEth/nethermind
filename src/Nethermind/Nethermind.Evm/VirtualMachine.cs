@@ -782,7 +782,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        SkipInit(out UInt256 result);
         object returnData;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
@@ -911,10 +910,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionExtCodeCopy(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.RETURNDATASIZE:
-                    if (!spec.ReturnDataOpcodesEnabled) goto InvalidInstruction;
-                    gasAvailable -= GasCostOf.Base;
-                    result = (UInt256)_returnDataBuffer.Length;
-                    stack.PushUInt256(in result);
+                    exceptionType = InstructionReturnDataSize(ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.RETURNDATACOPY:
                     exceptionType = InstructionReturnDataCopy(vmState, ref stack, ref gasAvailable, spec);
@@ -975,17 +971,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.JUMP:
-                    gasAvailable -= GasCostOf.Mid;
-                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                    if (!Jump(result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
+                    exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.JUMPI:
-                    gasAvailable -= GasCostOf.High;
-                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                    if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
-                    {
-                        if (!Jump(result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
-                    }
+                    exceptionType = InstructionJumpI(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.PC:
                     gasAvailable -= GasCostOf.Base;
@@ -1151,56 +1140,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     if (spec.TransientStorageEnabled)
                     {
                         exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                        break;
                     }
                     else
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-                        // why do we even need the cost of it?
-                        gasAvailable -= GasCostOf.Base;
-                        goto InvalidSubroutineEntry;
+                        exceptionType = InstructionBeginSub(ref gasAvailable, spec);
                     }
+                    break;
                 case Instruction.RETURNSUB | Instruction.TSTORE:
                     if (spec.TransientStorageEnabled)
                     {
                         exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                        break;
                     }
                     else
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-                        gasAvailable -= GasCostOf.Low;
-
-                        if (vmState.ReturnStackHead == 0)
-                        {
-                            goto InvalidSubroutineReturn;
-                        }
-
-                        programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                        break;
+                        exceptionType = InstructionReturnSub(vmState, ref stack, ref gasAvailable, ref programCounter, spec);
                     }
+                    break;
                 case Instruction.JUMPSUB or Instruction.MCOPY:
                     if (spec.MCopyIncluded)
                     {
                         exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable);
-                        break;
                     }
                     else
                     {
-                        if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.High;
-
-                        if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
-
-                        vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        if (!Jump(result, ref programCounter, in vmState.Env, true)) goto InvalidJumpDestination;
-                        programCounter++;
-
-                        break;
+                        exceptionType = InstructionJumpSub(vmState, ref stack, ref gasAvailable, ref programCounter, spec);
                     }
+                    break;
                 default:
                     goto InvalidInstruction;
             }
@@ -1233,7 +1198,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return CallResult.Empty;
     DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
-        DataReturnNoTrace:
+    DataReturnNoTrace:
         // Ensure gas is positive before updating state
         if (gasAvailable < 0) goto OutOfGas;
         UpdateCurrentState(vmState, programCounter, gasAvailable, stack.Head);
@@ -1250,23 +1215,24 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     InvalidInstruction:
         exceptionType = EvmExceptionType.BadInstruction;
         goto ReturnFailure;
-    InvalidSubroutineEntry:
-        exceptionType = EvmExceptionType.InvalidSubroutineEntry;
-        goto ReturnFailure;
-    InvalidSubroutineReturn:
-        exceptionType = EvmExceptionType.InvalidSubroutineReturn;
-        goto ReturnFailure;
-    StackOverflow:
-        exceptionType = EvmExceptionType.StackOverflow;
-        goto ReturnFailure;
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
         goto ReturnFailure;
-    InvalidJumpDestination:
-        exceptionType = EvmExceptionType.InvalidJumpDestination;
-        goto ReturnFailure;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+    }
+
+    [SkipLocalsInit]
+    public EvmExceptionType InstructionReturnDataSize<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
+    {
+        if (!spec.ReturnDataOpcodesEnabled) return EvmExceptionType.BadInstruction;
+
+        gasAvailable -= GasCostOf.Base;
+
+        stack.PushUInt32(_returnDataBuffer.Length);
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
@@ -2095,27 +2061,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         state.ProgramCounter = pc;
         state.GasAvailable = gas;
         state.DataStackHead = stackHead;
-    }
-
-    private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env, bool isSubroutine = false)
-    {
-        if (jumpDest > int.MaxValue)
-        {
-            // https://github.com/NethermindEth/nethermind/issues/140
-            // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 0xf435a354924097686ea88dab3aac1dd464e6a3b387c77aeee94145b0fa5a63d2 mainnet
-            return false;
-        }
-
-        int jumpDestInt = (int)jumpDest;
-        if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
-        {
-            // https://github.com/NethermindEth/nethermind/issues/140
-            // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
-            return false;
-        }
-
-        programCounter = jumpDestInt;
-        return true;
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
