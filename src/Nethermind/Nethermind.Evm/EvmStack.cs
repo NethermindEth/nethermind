@@ -252,7 +252,7 @@ public ref struct EvmStack<TTracing>
                 7, 6, 5, 4, 3, 2, 1, 0);
             if (Avx512Vbmi.VL.IsSupported)
             {
-                Word convert =  Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
+                Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
                 result = Unsafe.As<Word, UInt256>(ref convert);
             }
             else
