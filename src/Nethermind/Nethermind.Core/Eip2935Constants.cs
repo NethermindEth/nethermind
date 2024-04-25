@@ -11,9 +11,12 @@ namespace Nethermind.Core;
 public static class Eip2935Constants
 {
     /// <summary>
-    /// Gets the <c>HISTORY_STORAGE_ADDRESS</c> parameter.
+    /// The <c>HISTORY_STORAGE_ADDRESS</c> parameter.
     /// </summary>
     public static readonly Address BlockHashHistoryAddress = new("0x25a219378dad9b3503c8268c9ca836a52427a4fb");
 
+    /// <summary>
+    /// The <c>HISTORY_SERVE_WINDOW</c> parameter.
+    /// </summary>
     public static readonly long RingBufferSize = 8192;
 }

@@ -18,10 +18,10 @@ namespace Nethermind.Evm.Test
 
         public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
         {
-            var spec = _specProvider.GetSpec(currentBlock);
-            if (spec.IsBlockHashInStateAvailable)
-                return Keccak.Compute((Eip2935Constants.RingBufferSize + number).ToString());
-            return Keccak.Compute((number).ToString());
+            IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
+            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+                ? (Eip2935Constants.RingBufferSize + number).ToString()
+                : (number).ToString());
         }
     }
 }
