@@ -1639,11 +1639,12 @@ namespace Nethermind.TxPool.Test
         }
 
         [TestCase(TxType.Legacy, true)]
+        [TestCase(TxType.AccessList, true)]
         [TestCase(TxType.EIP1559, true)]
         [TestCase(TxType.Blob, false)]
         public void Should_correctly_add_tx_to_local_pool_when_underpaid(TxType txType, bool expectedResult)
         {
-            // Should only add legacy and 1559 local transactions to local pool when underpaid
+            // Should only add non-blob transactions to local pool when underpaid
             ISpecProvider specProvider = GetCancunSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
