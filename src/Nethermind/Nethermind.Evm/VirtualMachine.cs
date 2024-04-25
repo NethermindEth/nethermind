@@ -804,7 +804,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
 
             programCounter++;
-            Span<byte> bytes;
             exceptionType = EvmExceptionType.None;
             switch (instruction)
             {
@@ -895,13 +894,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     InstructionEnvBytes<OpOrigin, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.CALLDATALOAD:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        stack.PushBytes(env.InputData.SliceWithZeroPadding(result, 32));
-                        break;
-                    }
+                    exceptionType = InstructionCallDataLoad(vmState, ref stack, ref gasAvailable);
+                    break;
                 case Instruction.CALLDATASIZE:
                     InstructionEnvUInt256<OpCallDataSize, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
@@ -1064,42 +1058,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.MLOAD:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-                        bytes = vmState.Memory.LoadSpan(in result);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
-
-                        stack.PushBytes(bytes);
-                        break;
-                    }
+                    exceptionType = InstructionMLoad(vmState, ref stack, ref gasAvailable, _txTracer);
+                    break;
                 case Instruction.MSTORE:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-
-                        bytes = stack.PopWord256();
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) goto OutOfGas;
-                        vmState.Memory.SaveWord(in result, bytes);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
-
-                        break;
-                    }
+                    exceptionType = InstructionMStore(vmState, ref stack, ref gasAvailable, _txTracer);
+                    break;
                 case Instruction.MSTORE8:
-                    {
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        byte data = stack.PopByte();
-                        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, UInt256.One)) goto OutOfGas;
-                        vmState.Memory.SaveByte(in result, data);
-                        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, data);
-
-                        break;
-                    }
+                    exceptionType = InstructionMStore8(vmState, ref stack, ref gasAvailable, _txTracer);
+                    break;
                 case Instruction.SLOAD:
                     exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
@@ -1119,8 +1085,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         gasAvailable -= GasCostOf.High;
 
                         if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                        bytes = stack.PopWord256();
-                        if (!bytes.SequenceEqual(BytesZero32))
+
+                        if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
                         {
                             if (!Jump(result, ref programCounter, in env)) goto InvalidJumpDestination;
                         }
@@ -1533,7 +1499,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
     }
-    
 
     [SkipLocalsInit]
     public EvmExceptionType InstructionExtCodeCopy<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)

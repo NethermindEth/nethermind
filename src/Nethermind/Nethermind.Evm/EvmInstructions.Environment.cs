@@ -70,13 +70,6 @@ internal sealed partial class EvmInstructions
             => result = vmState.Env.TxExecutionContext.Origin.Bytes;
     }
 
-    //public struct OpCallDataLoad : IOpEnvironment
-    //{
-    //    public static long GasCost => GasCostOf.VeryLow;
-    //    public static void Operation(EvmState vmState, out Span<byte> result)
-    //        => result = vmState.Env.TxExecutionContext.Origin.Bytes;
-    //}
-
     public struct OpCallDataSize : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
@@ -95,43 +88,43 @@ internal sealed partial class EvmInstructions
             => result = vmState.Env.TxExecutionContext.GasPrice;
     }
 
-    public struct OpCoinbase: IOpEnvBytes
+    public struct OpCoinbase : IOpEnvBytes
     {
         public static void Operation(EvmState vmState, out Span<byte> result)
             => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasBeneficiary.Bytes;
     }
 
-    public struct OpTimestamp: IOpEnvUInt256
+    public struct OpTimestamp : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Timestamp;
     }
 
-    public struct OpNumber: IOpEnvUInt256
+    public struct OpNumber : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = (UInt256)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.Number;
     }
 
-    public struct OpGasLimit: IOpEnvUInt256
+    public struct OpGasLimit : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = (UInt256)vmState.Env.TxExecutionContext.BlockExecutionContext.Header.GasLimit;
     }
 
-    public struct OpBaseFee: IOpEnvUInt256
+    public struct OpBaseFee : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = vmState.Env.TxExecutionContext.BlockExecutionContext.Header.BaseFeePerGas;
     }
 
-    public struct OpBlobBaseFee: IOpEnvUInt256
+    public struct OpBlobBaseFee : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = vmState.Env.TxExecutionContext.BlockExecutionContext.BlobBaseFee.Value;
     }
 
-    public struct OpMSize: IOpEnvUInt256
+    public struct OpMSize : IOpEnvUInt256
     {
         public static void Operation(EvmState vmState, out UInt256 result)
             => result = vmState.Memory.Size;
