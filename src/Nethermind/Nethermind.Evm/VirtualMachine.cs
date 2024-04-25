@@ -780,7 +780,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        SkipInit(out UInt256 result);
         object returnData;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
@@ -970,17 +969,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.JUMP:
-                    gasAvailable -= GasCostOf.Mid;
-                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                    if (!Jump(in result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
+                    exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.JUMPI:
-                    gasAvailable -= GasCostOf.High;
-                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                    if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
-                    {
-                        if (!Jump(in result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
-                    }
+                    exceptionType = InstructionJumpI(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.PC:
                     gasAvailable -= GasCostOf.Base;
@@ -1202,9 +1194,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
-        goto ReturnFailure;
-    InvalidJumpDestination:
-        exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
