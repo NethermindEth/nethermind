@@ -7,6 +7,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Data;
@@ -23,42 +24,72 @@ public static class Program
     private static int _maxNumberOfWithdrawalsPerBlock;
     private static int _numberOfWithdrawals;
     private static int _txsPerBlock;
+    // private static int _blockGasConsumptionTarget;
+    private static TestCase _testCase;
 
+    private static string _chainSpecPath;
+    private static ChainSpec _chainSpec;
     private static TaskCompletionSource<bool>? _taskCompletionSource;
     private static Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
     static async Task Main(string[] args)
     {
         // draft of setup options
-        _numberOfBlocksToProduce = 10;
-        _txsPerBlock = 1000;
+        _numberOfBlocksToProduce = 2;
+
         _maxNumberOfWithdrawalsPerBlock = 16;
         _numberOfWithdrawals = 1600;
-        string chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
+        _chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
 
+        int blockGasConsumptionTarget = 30_000_000;
+        _testCase = TestCase.TxZeroBytes;
 
+        _txsPerBlock = _testCase switch
+        {
+            TestCase.None => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
+            _ => 1
+        };
+
+        Task generateRequests = _testCase switch
+        {
+            TestCase.None => GenerateTestCase(blockGasConsumptionTarget),
+            _ => GenerateTestCases()
+        };
+
+        await generateRequests;
+    }
+
+    private static async Task GenerateTestCases()
+    {
+        foreach (int blockGasConsumptionTarget in BlockGasVariants.GetValuesAsUnderlyingType<BlockGasVariants>())
+        {
+            await GenerateTestCase(blockGasConsumptionTarget);
+            Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
+        }
+    }
+
+    private static async Task GenerateTestCase(int blockGasConsumptionTarget)
+    {
         // chain initialization
         StringBuilder stringBuilder = new();
         EthereumJsonSerializer serializer = new();
 
         ChainSpecLoader chainSpecLoader = new(serializer);
-        ChainSpec chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(chainSpecPath, LimboLogs.Instance.GetClassLogger());
-        ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(chainSpec);
+        _chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(_chainSpecPath, LimboLogs.Instance.GetClassLogger());
+        ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(_chainSpec);
 
         EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, chainSpecBasedSpecProvider);
 
-        GenesisLoader genesisLoader = new(chainSpec, chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
+        GenesisLoader genesisLoader = new(_chainSpec, chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
         Block genesisBlock = genesisLoader.Load();
 
         chain.BlockTree.SuggestBlock(genesisBlock);
-
 
 
         // prepare private keys - up to 16_777_216 (2^24)
         int numberOfKeysToGenerate = _maxNumberOfWithdrawalsPerBlock * _numberOfBlocksToProduce;
         PrivateKey[] privateKeys = PreparePrivateKeys(numberOfKeysToGenerate).ToArray();
 
-        chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
 
         // producing blocks and printing engine requests
         Block previousBlock = genesisBlock;
@@ -73,7 +104,7 @@ public static class Program
                 Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray()
             };
 
-            SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals);
+            SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
@@ -89,25 +120,31 @@ public static class Program
             WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", serializer.Serialize(forkchoiceState));
 
             _taskCompletionSource = new TaskCompletionSource<bool>();
+            chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
             chain.BlockTree.SuggestBlock(block);
 
             if (!WaitForProcessingBlock.IsCompleted)
             {
                 await WaitForProcessingBlock;
+                chain.BlockProcessingQueue.ProcessingQueueEmpty -= OnEmptyProcessingQueue;
             }
 
             previousBlock = block;
         }
 
-        await File.WriteAllTextAsync("requests.txt", stringBuilder.ToString());
+
+        await File.WriteAllTextAsync($"{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
     private static void OnEmptyProcessingQueue(object? sender, EventArgs e)
     {
-        _taskCompletionSource?.SetResult(true);
+        // if (!WaitForProcessingBlock.IsCompleted)
+        // {
+            _taskCompletionSource?.SetResult(true);
+        // }
     }
 
-    private static void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals)
+    private static void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, int blockGasConsumptionTarget)
     {
         int txsPerAddress = _txsPerBlock / _maxNumberOfWithdrawalsPerBlock;
         int txsLeft = _txsPerBlock % _maxNumberOfWithdrawalsPerBlock;
@@ -119,23 +156,43 @@ public static class Program
                 : 0;
             for (int i = 0; i < txsPerAddress + additionalTx; i++)
             {
-                Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i);
+                Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i, testCase, blockGasConsumptionTarget);
                 txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             }
         }
     }
 
-    private static Transaction GetTx(PrivateKey privateKey, int nonce)
+    private static Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, int blockGasConsumptionTarget)
     {
-        return Build.A.Transaction
-            .WithNonce((UInt256)nonce)
-            .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithTo(TestItem.AddressB)
-            .WithChainId(BlockchainIds.Holesky)
-            .SignedAndResolved(privateKey)
-            .TestObject;
+        switch (testCase)
+        {
+            case TestCase.None:
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(TestItem.AddressB)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;;
+            case TestCase.TxZeroBytes:
+                long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;
+                byte[] data = new byte[numberOfBytes];
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(TestItem.AddressB)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(data)
+                    .WithGasLimit(_chainSpec.Genesis.GasLimit)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;;
+            default:
+                throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
+        }
     }
 
     private static IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
