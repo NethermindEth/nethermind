@@ -11,11 +11,18 @@ namespace Ethereum.Test.Base
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState stateProvider)
+        private readonly ISpecProvider _specProvider;
+        public TestBlockhashProvider(ISpecProvider specProvider)
         {
-            if (number != 0)
-                return Keccak.Zero;
-            return Keccak.Compute(number.ToString());
+            _specProvider = specProvider;
+        }
+
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        {
+            IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
+            return Keccak.Compute(spec.IsBlockHashInStateAvailable
+                ? (Eip2935Constants.RingBufferSize + number).ToString()
+                : (number).ToString());
         }
     }
 }

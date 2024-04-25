@@ -79,7 +79,7 @@ namespace Nethermind.JsonRpc.Benchmark
                 NullBloomStorage.Instance,
                 new SyncConfig(),
                 LimboLogs.Instance);
-            _blockhashProvider = new BlockhashProvider(blockTree, LimboLogs.Instance);
+            _blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, LimboLogs.Instance);
             _virtualMachine = new VirtualMachine(_blockhashProvider, specProvider, LimboLogs.Instance);
 
             Block genesisBlock = Build.A.Block.Genesis.TestObject;
