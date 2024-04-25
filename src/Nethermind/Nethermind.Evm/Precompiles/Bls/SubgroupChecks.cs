@@ -2,8 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
-using Nethermind.Core.Specs;
+using System.Linq;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 
@@ -15,9 +14,29 @@ namespace Nethermind.Evm.Precompiles.Bls;
 public class SubgroupChecks
 {
     public static readonly UInt256 Beta = new((byte[])[0x5F,0x19,0x67,0x2F,0xDF,0x76,0xCE,0x51,0xBA,0x69,0xC6,0x07,0x6A,0x0F,0x77,0xEA,0xDD,0xB3,0xA9,0x3B,0xE6,0xF8,0x96,0x88,0xDE,0x17,0xD8,0x13,0x62,0x0A,0x00,0x02,0x2E,0x01,0xFF,0xFF,0xFF,0xFE,0xFF,0xFE], true);
-    public static bool G1IsInSubGroup(ReadOnlySpan<byte> bytes)
+    public static bool G1IsInSubGroup(ReadOnlySpan<byte> p)
     {
-        return true;
+        UInt256 x = new(p[..64], true);
+
+        Span<byte> phi = stackalloc byte[128];
+        UInt256 xNew = Beta * x;
+        xNew.ToBigEndian().CopyTo(phi);
+        p[64..].CopyTo(phi);
+
+        Span<byte> mulArgs = stackalloc byte[128 + 32];
+        Span<byte> p2 = stackalloc byte[128];
+        p.CopyTo(mulArgs);
+        (x * x).ToBigEndian().CopyTo(mulArgs);
+        Pairings.BlsG1Mul(mulArgs, p2);
+
+        Span<byte> addArgs = stackalloc byte[2 * 128];
+        Span<byte> res = stackalloc byte[128];
+
+        phi.CopyTo(addArgs);
+        p2.CopyTo(addArgs[128..]);
+        Pairings.BlsG1Add(addArgs, res);
+
+        return res.ToArray().All(x => x == 0);
     }
 
     public static bool G2IsInSubGroup(ReadOnlySpan<byte> bytes)
