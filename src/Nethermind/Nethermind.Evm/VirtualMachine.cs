@@ -1540,7 +1540,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public EvmExceptionType InstructionReturnDataCopy<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
-        if (!spec.ReturnDataOpcodesEnabled) return EvmExceptionType.InvalidInstruction;
+        if (!spec.ReturnDataOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
@@ -1781,7 +1781,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         Metrics.Creates++;
 
-        if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) return (EvmExceptionType.InvalidInstruction, null);
+        if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) return (EvmExceptionType.BadInstruction, null);
 
         if (vmState.IsStatic) return (EvmExceptionType.StaticCallViolation, null);
 

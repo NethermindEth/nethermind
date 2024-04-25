@@ -28,7 +28,6 @@ namespace Nethermind.Evm
         NotEnoughBalance,
         Other,
         Revert,
-        InvalidCode,
-        InvalidInstruction
+        InvalidCode
     }
 }

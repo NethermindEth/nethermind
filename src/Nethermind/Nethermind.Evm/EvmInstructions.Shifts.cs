@@ -26,7 +26,7 @@ internal sealed partial class EvmInstructions
         where TOpShift : struct, IOpShift
         where TTracingInstructions : struct, IIsTracing
     {
-        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.InvalidInstruction;
+        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= TOpShift.GasCost;
 
@@ -50,7 +50,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionSar<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
-        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.InvalidInstruction;
+        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= GasCostOf.VeryLow;
 
