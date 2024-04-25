@@ -1638,13 +1638,15 @@ namespace Nethermind.TxPool.Test
             result.Should().Be(expectedResult ? AcceptTxResult.Accepted : AcceptTxResult.FeeTooLowToCompete);
         }
 
-        [TestCase(TxType.Legacy, true)]
-        [TestCase(TxType.AccessList, true)]
-        [TestCase(TxType.EIP1559, true)]
-        [TestCase(TxType.Blob, false)]
-        public void Should_correctly_add_tx_to_local_pool_when_underpaid(TxType txType, bool expectedResult)
+        [Test]
+        public void Should_correctly_add_tx_to_local_pool_when_underpaid([Values]TxType txType)
         {
             // Should only add non-blob transactions to local pool when underpaid
+            bool expectedResult = txType != TxType.Blob;
+
+            // No need to check for deposit tx
+            if (txType == TxType.DepositTx) return;
+
             ISpecProvider specProvider = GetCancunSpecProvider();
             TxPoolConfig txPoolConfig = new TxPoolConfig { Size = 30, PersistentBlobStorageSize = 0 };
             _txPool = CreatePool(txPoolConfig, specProvider);
