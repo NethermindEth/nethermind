@@ -17,7 +17,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         var spec = SpecProvider.GetSpec((BlockNumber, Timestamp - 1));
         Assert.That(spec.GetSha3Cost(), Is.EqualTo(30));
     }
-    
+
     [Test]
     public void Sha3_cost_after_eip_7667()
     {
@@ -104,7 +104,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
 
         Assert.That(result.GasSpent, Is.EqualTo(gasSpent));
     }
-    
+
     [Test]
     public void Create_op_after_eip_7667()
     {
@@ -137,7 +137,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
 
         Assert.That(result.GasSpent, Is.EqualTo(gasSpent));
     }
-    
+
     [Test]
     public void Log_op_after_eip7667()
     {
@@ -165,7 +165,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         Assert.That(sha256Precompile.BaseGasCost(spec), Is.EqualTo(GasCostOf.Sha256PrecompileBaseCost));
         Assert.That(GasCostOf.Sha256PrecompileBaseCost, Is.EqualTo(60));
     }
-    
+
     [Test]
     public void Sha256_precompile_base_cost_after_eip_7667()
     {
@@ -174,7 +174,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         Assert.That(sha256Precompile.BaseGasCost(Spec), Is.EqualTo(GasCostOf.Sha256PrecompileBaseCostEip7667));
         Assert.That(GasCostOf.Sha256PrecompileBaseCostEip7667, Is.EqualTo(300));
     }
-    
+
     [Test]
     public void Sha256_precompile_data_cost_before_eip_7667()
     {
@@ -186,7 +186,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         Assert.That(sha256Precompile.DataGasCost(bytes, spec), Is.EqualTo(dataCost));
         Assert.That(GasCostOf.Sha256PrecompileWordCost, Is.EqualTo(12));
     }
-    
+
     [Test]
     public void Sha256_precompile_data_cost_after_eip_7667()
     {
@@ -209,7 +209,7 @@ public class Eip7667Tests : VirtualMachineTestsBase
         Assert.That(blake2FPrecompile.DataGasCost(bytes, spec), Is.EqualTo(GasCostOf.Blake2GFRound));
         Assert.That(GasCostOf.Blake2GFRound, Is.EqualTo(1));
     }
-    
+
     [Test]
     public void Blake2F_precompile_data_cost_after_eip_7667()
     {
