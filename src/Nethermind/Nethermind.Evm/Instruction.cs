@@ -81,9 +81,6 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
-        BEGINSUB = 0x5c,
-        RETURNSUB = 0x5d,
-        JUMPSUB = 0x5e,
         MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
@@ -182,9 +179,9 @@ namespace Nethermind.Evm
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.TLOAD or Instruction.BEGINSUB => spec?.TransientStorageEnabled == true ? "TLOAD" : "BEGINSUB",
-                Instruction.TSTORE or Instruction.RETURNSUB => spec?.TransientStorageEnabled == true ? "TSTORE" : "RETURNSUB",
-                Instruction.JUMPSUB or Instruction.MCOPY => spec?.IsEip5656Enabled == true ? "MCOPY" : "JUMPSUB",
+                Instruction.TLOAD => "TLOAD",
+                Instruction.TSTORE => "TSTORE",
+                Instruction.MCOPY => "MCOPY",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
     }

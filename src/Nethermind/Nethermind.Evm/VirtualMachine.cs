@@ -5,6 +5,9 @@
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
+using System.Diagnostics;
+using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using Nethermind.Core;
@@ -19,12 +22,9 @@ using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
-using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
-using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
-using static System.Runtime.CompilerServices.Unsafe;
 using static Nethermind.Evm.EvmInstructions;
+using static System.Runtime.CompilerServices.Unsafe;
 using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
 
 #if DEBUG
@@ -128,8 +128,6 @@ public class VirtualMachine : IVirtualMachine
 
     internal readonly ref struct CallResult
     {
-        public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
-        public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
         public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
         public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
         public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
@@ -782,6 +780,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
+        SkipInit(out UInt256 result);
         object returnData;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
@@ -971,10 +970,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.JUMP:
-                    (exceptionType, programCounter) = InstructionJump(vmState, ref stack, ref gasAvailable, programCounter);
+                    gasAvailable -= GasCostOf.Mid;
+                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                    if (!Jump(in result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
                     break;
                 case Instruction.JUMPI:
-                    (exceptionType, programCounter) = InstructionJumpI(vmState, ref stack, ref gasAvailable, programCounter);
+                    gasAvailable -= GasCostOf.High;
+                    if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                    if (As<byte, Vector256<byte>>(ref stack.PopBytesByRef()) != default)
+                    {
+                        if (!Jump(in result, ref programCounter, in vmState.Env)) goto InvalidJumpDestination;
+                    }
                     break;
                 case Instruction.PC:
                     gasAvailable -= GasCostOf.Base;
@@ -1136,35 +1142,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.EXTCODEHASH:
                     exceptionType = InstructionExtCodeHash(vmState, ref stack, ref gasAvailable, spec);
                     break;
-                case Instruction.BEGINSUB | Instruction.TLOAD:
-                    if (spec.TransientStorageEnabled)
-                    {
-                        exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    }
-                    else
-                    {
-                        exceptionType = InstructionBeginSub(ref gasAvailable, spec);
-                    }
+                case Instruction.TLOAD:
+                    exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
-                case Instruction.RETURNSUB | Instruction.TSTORE:
-                    if (spec.TransientStorageEnabled)
-                    {
-                        exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    }
-                    else
-                    {
-                        (exceptionType, programCounter) = InstructionReturnSub(vmState, ref stack, ref gasAvailable, programCounter, spec);
-                    }
+                case Instruction.TSTORE:
+                    exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
                     break;
-                case Instruction.JUMPSUB or Instruction.MCOPY:
-                    if (spec.MCopyIncluded)
-                    {
-                        exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable);
-                    }
-                    else
-                    {
-                        (exceptionType, programCounter) = InstructionJumpSub(vmState, ref stack, ref gasAvailable, programCounter, spec);
-                    }
+                case Instruction.MCOPY:
+                    exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 default:
                     goto InvalidInstruction;
@@ -1217,6 +1202,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
+        goto ReturnFailure;
+    InvalidJumpDestination:
+        exceptionType = EvmExceptionType.InvalidJumpDestination;
         goto ReturnFailure;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
@@ -1314,10 +1302,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    public EvmExceptionType InstructionTLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+    public EvmExceptionType InstructionTLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        if (!spec.TransientStorageEnabled) return EvmExceptionType.BadInstruction;
+
         Metrics.TloadOpcode++;
         gasAvailable -= GasCostOf.TLoad;
 
@@ -1337,10 +1327,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    public EvmExceptionType InstructionTStore<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+    public EvmExceptionType InstructionTStore<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        if (!spec.TransientStorageEnabled) return EvmExceptionType.BadInstruction;
+
         Metrics.TstoreOpcode++;
 
         if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
@@ -1457,9 +1449,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    public EvmExceptionType InstructionMCopy<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+    public EvmExceptionType InstructionMCopy<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {
+        if (!spec.MCopyIncluded) return EvmExceptionType.BadInstruction;
+
         Metrics.MCopyOpcode++;
 
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
@@ -1469,7 +1463,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         gasAvailable -= GasCostOf.VeryLow + GasCostOf.VeryLow * EvmPooledMemory.Div32Ceiling(c);
         if (!UpdateMemoryCost(vmState, ref gasAvailable, UInt256.Max(b, a), c)) return EvmExceptionType.OutOfGas;
 
-        var bytes = vmState.Memory.LoadSpan(in b, c);
+        Span<byte> bytes = vmState.Memory.LoadSpan(in b, c);
         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(b, bytes);
         vmState.Memory.Save(in a, bytes);
         if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, bytes);
@@ -2046,8 +2040,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
             EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
             EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
-            EvmExceptionType.InvalidSubroutineEntry => CallResult.InvalidSubroutineEntry,
-            EvmExceptionType.InvalidSubroutineReturn => CallResult.InvalidSubroutineReturn,
             EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
             EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,

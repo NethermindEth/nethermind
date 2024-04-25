@@ -11,10 +11,9 @@ namespace Nethermind.Evm.CodeAnalysis
 {
     public sealed class JumpDestinationAnalyzer(ReadOnlyMemory<byte> code)
     {
-        private const int PUSH1 = 0x60;
+        private const int PUSH1 = (int)Instruction.PUSH1;
         private const int PUSHx = PUSH1 - 1;
-        private const int JUMPDEST = 0x5b;
-        private const int BEGINSUB = 0x5c;
+        private const int JUMPDEST = (int)Instruction.JUMPDEST;
         private const int BitShiftPerInt64 = 6;
 
         private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
@@ -22,7 +21,8 @@ namespace Nethermind.Evm.CodeAnalysis
 
         private ReadOnlyMemory<byte> MachineCode { get; } = code;
 
-        public bool ValidateJump(int destination, bool isSubroutine)
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public bool ValidateJump(int destination)
         {
             ReadOnlySpan<byte> machineCode = MachineCode.Span;
             _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(machineCode);
@@ -35,7 +35,7 @@ namespace Nethermind.Evm.CodeAnalysis
             {
                 // Store byte to int, as less expensive operations at word size
                 int codeByte = machineCode[destination];
-                result = isSubroutine ? codeByte == BEGINSUB : codeByte == JUMPDEST;
+                result = codeByte == JUMPDEST;
             }
 
             return result;
@@ -90,12 +90,8 @@ namespace Nethermind.Evm.CodeAnalysis
                     {
                         // Check the bytes for any JUMPDESTs.
                         Vector128<sbyte> dest = Sse2.CompareEqual(data, Vector128.Create((sbyte)JUMPDEST));
-                        // Check the bytes for any BEGINSUBs.
-                        Vector128<sbyte> sub = Sse2.CompareEqual(data, Vector128.Create((sbyte)BEGINSUB));
-                        // Merge the two results.
-                        Vector128<sbyte> combined = Sse2.Or(dest, sub);
                         // Extract the checks as a set of int flags.
-                        int flags = Sse2.MoveMask(combined);
+                        int flags = Sse2.MoveMask(dest);
                         // Shift up flags by depending which side of long we are on, and merge to current set.
                         currentFlags |= (long)flags << (programCounter & (32 + 16));
                         // Forward programCounter by Vector128 stride.
@@ -110,7 +106,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 // access here.
                 int op = Unsafe.Add(ref MemoryMarshal.GetReference(code), programCounter);
 
-                if ((uint)op - JUMPDEST <= BEGINSUB - JUMPDEST)
+                if (op == JUMPDEST)
                 {
                     // Accumulate Jump Destinations to register, shift will wrap and single bit
                     // so can shift by the whole programCounter.
