@@ -1,24 +1,19 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
-using static Nethermind.Evm.VirtualMachine;
-using static System.Runtime.CompilerServices.Unsafe;
-
-namespace Nethermind.Evm;
-using Int256;
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.Tracing;
 using Nethermind.State;
+using static Nethermind.Evm.VirtualMachine;
+using static System.Runtime.CompilerServices.Unsafe;
 
-using Org.BouncyCastle.Utilities;
-
-using System;
-using System.Drawing;
+namespace Nethermind.Evm;
+using Int256;
 
 internal sealed partial class EvmInstructions
 {

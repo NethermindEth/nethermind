@@ -3,8 +3,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -19,7 +21,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -33,10 +34,6 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
-
-using System.Collections.Frozen;
-using System.Linq;
-using System.Threading;
 
 using Int256;
 
@@ -787,8 +784,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        SkipInit(out UInt256 a);
-        SkipInit(out UInt256 b);
         SkipInit(out UInt256 result);
         object returnData;
         uint codeLength = (uint)code.Length;
@@ -1286,74 +1281,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         goto EmptyReturn;
                     }
                 case Instruction.SHL:
-                    {
-                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (a >= 256UL)
-                        {
-                            stack.PopLimbo();
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                            result = b << (int)a.u0;
-                            stack.PushUInt256(in result);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionShift<OpShl, TTracingInstructions>(ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.SHR:
-                    {
-                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (a >= 256)
-                        {
-                            stack.PopLimbo();
-                            stack.PushZero();
-                        }
-                        else
-                        {
-                            if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                            result = b >> (int)a.u0;
-                            stack.PushUInt256(in result);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionShift<OpShr, TTracingInstructions>(ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.SAR:
-                    {
-                        if (!spec.ShiftOpcodesEnabled) goto InvalidInstruction;
-
-                        gasAvailable -= GasCostOf.VeryLow;
-
-                        if (!stack.PopUInt256(out a)) goto StackUnderflow;
-                        if (!stack.PopUInt256(out b)) goto StackUnderflow;
-                        if (a >= BigInt256)
-                        {
-                            if (As<UInt256, Int256>(ref b).Sign >= 0)
-                            {
-                                stack.PushZero();
-                            }
-                            else
-                            {
-                                stack.PushSignedInt256(in Int256.MinusOne);
-                            }
-                        }
-                        else
-                        {
-                            As<UInt256, Int256>(ref b).RightShift((int)a, out As<UInt256, Int256>(ref result));
-                            stack.PushUInt256(in result);
-                        }
-
-                        break;
-                    }
+                    exceptionType = InstructionSar(ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.EXTCODEHASH:
                     {
                         if (!spec.ExtCodeHashOpcodeEnabled) goto InvalidInstruction;

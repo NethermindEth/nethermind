@@ -1,13 +1,12 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
 using Int256;
-
-using System;
 
 internal sealed partial class EvmInstructions
 {
