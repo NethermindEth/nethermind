@@ -4,15 +4,15 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.Evm.Test;
 
-public class Eip7667Spec : Cancun
+public class Prague : Cancun
 {
     private static IReleaseSpec _instance;
 
-    protected Eip7667Spec()
+    protected Prague()
     {
         Name = "Eip7667Spec";
         IsEip7667Enabled = true;
     }
 
-    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Eip7667Spec());
+    public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
 }
