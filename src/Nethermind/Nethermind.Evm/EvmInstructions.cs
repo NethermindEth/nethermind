@@ -223,54 +223,6 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ITxTracer tracer)
-        where TTracingInstructions : struct, IIsTracing
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
-        Span<byte> bytes = vmState.Memory.LoadSpan(in result);
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportMemoryChange(result, bytes);
-
-        stack.PushBytes(bytes);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ITxTracer tracer)
-        where TTracingInstructions : struct, IIsTracing
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-
-        Span<byte> bytes = stack.PopWord256();
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
-        vmState.Memory.SaveWord(in result, bytes);
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportMemoryChange((long)result, bytes);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ITxTracer tracer)
-        where TTracingInstructions : struct, IIsTracing
-    {
-        gasAvailable -= GasCostOf.VeryLow;
-
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-
-        byte data = stack.PopByte();
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) return EvmExceptionType.OutOfGas;
-        vmState.Memory.SaveByte(in result, data);
-        if (typeof(TTracingInstructions) == typeof(IsTracing)) tracer.ReportMemoryChange((long)result, data);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
     public static EvmExceptionType InstructionCallDataLoad<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable)
         where TTracing : struct, IIsTracing
     {

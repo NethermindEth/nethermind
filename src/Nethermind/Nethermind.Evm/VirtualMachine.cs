@@ -960,13 +960,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     stack.PopLimbo();
                     break;
                 case Instruction.MLOAD:
-                    exceptionType = InstructionMLoad(vmState, ref stack, ref gasAvailable, _txTracer);
+                    exceptionType = InstructionMLoad(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.MSTORE:
-                    exceptionType = InstructionMStore(vmState, ref stack, ref gasAvailable, _txTracer);
+                    exceptionType = InstructionMStore(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.MSTORE8:
-                    exceptionType = InstructionMStore8(vmState, ref stack, ref gasAvailable, _txTracer);
+                    exceptionType = InstructionMStore8(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.SLOAD:
                     exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
@@ -1195,8 +1195,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
 
-                        if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
-                        if (!Jump(jumpDest, ref programCounter, in vmState.Env, true)) goto InvalidJumpDestination;
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                        if (!Jump(result, ref programCounter, in vmState.Env, true)) goto InvalidJumpDestination;
                         programCounter++;
 
                         break;
@@ -1267,6 +1267,54 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+    }
+
+    [SkipLocalsInit]
+    public EvmExceptionType InstructionMLoad<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+        where TTracingInstructions : struct, IIsTracing
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
+        Span<byte> bytes = vmState.Memory.LoadSpan(in result);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(result, bytes);
+
+        stack.PushBytes(bytes);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public EvmExceptionType InstructionMStore<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+        where TTracingInstructions : struct, IIsTracing
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+
+        Span<byte> bytes = stack.PopWord256();
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in BigInt32)) return EvmExceptionType.OutOfGas;
+        vmState.Memory.SaveWord(in result, bytes);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, bytes);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public EvmExceptionType InstructionMStore8<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+        where TTracingInstructions : struct, IIsTracing
+    {
+        gasAvailable -= GasCostOf.VeryLow;
+
+        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
+
+        byte data = stack.PopByte();
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in result, in UInt256.One)) return EvmExceptionType.OutOfGas;
+        vmState.Memory.SaveByte(in result, data);
+        if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange((long)result, data);
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
