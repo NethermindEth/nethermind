@@ -58,17 +58,16 @@ public partial class VerkleTree
         byte sectionStartByte = leafDeltas[0].Key[depth];
 
         McsLock deltaLock = new McsLock();
-        Banderwagon delta = Banderwagon.Identity;
+        using ArrayPoolList<(FrE, int)> deltaOps = new ArrayPoolList<(FrE, int)>(256);
 
         ActionBlock<(int, int, byte)> accumulateDelta = new ActionBlock<(int, int, byte)>(input =>
             {
                 (int start, int end, byte sectionByte) = input;
                 // Get the delta for the previous section
                 FrE sectionDelta = CommitBulkRecursive(leafDeltas.AsSpan()[start..end], depth + 1);
-                Banderwagon multipliedDelta = Committer.ScalarMul(sectionDelta, sectionByte);
 
                 using McsLock.Disposable _ = deltaLock.Acquire();
-                delta += multipliedDelta;
+                deltaOps.Add((sectionDelta, sectionByte));
             },
             new ExecutionDataflowBlockOptions()
             {
@@ -95,6 +94,7 @@ public partial class VerkleTree
         accumulateDelta.Complete();
         accumulateDelta.Completion.Wait();
 
+        Banderwagon delta = Committer.MultiScalarMul(deltaOps.AsSpan());
         FrE deltaFre = node.UpdateCommitment(delta);
         SetInternalNode(key, node);
         return deltaFre;
