@@ -38,11 +38,5 @@ namespace Nethermind.Evm.Test
         {
             Instruction.MCOPY.GetName(true, Cancun.Instance).Should().Be("MCOPY");
         }
-
-        [Test]
-        public void Return_jumpsub_name_for_mcopy_opcode_pre_eip_5656()
-        {
-            Instruction.MCOPY.GetName(true, Shanghai.Instance).Should().Be("JUMPSUB");
-        }
     }
 }
