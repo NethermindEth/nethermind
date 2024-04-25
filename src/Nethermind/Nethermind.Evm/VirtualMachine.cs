@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -35,12 +34,10 @@ namespace Nethermind.Evm;
 
 using System.Collections.Frozen;
 using System.Linq;
-using System.Runtime.Intrinsics.X86;
 using System.Threading;
 
 using Int256;
 using Nethermind.Crypto;
-using Newtonsoft.Json.Linq;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -2229,34 +2226,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     break;
             }
         }
+        Signature signature = new(sigData, yParity);
 
-        Signature signature = new Signature(sigData, yParity);
-
-        byte[] chainId = _chainId.PadLeft(32);
-        byte[] authorityNonce = _state.GetNonce(authority).PaddedBytes(32);
-        //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
-        byte[] invokerAddress = vmState.Env.ExecutingAccount.Bytes.PadLeft(32);
-
-        Span<byte> msg = stackalloc byte[1 + 32 + 32 + 32 + 32];
-        msg[0] = Eip3074Constants.AuthMagic;
-        for (int i = 0; i < 32; i++)
+        Address recovered = null; 
+        if (signature.V == 27 || signature.V == 28)
         {
-            int shift = i + 1;
-            msg[shift] = chainId[i];
-            msg[shift + 32] = authorityNonce[i];
-            msg[shift + 64] = invokerAddress[i];
-            if (i < commit.Length)
-            {
-                msg[shift + 96] = commit[i];
-            }
+            //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
+            recovered = TryRecoverSigner(signature, vmState.Env.ExecutingAccount, authority, commit); 
         }
 
-        Hash256 digest = Keccak.Compute(msg);
-
-        //TODO handle exception will crash the process
-        PublicKey publicKey = _ecdsa.RecoverPublicKey(signature, digest);
-
-        if (publicKey != null && publicKey.Address == authority)
+        if (recovered == authority)
         {
             stack.PushUInt256(1);
             vmState.Authorized = authority;
@@ -2267,6 +2246,35 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             vmState.Authorized = null;
         }
         return EvmExceptionType.None;
+    }
+
+    private Address? TryRecoverSigner(
+        Signature signature,
+        Address invoker,
+        Address authority,
+        ReadOnlySpan<byte> commit)
+    {
+        byte[] chainId = _chainId.PadLeft(32);
+        UInt256 nonce = _state.GetNonce(authority);
+        byte[] invokerAddress = invoker.Bytes;
+        Span<byte> msg = stackalloc byte[1 + 32 * 4];
+        msg[0] = Eip3074Constants.AuthMagic;
+        for (int i = 0; i < 32; i++)
+        {
+            int offset = i + 1;
+            msg[offset] = chainId[i];
+            msg[32 + 32 - i] = (byte)(nonce[i / 8] >> (8 * (i % 8)));
+
+            if (i < 12)
+                msg[offset + 64] = 0;
+            else if(i - 12 < invokerAddress.Length)
+                msg[offset + 64] = invokerAddress[i - 12];
+
+            if (i < commit.Length)
+                msg[offset + 96] = commit[i];
+        }
+
+        return _ecdsa.RecoverAddress(signature, Keccak.Compute(msg));
     }
 
     [SkipLocalsInit]
@@ -2324,13 +2332,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
-        Address caller;
-        if (instruction == Instruction.DELEGATECALL)
-            caller = env.Caller;
-        else if (instruction == Instruction.AUTHCALL)
-            caller = vmState.Authorized;
-        else
-            caller = env.ExecutingAccount;
+        Address caller = instruction switch
+        {
+            Instruction.DELEGATECALL => env.Caller,
+            Instruction.AUTHCALL => vmState.Authorized,
+            _ => env.ExecutingAccount
+        };
 
         Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
             ? codeSource
@@ -2968,34 +2975,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer.ReportOperationError(evmExceptionType);
     }
 
-    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction == Instruction.CALL)
+    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
+         instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction == Instruction.DELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction == Instruction.STATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction == Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else if (instruction == Instruction.AUTHCALL)
-        {
-            executionType = ExecutionType.AUTHCALL;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            Instruction.AUTHCALL => ExecutionType.AUTHCALL,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }

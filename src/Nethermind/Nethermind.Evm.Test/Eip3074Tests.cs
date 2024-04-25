@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Microsoft.AspNetCore.DataProtection.KeyManagement;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -11,10 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
-using Nethermind.Specs.Test;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
 using System.Linq;
 
@@ -27,7 +23,7 @@ namespace Nethermind.Evm.Test
 
         protected override TestAllTracerWithOutput CreateTracer() => new() { IsTracingAccess = false };
 
-        public static IEnumerable<object[]> AuthCases()
+        public static IEnumerable<object[]> AuthorityCases()
         {
             yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
             yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressC, 0x1 };
@@ -35,8 +31,55 @@ namespace Nethermind.Evm.Test
             yield return new object[] { TestItem.PrivateKeyD, TestItem.AddressC, 0x0 };
         }
 
-        [TestCaseSource(nameof(AuthCases))]
+        [TestCaseSource(nameof(AuthorityCases))]
         public void ExecuteAuth_SignerIsSameOrDifferentThanAuthority_ReturnsOneOrZero(PrivateKey signer, Address authority, int expected)
+        {
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+                .PushData(data[96..])
+                .PushSingle(96)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Return the result of AUTH
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushSingle(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+        }
+
+
+        public static IEnumerable<object[]> CommitDataCases()
+        {
+            yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
+            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressC, 0x1 };
+            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressD, 0x0 };
+            yield return new object[] { TestItem.PrivateKeyD, TestItem.AddressC, 0x0 };
+        }
+
+        [TestCaseSource(nameof(CommitDataCases))]
+        public void ExecuteAuth_(PrivateKey signer, Address authority, int expected)
         {
             var data = CreateSignedCommitMessage(signer);
 
@@ -75,7 +118,7 @@ namespace Nethermind.Evm.Test
 
         [TestCase(true, 0)]
         [TestCase(false, 1)]
-        public void ExecuteAuth_SignerNonceIsIncrementedAfterSigning_ReturnsZero(bool incrementNonce, int expected)
+        public void ExecuteAuth_SignerNonceIsIncrementedAfterSigning_ReturnsExpected(bool incrementNonce, int expected)
         {
             var signer = TestItem.PrivateKeyB;
             var authority = TestItem.AddressB;
@@ -117,7 +160,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAuth_InvalidAuthorityAfterValid_CorrectErrorIsReturned()
+        public void ExecuteAuth_InvalidAuthorityAfterValidHasBeenSet_CorrectErrorIsReturned()
         {
             var signer = TestItem.PrivateKeyB;
             var authority = TestItem.AddressB;
@@ -203,6 +246,46 @@ namespace Nethermind.Evm.Test
             var result = Execute(code);
 
             Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+        }
+
+
+        [TestCase(0)]
+        [TestCase(1)]
+        [TestCase(2)]
+        [TestCase(255)]
+        public void ExecuteAuth_SignatureIsInvalid_(byte recId)
+        {
+            var data = new byte[97];
+            data[0] = recId;
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(TestItem.AddressA)
+                .Op(Instruction.AUTH)
+
+                //Return the result of AUTH
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushSingle(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+            
+            var result = Execute(code);
+
+            Assert.That(result.ReturnValue[0], Is.EqualTo(0));
         }
 
         [TestCase(97, GasCostOf.Auth + GasCostOf.ColdAccountAccess)]
