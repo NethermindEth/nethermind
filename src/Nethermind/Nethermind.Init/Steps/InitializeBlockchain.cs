@@ -175,10 +175,11 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
+            if (_api.WorldState is null) throw new StepDependencyException(nameof(_api.WorldState));
 
             // blockchain processing
             BlockhashProvider blockhashProvider = new(
-                _api.BlockTree, _api.LogManager);
+                _api.BlockTree, _api.SpecProvider, _api.WorldState, _api.LogManager);
 
             return new VirtualMachine(
                 blockhashProvider,

@@ -10,6 +10,6 @@ namespace Nethermind.Evm
 {
     public interface IBlockhashProvider
     {
-        Hash256? GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState stateProvider);
+        Hash256? GetBlockhash(BlockHeader currentBlock, in long number);
     }
 }

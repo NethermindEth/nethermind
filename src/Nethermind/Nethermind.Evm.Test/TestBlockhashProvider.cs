@@ -10,14 +10,15 @@ namespace Nethermind.Evm.Test
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public static TestBlockhashProvider Instance = new();
-
-        private TestBlockhashProvider()
+        private readonly ISpecProvider _specProvider;
+        public TestBlockhashProvider(ISpecProvider specProvider)
         {
+            _specProvider = specProvider;
         }
 
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState stateProvider)
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
         {
+            var spec = _specProvider.GetSpec(currentBlock);
             if (spec.IsBlockHashInStateAvailable)
                 return Keccak.Compute((Eip2935Constants.RingBufferSize + number).ToString());
             return Keccak.Compute((number).ToString());

@@ -18,7 +18,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
-using Nethermind.Evm.BlockHashInState;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -42,6 +41,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
     private readonly IBlockTree _blockTree;
+    private readonly IBlockhashStore _blockhashStore;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -75,6 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
+        _blockhashStore = new BlockhashStore(_blockTree, _specProvider, _stateProvider);
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -246,9 +247,9 @@ public partial class BlockProcessor : IBlockProcessor
             //      this would just be true on the fork block
             BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
             if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
-                BlockHashInStateExtension.InitHistoryOnForkBlock(_blockTree, block.Header, spec, _stateProvider);
+                _blockhashStore.InitHistoryOnForkBlock(block.Header);
             else
-                BlockHashInStateHandler.AddParentBlockHashToState(block.Header, spec, _stateProvider);
+                _blockhashStore.AddParentBlockHashToState(block.Header);
 
         }
 

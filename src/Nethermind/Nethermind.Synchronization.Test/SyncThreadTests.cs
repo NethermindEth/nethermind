@@ -273,7 +273,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, logManager);
 
             Always sealValidator = Always.Valid;

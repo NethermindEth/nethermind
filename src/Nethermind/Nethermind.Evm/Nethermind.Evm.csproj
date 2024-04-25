@@ -27,4 +27,7 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
   </ItemGroup>
+  <ItemGroup>
+    <Folder Include="BlockHashInState\" />
+  </ItemGroup>
 </Project>

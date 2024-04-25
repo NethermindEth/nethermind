@@ -20,7 +20,6 @@ using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
 using Nethermind.Consensus.BeaconBlockRoot;
-using Nethermind.Evm.BlockHashInState;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -112,7 +111,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             Snapshot before = chain.State.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
-            BlockHashInStateHandler.AddParentBlockHashToState(block!.Header, chain.SpecProvider.GenesisSpec, chain.State);
+            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
+            blockHashStore.AddParentBlockHashToState(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

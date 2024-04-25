@@ -159,7 +159,7 @@ namespace Nethermind.Evm.Test
                     LimboLogs.Instance);
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
             VirtualMachine virtualMachine = new(
-                    Nethermind.Evm.Test.TestBlockhashProvider.Instance,
+                new TestBlockhashProvider(specProvider),
                     specProvider,
                     LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(

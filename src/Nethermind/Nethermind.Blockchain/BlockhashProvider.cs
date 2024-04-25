@@ -8,7 +8,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Evm.BlockHashInState;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -18,23 +17,30 @@ namespace Nethermind.Blockchain
     {
         private static readonly int _maxDepth = 256;
         private readonly IBlockTree _blockTree;
+        private readonly ISpecProvider _specProvider;
+        private readonly IWorldState _worldState;
+        private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
 
-        public BlockhashProvider(IBlockTree blockTree, ILogManager? logManager)
+        public BlockhashProvider(IBlockTree blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
+            _specProvider = specProvider;
+            _worldState = worldState;
+            _blockhashStore = new BlockhashStore(blockTree, specProvider, worldState);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
-        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number, IReleaseSpec spec, IWorldState? stateProvider = null)
+        public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
         {
-            long current = currentBlock.Number;
+            IReleaseSpec? spec = _specProvider.GetSpec(currentBlock);
+
             if (spec.IsBlockHashInStateAvailable)
             {
-                ArgumentNullException.ThrowIfNull(stateProvider);
-                return BlockHashInStateHandler.GetBlockHashFromState(current, number, spec, stateProvider);
+                return _blockhashStore.GetBlockHashFromState(currentBlock, number);
             }
 
+            long current = currentBlock.Number;
             if (number >= current || number < current - Math.Min(current, _maxDepth))
             {
                 return null;
