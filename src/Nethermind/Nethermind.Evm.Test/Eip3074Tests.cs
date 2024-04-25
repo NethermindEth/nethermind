@@ -69,19 +69,43 @@ namespace Nethermind.Evm.Test
             Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
         }
 
-
-        public static IEnumerable<object[]> CommitDataCases()
+        public static IEnumerable<object[]> BadMessageDataCases()
         {
-            yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
-            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressC, 0x1 };
-            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressD, 0x0 };
-            yield return new object[] { TestItem.PrivateKeyD, TestItem.AddressC, 0x0 };
+            yield return new object[]
+            {
+                TestContext.CurrentContext.Random.NextByte(5, byte.MaxValue),
+                ((UInt256)1).ToBigEndian().PadLeft(32),
+                new UInt256(0).PaddedBytes(32),
+                SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32)
+            };
+            yield return new object[]
+            {
+                Eip3074Constants.AuthMagic,
+                new UInt256(12999999).PaddedBytes(32),
+                new UInt256(0).PaddedBytes(32),
+                SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32)
+            };
+            yield return new object[]
+            {
+                Eip3074Constants.AuthMagic,
+                new UInt256(1).PaddedBytes(32),
+                new UInt256(99999999999).PaddedBytes(32),
+                SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32)
+            };
+            yield return new object[]
+            {
+                Eip3074Constants.AuthMagic,
+                new UInt256(1).PaddedBytes(32),
+                new UInt256(0).PaddedBytes(32),
+                TestItem.AddressF.Bytes.PadLeft(32)
+            };
         }
 
-        [TestCaseSource(nameof(CommitDataCases))]
-        public void ExecuteAuth_(PrivateKey signer, Address authority, int expected)
+        [TestCaseSource(nameof(BadMessageDataCases))]
+        public void ExecuteAuth_OneOfMessageArgsIsWrong_ReturnsZero(byte magicNumber, byte[] chainId, byte[] nonce, byte[] address)
         {
-            var data = CreateSignedCommitMessage(signer);
+            PrivateKey signer = TestItem.PrivateKeyB;
+            var data = CreateSignedCommitMessage(signer, magicNumber, chainId, nonce, address, new byte[32]);
 
             byte[] code = Prepare.EvmCode
                 .PushData(data[..32])
@@ -100,7 +124,7 @@ namespace Nethermind.Evm.Test
                 //AUTH params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Return the result of AUTH
@@ -113,7 +137,48 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
 
-            Assert.That(result.ReturnValue[0], Is.EqualTo(expected));
+            Assert.That(result.ReturnValue[0], Is.EqualTo(0));
+        }
+
+        [Test]
+        public void ExecuteAuth_CommitDataIsWrong_ReturnsZero()
+        {
+            PrivateKey signer = TestItem.PrivateKeyB;
+            var data = CreateSignedCommitMessage(signer);
+            //Start index of commit
+            data[65] = 0x1;
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+                .PushData(data[96..])
+                .PushSingle(96)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(signer.Address)
+                .Op(Instruction.AUTH)
+
+                //Return the result of AUTH
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE8)
+                .PushSingle(1)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.ReturnValue[0], Is.EqualTo(0));
         }
 
         [TestCase(true, 0)]
@@ -249,14 +314,11 @@ namespace Nethermind.Evm.Test
         }
 
 
-        [TestCase(0)]
-        [TestCase(1)]
-        [TestCase(2)]
-        [TestCase(255)]
-        public void ExecuteAuth_SignatureIsInvalid_(byte recId)
+        [Test]
+        public void ExecuteAuth_SignatureIsInvalid_ReturnsZero()
         {
             var data = new byte[97];
-            data[0] = recId;
+            TestContext.CurrentContext.Random.NextBytes(data);
 
             byte[] code = Prepare.EvmCode
                 .PushData(data[..32])
@@ -554,18 +616,75 @@ namespace Nethermind.Evm.Test
             Assert.That(resultWithAuthCall.GasSpent - result.GasSpent, Is.EqualTo(expectedCost));
         }
 
+
+        [Test]
+        public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebited()
+        {
+            var signer = TestItem.PrivateKeyF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+              .PushData(data[..32])
+              .Op(Instruction.PUSH0)
+              .Op(Instruction.MSTORE)
+              .PushData(data[32..64])
+              .PushSingle(32)
+              .Op(Instruction.MSTORE)
+              .PushData(data[64..96])
+              .PushSingle(64)
+              .Op(Instruction.MSTORE)
+
+               //AUTH params
+              .PushSingle((UInt256)data.Length)
+              .Op(Instruction.PUSH0)
+              .PushData(signer.Address)
+              .Op(Instruction.AUTH)
+
+              //Just throw away the result
+              .POP()
+
+              //AUTHCALL params
+              .PushData(20)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(1.GWei())
+              .PushData(TestItem.AddressC)
+              .PushData(1000000)
+              .Op(Instruction.AUTHCALL)
+              .Done;
+
+            TestState.CreateAccount(signer.Address, 1.Ether());
+
+            Execute(code);
+
+            var addressBalance = TestState.GetBalance(signer.Address);
+
+            Assert.That(addressBalance, Is.EqualTo(1.Ether() - 1.GWei()));
+        }
+
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
+        {
+            return CreateSignedCommitMessage(
+                signer,
+                Eip3074Constants.AuthMagic,
+                ((UInt256)SpecProvider.ChainId).ToBigEndian().PadLeft(32),
+                TestState.GetNonce(signer.Address).PaddedBytes(32),
+                SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
+                new byte[32]
+                );
+        }
+
+        private byte[] CreateSignedCommitMessage(PrivateKey signer, byte magicNumber, byte[] chainId, byte[] nonce, byte[] address, byte[] commit)
         {
             List<byte> msg =
             [
-                Eip3074Constants.AuthMagic,
-                .. ((UInt256)SpecProvider.ChainId).ToBigEndian().PadLeft(32),
-                .. TestState.GetNonce(signer.Address).PaddedBytes(32),
-                .. SenderRecipientAndMiner.Default.Recipient.Bytes.PadLeft(32),
+                magicNumber,
+                .. chainId,
+                .. nonce,
+                .. address,
+                .. commit
             ];
-
-            byte[] commit = new byte[32];
-            msg.AddRange(commit);
 
             Hash256 msgDigest = Keccak.Compute(msg.ToArray());
             EthereumEcdsa ecdsa = new EthereumEcdsa(SpecProvider.ChainId, LimboLogs.Instance);
