@@ -4,7 +4,6 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Specs;
-using Nethermind.State;
 using static Nethermind.Evm.VirtualMachine;
 
 namespace Nethermind.Evm;
@@ -46,20 +45,6 @@ internal sealed partial class EvmInstructions
         {
             stack.PushZero();
         }
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec, IWorldState state)
-        where TTracingInstructions : struct, IIsTracing
-    {
-        if (!spec.SelfBalanceOpcodeEnabled) return EvmExceptionType.BadInstruction;
-
-        gasAvailable -= GasCostOf.SelfBalance;
-
-        UInt256 result = state.GetBalance(vmState.Env.ExecutingAccount);
-        stack.PushUInt256(in result);
 
         return EvmExceptionType.None;
     }

@@ -34,58 +34,12 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionTLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IWorldState state, ITxTracer tracer)
-        where TTracingInstructions : struct, IIsTracing
-        where TTracingStorage : struct, IIsTracing
-    {
-        Metrics.TloadOpcode++;
-        gasAvailable -= GasCostOf.TLoad;
-
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
-
-        ReadOnlySpan<byte> value = state.GetTransientState(in storageCell);
-        stack.PushBytes(value);
-
-        if (typeof(TTracingStorage) == typeof(IsTracing))
-        {
-            if (gasAvailable < 0) return EvmExceptionType.OutOfGas;
-            tracer.LoadOperationTransientStorage(storageCell.Address, result, value);
-        }
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionTStore<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IWorldState state, ITxTracer tracer)
-        where TTracingInstructions : struct, IIsTracing
-        where TTracingStorage : struct, IIsTracing
-    {
-        Metrics.TstoreOpcode++;
-
-        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
-
-        gasAvailable -= GasCostOf.TStore;
-
-        if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
-        StorageCell storageCell = new(vmState.Env.ExecutingAccount, result);
-        Span<byte> bytes = stack.PopWord256();
-        state.SetTransientState(in storageCell, !bytes.IsZero() ? bytes.ToArray() : BytesZero32);
-        if (typeof(TTracingStorage) == typeof(IsTracing))
-        {
-            if (gasAvailable < 0) return EvmExceptionType.OutOfGas;
-            ReadOnlySpan<byte> currentValue = state.GetTransientState(in storageCell);
-            tracer.SetOperationTransientStorage(storageCell.Address, result, bytes, currentValue);
-        }
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    public static EvmExceptionType InstructionRevert<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, out object returnData)
+    public static EvmExceptionType InstructionRevert<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec, out object returnData)
         where TTracingInstructions : struct, IIsTracing
     {
         SkipInit(out returnData);
+
+        if (!spec.RevertOpcodeEnabled) return EvmExceptionType.BadInstruction;
 
         if (!stack.PopUInt256(out UInt256 position) ||
             !stack.PopUInt256(out UInt256 length))
