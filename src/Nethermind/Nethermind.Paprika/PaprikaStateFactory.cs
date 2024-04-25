@@ -221,6 +221,22 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
+        public void Set(ValueHash256 hash, Account? account)
+        {
+            PaprikaKeccak key = Convert(hash);
+
+            if (account == null)
+            {
+                _wrapped.DestroyAccount(key);
+            }
+            else
+            {
+                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
+                    Convert(account.StorageRoot));
+                _wrapped.SetAccount(key, actual);
+            }
+        }
+
         public Account? Get(Address address)
         {
             ValueHash256 hash = ValueKeccak.Compute(address.Bytes);

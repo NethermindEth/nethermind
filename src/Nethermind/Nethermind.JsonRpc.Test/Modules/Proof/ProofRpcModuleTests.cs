@@ -67,14 +67,17 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             InMemoryReceiptStorage receiptStorage = new();
             _specProvider = new TestSpecProvider(London.Instance);
-            _blockTree = Build.A.BlockTree(new Block(Build.A.BlockHeader.WithStateRoot(worldState.StateRoot).TestObject, new BlockBody()), _specProvider)
-                .WithTransactions(receiptStorage)
-                .OfChainLength(10)
-                .TestObject;
+            _blockTree = Build.A.BlockTree(_specProvider).WithTransactions(receiptStorage).OfChainLength(10).TestObject;
+            _dbProvider = await TestMemDbProvider.InitAsync();
+
+            ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
+            //_readOnlyWorldStateManager = new ReadOnlyWorldStateManager(_dbProvider, trieStore.AsReadOnly(), LimboLogs.Instance);
+
+            IStateFactory stateFactory = new PaprikaStateFactory();
 
             ProofModuleFactory moduleFactory = new(
-                null!, // TODO
-                _stateDb,
+                _dbProvider.AsReadOnly(true),
+                stateFactory,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
@@ -224,8 +227,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             IStateFactory stateFactory = new PaprikaStateFactory();
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                null!,//_worldStateManager, TODO
-                _stateDb,
+                dbProvider.AsReadOnly(true),
+                stateFactory,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
@@ -889,7 +892,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private WorldState CreateInitialState(byte[]? code)
         {
-            WorldState stateProvider = new(_stateDb, _dbProvider.CodeDb, LimboLogs.Instance);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+
+            WorldState stateProvider = new(stateFactory, _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 
