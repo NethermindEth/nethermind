@@ -27,7 +27,7 @@ public class MainnetSpecProvider : ISpecProvider
     public const ulong ShanghaiBlockTimestamp = 0x64373057;
     public const ulong CancunBlockTimestamp = 0x65F1B057;
     //TODO correct this timestamp!
-    public const ulong PragueBlockTimestamp = 0x674C6BE0;
+    public const ulong PragueBlockTimestamp = ulong.MaxValue - 2;
     public const ulong OsakaBlockTimestamp = ulong.MaxValue - 1;
 
     public IReleaseSpec GetSpec(ForkActivation forkActivation) =>

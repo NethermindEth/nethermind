@@ -2189,10 +2189,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (authority is null) return EvmExceptionType.StackUnderflow;
 
-        UInt256 offset;
-        UInt256 length;
-        if (!stack.PopUInt256(out offset)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out length)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 offset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
 
         gasAvailable -= GasCostOf.Auth;
 
@@ -2301,7 +2299,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled ||
             instruction == Instruction.AUTHCALL && !spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
 
-        if (instruction == Instruction.AUTHCALL && vmState.Authorized == null)
+        if (instruction == Instruction.AUTHCALL && vmState.Authorized is null)
             return EvmExceptionType.AuthorizedNotSet;
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
@@ -2339,7 +2337,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _ => env.ExecutingAccount
         };
 
-        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
+        Address target = instruction is Instruction.CALL or Instruction.STATICCALL
             ? codeSource
             : env.ExecutingAccount;
 
@@ -2356,10 +2354,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!transferValue.IsZero)
         {
-            if (instruction == Instruction.AUTHCALL)
-                gasExtra += GasCostOf.CallValue - GasCostOf.CallStipend;
-            else
-                gasExtra += GasCostOf.CallValue;
+            gasExtra += instruction == Instruction.AUTHCALL ? GasCostOf.CallValue - GasCostOf.CallStipend : GasCostOf.CallValue;
         }
 
         if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
@@ -2391,9 +2386,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
-        UInt256 balanceToDebit = instruction == Instruction.AUTHCALL ? _state.GetBalance(vmState.Authorized) : _state.GetBalance(env.ExecutingAccount);
-        if (env.CallDepth >= MaxCallDepth ||
-            !transferValue.IsZero && balanceToDebit < transferValue)
+
+        Address accountToDebit = instruction == Instruction.AUTHCALL ? vmState.Authorized! : env.ExecutingAccount;
+        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(accountToDebit) < transferValue)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -2976,7 +2971,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
-         instruction switch
+        instruction switch
         {
             Instruction.CALL => ExecutionType.CALL,
             Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
