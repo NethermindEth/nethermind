@@ -905,66 +905,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     InstructionEnvUInt256<OpGasPrice, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.EXTCODESIZE:
-                    {
-                        gasAvailable -= spec.GetExtCodeCost();
-
-                        Address address = stack.PopAddress();
-                        if (address is null) goto StackUnderflow;
-
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) goto OutOfGas;
-
-                        if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
-                        {
-                            bool optimizeAccess = false;
-                            Instruction nextInstruction = (Instruction)code[programCounter];
-                            // code.length is zero
-                            if (nextInstruction == Instruction.ISZERO)
-                            {
-                                optimizeAccess = true;
-                            }
-                            // code.length > 0 || code.length == 0
-                            else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
-                                    stack.PeekUInt256IsZero())
-                            {
-                                optimizeAccess = true;
-                                stack.PopLimbo();
-                            }
-
-                            if (optimizeAccess)
-                            {
-                                // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
-                                // In solidity 0.8.1+: `return account.code.length > 0;`
-                                // is is a common pattern to check if address is a contract
-                                // however we can just check the address's loaded CodeHash
-                                // to reduce storage access from trying to load the code
-
-                                programCounter++;
-                                // Add gas cost for ISZERO, GT, or EQ
-                                gasAvailable -= GasCostOf.VeryLow;
-
-                                // IsContract
-                                bool isCodeLengthNotZero = _state.IsContract(address);
-                                if (nextInstruction == Instruction.GT)
-                                {
-                                    // Invert, to IsNotContract
-                                    isCodeLengthNotZero = !isCodeLengthNotZero;
-                                }
-
-                                if (!isCodeLengthNotZero)
-                                {
-                                    stack.PushOne();
-                                }
-                                else
-                                {
-                                    stack.PushZero();
-                                }
-                                break;
-                            }
-                        }
-
-                        InstructionExtCodeSize(address, ref stack, spec);
-                        break;
-                    }
+                    exceptionType = InstructionExtCodeSize(vmState, ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.EXTCODECOPY:
                     exceptionType = InstructionExtCodeCopy(vmState, ref stack, ref gasAvailable, spec);
                     break;
@@ -1444,12 +1386,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    private EvmExceptionType InstructionExtCodeSize<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
-        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Span.Length;
-        UInt256 result = (UInt256)codeLength;
-        stack.PushUInt256(in result);
+        gasAvailable -= spec.GetExtCodeCost();
+
+        Address address = stack.PopAddress();
+        if (address is null) return EvmExceptionType.StackUnderflow;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return EvmExceptionType.OutOfGas;
+
+        int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Length;
+        stack.PushUInt32(codeLength);
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]

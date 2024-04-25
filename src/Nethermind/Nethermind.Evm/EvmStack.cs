@@ -138,7 +138,7 @@ public ref struct EvmStack<TTracing>
         }
     }
 
-    public void PushUInt32(in int value)
+    public void PushUInt32(int value)
     {
         ClearWordAtHead();
 
