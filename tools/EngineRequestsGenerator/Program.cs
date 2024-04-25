@@ -24,7 +24,6 @@ public static class Program
     private static int _maxNumberOfWithdrawalsPerBlock;
     private static int _numberOfWithdrawals;
     private static int _txsPerBlock;
-    // private static int _blockGasConsumptionTarget;
     private static TestCase _testCase;
 
     private static string _chainSpecPath;
@@ -42,17 +41,17 @@ public static class Program
         _chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
 
         int blockGasConsumptionTarget = 30_000_000;
-        _testCase = TestCase.TxZeroBytes;
+        _testCase = TestCase.TxDataZero;
 
         _txsPerBlock = _testCase switch
         {
-            TestCase.None => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
+            TestCase.Warmup => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
             _ => 1
         };
 
         Task generateRequests = _testCase switch
         {
-            TestCase.None => GenerateTestCase(blockGasConsumptionTarget),
+            TestCase.Warmup => GenerateTestCase(blockGasConsumptionTarget),
             _ => GenerateTestCases()
         };
 
@@ -166,7 +165,7 @@ public static class Program
     {
         switch (testCase)
         {
-            case TestCase.None:
+            case TestCase.Warmup:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
@@ -176,7 +175,7 @@ public static class Program
                     .WithChainId(BlockchainIds.Holesky)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
-            case TestCase.TxZeroBytes:
+            case TestCase.TxDataZero:
                 long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;
                 byte[] data = new byte[numberOfBytes];
                 return Build.A.Transaction

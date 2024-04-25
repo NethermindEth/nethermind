@@ -5,6 +5,6 @@ namespace EngineRequestsGenerator;
 
 public enum TestCase
 {
-    None,
-    TxZeroBytes,
+    Warmup,
+    TxDataZero,
 }
