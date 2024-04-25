@@ -1634,15 +1634,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         Metrics.BlockhashOpcode++;
 
-                        Hash256? GetBlockHashFromState(ulong blockNumber)
+                        Hash256? GetBlockHashFromState(long blockNumber, long currentBlockNumber)
                         {
-                            StorageCell blockHashStoreCell = new(spec.Eip2935ContractAddress, blockNumber);
+                            byte[] emptyBytes = [0];
+                            if (blockNumber >= currentBlockNumber ||
+                                blockNumber + Eip2935Constants.RingBufferSize < currentBlockNumber)
+                            {
+                                return null;
+                            }
+                            var blockIndex = new UInt256((ulong)(blockNumber % Eip2935Constants.RingBufferSize));
+                            Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+                            StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
                             vmState.Env.Witness.AccessForStorage(blockHashStoreCell.Address,
                                 blockHashStoreCell.Index,
                                 false);
                             ReadOnlySpan<byte> data = _worldState.Get(blockHashStoreCell);
-                            if (data.Length < 32) return null;
-                            return new Hash256(data);
+                            return data.SequenceEqual(emptyBytes) ? null : new Hash256(data);
                         }
 
                         gasAvailable -= GasCostOf.BlockHash;
@@ -1651,7 +1658,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
                         Hash256 blockHash = spec.IsEip2935Enabled
-                            ? GetBlockHashFromState((ulong)number)
+                            ? GetBlockHashFromState(number, blkCtx.Header.Number)
                             : _blockhashProvider.GetBlockhash(blkCtx.Header, number);
 
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
