@@ -29,7 +29,7 @@ public class ConsensusRequestDecoder : IRlpStreamDecoder<ConsensusRequest>, IRlp
             ConsensusRequestsType.Deposit => _depositDecoder.GetLength((Deposit)item, rlpBehaviors),
             _ => throw new RlpException($"Unsupported consensus request type {item.Type}")
         };
-        
+
         if ((rlpBehaviors & RlpBehaviors.SkipTypedWrapping) == RlpBehaviors.SkipTypedWrapping)
         {
             return Rlp.LengthOf((byte)item.Type) + length;
