@@ -8,7 +8,6 @@ namespace Nethermind.Core
     /// 0: Olympic, Ethereum public pre-release PoW testnet
     /// 1: Expanse, an alternative Ethereum implementation, chain ID 2
     /// 2: Morden Classic, the public Ethereum Classic PoW testnet
-    /// 42: Kovan, the public Parity-only PoA testnet
     /// 60: GoChain, the GoChain networks mainnet
     /// 99: Core, the public POA Network main network
     /// 100: Gnosis, the public Gnosis main network
@@ -24,7 +23,6 @@ namespace Nethermind.Core
         public const int Goerli = 5;
         public const int RootstockMainnet = 30;
         public const int RootstockTestnet = 31;
-        public const int Kovan = 42;
         public const int EthereumClassicMainnet = 61;
         public const int EthereumClassicTestnet = 62;
         public const int EnergyWeb = 246;
@@ -49,7 +47,6 @@ namespace Nethermind.Core
                 Goerli => nameof(Goerli),
                 RootstockMainnet => nameof(RootstockMainnet),
                 RootstockTestnet => nameof(RootstockTestnet),
-                Kovan => nameof(Kovan),
                 EthereumClassicMainnet => nameof(EthereumClassicMainnet),
                 EthereumClassicTestnet => nameof(EthereumClassicTestnet),
                 DefaultGethPrivateChain => nameof(DefaultGethPrivateChain),
