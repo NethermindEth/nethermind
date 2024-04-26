@@ -41,6 +41,15 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
+        for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        {
+            int offset = i * ItemSize;
+            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
+        }
+
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];

@@ -38,6 +38,23 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[32];
+
+        for (int i = 0; i < (inputData.Length / PairSize); i++)
+        {
+            int offset = i * PairSize;
+            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
+
+            offset += 2 * BlsParams.LenFp;
+
+            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
+        }
+
         bool success = Pairings.BlsPairing(inputData.Span, output);
         if (success)
         {
