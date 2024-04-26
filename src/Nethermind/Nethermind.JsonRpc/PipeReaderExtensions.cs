@@ -19,7 +19,7 @@ public static class PipeReaderExtensions
             {
                 return result;
             }
-            reader.AdvanceTo(buffer.End);
+            reader.AdvanceTo(buffer.Start, buffer.End);
         }
     }
 }
