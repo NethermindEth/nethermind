@@ -364,7 +364,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
 
     private static bool TryParseJson(ref ReadOnlySequence<byte> buffer, out JsonDocument jsonDocument)
     {
-        Utf8JsonReader reader = new(buffer, isFinalBlock: false, new JsonReaderState(new JsonReaderOptions(){CommentHandling = JsonCommentHandling.Skip}) );
+        Utf8JsonReader reader = new(buffer);
 
         if (JsonDocument.TryParseValue(ref reader, out jsonDocument))
         {
