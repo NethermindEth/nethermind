@@ -46,6 +46,20 @@ public static class IntrinsicGasCalculator
             ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
             : 0;
 
+        if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
+        {
+            ref byte bytes = ref MemoryMarshal.GetReference(data);
+            int i = 0;
+            for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
+            {
+                Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
+                ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
+                int zeros = BitOperations.PopCount(flags);
+                dataCost += zeros * GasCostOf.TxDataZero + (Vector512<byte>.Count - zeros) * txDataNonZeroGasCost;
+            }
+
+            data = data[i..];
+        }
         if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
         {
             ref byte bytes = ref MemoryMarshal.GetReference(data);
@@ -54,7 +68,7 @@ public static class IntrinsicGasCalculator
             {
                 Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
                 uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
-                var zeros = BitOperations.PopCount(flags);
+                int zeros = BitOperations.PopCount(flags);
                 dataCost += zeros * GasCostOf.TxDataZero + (Vector256<byte>.Count - zeros) * txDataNonZeroGasCost;
             }
 
@@ -68,7 +82,7 @@ public static class IntrinsicGasCalculator
             {
                 Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
                 uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
-                var zeros = BitOperations.PopCount(flags);
+                int zeros = BitOperations.PopCount(flags);
                 dataCost += zeros * GasCostOf.TxDataZero + (Vector128<byte>.Count - zeros) * txDataNonZeroGasCost;
             }
 
