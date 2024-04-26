@@ -28,6 +28,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly List<NativeCallTracerCallFrame> _callStack;
 
     private EvmExceptionType? _error;
+    private long _remainingGas;
 
     public NativeCallTracer(
         Transaction? tx,
@@ -98,6 +99,12 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Logs.Add(callLog);
     }
 
+    public override void ReportOperationRemainingGas(long gas)
+    {
+        base.ReportOperationRemainingGas(gas);
+        _remainingGas = gas > 0 ? gas : 0;
+    }
+
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
         OnExit(gas, deployedCode);
@@ -113,15 +120,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         _error = evmExceptionType;
+        OnExit(_remainingGas, null, _error);
         base.ReportActionError(evmExceptionType);
     }
 
     public override void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
     {
-        // If a specific EvmExceptionType is set then show that instead of the default revert error for the call frame the error occurred in.
-        // For each parent call, show the revert error.
-        OnExit(gas, output, _error ?? EvmExceptionType.Revert);
         _error = EvmExceptionType.Revert;
+        OnExit(gas, output, _error);
         base.ReportActionRevert(gas, output);
     }
 
@@ -167,16 +173,15 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             _callStack.RemoveAt(size - 1);
             callFrame.GasUsed = callFrame.Gas - gas;
 
-            if (output is not null)
-                ProcessOutput(callFrame, output.Value, error);
+            ProcessOutput(callFrame, output, error);
 
             _callStack[^1].Calls.Add(callFrame);
         }
     }
 
-    private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte> output, EvmExceptionType? error)
+    private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
-        byte[] outputArray = output.ToArray();
+        byte[] outputArray = output?.ToArray();
         if (error is null)
         {
             callFrame.Output = outputArray;
@@ -185,14 +190,14 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         callFrame.Error = error.Value.GetEvmExceptionDescription();
         if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
             callFrame.To = null;
-        if (error != EvmExceptionType.Revert || outputArray.Length == 0)
+        if (error != EvmExceptionType.Revert || outputArray?.Length == 0)
             return;
 
         callFrame.Output = outputArray;
-        if (outputArray.Length < 4)
+        if (outputArray is null || outputArray.Length < 4)
             return;
 
-        ProcessRevertReason(callFrame, output);
+        ProcessRevertReason(callFrame, output.Value);
     }
 
     private static void ProcessRevertReason(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte> output)

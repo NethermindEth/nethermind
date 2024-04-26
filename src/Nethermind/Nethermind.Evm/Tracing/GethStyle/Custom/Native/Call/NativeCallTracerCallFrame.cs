@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
@@ -35,6 +34,4 @@ public class NativeCallTracerCallFrame
     public List<NativeCallTracerLogEntry>? Logs { get; set; }
 
     public UInt256? Value { get; set; }
-
-    public bool RevertedSnapshot { get; set; }
 }
