@@ -137,9 +137,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             // Asynchronously reads data from the PipeReader.
-            ReadResult readResult = _jsonRpcConfig.MaxRequestBodySize is not null
-                ? await reader.ReadAtLeastAsync((int)_jsonRpcConfig.MaxRequestBodySize.Value)
-                : await reader.ReadToEndAsync();
+            ReadResult readResult = await reader.ReadToEndAsync();
 
             buffer = readResult.Buffer;
             // Placeholder for a result in case of deserialization failure.
