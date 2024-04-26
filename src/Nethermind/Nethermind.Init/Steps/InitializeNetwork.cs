@@ -189,8 +189,6 @@ public class InitializeNetwork : IStep
         _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
-        _api.VerkleSyncServer = new VerkleSyncServer(_api.VerkleTreeStore!, _api.LogManager);
-
         InitDiscovery();
         if (cancellationToken.IsCancellationRequested)
         {
@@ -214,6 +212,7 @@ public class InitializeNetwork : IStep
 
         if (_syncConfig.VerkleSync)
         {
+            _api.VerkleSyncServer = new VerkleSyncServer(_api.VerkleTreeStore!, _api.LogManager);
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Verkle, 1));
         }
 

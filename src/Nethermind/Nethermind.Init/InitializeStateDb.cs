@@ -173,7 +173,7 @@ public class InitializeStateDb : IStep
             {
                 IVerkleTreeStore verkleTreeStore;
                 setApi.VerkleTreeStore = verkleTreeStore = new NullVerkleTreeStore();
-                worldState = setApi.WorldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
+                worldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
                 stateManager = setApi.WorldStateManager = new VerkleWorldStateManager(
                     worldState,
                     verkleTreeStore,
@@ -185,7 +185,7 @@ public class InitializeStateDb : IStep
                 VerkleTreeStore<VerkleSyncCache> verkleTreeStore;
                 setApi.VerkleTreeStore = verkleTreeStore = new VerkleTreeStore<VerkleSyncCache>(getApi.DbProvider, getApi.LogManager);
                 setApi.VerkleArchiveStore = new(verkleTreeStore, getApi.DbProvider, getApi.LogManager);
-                worldState = setApi.WorldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
+                worldState = new VerkleWorldState(new VerkleStateTree(verkleTreeStore, getApi.LogManager), codeDb, getApi.LogManager);
                 stateManager = setApi.WorldStateManager = new VerkleWorldStateManager(
                     worldState,
                     verkleTreeStore,
