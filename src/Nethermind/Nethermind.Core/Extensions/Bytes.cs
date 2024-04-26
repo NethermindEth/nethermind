@@ -649,7 +649,7 @@ namespace Nethermind.Core.Extensions
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {
-            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingNibbleZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
@@ -943,10 +943,21 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static int CountLeadingZeros(this ReadOnlySpan<byte> bytes)
+        public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)
         {
             int firstNonZero = bytes.IndexOfAnyExcept((byte)0);
-            return firstNonZero < 0 ? bytes.Length : firstNonZero;
+            if (firstNonZero < 0)
+            {
+                return bytes.Length * 2;
+            }
+
+            int leadingZeros = firstNonZero * 2;
+            if ((bytes[firstNonZero] & 0b1111_0000) == 0)
+            {
+                leadingZeros++;
+            }
+
+            return leadingZeros;
         }
 
         public static int CountZeros(this Span<byte> data)
