@@ -15,7 +15,7 @@ public static class PipeReaderExtensions
         {
             ReadResult result = await reader.ReadAsync().ConfigureAwait(false);
             ReadOnlySequence<byte> buffer = result.Buffer;
-            if (buffer.IsEmpty && result.IsCompleted)
+            if (result.IsCompleted || result.IsCanceled)
             {
                 return result;
             }
