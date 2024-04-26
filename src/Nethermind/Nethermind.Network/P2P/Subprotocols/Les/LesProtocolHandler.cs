@@ -76,8 +76,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
             };
             Send(statusMessage);
 
-            Metrics.LesStatusesSent++;
-
             CheckProtocolInitTimeout().ContinueWith(x =>
             {
                 if (x.IsFaulted && Logger.IsError)
@@ -154,8 +152,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Les
 
         public void Handle(StatusMessage status)
         {
-            Metrics.LesStatusesReceived++;
-
             // set defaults
             if (!status.AnnounceType.HasValue) status.AnnounceType = 1;
 

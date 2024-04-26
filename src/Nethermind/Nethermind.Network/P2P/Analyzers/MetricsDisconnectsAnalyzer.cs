@@ -10,102 +10,14 @@ namespace Nethermind.Network.P2P.Analyzers
     {
         public void ReportDisconnect(DisconnectReason reason, DisconnectType type, string details)
         {
-            EthDisconnectReason ethReason = reason.ToEthDisconnectReason();
-
             if (type == DisconnectType.Remote)
             {
                 Metrics.RemoteDisconnectsTotal.Increment(reason);
-
-                switch (ethReason)
-                {
-                    case EthDisconnectReason.BreachOfProtocol:
-                        Metrics.BreachOfProtocolDisconnects++;
-                        break;
-                    case EthDisconnectReason.UselessPeer:
-                        Metrics.UselessPeerDisconnects++;
-                        break;
-                    case EthDisconnectReason.TooManyPeers:
-                        Metrics.TooManyPeersDisconnects++;
-                        break;
-                    case EthDisconnectReason.AlreadyConnected:
-                        Metrics.AlreadyConnectedDisconnects++;
-                        break;
-                    case EthDisconnectReason.IncompatibleP2PVersion:
-                        Metrics.IncompatibleP2PDisconnects++;
-                        break;
-                    case EthDisconnectReason.NullNodeIdentityReceived:
-                        Metrics.NullNodeIdentityDisconnects++;
-                        break;
-                    case EthDisconnectReason.ClientQuitting:
-                        Metrics.ClientQuittingDisconnects++;
-                        break;
-                    case EthDisconnectReason.UnexpectedIdentity:
-                        Metrics.UnexpectedIdentityDisconnects++;
-                        break;
-                    case EthDisconnectReason.ReceiveMessageTimeout:
-                        Metrics.ReceiveMessageTimeoutDisconnects++;
-                        break;
-                    case EthDisconnectReason.DisconnectRequested:
-                        Metrics.DisconnectRequestedDisconnects++;
-                        break;
-                    case EthDisconnectReason.IdentitySameAsSelf:
-                        Metrics.SameAsSelfDisconnects++;
-                        break;
-                    case EthDisconnectReason.TcpSubSystemError:
-                        Metrics.TcpSubsystemErrorDisconnects++;
-                        break;
-                    default:
-                        Metrics.OtherDisconnects++;
-                        break;
-                }
             }
 
             if (type == DisconnectType.Local)
             {
                 Metrics.LocalDisconnectsTotal.Increment(reason);
-
-                switch (ethReason)
-                {
-                    case EthDisconnectReason.BreachOfProtocol:
-                        Metrics.LocalBreachOfProtocolDisconnects++;
-                        break;
-                    case EthDisconnectReason.UselessPeer:
-                        Metrics.LocalUselessPeerDisconnects++;
-                        break;
-                    case EthDisconnectReason.TooManyPeers:
-                        Metrics.LocalTooManyPeersDisconnects++;
-                        break;
-                    case EthDisconnectReason.AlreadyConnected:
-                        Metrics.LocalAlreadyConnectedDisconnects++;
-                        break;
-                    case EthDisconnectReason.IncompatibleP2PVersion:
-                        Metrics.LocalIncompatibleP2PDisconnects++;
-                        break;
-                    case EthDisconnectReason.NullNodeIdentityReceived:
-                        Metrics.LocalNullNodeIdentityDisconnects++;
-                        break;
-                    case EthDisconnectReason.ClientQuitting:
-                        Metrics.LocalClientQuittingDisconnects++;
-                        break;
-                    case EthDisconnectReason.UnexpectedIdentity:
-                        Metrics.LocalUnexpectedIdentityDisconnects++;
-                        break;
-                    case EthDisconnectReason.ReceiveMessageTimeout:
-                        Metrics.LocalReceiveMessageTimeoutDisconnects++;
-                        break;
-                    case EthDisconnectReason.DisconnectRequested:
-                        Metrics.LocalDisconnectRequestedDisconnects++;
-                        break;
-                    case EthDisconnectReason.IdentitySameAsSelf:
-                        Metrics.LocalSameAsSelfDisconnects++;
-                        break;
-                    case EthDisconnectReason.TcpSubSystemError:
-                        Metrics.LocalTcpSubsystemErrorDisconnects++;
-                        break;
-                    default:
-                        Metrics.LocalOtherDisconnects++;
-                        break;
-                }
             }
         }
     }
