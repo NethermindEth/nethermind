@@ -11,6 +11,7 @@ using Nethermind.Int256;
 using System.Runtime.Intrinsics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -41,63 +42,16 @@ public static class IntrinsicGasCalculator
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-        int dataLength = data.Length;
-        int totalZeros = 0;
-        if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
-        {
-            ref byte bytes = ref MemoryMarshal.GetReference(data);
-            int i = 0;
-            for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
-            {
-                Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
-                ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
-                totalZeros += BitOperations.PopCount(flags);
-            }
 
-            data = data[i..];
-        }
-        if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
-        {
-            ref byte bytes = ref MemoryMarshal.GetReference(data);
-            int i = 0;
-            for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
-            {
-                Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
-                uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
-                totalZeros += BitOperations.PopCount(flags);
-            }
-
-            data = data[i..];
-        }
-        if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
-        {
-            ref byte bytes = ref MemoryMarshal.GetReference(data);
-            int i = 0;
-            for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
-            {
-                Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
-                uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
-                totalZeros += BitOperations.PopCount(flags);
-            }
-
-            data = data[i..];
-        }
-
-        for (int i = 0; i < data.Length; i++)
-        {
-            if (data[i] == 0)
-            {
-                totalZeros++;
-            }
-        }
+        int totalZeros = data.CountZeros();
 
         var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)dataLength) * GasCostOf.InitCodeWord
+            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
             : 0);
 
         return baseDataCost +
             totalZeros * GasCostOf.TxDataZero +
-            (dataLength - totalZeros) * txDataNonZeroGasCost;
+            (data.Length - totalZeros) * txDataNonZeroGasCost;
     }
 
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
