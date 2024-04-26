@@ -41,11 +41,8 @@ public static class IntrinsicGasCalculator
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-
-        var dataCost = transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
-            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
-            : 0;
-
+        int dataLength = data.Length;
+        int totalZeros = 0;
         if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
         {
             ref byte bytes = ref MemoryMarshal.GetReference(data);
@@ -54,8 +51,7 @@ public static class IntrinsicGasCalculator
             {
                 Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
                 ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
-                int zeros = BitOperations.PopCount(flags);
-                dataCost += zeros * GasCostOf.TxDataZero + (Vector512<byte>.Count - zeros) * txDataNonZeroGasCost;
+                totalZeros += BitOperations.PopCount(flags);
             }
 
             data = data[i..];
@@ -68,8 +64,7 @@ public static class IntrinsicGasCalculator
             {
                 Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
                 uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
-                int zeros = BitOperations.PopCount(flags);
-                dataCost += zeros * GasCostOf.TxDataZero + (Vector256<byte>.Count - zeros) * txDataNonZeroGasCost;
+                totalZeros += BitOperations.PopCount(flags);
             }
 
             data = data[i..];
@@ -82,8 +77,7 @@ public static class IntrinsicGasCalculator
             {
                 Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
                 uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
-                int zeros = BitOperations.PopCount(flags);
-                dataCost += zeros * GasCostOf.TxDataZero + (Vector128<byte>.Count - zeros) * txDataNonZeroGasCost;
+                totalZeros += BitOperations.PopCount(flags);
             }
 
             data = data[i..];
@@ -91,10 +85,19 @@ public static class IntrinsicGasCalculator
 
         for (int i = 0; i < data.Length; i++)
         {
-            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
+            if (data[i] == 0)
+            {
+                totalZeros++;
+            }
         }
 
-        return dataCost;
+        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
+            ? EvmPooledMemory.Div32Ceiling((UInt256)dataLength) * GasCostOf.InitCodeWord
+            : 0);
+
+        return baseDataCost +
+            totalZeros * GasCostOf.TxDataZero +
+            (dataLength - totalZeros) * txDataNonZeroGasCost;
     }
 
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)
