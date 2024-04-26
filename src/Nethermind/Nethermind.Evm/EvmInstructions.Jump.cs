@@ -23,7 +23,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionJumpI<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
+    public static EvmExceptionType InstructionJumpIf<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
         where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= GasCostOf.High;

@@ -902,7 +902,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     InstructionEnvUInt256<OpGasPrice, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.EXTCODESIZE:
-                    exceptionType = InstructionExtCodeSize(vmState, ref stack, ref gasAvailable, spec);
+                    if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
+                    {
+                        exceptionType = InstructionExtCodeSizeOptimized(vmState, ref stack, spec, ref gasAvailable, ref programCounter, code);
+                    }
+                    else
+                    {
+                        exceptionType = InstructionExtCodeSizeTracing(vmState, ref stack, spec, ref gasAvailable);
+                    }
                     break;
                 case Instruction.EXTCODECOPY:
                     exceptionType = InstructionExtCodeCopy(vmState, ref stack, ref gasAvailable, spec);
@@ -972,7 +979,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.JUMPI:
-                    exceptionType = InstructionJumpI(vmState, ref stack, ref gasAvailable, ref programCounter);
+                    exceptionType = InstructionJumpIf(vmState, ref stack, ref gasAvailable, ref programCounter);
                     break;
                 case Instruction.PC:
                     gasAvailable -= GasCostOf.Base;
@@ -1036,13 +1043,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.PUSH30:
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
-                    gasAvailable -= GasCostOf.VeryLow;
-
-                    int length = instruction - Instruction.PUSH1 + 1;
-                    int usedFromCode = Math.Min(code.Length - programCounter, length);
-                    stack.PushLeftPaddedBytes(code.Slice(programCounter, usedFromCode), length);
-
-                    programCounter += length;
+                    InstructionPushN(ref stack, ref gasAvailable, ref programCounter, instruction, code);
                     break;
                 case Instruction.DUP1:
                 case Instruction.DUP2:
@@ -1381,7 +1382,71 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private EvmExceptionType InstructionExtCodeSize<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    private EvmExceptionType InstructionExtCodeSizeOptimized<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec, ref long gasAvailable, ref int programCounter, ReadOnlySpan<byte> code)
+        where TTracingInstructions : struct, IIsTracing
+    {
+        Debug.Assert(typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length);
+
+        gasAvailable -= spec.GetExtCodeCost();
+
+        Address address = stack.PopAddress();
+        if (address is null) return EvmExceptionType.StackUnderflow;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return EvmExceptionType.OutOfGas;
+
+        bool optimizeAccess = false;
+        Instruction nextInstruction = (Instruction)code[programCounter];
+        // code.length is zero
+        if (nextInstruction == Instruction.ISZERO)
+        {
+            optimizeAccess = true;
+        }
+        // code.length > 0 || code.length == 0
+        else if ((nextInstruction == Instruction.GT || nextInstruction == Instruction.EQ) &&
+                stack.PeekUInt256IsZero())
+        {
+            optimizeAccess = true;
+            stack.PopLimbo();
+        }
+
+        if (optimizeAccess)
+        {
+            // EXTCODESIZE ISZERO/GT/EQ peephole optimization.
+            // In solidity 0.8.1+: `return account.code.length > 0;`
+            // is is a common pattern to check if address is a contract
+            // however we can just check the address's loaded CodeHash
+            // to reduce storage access from trying to load the code
+
+            programCounter++;
+            // Add gas cost for ISZERO, GT, or EQ
+            gasAvailable -= GasCostOf.VeryLow;
+
+            // IsContract
+            bool isCodeLengthNotZero = _state.IsContract(address);
+            if (nextInstruction == Instruction.GT)
+            {
+                // Invert, to IsNotContract
+                isCodeLengthNotZero = !isCodeLengthNotZero;
+            }
+
+            if (!isCodeLengthNotZero)
+            {
+                stack.PushOne();
+            }
+            else
+            {
+                stack.PushZero();
+            }
+
+            return EvmExceptionType.None;
+        }
+
+        return OpExtCodeSize(address, ref stack, spec);
+    }
+
+    [SkipLocalsInit]
+    private EvmExceptionType InstructionExtCodeSizeTracing<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec, ref long gasAvailable)
+        where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= spec.GetExtCodeCost();
 
@@ -1390,6 +1455,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return EvmExceptionType.OutOfGas;
 
+        return OpExtCodeSize(address, ref stack, spec);
+    }
+
+    [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private EvmExceptionType OpExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec)
+        where TTracingInstructions : struct, IIsTracing
+    {
         int codeLength = GetCachedCodeInfo(_worldState, address, spec).MachineCode.Length;
         stack.PushUInt32(codeLength);
 
