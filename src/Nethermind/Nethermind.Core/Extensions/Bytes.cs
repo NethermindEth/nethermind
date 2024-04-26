@@ -945,28 +945,8 @@ namespace Nethermind.Core.Extensions
 
         public static int CountLeadingZeros(this ReadOnlySpan<byte> bytes)
         {
-            int leadingZeros = 0;
-            for (int i = 0; i < bytes.Length; i++)
-            {
-                if ((bytes[i] & 0b1111_0000) == 0)
-                {
-                    leadingZeros++;
-                    if ((bytes[i] & 0b1111) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            return leadingZeros;
+            int firstNonZero = bytes.IndexOfAnyExcept((byte)0);
+            return firstNonZero < 0 ? bytes.Length : firstNonZero;
         }
 
         public static int CountZeros(this Span<byte> data)
