@@ -17,6 +17,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionBitwise<TOpBitwise, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
         where TOpBitwise : struct, IOpBitwise
         where TTracingInstructions : struct, IIsTracing

@@ -12,6 +12,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionJump<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
         where TTracingInstructions : struct, IIsTracing
     {
@@ -23,6 +24,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionJumpIf<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
         where TTracingInstructions : struct, IIsTracing
     {

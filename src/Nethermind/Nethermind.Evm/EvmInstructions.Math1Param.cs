@@ -17,6 +17,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionMath1Param<TOpMath, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
         where TOpMath : struct, IOpMath1Param
         where TTracingInstructions : struct, IIsTracing

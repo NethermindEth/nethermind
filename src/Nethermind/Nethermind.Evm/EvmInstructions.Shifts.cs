@@ -1,12 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Core.Specs;
-using Nethermind.Int256;
-
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
+using Nethermind.Core.Specs;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
@@ -22,6 +18,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionShift<TOpShift, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TOpShift : struct, IOpShift
         where TTracingInstructions : struct, IIsTracing
@@ -47,6 +44,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionSar<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {

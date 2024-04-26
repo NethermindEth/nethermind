@@ -1,20 +1,14 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Core;
-using Nethermind.Evm.Tracing;
-
 using System;
 using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics;
+using Nethermind.Evm.Tracing;
 using static Nethermind.Evm.VirtualMachine;
-using static System.Runtime.CompilerServices.Unsafe;
 
 
 namespace Nethermind.Evm;
 using Int256;
-
-using Nethermind.Core.Specs;
 
 internal sealed partial class EvmInstructions
 {
@@ -24,6 +18,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy, TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ITxTracer tracer)
         where TOpCodeCopy : struct, IOpCodeCopy
         where TTracingInstructions : struct, IIsTracing

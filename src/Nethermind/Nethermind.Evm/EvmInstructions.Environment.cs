@@ -22,6 +22,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void InstructionEnvBytes<TOpEnv, TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
         where TOpEnv : struct, IOpEnvBytes
         where TTracingInstructions : struct, IIsTracing
@@ -34,6 +35,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     public static void InstructionEnvUInt256<TOpEnv, TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
         where TOpEnv : struct, IOpEnvUInt256
         where TTracingInstructions : struct, IIsTracing
