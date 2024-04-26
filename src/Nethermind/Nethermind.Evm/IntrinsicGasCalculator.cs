@@ -2,13 +2,16 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.IO;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
-using Nethermind.Specs;
+using System.Runtime.Intrinsics;
+using System.Runtime.InteropServices;
+using System.Runtime.CompilerServices;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Evm;
 
@@ -66,13 +69,17 @@ public static class IntrinsicGasCalculator
     {
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
-        long dataCost = 0;
-        for (int i = 0; i < data.Length; i++)
-        {
-            dataCost += data[i] == 0 ? GasCostOf.TxDataZero : txDataNonZeroGasCost;
-        }
+        Span<byte> data = transaction.Data.GetValueOrDefault().Span;
 
-        return dataCost;
+        int totalZeros = data.CountZeros();
+
+        var baseDataCost = (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled
+            ? EvmPooledMemory.Div32Ceiling((UInt256)data.Length) * GasCostOf.InitCodeWord
+            : 0);
+
+        return baseDataCost +
+            totalZeros * GasCostOf.TxDataZero +
+            (data.Length - totalZeros) * txDataNonZeroGasCost;
     }
 
     private static long AccessListCost(Transaction transaction, IReleaseSpec releaseSpec)

@@ -193,19 +193,19 @@ internal static class EvmObjectFormat
             // we need to be able to parse header + minimum section lenghts
             if (container.Length < MINIMUM_SIZE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code is too small to be valid code");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Eof{VERSION}, Code is too small to be valid code");
                 return false;
             }
 
             if (!container.StartsWith(MAGIC))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Code doesn't start with Magic byte sequence expected {MAGIC.ToHexString(true)} ");
                 return false;
             }
 
             if (container[VERSION_OFFSET] != VERSION)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Code is not Eof version {VERSION}");
                 return false;
             }
 
@@ -215,20 +215,20 @@ internal static class EvmObjectFormat
             int TYPESECTION_HEADER_ENDOFFSET = TYPESECTION_HEADER_STARTOFFSET + TWO_BYTE_LENGTH;
             if (container[TYPESECTION_HEADER_STARTOFFSET] != (byte)Separator.KIND_TYPE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Code is not Eof version {VERSION}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Code is not Eof version {VERSION}");
                 return false;
             }
             sectionSizes.TypeSectionSize = GetUInt16(container, TYPESECTION_HEADER_STARTOFFSET + ONE_BYTE_LENGTH);
             if (sectionSizes.TypeSectionSize < MINIMUM_TYPESECTION_SIZE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : TypeSection Size must be at least 3, but found {sectionSizes.TypeSectionSize}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : TypeSection Size must be at least 3, but found {sectionSizes.TypeSectionSize}");
                 return false;
             }
 
             int CODESECTION_HEADER_STARTOFFSET = TYPESECTION_HEADER_ENDOFFSET + ONE_BYTE_LENGTH;
             if (container[CODESECTION_HEADER_STARTOFFSET] != (byte)Separator.KIND_CODE)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -236,7 +236,7 @@ internal static class EvmObjectFormat
             sectionSizes.CodeSectionSize = (ushort)(numberOfCodeSections * TWO_BYTE_LENGTH);
             if (numberOfCodeSections > MAXIMUM_NUM_CODE_SECTIONS)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : code sections count must not exceed {MAXIMUM_NUM_CODE_SECTIONS}");
                 return false;
             }
 
@@ -249,7 +249,7 @@ internal static class EvmObjectFormat
 
                 if (codeSectionSize == 0)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSectionSize}");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : Empty Code Section are not allowed, CodeSectionSize must be > 0 but found {codeSectionSize}");
                     return false;
                 }
 
@@ -264,9 +264,9 @@ internal static class EvmObjectFormat
             {
                 ushort numberOfContainerSections = GetUInt16(container, CONTAINERSECTION_HEADER_STARTOFFSET + ONE_BYTE_LENGTH);
                 sectionSizes.ContainerSectionSize = (ushort)(numberOfContainerSections * TWO_BYTE_LENGTH);
-                if (numberOfContainerSections > MAXIMUM_NUM_CONTAINER_SECTIONS)
+                if (numberOfContainerSections is > MAXIMUM_NUM_CONTAINER_SECTIONS or 0)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3540 : code sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : code sections count must not exceed {MAXIMUM_NUM_CONTAINER_SECTIONS}");
                     return false;
                 }
 
@@ -279,7 +279,7 @@ internal static class EvmObjectFormat
 
                     if (containerSectionSize == 0)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
+                        if (Logger.IsTrace) Logger.Trace($"EOF : Empty Container Section are not allowed, containerSectionSize must be > 0 but found {containerSectionSize}");
                         return false;
                     }
 
@@ -293,7 +293,7 @@ internal static class EvmObjectFormat
             int DATASECTION_HEADER_ENDOFFSET = DATASECTION_HEADER_STARTOFFSET + TWO_BYTE_LENGTH;
             if (container[DATASECTION_HEADER_STARTOFFSET] != (byte)Separator.KIND_DATA)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
             sectionSizes.DataSectionSize = GetUInt16(container, DATASECTION_HEADER_STARTOFFSET + ONE_BYTE_LENGTH);
@@ -302,7 +302,7 @@ internal static class EvmObjectFormat
             int HEADER_TERMINATOR_OFFSET = DATASECTION_HEADER_ENDOFFSET + ONE_BYTE_LENGTH;
             if (container[HEADER_TERMINATOR_OFFSET] != (byte)Separator.TERMINATOR)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : Eof{VERSION}, Code header is not well formatted");
+                if (Logger.IsTrace) Logger.Trace($"EOF : Eof{VERSION}, Code header is not well formatted");
                 return false;
             }
 
@@ -356,32 +356,32 @@ internal static class EvmObjectFormat
             if (header.ContainerSection?.Count > MAXIMUM_NUM_CONTAINER_SECTIONS)
             {
                 // move this check where `header.ExtraContainers.Count` is parsed
-                if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSection?.Count}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : initcode Containers bount must be less than {MAXIMUM_NUM_CONTAINER_SECTIONS} but found {header.ContainerSection?.Count}");
                 return false;
             }
 
             if (contractBody.Length != calculatedCodeLength)
             {
-                if (Logger.IsTrace) Logger.Trace("EIP-3540 : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
+                if (Logger.IsTrace) Logger.Trace("EOF : SectionSizes indicated in bundled header are incorrect, or ContainerCode is incomplete");
                 return false;
             }
 
             if (codeSections.Count == 0 || codeSections.SubSectionsSizes.Any(size => size == 0))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-3540 : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Count}");
+                if (Logger.IsTrace) Logger.Trace($"EOF : CodeSection size must follow a CodeSection, CodeSection length was {codeSections.Count}");
                 return false;
             }
 
             if (codeSections.Count != (typeSectionSize / MINIMUM_TYPESECTION_SIZE))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Count}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
+                if (Logger.IsTrace) Logger.Trace($"EOF: Code Sections count must match TypeSection count, CodeSection count was {codeSections.Count}, expected {typeSectionSize / MINIMUM_TYPESECTION_SIZE}");
                 return false;
             }
 
             ReadOnlySpan<byte> typesection = container.Slice(typeSectionStart, typeSectionSize);
             if (!ValidateTypeSection(typesection))
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: invalid typesection found");
+                if (Logger.IsTrace) Logger.Trace($"EOF: invalid typesection found");
                 return false;
             }
 
@@ -420,13 +420,13 @@ internal static class EvmObjectFormat
         {
             if (types[INPUTS_OFFSET] != 0 || types[OUTPUTS_OFFSET] != NON_RETURNING)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: first 2 bytes of type section must be 0s");
+                if (Logger.IsTrace) Logger.Trace($"EOF: first 2 bytes of type section must be 0s");
                 return false;
             }
 
             if (types.Length % MINIMUM_TYPESECTION_SIZE != 0)
             {
-                if (Logger.IsTrace) Logger.Trace($"EIP-4750: type section length must be a product of {MINIMUM_TYPESECTION_SIZE}");
+                if (Logger.IsTrace) Logger.Trace($"EOF: type section length must be a product of {MINIMUM_TYPESECTION_SIZE}");
                 return false;
             }
 
@@ -438,19 +438,19 @@ internal static class EvmObjectFormat
 
                 if (inputCount > INPUTS_MAX)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many inputs");
+                    if (Logger.IsTrace) Logger.Trace("EOF : Too many inputs");
                     return false;
                 }
 
                 if (outputCount > OUTPUTS_MAX && outputCount != NON_RETURNING)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Too many outputs");
+                    if (Logger.IsTrace) Logger.Trace("EOF : Too many outputs");
                     return false;
                 }
 
                 if (maxStackHeight > MAX_STACK_HEIGHT)
                 {
-                    if (Logger.IsTrace) Logger.Trace("EIP-3540 : Stack depth too high");
+                    if (Logger.IsTrace) Logger.Trace("EOF : Stack depth too high");
                     return false;
                 }
             }
@@ -473,7 +473,7 @@ internal static class EvmObjectFormat
 
                     if (!opcode.IsValid(IsEofContext: true))
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-3670 : CodeSection contains undefined opcode {opcode}");
+                        if (Logger.IsTrace) Logger.Trace($"EOF : CodeSection contains undefined opcode {opcode}");
                         return false;
                     }
 
@@ -481,7 +481,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Static Relative Jump Argument underflow");
                             return false;
                         }
 
@@ -490,7 +490,7 @@ internal static class EvmObjectFormat
 
                         if (rjumpdest < 0 || rjumpdest >= code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jump Destination outside of Code bounds");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Static Relative Jump Destination outside of Code bounds");
                             return false;
                         }
 
@@ -503,7 +503,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : JUMPF Argument underflow");
                             return false;
                         }
 
@@ -511,7 +511,7 @@ internal static class EvmObjectFormat
 
                         if (targetSectionId >= header.CodeSections.Count)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-6206 : JUMPF to unknown code section");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : JUMPF to unknown code section");
                             return false;
                         }
 
@@ -519,7 +519,7 @@ internal static class EvmObjectFormat
 
                         if (isNonReturning && !isTargetSectionNonReturning)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : JUMPF from non returning code-sections can only call non-returning sections");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : JUMPF from non returning code-sections can only call non-returning sections");
                             return false;
                         }
 
@@ -531,7 +531,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-663 : {opcode.FastToString()} Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : {opcode.FastToString()} Argument underflow");
                             return false;
                         }
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
@@ -542,7 +542,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Static Relative Jumpv Argument underflow");
                             return false;
                         }
 
@@ -550,13 +550,13 @@ internal static class EvmObjectFormat
                         jumpsCount += count;
                         if (count < MINIMUMS_ACCEPTABLE_JUMPV_JUMPTABLE_LENGTH)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable must have at least 1 entry");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : jumpv jumptable must have at least 1 entry");
                             return false;
                         }
 
                         if (postInstructionByte + ONE_BYTE_LENGTH + count * TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4200 : jumpv jumptable underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : jumpv jumptable underflow");
                             return false;
                         }
 
@@ -567,7 +567,7 @@ internal static class EvmObjectFormat
                             var rjumpdest = offset + immediateValueSize + postInstructionByte;
                             if (rjumpdest < 0 || rjumpdest >= code.Length)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Static Relative Jumpv Destination outside of Code bounds");
+                                if (Logger.IsTrace) Logger.Trace($"EOF : Static Relative Jumpv Destination outside of Code bounds");
                                 return false;
                             }
                             BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, jumpdests, ref rjumpdest);
@@ -579,7 +579,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : CALLF Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : CALLF Argument underflow");
                             return false;
                         }
 
@@ -587,14 +587,14 @@ internal static class EvmObjectFormat
 
                         if (targetSectionId >= header.CodeSections.Count)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-4750 : Invalid Section Id");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Invalid Section Id");
                             return false;
                         }
 
                         byte targetSectionOutputCount = typesection[targetSectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET];
                         if (targetSectionOutputCount == 0x80)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CALLF into non-returning function");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : CALLF into non-returning function");
                             return false;
                         }
 
@@ -604,7 +604,7 @@ internal static class EvmObjectFormat
 
                     if (opcode is Instruction.RETF && typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] == 0x80)
                     {
-                        if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : non returning sections are not allowed to use opcode {Instruction.RETF}");
+                        if (Logger.IsTrace) Logger.Trace($"EOF : non returning sections are not allowed to use opcode {Instruction.RETF}");
                         return false;
                     }
 
@@ -612,7 +612,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + TWO_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : DATALOADN Argument underflow");
                             return false;
                         }
 
@@ -621,7 +621,7 @@ internal static class EvmObjectFormat
                         if (dataSectionOffset * 32 >= header.DataSection.Size)
                         {
 
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN's immediate argument must be less than datasection.Length / 32 i.e : {header.DataSection.Size / 32}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : DATALOADN's immediate argument must be less than datasection.Length / 32 i.e : {header.DataSection.Size / 32}");
                             return false;
                         }
                         BitmapHelper.HandleNumbits(TWO_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
@@ -631,7 +631,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : DATALOADN Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : DATALOADN Argument underflow");
                             return false;
                         }
 
@@ -639,7 +639,7 @@ internal static class EvmObjectFormat
                         if (containerId >= 0 && containerId < header.ContainerSection?.Count)
                         {
 
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : RETURNCONTRACT's immediate argument must be less than containersection.Count i.e : {header.ContainerSection?.Count}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : RETURNCONTRACT's immediate argument must be less than containersection.Count i.e : {header.ContainerSection?.Count}");
                             return false;
                         }
                         BitmapHelper.HandleNumbits(ONE_BYTE_LENGTH, codeBitmap, ref postInstructionByte);
@@ -649,7 +649,7 @@ internal static class EvmObjectFormat
                     {
                         if (postInstructionByte + ONE_BYTE_LENGTH > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3 Argument underflow");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : CREATE3 Argument underflow");
                             return false;
                         }
 
@@ -658,14 +658,14 @@ internal static class EvmObjectFormat
 
                         if (initcodeSectionId >= header.ContainerSection?.Count)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSections.Count}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : CREATE3's immediate must falls within the Containers' range available, i.e : {header.CodeSections.Count}");
                             return false;
                         }
 
                         ReadOnlySpan<byte> subcontainer = container.Slice(header.ContainerSection.Value[initcodeSectionId].Start, header.ContainerSection.Value[initcodeSectionId].Size);
                         if(IsValidEof(subcontainer, ValidationStrategy.ValidateFullBody, out _))
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-XXXX : EOFCREATE's immediate must be a valid Eof");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : EOFCREATE's immediate must be a valid Eof");
                             return false;
                         }
 
@@ -676,7 +676,7 @@ internal static class EvmObjectFormat
                         int len = opcode - Instruction.PUSH0;
                         if (postInstructionByte + len > code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : PC Reached out of bounds");
                             return false;
                         }
                         BitmapHelper.HandleNumbits(len, codeBitmap, ref postInstructionByte);
@@ -686,14 +686,14 @@ internal static class EvmObjectFormat
 
                 if (pos > code.Length)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-3670 : PC Reached out of bounds");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : PC Reached out of bounds");
                     return false;
                 }
 
                 bool result = !BitmapHelper.CheckCollision(codeBitmap, jumpdests);
                 if (!result)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-4200 : Invalid Jump destination");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : Invalid Jump destination");
                 }
 
                 if (!ValidateStackState(sectionId, code, typesection, jumpsCount))
@@ -740,7 +740,7 @@ internal static class EvmObjectFormat
                         {
                             if (worklet.StackHeight != recordedStackHeight[worklet.Position] - 1)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Branch joint line has invalid stack height");
+                                if (Logger.IsTrace) Logger.Trace($"EOF : Branch joint line has invalid stack height");
                                 return false;
                             }
                             break;
@@ -765,7 +765,7 @@ internal static class EvmObjectFormat
 
                                 if (worklet.StackHeight + maxStackHeight - inputs > MAX_STACK_HEIGHT)
                                 {
-                                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
+                                    if (Logger.IsTrace) Logger.Trace($"EOF : stack head during callf must not exceed {MAX_STACK_HEIGHT}");
                                     return false;
                                 }
                                 break;
@@ -790,7 +790,7 @@ internal static class EvmObjectFormat
 
                         if (worklet.StackHeight < inputs)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack Underflow required {inputs} but found {worklet.StackHeight}");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Stack Underflow required {inputs} but found {worklet.StackHeight}");
                             return false;
                         }
 
@@ -803,13 +803,13 @@ internal static class EvmObjectFormat
                                 {
                                     if (curr_outputs < outputs)
                                     {
-                                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Output Count {outputs} must be less or equal than sectionId {sectionId} output count {curr_outputs}");
+                                        if (Logger.IsTrace) Logger.Trace($"EOF : Output Count {outputs} must be less or equal than sectionId {sectionId} output count {curr_outputs}");
                                         return false;
                                     }
 
                                     if (worklet.StackHeight != curr_outputs + inputs - outputs)
                                     {
-                                        if (Logger.IsTrace) Logger.Trace($"EIP-6206 : Stack Height must {curr_outputs + inputs - outputs} but found {worklet.StackHeight}");
+                                        if (Logger.IsTrace) Logger.Trace($"EOF : Stack Height must {curr_outputs + inputs - outputs} but found {worklet.StackHeight}");
                                         return false;
                                     }
 
@@ -859,7 +859,7 @@ internal static class EvmObjectFormat
                             var expectedHeight = opcode is Instruction.RETF ? typesection[sectionId * MINIMUM_TYPESECTION_SIZE + OUTPUTS_OFFSET] : worklet.StackHeight;
                             if (expectedHeight != worklet.StackHeight)
                             {
-                                if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Stack state invalid required height {expectedHeight} but found {worklet.StackHeight}");
+                                if (Logger.IsTrace) Logger.Trace($"EOF : Stack state invalid required height {expectedHeight} but found {worklet.StackHeight}");
                                 return false;
                             }
                             break;
@@ -867,7 +867,7 @@ internal static class EvmObjectFormat
 
                         else if (worklet.Position >= code.Length)
                         {
-                            if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Invalid code, reached end of code without a terminating instruction");
+                            if (Logger.IsTrace) Logger.Trace($"EOF : Invalid code, reached end of code without a terminating instruction");
                             return false;
                         }
                     }
@@ -875,20 +875,20 @@ internal static class EvmObjectFormat
 
                 if (unreachedBytes > 0)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : bytecode has unreachable segments");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : bytecode has unreachable segments");
                     return false;
                 }
 
                 if (peakStackHeight != suggestedMaxHeight)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : Suggested Max Stack height mismatches with actual Max, expected {suggestedMaxHeight} but found {peakStackHeight}");
                     return false;
                 }
 
                 bool result = peakStackHeight <= MAX_STACK_HEIGHT;
                 if (!result)
                 {
-                    if (Logger.IsTrace) Logger.Trace($"EIP-5450 : stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
+                    if (Logger.IsTrace) Logger.Trace($"EOF : stack overflow exceeded max stack height of {MAX_STACK_HEIGHT} but found {peakStackHeight}");
                     return false;
                 }
                 return result;

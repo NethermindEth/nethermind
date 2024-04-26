@@ -162,13 +162,12 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// <summary>
     ///
     /// </summary>
-    /// <param name="depth"></param>
-    /// <param name="gas"></param>
-    /// <param name="opcode"></param>
     /// <param name="pc"></param>
-    /// <param name="isPostMerge"></param>
+    /// <param name="opcode"></param>
+    /// <param name="gas"></param>
+    /// <param name="env"></param>
     /// <remarks>Depends on <see cref="IsTracingInstructions"/></remarks>
-    void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false);
+    void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env);
 
     /// <summary>
     ///

@@ -83,8 +83,9 @@ namespace Nethermind.AccountAbstraction.Executor
             Output = output;
         }
 
-        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         {
+            int depth = env.GetGethTraceDepth();
             if (_nextOpcodeMustBeCall)
             {
                 _nextOpcodeMustBeCall = false;

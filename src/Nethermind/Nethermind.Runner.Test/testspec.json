@@ -1,6 +1,6 @@
 {
-  "name": "Görli Testnet",
-  "dataDir": "goerli",
+  "name": "A Testnet",
+  "dataDir": "testspecdir",
   "engine": {
     "clique": {
       "params": {
@@ -11,7 +11,7 @@
   },
   "params": {
     "accountStartNonce": "0x0",
-    "chainID": "0x5",
+    "chainID": "0x55",
     "eip140Transition": "0x0",
     "eip145Transition": "0x0",
     "eip150Transition": "0x0",

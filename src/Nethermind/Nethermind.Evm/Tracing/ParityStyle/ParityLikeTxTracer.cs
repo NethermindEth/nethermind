@@ -257,7 +257,7 @@ namespace Nethermind.Evm.Tracing.ParityStyle
             }
         }
 
-        public override void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public override void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         {
             ParityVmOperationTrace operationTrace = new();
             _gasAlreadySetForCurrentOp = false;
