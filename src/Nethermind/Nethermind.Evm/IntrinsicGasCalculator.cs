@@ -12,6 +12,7 @@ using System.Runtime.Intrinsics;
 using System.Runtime.InteropServices;
 using System.Runtime.CompilerServices;
 using Nethermind.Core.Extensions;
+using static System.Runtime.InteropServices.JavaScript.JSType;
 
 namespace Nethermind.Evm;
 
@@ -42,10 +43,14 @@ public static class IntrinsicGasCalculator
     {
         if(releaseSpec.IsEofEnabled && transaction.IsEofContractCreation)
         {
+            long txDataNonZeroGasCost =
+                releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
+
             long initcodeCosts = 0;
             foreach(var initcode in transaction.Initcodes)
             {
-                initcodeCosts += CalculateCalldataCost(initcode, releaseSpec);
+                int totalZeros = initcode.AsSpan().CountZeros();
+                initcodeCosts += totalZeros * GasCostOf.TxDataZero + (initcode.Length - totalZeros) * txDataNonZeroGasCost;
             }
             return initcodeCosts;
         }
@@ -55,7 +60,7 @@ public static class IntrinsicGasCalculator
     private static long DataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         Span<byte> data = transaction.Data.GetValueOrDefault().Span;
-        long dataCost = CalculateCalldataCost(data, releaseSpec);
+        long dataCost = CalculateCalldataCost(transaction, releaseSpec);
 
         if (transaction.IsContractCreation && releaseSpec.IsEip3860Enabled)
         {
@@ -65,7 +70,7 @@ public static class IntrinsicGasCalculator
         return dataCost;
     }
 
-    private static long CalculateCalldataCost(Span<byte> data, IReleaseSpec releaseSpec)
+    private static long CalculateCalldataCost(Transaction transaction, IReleaseSpec releaseSpec)
     {
         long txDataNonZeroGasCost =
             releaseSpec.IsEip2028Enabled ? GasCostOf.TxDataNonZeroEip2028 : GasCostOf.TxDataNonZero;
