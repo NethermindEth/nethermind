@@ -45,7 +45,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
-        bool success = SubgroupChecks.G2IsInSubGroup(inputData.Span[..(4*BlsParams.LenFp)])
+        bool success = SubgroupChecks.G2IsInSubGroup(inputData.Span[..(4 * BlsParams.LenFp)])
             && Pairings.BlsG2Mul(inputData.Span, output);
         if (success)
         {
