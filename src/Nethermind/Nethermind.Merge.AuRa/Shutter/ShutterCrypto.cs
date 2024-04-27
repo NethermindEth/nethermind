@@ -41,8 +41,11 @@ internal class ShutterCrypto
         Span<byte> identity = stackalloc byte[52];
         identityPrefix.Unwrap().CopyTo(identity);
         sender.Bytes.CopyTo(identity[32..]);
-        // todo: reverse?
-        return G1.generator().mult(Keccak.Compute(identity).Bytes.ToArray());
+
+        // todo: check if need to reverse?
+        Span<byte> hash = Keccak.Compute(identity).Bytes;
+        hash.Reverse();
+        return G1.generator().mult(hash.ToArray());
     }
 
     public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
@@ -179,7 +182,14 @@ internal class ShutterCrypto
         byte[] preimage = new byte[bytes.Length + 1];
         preimage[0] = 0x1;
         bytes.CopyTo(preimage.AsSpan()[1..]);
-        return new G1().hash_to(preimage);
+
+        // todo: change once shutter updates
+        // return new G1().hash_to(preimage);
+
+        // todo: check if need to reverse?
+        Span<byte> hash = Keccak.Compute(preimage).Bytes;
+        hash.Reverse();
+        return G1.generator().mult(hash.ToArray());
     }
 
     public static Bytes32 Hash2(GT p)
