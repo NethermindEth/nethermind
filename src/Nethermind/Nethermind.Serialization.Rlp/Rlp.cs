@@ -372,6 +372,20 @@ namespace Nethermind.Serialization.Rlp
             return bigInteger == 0 ? OfEmptyByteArray : Encode(bigInteger.ToBigEndianByteArray(outputLength));
         }
 
+        public static Rlp Encode(in UInt256 value, int length = -1)
+        {
+            if (value.IsZero && length == -1)
+            {
+                return OfEmptyByteArray;
+            }
+            else
+            {
+                Span<byte> bytes = stackalloc byte[32];
+                value.ToBigEndian(bytes);
+                return Encode(length != -1 ? bytes.Slice(bytes.Length - length, length) : bytes.WithoutLeadingZeros());
+            }
+        }
+
         public static int Encode(Span<byte> buffer, int position, ReadOnlySpan<byte> input)
         {
             if (input.Length == 1 && input[0] < 128)
