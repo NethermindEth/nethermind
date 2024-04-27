@@ -43,8 +43,8 @@ public class InvalidBlockInterceptorTest
     public void TestValidateSuggestedBlock(bool baseReturnValue, bool isInvalidBlockReported)
     {
         Block block = Build.A.Block.TestObject;
-        _baseValidator.ValidateSuggestedBlock(block, out string? error).Returns(baseReturnValue);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _baseValidator.ValidateSuggestedBlock(block, out _).Returns(baseReturnValue);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
 
         _tracker.Received().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         if (isInvalidBlockReported)
@@ -103,7 +103,7 @@ public class InvalidBlockInterceptorTest
         ));
 
         _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
@@ -121,7 +121,7 @@ public class InvalidBlockInterceptorTest
         ));
 
         _baseValidator.ValidateSuggestedBlock(block, out _).Returns(false);
-        _invalidBlockInterceptor.ValidateSuggestedBlock(block);
+        _invalidBlockInterceptor.ValidateSuggestedBlock(block, out _);
 
         _tracker.DidNotReceive().SetChildParent(block.GetOrCalculateHash(), block.ParentHash!);
         _tracker.DidNotReceive().OnInvalidBlock(block.GetOrCalculateHash(), block.ParentHash);
