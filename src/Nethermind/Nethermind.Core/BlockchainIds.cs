@@ -23,6 +23,7 @@ namespace Nethermind.Core
         public const int Goerli = 5;
         public const int RootstockMainnet = 30;
         public const int RootstockTestnet = 31;
+        public const int Kovan = 42;
         public const int EthereumClassicMainnet = 61;
         public const int EthereumClassicTestnet = 62;
         public const int EnergyWeb = 246;
