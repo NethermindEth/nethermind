@@ -188,16 +188,9 @@ public sealed class BeaconHeadersSyncFeed : HeadersSyncFeed
         if (insertOutcome == AddBlockResult.Added || insertOutcome == AddBlockResult.AlreadyKnown)
         {
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
-            {
-                _nextHeaderDiff = nextHeaderDiff;
-            }
-            else
-            {
-                _nextHeaderDiff = header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
-                    ? header.TotalDifficulty - header.Difficulty
-                    : null;
-            }
+            _nextHeaderDiff = header.TotalDifficulty is not null && header.TotalDifficulty >= header.Difficulty
+                ? header.TotalDifficulty - header.Difficulty
+                : null;
         }
 
         if (_logger.IsTrace)
