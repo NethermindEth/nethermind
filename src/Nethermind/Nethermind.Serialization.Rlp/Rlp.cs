@@ -3,12 +3,14 @@
 
 using System;
 using System.Buffers.Binary;
+using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Numerics;
 using System.Reflection;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Text;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -73,7 +75,28 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        public static readonly Dictionary<Type, IRlpDecoder> Decoders = new();
+        private static Dictionary<TypeAsKey, IRlpDecoder> _decoderBuilder = new();
+        private static FrozenDictionary<TypeAsKey, IRlpDecoder>? _decoders;
+        public static FrozenDictionary<TypeAsKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
+
+        public struct TypeAsKey(Type key) : IEquatable<TypeAsKey>
+        {
+            private readonly Type _key = key;
+            public Type Value => _key;
+
+            public static implicit operator Type(TypeAsKey key) => key._key;
+            public static implicit operator TypeAsKey(Type key) => new(key);
+
+            public bool Equals(TypeAsKey other) => _key.Equals(other._key);
+            public override int GetHashCode() => _key.GetHashCode();
+        }
+
+        public static void RegisterDecoder(Type type, IRlpDecoder decoder)
+        {
+            _decoderBuilder[type] = decoder;
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
+        }
 
         public static void RegisterDecoders(Assembly assembly)
         {
@@ -107,13 +130,16 @@ namespace Nethermind.Serialization.Rlp
                         }
 
                         Type key = implementedInterface.GenericTypeArguments[0];
-                        if (!Decoders.ContainsKey(key))
+                        if (!_decoderBuilder.ContainsKey(key))
                         {
-                            Decoders[key] = (IRlpDecoder)Activator.CreateInstance(type);
+                            _decoderBuilder[key] = (IRlpDecoder)Activator.CreateInstance(type);
                         }
                     }
                 }
             }
+
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
         }
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -130,17 +156,6 @@ namespace Nethermind.Serialization.Rlp
         {
             var valueContext = bytes.AsRlpValueContext();
             return Decode<T>(ref valueContext, rlpBehaviors);
-        }
-
-        public static T[] DecodeArray<T>(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
-        {
-            IRlpStreamDecoder<T>? rlpDecoder = GetStreamDecoder<T>();
-            if (rlpDecoder is not null)
-            {
-                return DecodeArray(rlpStream, rlpDecoder, rlpBehaviors);
-            }
-
-            throw new RlpException($"{nameof(Rlp)} does not support decoding {typeof(T).Name}");
         }
 
         public static T[] DecodeArray<T>(RlpStream rlpStream, IRlpStreamDecoder<T>? rlpDecoder, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -246,6 +261,12 @@ namespace Nethermind.Serialization.Rlp
             return result;
         }
 
+        public static Rlp Encode(Account item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => AccountDecoder.Instance.Encode(item, behaviors);
+
+        public static Rlp Encode(LogEntry item, RlpBehaviors behaviors = RlpBehaviors.None)
+            => LogEntryDecoder.Instance.Encode(item, behaviors);
+
         public static Rlp Encode<T>(T item, RlpBehaviors behaviors = RlpBehaviors.None)
         {
             if (item is Rlp rlp)
@@ -314,8 +335,7 @@ namespace Nethermind.Serialization.Rlp
             bool isEip155Enabled = false,
             ulong chainId = 0)
         {
-            TxDecoder txDecoder = new TxDecoder();
-            return txDecoder.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
+            return TxDecoder.Instance.EncodeTx(transaction, RlpBehaviors.SkipTypedWrapping, forSigning, isEip155Enabled,
                 chainId);
         }
 
@@ -366,18 +386,6 @@ namespace Nethermind.Serialization.Rlp
             }
         }
 
-
-        public static int Encode(Span<byte> buffer, int position, byte[]? input)
-        {
-            if (input is null || input.Length == 0)
-            {
-                buffer[position++] = OfEmptyByteArray.Bytes[0];
-                return position;
-            }
-
-            return Encode(buffer, position, input.AsSpan());
-        }
-
         public static int Encode(Span<byte> buffer, int position, ReadOnlySpan<byte> input)
         {
             if (input.Length == 1 && input[0] < 128)
@@ -403,6 +411,27 @@ namespace Nethermind.Serialization.Rlp
             position += input.Length;
 
             return position;
+        }
+
+        public static int Encode(Span<byte> buffer, int position, Hash256 hash)
+        {
+            Debug.Assert(hash is not null);
+            var newPosition = position + LengthOfKeccakRlp;
+            if ((uint)newPosition > (uint)buffer.Length)
+            {
+                ThrowArgumentOutOfRangeException();
+            }
+
+            Unsafe.Add(ref MemoryMarshal.GetReference(buffer), position) = 160;
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), position + 1)) = hash.ValueHash256;
+            return newPosition;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowArgumentOutOfRangeException()
+            {
+                throw new ArgumentOutOfRangeException(nameof(buffer));
+            }
         }
 
         public static Rlp Encode(ReadOnlySpan<byte> input)
@@ -528,7 +557,7 @@ namespace Nethermind.Serialization.Rlp
 
             byte[] result = new byte[LengthOfKeccakRlp];
             result[0] = 160;
-            keccak.Bytes.CopyTo(result.AsSpan()[1..]);
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(result), 1)) = keccak.ValueHash256;
             return new Rlp(result);
         }
 
@@ -1830,14 +1859,12 @@ namespace Nethermind.Serialization.Rlp
 
         public static int LengthOf(LogEntry item)
         {
-            IRlpDecoder<LogEntry>? rlpDecoder = GetDecoder<LogEntry>();
-            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(LogEntry)}");
+            return LogEntryDecoder.Instance.GetLength(item, RlpBehaviors.None);
         }
 
         public static int LengthOf(BlockInfo item)
         {
-            IRlpDecoder<BlockInfo>? rlpDecoder = GetDecoder<BlockInfo>();
-            return rlpDecoder?.GetLength(item, RlpBehaviors.None) ?? throw new RlpException($"{nameof(Rlp)} does not support length of {nameof(BlockInfo)}");
+            return BlockInfoDecoder.Instance.GetLength(item, RlpBehaviors.None);
         }
 
         public class SkipGlobalRegistration : Attribute
