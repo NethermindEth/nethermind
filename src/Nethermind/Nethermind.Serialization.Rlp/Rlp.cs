@@ -77,7 +77,7 @@ namespace Nethermind.Serialization.Rlp
 
         private static Dictionary<TypeAsKey, IRlpDecoder> _decoderBuilder = new();
         private static FrozenDictionary<TypeAsKey, IRlpDecoder>? _decoders;
-        public static FrozenDictionary<TypeAsKey, IRlpDecoder> Decoders = _decoders ??= _decoderBuilder.ToFrozenDictionary();
+        public static FrozenDictionary<TypeAsKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
         public struct TypeAsKey(Type key) : IEquatable<TypeAsKey>
         {
