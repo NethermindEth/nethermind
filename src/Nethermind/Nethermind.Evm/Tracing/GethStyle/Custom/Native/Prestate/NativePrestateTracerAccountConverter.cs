@@ -18,8 +18,11 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             writer.WriteStartObject();
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Hex;
-            writer.WritePropertyName("balance"u8);
-            JsonSerializer.Serialize(writer, value.Balance, options);
+            if (value.Balance is not null)
+            {
+                writer.WritePropertyName("balance"u8);
+                JsonSerializer.Serialize(writer, value.Balance, options);
+            }
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.Decimal;
             if (value.Nonce is not null)
@@ -35,7 +38,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             }
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
-            if (value.Storage is not null)
+            if (value.Storage is not null && value.Storage.Count > 0)
             {
                 writer.WritePropertyName("storage"u8);
                 JsonSerializer.Serialize(writer, value.Storage, options);
