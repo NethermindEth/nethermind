@@ -75,7 +75,9 @@ namespace Nethermind.Serialization.Rlp
 
         public int Length => Bytes.Length;
 
-        public static FrozenDictionary<TypeAsKey, IRlpDecoder> Decoders = new Dictionary<TypeAsKey, IRlpDecoder>().ToFrozenDictionary();
+        private static Dictionary<TypeAsKey, IRlpDecoder> _decoderBuilder = new();
+        private static FrozenDictionary<TypeAsKey, IRlpDecoder>? _decoders;
+        public static FrozenDictionary<TypeAsKey, IRlpDecoder> Decoders = _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
         public struct TypeAsKey(Type key) : IEquatable<TypeAsKey>
         {
@@ -91,16 +93,13 @@ namespace Nethermind.Serialization.Rlp
 
         public static void RegisterDecoder(Type type, IRlpDecoder decoder)
         {
-            Dictionary<TypeAsKey, IRlpDecoder> dict = new(Decoders)
-            {
-                [type] = decoder
-            };
-            Decoders = dict.ToFrozenDictionary();
+            _decoderBuilder[type] = decoder;
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
         }
 
         public static void RegisterDecoders(Assembly assembly)
         {
-            Dictionary<TypeAsKey, IRlpDecoder> dict = new(Decoders);
             foreach (Type? type in assembly.GetExportedTypes())
             {
                 if (!type.IsClass || type.IsAbstract || type.IsGenericTypeDefinition)
@@ -131,15 +130,16 @@ namespace Nethermind.Serialization.Rlp
                         }
 
                         Type key = implementedInterface.GenericTypeArguments[0];
-                        if (!dict.ContainsKey(key))
+                        if (!_decoderBuilder.ContainsKey(key))
                         {
-                            dict[key] = (IRlpDecoder)Activator.CreateInstance(type);
+                            _decoderBuilder[key] = (IRlpDecoder)Activator.CreateInstance(type);
                         }
                     }
                 }
             }
 
-            Decoders = dict.ToFrozenDictionary();
+            // Mark FrozenDictionary as null to force re-creation
+            _decoders = null;
         }
 
         public static T Decode<T>(Rlp oldRlp, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
