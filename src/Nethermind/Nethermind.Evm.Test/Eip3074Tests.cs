@@ -615,8 +615,7 @@ namespace Nethermind.Evm.Test
 
             Assert.That(resultWithAuthCall.GasSpent - result.GasSpent, Is.EqualTo(expectedCost));
         }
-
-
+        
         [Test]
         public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebited()
         {
@@ -662,6 +661,110 @@ namespace Nethermind.Evm.Test
 
             Assert.That(addressBalance, Is.EqualTo(1.Ether() - 1.GWei()));
         }
+
+
+        [Test]
+        public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebit()
+        {
+            var signer = TestItem.PrivateKeyF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+              .PushData(data[..32])
+              .Op(Instruction.PUSH0)
+              .Op(Instruction.MSTORE)
+              .PushData(data[32..64])
+              .PushSingle(32)
+              .Op(Instruction.MSTORE)
+              .PushData(data[64..96])
+              .PushSingle(64)
+              .Op(Instruction.MSTORE)
+
+              //AUTH params
+              .PushSingle((UInt256)data.Length)
+              .Op(Instruction.PUSH0)
+              .PushData(signer.Address)
+              .Op(Instruction.AUTH)
+
+              //Just throw away the result
+              .POP()
+
+              //AUTHCALL params
+              .PushData(20)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(2.Ether())
+              .PushData(TestItem.AddressC)
+              .PushData(1000000)
+              .Op(Instruction.AUTHCALL)
+              .Done;
+
+            TestState.CreateAccount(signer.Address, 1.Ether());
+
+            Execute(code);
+
+            var addressBalance = TestState.GetBalance(signer.Address);
+
+            Assert.That(addressBalance, Is.EqualTo(1.Ether()));
+        }
+
+
+        [Test]
+        public void ExecuteAUTHCALL_SignerHasCodeDeployed_()
+        {
+            var signer = TestItem.PrivateKeyF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+              .PushData(data[..32])
+              .Op(Instruction.PUSH0)
+              .Op(Instruction.MSTORE)
+              .PushData(data[32..64])
+              .PushSingle(32)
+              .Op(Instruction.MSTORE)
+              .PushData(data[64..96])
+              .PushSingle(64)
+              .Op(Instruction.MSTORE)
+
+              //AUTH params
+              .PushSingle((UInt256)data.Length)
+              .Op(Instruction.PUSH0)
+              .PushData(signer.Address)
+              .Op(Instruction.AUTH)
+
+              //Just throw away the result
+              .POP()
+
+              //AUTHCALL params
+              .PushData(20)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(2.Ether())
+              .PushData(TestItem.AddressC)
+              .PushData(1000000)
+              .Op(Instruction.AUTHCALL)
+              .Done;
+
+            var signerCode = Prepare.EvmCode
+                .CALLDATASIZE()
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.PUSH0)
+                .CALLDATACOPY()
+                .CALLDATASIZE()
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(signer.Address, 0);
+            TestState.InsertCode(signer.Address, Keccak.Compute(signerCode), signerCode, Spec);
+
+            var result = Execute(code);
+
+            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
+        }
+
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
         {
