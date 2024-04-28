@@ -9,6 +9,8 @@ namespace Nethermind.Serialization.Rlp
 {
     public class BlockInfoDecoder : IRlpStreamDecoder<BlockInfo>, IRlpValueDecoder<BlockInfo>
     {
+        public static BlockInfoDecoder Instance { get; } = new();
+
         public BlockInfo? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
             if (rlpStream.IsNextItemNull())
