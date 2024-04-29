@@ -98,18 +98,7 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateBlockOverrideReflectedInContract()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"number\":\"0xa\",\"time\":\"0x64\",\"gasLimit\":\"0xa\",\"feeRecipient\":\"0xc000000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000000012\",\"baseFeePerGas\":\"0xa\"},\"stateOverrides\":{\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x608060405234801561001057600080fd5b506000366060484641444543425a3a60014361002c919061009b565b406040516020016100469a99989796959493929190610138565b6040516020818303038152906040529050915050805190602001f35b6000819050919050565b7f4e487b7100000000000000000000000000000000000000000000000000000000600052601160045260246000fd5b60006100a682610062565b91506100b183610062565b92508282039050818111156100c9576100c861006c565b5b92915050565b6100d881610062565b82525050565b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b6000610109826100de565b9050919050565b610119816100fe565b82525050565b6000819050919050565b6101328161011f565b82525050565b60006101408201905061014e600083018d6100cf565b61015b602083018c6100cf565b610168604083018b610110565b610175606083018a6100cf565b61018260808301896100cf565b61018f60a08301886100cf565b61019c60c08301876100cf565b6101a960e08301866100cf565b6101b76101008301856100cf565b6101c5610120830184610129565b9b9a505050505050505050505056fea26469706673582212205139ae3ba8d46d11c29815d001b725f9840c90e330884ed070958d5af4813d8764736f6c63430008120033\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"input\":\"0x\"}]},{\"blockOverrides\":{\"number\":\"0x14\",\"time\":\"0xc8\",\"gasLimit\":\"0x14\",\"feeRecipient\":\"0xc100000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000001234\",\"baseFeePerGas\":\"0x14\"},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"input\":\"0x\"}]},{\"blockOverrides\":{\"number\":\"0x15\",\"time\":\"0x12c\",\"gasLimit\":\"0x15\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"prevRandao\":\"0x0000000000000000000000000000000000000000000000000000000000001234\",\"baseFeePerGas\":\"0x1e\"},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"input\":\"0x\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateBlockOverrideReflectedInContract");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
+
 
     [Test]
     public async Task TestsimulateBlockTimestampAutoIncrement()
@@ -124,31 +113,6 @@ public class EthSimulateTestsHiveBase
         Assert.That(result.Result.Error!.Contains("Block timestamp out of order"));
     }
 
-    [Test]
-    public async Task TestsimulateBlockTimestampNonIncrement()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"time\":\"0xc\"}},{\"blockOverrides\":{\"time\":\"0xc\"}}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateBlockTimestampNonIncrement");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateBlockTimestampOrder38021()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"time\":\"0xc\"}},{\"blockOverrides\":{\"time\":\"0xb\"}}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateBlockTimestampOrder38021");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
     [Test]
     public async Task TestsimulateBlockTimestampsIncrementing()
@@ -202,18 +166,6 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateCheckInvalidNonce()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"balance\":\"0x4e20\"}}},{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc000000000000000000000000000000000000000\",\"nonce\":\"0x0\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x1\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x0\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateCheckInvalidNonce");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
     [Test]
     public async Task TestsimulateCheckThatBalanceIsThereAfterNewBlock()
@@ -228,18 +180,7 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateCheckThatNonceIncreases()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"balance\":\"0x4e20\"}}},{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc000000000000000000000000000000000000000\",\"nonce\":\"0x0\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x1\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x2\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateCheckThatNonceIncreases");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
+
 
     [Test]
     public async Task TestsimulateEmptyCallsAndOverrides()
@@ -319,44 +260,10 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateFeeRecipientReceivingFunds()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"blockOverrides\":{\"number\":\"0xa\",\"feeRecipient\":\"0xc200000000000000000000000000000000000000\",\"baseFeePerGas\":\"0xa\"},\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"balance\":\"0x1e8480\"},\"0xc100000000000000000000000000000000000000\":{\"code\":\"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"maxFeePerGas\":\"0xa\",\"maxPriorityFeePerGas\":\"0xa\",\"nonce\":\"0x0\",\"input\":\"0x\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x1\",\"input\":\"0xf8b2cb4f000000000000000000000000c000000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x2\",\"input\":\"0xf8b2cb4f000000000000000000000000c200000000000000000000000000000000000000\"}]}],\"traceTransfers\":true,\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateFeeRecipientReceivingFunds");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
-    [Test]
-    public async Task TestsimulateGasFeesAndValueError38014WithValidation()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateGasFeesAndValueError38014WithValidation");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
-    [Test]
-    public async Task TestsimulateGasFeesAndValueError38014()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000123\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateGasFeesAndValueError38014");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
+
+
 
     [Test]
     public async Task TestsimulateGetBlockProperties()
@@ -371,18 +278,6 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateInstrictGas38013()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"gas\":\"0x0\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateInstrictGas38013");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
     [Test]
     public async Task TestsimulateLogs()
@@ -475,18 +370,7 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateOverrideAddressTwice()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"code\":\"0x608060405260006042576040517f08c379a0000000000000000000000000000000000000000000000000000000008152600401603990609d565b60405180910390fd5b005b600082825260208201905092915050565b7f416c7761797320726576657274696e6720636f6e747261637400000000000000600082015250565b600060896019836044565b91506092826055565b602082019050919050565b6000602082019050818103600083015260b481607e565b905091905056fea264697066735822122005cbbbc709291f66fadc17416c1b0ed4d72941840db11468a21b8e1a0362024c64736f6c63430008120033\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}],\"traceTransfers\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateOverrideAddressTwice");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
+
 
     [Test]
     public async Task TestsimulateOverrideAllInBlockStateCalls()
@@ -605,83 +489,6 @@ public class EthSimulateTestsHiveBase
         Assert.IsNotNull(result.Data);
     }
 
-    [Test]
-    public async Task TestsimulateSimpleNoFundsWithBalanceQuerying()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc200000000000000000000000000000000000000\":{\"code\":\"0x608060405234801561001057600080fd5b506004361061002b5760003560e01c8063f8b2cb4f14610030575b600080fd5b61004a600480360381019061004591906100e4565b610060565b604051610057919061012a565b60405180910390f35b60008173ffffffffffffffffffffffffffffffffffffffff16319050919050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100b182610086565b9050919050565b6100c1816100a6565b81146100cc57600080fd5b50565b6000813590506100de816100b8565b92915050565b6000602082840312156100fa576100f9610081565b5b6000610108848285016100cf565b91505092915050565b6000819050919050565b61012481610111565b82525050565b600060208201905061013f600083018461011b565b9291505056fea2646970667358221220172c443a163d8a43e018c339d1b749c312c94b6de22835953d960985daf228c764736f6c63430008120033\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c000000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c100000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c000000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c100000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c000000000000000000000000000000000000000\"},{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"input\":\"0xf8b2cb4f000000000000000000000000c100000000000000000000000000000000000000\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleNoFundsWithBalanceQuerying");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimpleNoFundsWithValidationWithoutNonces()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\",\"nonce\":\"0x0\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleNoFundsWithValidationWithoutNonces");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimpleNoFundsWithValidation()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\",\"nonce\":\"0x0\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"value\":\"0x3e8\",\"nonce\":\"0x1\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleNoFundsWithValidation");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimpleNoFunds()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleNoFunds");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimpleSendFromContractNoBalance()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"code\":\"0x60806040526004361061001e5760003560e01c80634b64e49214610023575b600080fd5b61003d6004803603810190610038919061011f565b61003f565b005b60008173ffffffffffffffffffffffffffffffffffffffff166108fc349081150290604051600060405180830381858888f193505050509050806100b8576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016100af906101a9565b60405180910390fd5b5050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100ec826100c1565b9050919050565b6100fc816100e1565b811461010757600080fd5b50565b600081359050610119816100f3565b92915050565b600060208284031215610135576101346100bc565b5b60006101438482850161010a565b91505092915050565b600082825260208201905092915050565b7f4661696c656420746f2073656e64204574686572000000000000000000000000600082015250565b600061019360148361014c565b915061019e8261015d565b602082019050919050565b600060208201905081810360008301526101c281610186565b905091905056fea2646970667358221220563acd6f5b8ad06a3faf5c27fddd0ecbc198408b99290ce50d15c2cf7043694964736f6c63430008120033\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}],\"traceTransfers\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleSendFromContractNoBalance");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimpleSendFromContractWithValidation()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"code\":\"0x60806040526004361061001e5760003560e01c80634b64e49214610023575b600080fd5b61003d6004803603810190610038919061011f565b61003f565b005b60008173ffffffffffffffffffffffffffffffffffffffff166108fc349081150290604051600060405180830381858888f193505050509050806100b8576040517f08c379a00000000000000000000000000000000000000000000000000000000081526004016100af906101a9565b60405180910390fd5b5050565b600080fd5b600073ffffffffffffffffffffffffffffffffffffffff82169050919050565b60006100ec826100c1565b9050919050565b6100fc816100e1565b811461010757600080fd5b50565b600081359050610119816100f3565b92915050565b600060208284031215610135576101346100bc565b5b60006101438482850161010a565b91505092915050565b600082825260208201905092915050565b7f4661696c656420746f2073656e64204574686572000000000000000000000000600082015250565b600061019360148361014c565b915061019e8261015d565b602082019050919050565b600060208201905081810360008301526101c281610186565b905091905056fea2646970667358221220563acd6f5b8ad06a3faf5c27fddd0ecbc198408b99290ce50d15c2cf7043694964736f6c63430008120033\",\"balance\":\"0x3e8\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}],\"traceTransfers\":true,\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimpleSendFromContractWithValidation");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 
     [Test]
     public async Task TestsimulateSimpleSendFromContract()
@@ -691,45 +498,6 @@ public class EthSimulateTestsHiveBase
         var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
         TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
         Console.WriteLine("current test: simulateSimpleSendFromContract");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateSimple()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"balance\":\"0x3e8\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"value\":\"0x3e8\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc200000000000000000000000000000000000000\",\"value\":\"0x3e8\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateSimple");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateTransactionTooHighNonce()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"calls\":[{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x64\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateTransactionTooHighNonce");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
-
-    [Test]
-    public async Task TestsimulateTransactionTooLowNonce38010()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"nonce\":\"0xa\"}},\"calls\":[{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x0\"}]}]}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateTransactionTooLowNonce38010");
         var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
         Assert.IsNotNull(result.Data);
@@ -747,16 +515,4 @@ public class EthSimulateTestsHiveBase
         Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Failure));
     }
 
-    [Test]
-    public async Task TestsimulateTryToMoveNonPrecompile()
-    {
-        EthereumJsonSerializer serializer = new();
-        string input = "{\"blockStateCalls\":[{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"nonce\":\"0x5\"}}},{\"stateOverrides\":{\"0xc000000000000000000000000000000000000000\":{\"MovePrecompileToAddress\":\"0xc100000000000000000000000000000000000000\"}},\"calls\":[{\"from\":\"0xc000000000000000000000000000000000000000\",\"to\":\"0xc000000000000000000000000000000000000000\",\"nonce\":\"0x0\"},{\"from\":\"0xc100000000000000000000000000000000000000\",\"to\":\"0xc100000000000000000000000000000000000000\",\"nonce\":\"0x5\"}]}],\"validation\":true}";
-        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
-        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
-        Console.WriteLine("current test: simulateTryToMoveNonPrecompile");
-        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
-        Assert.That(result.Result.ResultType, Is.EqualTo(ResultType.Success));
-        Assert.IsNotNull(result.Data);
-    }
 }

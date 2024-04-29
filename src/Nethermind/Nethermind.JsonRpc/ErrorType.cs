@@ -88,11 +88,6 @@ namespace Nethermind.JsonRpc
         public const int UnknownBlockError = -39001;
 
         /// <summary>
-        /// Unsupported fork error
-        /// </summary>
-        public const int UnsupportedFork = -38005;
-
-        /// <summary>
         /// Invalid RPC simulate call block number out of order
         /// </summary>
         public const int InvalidInputBlocksOutOfOrder = -38020;
@@ -101,5 +96,10 @@ namespace Nethermind.JsonRpc
         /// Invalid RPC simulate call containing too many blocks
         /// </summary>
         public const int InvalidInputTooManyBlocks = -38026;
+
+        /// <summary>
+        /// Invalid RPC simulate call transaction
+        /// </summary>
+        public const int InvalidTransaction = -38014;
     }
 }

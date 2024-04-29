@@ -76,6 +76,12 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
         SimulatePayload<TransactionForRpc> call,
         BlockParameter? blockParameter)
     {
+
+        if (call.BlockStateCalls == null)
+        {
+            return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Must contain BlockStateCalls", ErrorCodes.InvalidParams);
+        }
+
         if (call.BlockStateCalls!.Length > _rpcConfig.MaxSimulateBlocksCap)
         {
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"This node is configured to support only {_rpcConfig.MaxSimulateBlocksCap} blocks", ErrorCodes.InvalidInputTooManyBlocks);
@@ -128,6 +134,14 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block number out of order {givenNumber}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
                 }
 
+                if (blockToSimulate.BlockOverrides == null)
+                {
+                    blockToSimulate.BlockOverrides = new BlockOverride();
+                }
+
+                blockToSimulate.BlockOverrides!.Number = givenNumber;
+
+
                 var givenTime = blockToSimulate.BlockOverrides?.Time ?? (lastBlockTime == 0 ? header.Timestamp + 1 : lastBlockTime + 1);
 
                 if (givenTime > lastBlockTime)
@@ -138,9 +152,39 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
                 {
                     return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"Block timestamp out of order {givenTime}!", ErrorCodes.InvalidInputBlocksOutOfOrder);
                 }
+                blockToSimulate.BlockOverrides!.Time = givenTime;
+
             }
 
+            var minBlockNumber = Math.Min(
+                    call.BlockStateCalls.Min(b =>
+                        (long)(b.BlockOverrides?.Number ?? ulong.MaxValue)),
+                    header.Number + 1);
 
+            long maxBlockNumber = Math.Max(
+                call.BlockStateCalls.Max(b =>
+                    (long)(b.BlockOverrides?.Number ?? ulong.MinValue)),
+                minBlockNumber);
+
+            HashSet<long> existingBlockNumbers = new(call.BlockStateCalls.Select(b =>
+                (long)(b.BlockOverrides?.Number ?? ulong.MinValue)));
+
+            var completeBlockStateCalls = call.BlockStateCalls!.ToList();
+
+            for (long blockNumber = minBlockNumber; blockNumber <= maxBlockNumber; blockNumber++)
+            {
+                if (!existingBlockNumbers.Contains(blockNumber))
+                {
+                    completeBlockStateCalls.Add(new BlockStateCall<TransactionForRpc>
+                    {
+                        BlockOverrides = new BlockOverride { Number = (ulong)blockNumber },
+                        StateOverrides = null,
+                        Calls = Array.Empty<TransactionForRpc>()
+                    });
+                }
+            }
+
+            call.BlockStateCalls = completeBlockStateCalls.OrderBy(b => b.BlockOverrides!.Number!).ToArray();
         }
 
         using CancellationTokenSource cancellationTokenSource = new(_rpcConfig.Timeout); //TODO remove!
@@ -152,9 +196,17 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
+        if (results.Error != null && results.Error.Contains("invalid transaction"))
+        {
+            results.ErrorCode = ErrorCodes.InvalidTransaction;
+        }
+
         return results.Error is null
             ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Success(results.Items)
-            : ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error, results.Items);
+            : results.ErrorCode != null
+                ? ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error!, results.ErrorCode!.Value,
+                    results.Items)
+                : ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail(results.Error, results.Items);
     }
 }
 

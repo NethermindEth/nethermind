@@ -57,7 +57,7 @@ public class EthSimulateTestsBlocksAndTransactions
             [
                 new()
                 {
-                    BlockOverrides = new BlockOverride { Number = 18000000 },
+                    BlockOverrides = new BlockOverride { Number = 10 },
                     Calls = [new TransactionForRpc(txToFail), new TransactionForRpc(tx)],
                     StateOverrides = new Dictionary<Address, AccountOverride>
                     {
@@ -77,12 +77,11 @@ public class EthSimulateTestsBlocksAndTransactions
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult> data = result.Data;
-        Assert.That(data.Count, Is.EqualTo(1));
+        Assert.That(data.Count, Is.EqualTo(7));
 
-        foreach (SimulateBlockResult blockResult in data)
-        {
-            blockResult.Calls.Select(c => c.Type).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
-        }
+        SimulateBlockResult blockResult = data.Last();
+        blockResult.Calls.Select(c => c.Status).Should().BeEquivalentTo(new[] { (ulong)ResultType.Success, (ulong)ResultType.Success });
+
     }
 
 
@@ -124,7 +123,7 @@ public class EthSimulateTestsBlocksAndTransactions
                     BlockOverrides =
                         new BlockOverride
                         {
-                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10000),
+                            Number = (ulong)checked(chain.Bridge.HeadBlock.Number + 10),
                             GasLimit = 5_000_000,
                             FeeRecipient = TestItem.AddressC,
                             BaseFeePerGas = 0
@@ -153,12 +152,12 @@ public class EthSimulateTestsBlocksAndTransactions
             executor.Execute(payload, BlockParameter.Latest);
         IReadOnlyList<SimulateBlockResult> data = result.Data;
 
-        Assert.That(data.Count, Is.EqualTo(2));
+        Assert.That(data.Count, Is.EqualTo(9));
 
-        foreach (SimulateBlockResult blockResult in data)
-        {
-            Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
-        }
+        SimulateBlockResult blockResult = data[0];
+        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
+        blockResult = data.Last();
+        Assert.That(blockResult.Calls.Count(), Is.EqualTo(2));
     }
 
     /// <summary>

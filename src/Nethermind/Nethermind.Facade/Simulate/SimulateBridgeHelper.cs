@@ -75,7 +75,6 @@ public class SimulateBridgeHelper(
             parent = latestBlock?.Header ?? env.BlockTree.Head!.Header;
         }
 
-
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
         ulong lastKnown = (ulong)latestBlockNumber;
@@ -182,16 +181,14 @@ public class SimulateBridgeHelper(
 
                 if (processedBlock is not null)
                 {
-                    //var res = env.BlockTree.SuggestBlock(processedBlock,  BlockTreeSuggestOptions.ForceSetAsMain);
-                    //env.BlockTree.UpdateMainChain(new[] { processedBlock }, true, true);
-                    //env.
-                    ////env.BlockTree.UpdateHeadBlock(processedBlock.Hash!);
                     parent = processedBlock.Header;
                     stateProvider.StateRoot = processedBlock.StateRoot;
                     env.StateProvider.StateRoot = processedBlock.StateRoot;
-                    //env.StateProvider.Commit(currentSpec);
-                    //env.StateProvider.RecalculateStateRoot();
-                    //env.StateProvider.CommitTree(currentBlock.Number);
+                    var currentSpec = env.SpecProvider.GetSpec(processedBlock.Header);
+                    env.StateProvider.Commit(currentSpec);
+                    env.StateProvider.CommitTree(currentBlock.Number);
+                    env.BlockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
+                    env.BlockTree.UpdateHeadBlock(processedBlock.Hash!);
                 }
             }
         }
