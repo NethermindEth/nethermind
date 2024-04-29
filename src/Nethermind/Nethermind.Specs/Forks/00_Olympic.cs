@@ -26,6 +26,10 @@ namespace Nethermind.Specs.Forks
             Eip1559TransitionBlock = long.MaxValue;
             ValidateChainId = true;
             ValidateReceipts = true;
+
+            // The below addresses are added for all forks, but the given EIPs can be enabled at a specific timestamp or block.
+            Eip7002ContractAddress = Eip7002Constants.WithdrawalRequestPredeployAddress;
+
         }
 
         public static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Olympic());
