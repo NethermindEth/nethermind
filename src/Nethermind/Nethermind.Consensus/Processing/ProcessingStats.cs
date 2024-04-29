@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
 using Nethermind.Blockchain;
 using Nethermind.Core;
@@ -97,8 +98,8 @@ namespace Nethermind.Consensus.Processing
             long reportMs = Environment.TickCount64;
             if (reportMs - _lastReportMs > 1000)
             {
-                long currentStateDbReads = Db.Metrics.StateDbReads;
-                long currentStateDbWrites = Db.Metrics.StateDbWrites;
+                long currentStateDbReads = Db.Metrics.DbReads.GetValueOrDefault("StateDb");
+                long currentStateDbWrites = Db.Metrics.DbWrites.GetValueOrDefault("StateDb");
                 long currentTreeNodeRlp = Trie.Metrics.TreeNodeRlpEncodings + Trie.Metrics.TreeNodeRlpDecodings;
                 long evmExceptions = Evm.Metrics.EvmExceptions;
                 long currentSelfDestructs = Evm.Metrics.SelfDestructs;

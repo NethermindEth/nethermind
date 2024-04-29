@@ -804,8 +804,8 @@ Amounts:
 * Blobs:                {Metrics.BlobsInBlock,24:N0}
 ------------------------------------------------
 Db usage:
-* BlobDb writes:        {Db.Metrics.BlobTransactionsDbWrites,24:N0}
-* BlobDb reads:         {Db.Metrics.BlobTransactionsDbReads,24:N0}
+* BlobDb writes:        {Db.Metrics.DbWrites.GetValueOrDefault("BlobTransactions"),24:N0}
+* BlobDb reads:         {Db.Metrics.DbReads.GetValueOrDefault("BlobTransactions"),24:N0}
 ------------------------------------------------
 ");
         }
