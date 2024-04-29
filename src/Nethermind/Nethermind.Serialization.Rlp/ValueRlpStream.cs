@@ -279,7 +279,7 @@ public ref struct ValueRlpStream(in CappedArray<byte> data)
         return Data![_position];
     }
 
-    private void SkipBytes(int length)
+    public void SkipBytes(int length)
     {
         _position += length;
     }

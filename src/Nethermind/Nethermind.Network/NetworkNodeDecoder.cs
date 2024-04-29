@@ -14,7 +14,7 @@ namespace Nethermind.Network
     {
         static NetworkNodeDecoder()
         {
-            Rlp.Decoders[typeof(NetworkNode)] = new NetworkNodeDecoder();
+            Rlp.RegisterDecoder(typeof(NetworkNode), new NetworkNodeDecoder());
         }
 
         public NetworkNode Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
