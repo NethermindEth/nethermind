@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using DotNetty.Transport.Channels;
 using FluentAssertions;
@@ -598,11 +599,11 @@ namespace Nethermind.Network.Test.P2P
             IProtocolHandler p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
 
-            long beforeLocal = Network.Metrics.LocalOtherDisconnects;
-            long beforeRemote = Network.Metrics.OtherDisconnects;
+            long beforeLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
+            long beforeRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Local, string.Empty);
-            long afterLocal = Network.Metrics.LocalOtherDisconnects;
-            long afterRemote = Network.Metrics.OtherDisconnects;
+            long afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
+            long afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
             Assert.That(afterLocal, Is.EqualTo(beforeLocal + 1));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote));
 
@@ -612,11 +613,11 @@ namespace Nethermind.Network.Test.P2P
             p2p = BuildHandler("p2p", 10);
             session.AddProtocolHandler(p2p);
 
-            beforeLocal = Network.Metrics.LocalOtherDisconnects;
-            beforeRemote = Network.Metrics.OtherDisconnects;
+            beforeLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
+            beforeRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
             session.MarkDisconnected(DisconnectReason.Other, DisconnectType.Remote, string.Empty);
-            afterLocal = Network.Metrics.LocalOtherDisconnects;
-            afterRemote = Network.Metrics.OtherDisconnects;
+            afterLocal = Network.Metrics.LocalDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
+            afterRemote = Network.Metrics.RemoteDisconnectsTotal.GetValueOrDefault(DisconnectReason.Other);
             Assert.That(afterLocal, Is.EqualTo(beforeLocal));
             Assert.That(afterRemote, Is.EqualTo(beforeRemote + 1));
         }
