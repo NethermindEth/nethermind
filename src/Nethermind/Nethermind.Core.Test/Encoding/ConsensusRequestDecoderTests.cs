@@ -15,7 +15,7 @@ namespace Nethermind.Core.Test.Encoding;
 public class ConsensusRequestDecoderTests
 {
     [Test]
-    public void Should_decode_deposit()
+    public void Roundtrip_deposit()
     {
         ConsensusRequest deposit = new Deposit()
         {
@@ -33,7 +33,7 @@ public class ConsensusRequestDecoderTests
     }
 
     [Test]
-    public void Should_decode_withdrawalRequest()
+    public void Roundtrip_withdrawalRequest()
     {
         byte[] validatorPubkey = new byte[48];
         validatorPubkey[11] = 11;
@@ -103,7 +103,7 @@ public class ConsensusRequestDecoderTests
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode((Deposit)deposit).Bytes;
+        byte[] rlp1 = new ConsensusRequestDecoder().Encode(deposit).Bytes;
         byte[] rlp2 = Rlp.Encode(deposit).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
@@ -118,9 +118,36 @@ public class ConsensusRequestDecoderTests
             ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
         };
-        byte[] rlp1 = new ConsensusRequestDecoder().Encode((WithdrawalRequest)withdrawalRequest).Bytes;
+        byte[] rlp1 = new ConsensusRequestDecoder().Encode(withdrawalRequest).Bytes;
         byte[] rlp2 = Rlp.Encode(withdrawalRequest).Bytes;
 
         rlp1.Should().BeEquivalentTo(rlp2);
+    }
+
+    [Test]
+    public void Should_encode_ConsensusRequests_Array()
+    {
+        ConsensusRequest[] requests = new ConsensusRequest[]
+        {
+            new Deposit()
+            {
+                Index = long.MaxValue,
+                PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                Amount = int.MaxValue
+            },
+            new WithdrawalRequest()
+            {
+                SourceAddress = TestItem.AddressA,
+                ValidatorPubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                Amount = int.MaxValue
+            }
+        };
+
+        byte[] rlp = Rlp.Encode(requests).Bytes;
+        RlpStream rlpStream = new(rlp);
+        ConsensusRequest[] decoded = Rlp.DecodeArray(rlpStream, new ConsensusRequestDecoder());
+        decoded.Should().BeEquivalentTo(requests);
     }
 }
