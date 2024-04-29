@@ -25,7 +25,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     private string ExecuteCallTrace(byte[] code, string? tracerConfig = null)
     {
         (_, Transaction tx) = PrepareTx(MainnetSpecProvider.CancunActivation, 100000, code);
-        NativeCallTracer tracer = new NativeCallTracer(tx, GetGethTraceOptions(tracerConfig));
+        NativeCallTracer tracer = new(tx, GetGethTraceOptions(tracerConfig));
 
         GethLikeTxTrace callTrace = Execute(
                 tracer,

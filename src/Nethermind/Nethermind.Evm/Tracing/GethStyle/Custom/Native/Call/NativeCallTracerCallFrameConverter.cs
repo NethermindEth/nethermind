@@ -45,7 +45,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             writer.WritePropertyName("input"u8);
             JsonSerializer.Serialize(writer, value.Input, options);
 
-            if (value.Output is not null && value.Output.Length > 0)
+            if (value.Output?.Length > 0)
             {
                 writer.WritePropertyName("output"u8);
                 JsonSerializer.Serialize(writer, value.Output, options);
@@ -63,7 +63,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
                 JsonSerializer.Serialize(writer, value.RevertReason, options);
             }
 
-            if (value.Logs is not null && value.Logs.Count > 0)
+            if (value.Logs?.Count > 0)
             {
                 writer.WritePropertyName("logs"u8);
                 JsonSerializer.Serialize(writer, value.Logs, options);

@@ -23,27 +23,23 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     public const string CallTracer = "callTracer";
 
     private readonly long _gasLimit;
-    private readonly bool _onlyTopCall;
-    private readonly bool _withLog;
-    private readonly List<NativeCallTracerCallFrame> _callStack;
+    private readonly NativeCallTracerConfig _config;
+    private readonly List<NativeCallTracerCallFrame> _callStack = [];
 
     private EvmExceptionType? _error;
     private long _remainingGas;
+
 
     public NativeCallTracer(
         Transaction? tx,
         GethTraceOptions options) : base(options)
     {
         IsTracingActions = true;
-
-        _callStack = [];
         _gasLimit = tx!.GasLimit;
 
-        NativeCallTracerConfig config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
-        _onlyTopCall = config.OnlyTopCall;
-        _withLog = config.WithLog;
+        _config = options.TracerConfig?.Deserialize<NativeCallTracerConfig>(EthereumJsonSerializer.JsonOptions) ?? new NativeCallTracerConfig();
 
-        if (_withLog)
+        if (_config.WithLog)
         {
             IsTracingOpLevelLogs = true;
         }
@@ -63,11 +59,11 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
 
-        if (_onlyTopCall && Depth > 0)
+        if (_config.OnlyTopCall && Depth > 0)
             return;
 
         Instruction callOpcode = callType.ToInstruction();
-        NativeCallTracerCallFrame callFrame = new NativeCallTracerCallFrame
+        NativeCallTracerCallFrame callFrame = new()
         {
             Type = callOpcode,
             From = from,
@@ -84,12 +80,12 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         base.ReportOperationLog(log);
 
-        if (_onlyTopCall && Depth > 0)
+        if (_config.OnlyTopCall && Depth > 0)
             return;
 
         NativeCallTracerCallFrame callFrame = _callStack[^1];
 
-        NativeCallTracerLogEntry callLog = new NativeCallTracerLogEntry(
+        NativeCallTracerLogEntry callLog = new(
             log.LoggersAddress,
             log.Data,
             log.Topics,
@@ -154,7 +150,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             firstCallFrame.RevertReason = ValidateRevertReason(error[revertedPrefixLength..]);
         }
 
-        if (_withLog)
+        if (_config.WithLog)
         {
             ClearFailedLogs(firstCallFrame, false);
         }
@@ -162,7 +158,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private void OnExit(long gas, ReadOnlyMemory<byte>? output, EvmExceptionType? error = null)
     {
-        if (!_onlyTopCall && Depth > 0)
+        if (!_config.OnlyTopCall && Depth > 0)
         {
             NativeCallTracerCallFrame callFrame = _callStack[^1];
 
@@ -181,23 +177,29 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private static void ProcessOutput(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte>? output, EvmExceptionType? error)
     {
-        byte[] outputArray = output?.ToArray();
-        if (error is null)
+        if (error is not null)
         {
-            callFrame.Output = outputArray;
-            return;
+            callFrame.Error = error.Value.GetEvmExceptionDescription();
+            if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
+            {
+                callFrame.To = null;
+            }
+
+            if (error == EvmExceptionType.Revert && output?.Length != 0)
+            {
+                byte[] outputArray = output?.ToArray();
+                callFrame.Output = outputArray;
+
+                if (outputArray is not null && outputArray.Length >= 4)
+                {
+                    ProcessRevertReason(callFrame, output.Value);
+                }
+            }
         }
-        callFrame.Error = error.Value.GetEvmExceptionDescription();
-        if (callFrame.Type is Instruction.CREATE or Instruction.CREATE2)
-            callFrame.To = null;
-        if (error != EvmExceptionType.Revert || outputArray?.Length == 0)
-            return;
-
-        callFrame.Output = outputArray;
-        if (outputArray is null || outputArray.Length < 4)
-            return;
-
-        ProcessRevertReason(callFrame, output.Value);
+        else
+        {
+            callFrame.Output = output?.ToArray();
+        }
     }
 
     private static void ProcessRevertReason(NativeCallTracerCallFrame callFrame, ReadOnlyMemory<byte> output)
@@ -222,14 +224,13 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         {
             callFrame.Logs = null;
         }
+
         foreach (NativeCallTracerCallFrame childCallFrame in callFrame.Calls)
         {
             ClearFailedLogs(childCallFrame, failed);
         }
     }
 
-    private static string? ValidateRevertReason(string? errorMessage)
-    {
-        return errorMessage is not null && !errorMessage.StartsWith("0x") ? errorMessage : null;
-    }
+    private static string? ValidateRevertReason(string? errorMessage) =>
+        errorMessage?.StartsWith("0x") == false ? errorMessage : null;
 }
