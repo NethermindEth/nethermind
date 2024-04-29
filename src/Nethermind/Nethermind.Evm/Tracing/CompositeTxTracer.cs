@@ -53,7 +53,7 @@ public class CompositeTxTracer : ITxTracer
     public bool IsTracingBlockHash { get; }
     public bool IsTracingAccess { get; }
     public bool IsTracingFees { get; }
-    public bool IsTracingOpLevelLogs { get; }
+    public bool IsTracingLogs { get; }
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -192,21 +192,21 @@ public class CompositeTxTracer : ITxTracer
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
-            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingOpLevelLogs)
+            if (innerTracer.IsTracingInstructions && innerTracer.IsTracingLogs)
             {
-                innerTracer.ReportOperationLog(log);
+                innerTracer.ReportLog(log);
             }
         }
     }
 
-    public void ReportOperationLog(LogEntry log)
+    public void ReportLog(LogEntry log)
     {
         for (int index = 0; index < _txTracers.Count; index++)
         {
             ITxTracer innerTracer = _txTracers[index];
             if (innerTracer.IsTracingInstructions)
             {
-                innerTracer.ReportOperationLog(log);
+                innerTracer.ReportLog(log);
             }
         }
     }

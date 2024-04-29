@@ -114,9 +114,9 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
     }
-    public bool IsTracingOpLevelLogs
+    public bool IsTracingLogs
     {
-        get => _isTracingOpLevelLogs || _innerTracer.IsTracingOpLevelLogs;
+        get => _isTracingOpLevelLogs || _innerTracer.IsTracingLogs;
         init => _isTracingOpLevelLogs = value;
     }
 
@@ -219,12 +219,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         }
     }
 
-    public void ReportOperationLog(LogEntry log)
+    public void ReportLog(LogEntry log)
     {
         _token.ThrowIfCancellationRequested();
-        if (_innerTracer.IsTracingInstructions && _innerTracer.IsTracingOpLevelLogs)
+        if (_innerTracer.IsTracingLogs)
         {
-            _innerTracer.ReportOperationLog(log);
+            _innerTracer.ReportLog(log);
         }
     }
 

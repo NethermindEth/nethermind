@@ -59,7 +59,7 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
-    public bool IsTracingOpLevelLogs => InnerTracer.IsTracingOpLevelLogs;
+    public bool IsTracingLogs => InnerTracer.IsTracingLogs;
 
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
@@ -202,8 +202,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
 
-    public void ReportOperationLog(LogEntry log)
-        => InnerTracer.ReportOperationLog(log);
+    public void ReportLog(LogEntry log)
+        => InnerTracer.ReportLog(log);
 
     public void SetOperationStack(TraceStack stack)
         => InnerTracer.SetOperationStack(stack);

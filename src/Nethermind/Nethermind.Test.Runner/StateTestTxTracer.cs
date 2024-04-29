@@ -32,8 +32,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingBlockHash { get; } = false;
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
-    public bool IsTracingOpLevelLogs => false;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingOpLevelLogs;
+    public bool IsTracingLogs => false;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
@@ -154,7 +154,7 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
-    public void ReportOperationLog(LogEntry log)
+    public void ReportLog(LogEntry log)
     {
     }
 

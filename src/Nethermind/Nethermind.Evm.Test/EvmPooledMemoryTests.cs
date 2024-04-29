@@ -217,7 +217,7 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
-        public bool IsTracingOpLevelLogs => false;
+        public bool IsTracingLogs => false;
         public bool IsTracing => IsTracingReceipt
                                  || IsTracingActions
                                  || IsTracingOpLevelStorage
@@ -229,7 +229,7 @@ namespace Nethermind.Evm.Test
                                  || IsTracingBlockHash
                                  || IsTracingAccess
                                  || IsTracingFees
-                                 || IsTracingOpLevelLogs;
+                                 || IsTracingLogs;
 
         public string lastmemline;
 
@@ -253,7 +253,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void ReportOperationLog(LogEntry log)
+        public void ReportLog(LogEntry log)
         {
         }
 

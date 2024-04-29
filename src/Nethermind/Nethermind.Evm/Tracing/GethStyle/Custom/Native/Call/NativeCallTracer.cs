@@ -41,7 +41,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
         if (_config.WithLog)
         {
-            IsTracingOpLevelLogs = true;
+            IsTracingLogs = true;
         }
     }
 
@@ -76,9 +76,9 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _callStack.Add(callFrame);
     }
 
-    public override void ReportOperationLog(LogEntry log)
+    public override void ReportLog(LogEntry log)
     {
-        base.ReportOperationLog(log);
+        base.ReportLog(log);
 
         if (_config.OnlyTopCall && Depth > 0)
             return;

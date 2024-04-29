@@ -130,9 +130,9 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     /// </summary>
     /// <remarks>
     /// Controls
-    /// - <see cref="ReportOperationLog"/>
+    /// - <see cref="ReportLog"/>
     /// </remarks>
-    bool IsTracingOpLevelLogs { get; }
+    bool IsTracingLogs { get; }
 
     bool IsTracing => IsTracingReceipt
                       || IsTracingActions
@@ -145,7 +145,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
                       || IsTracingBlockHash
                       || IsTracingAccess
                       || IsTracingFees
-                      || IsTracingOpLevelLogs;
+                      || IsTracingLogs;
 
     /// <summary>
     /// Transaction completed successfully
@@ -198,8 +198,8 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
     ///
     /// </summary>
     /// <param name="log"></param>
-    /// <remarks>Depends on <see cref="IsTracingOpLevelLogs"/></remarks>
-    void ReportOperationLog(LogEntry log);
+    /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
+    void ReportLog(LogEntry log);
 
     /// <summary>
     ///

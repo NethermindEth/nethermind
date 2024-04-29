@@ -41,7 +41,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingBlockHash => true;
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
-    public bool IsTracingOpLevelLogs => true;
+    public bool IsTracingLogs => true;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -53,7 +53,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportOperationRemainingGas(long gas) => throw new OperationCanceledException(ErrorMessage);
 
-    public void ReportOperationLog(LogEntry log) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportLog(LogEntry log) => throw new OperationCanceledException(ErrorMessage);
 
     public void SetOperationMemorySize(ulong newSize) => throw new OperationCanceledException(ErrorMessage);
 
