@@ -38,7 +38,7 @@ public class NativePrestateTracerAccountConverter : JsonConverter<NativePrestate
             }
 
             ForcedNumberConversion.ForcedConversion.Value = NumberConversion.ZeroPaddedHex;
-            if (value.Storage is not null && value.Storage.Count > 0)
+            if (value.Storage?.Count > 0)
             {
                 writer.WritePropertyName("storage"u8);
                 JsonSerializer.Serialize(writer, value.Storage, options);
