@@ -27,7 +27,7 @@ public class RequestsTrie : PatriciaTrie<ConsensusRequest>
 
         foreach (ConsensusRequest exit in requests)
         {
-            Set(Rlp.Encode(key++).Bytes, _codec.Encode(exit).Bytes);
+            Set(Rlp.Encode(key++).Bytes, _codec.Encode(exit, RlpBehaviors.SkipTypedWrapping).Bytes);
         }
     }
 

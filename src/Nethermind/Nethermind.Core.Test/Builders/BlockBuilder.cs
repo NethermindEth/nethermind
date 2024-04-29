@@ -296,7 +296,7 @@ namespace Nethermind.Core.Test.Builders
         public BlockBuilder WithConsensusRequests(params ConsensusRequest[]? requests)
         {
             TestObjectInternal = TestObjectInternal
-                .WithReplacedBody(TestObjectInternal.Body.WithChangedDeposits(requests));
+                .WithReplacedBody(TestObjectInternal.Body.WithChangedConsensusRequests(requests));
 
             TestObjectInternal.Header.RequestsRoot = requests is null
                 ? null

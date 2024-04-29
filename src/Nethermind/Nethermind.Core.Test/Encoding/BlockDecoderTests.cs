@@ -8,6 +8,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
@@ -40,6 +41,34 @@ public class BlockDecoderTests
             uncles[i] = Build.A.BlockHeader
                 .WithWithdrawalsRoot(i % 3 == 0 ? null : Keccak.Compute(i.ToString()))
                 .TestObject;
+        }
+
+        var requests = new ConsensusRequest[8];
+
+        for (var i = 0; i < requests.Length; i++)
+        {
+            if (i%2 == 0)
+            {
+                requests[i] = new Deposit()
+                {
+                    Index = long.MaxValue,
+                    PubKey = Keccak.EmptyTreeHash.ToBytes(),
+                    Signature = Keccak.EmptyTreeHash.ToBytes(),
+                    WithdrawalCredentials = Keccak.EmptyTreeHash.ToBytes(),
+                    Amount = int.MaxValue
+                };
+            }
+            else
+            {
+                byte[] validatorPubkey = new byte[48];
+                validatorPubkey[11] = 11;
+                requests[i] = new WithdrawalRequest()
+                {
+                    SourceAddress = TestItem.AddressA,
+                    ValidatorPubkey = validatorPubkey,
+                    Amount = int.MaxValue
+                };
+            }
         }
 
         _scenarios = new[]
@@ -96,8 +125,7 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
-                // an empty requests array
-                .WithConsensusRequests(0)
+                .WithConsensusRequests(requests)
                 .TestObject
         };
     }
