@@ -7,4 +7,5 @@ public enum TestCase
 {
     Warmup,
     TxDataZero,
+    Keccak256
 }

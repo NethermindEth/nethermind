@@ -41,7 +41,8 @@ public static class Program
         _chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
 
         int blockGasConsumptionTarget = 30_000_000;
-        _testCase = TestCase.TxDataZero;
+        _testCase = TestCase.Keccak256;
+        bool generateSingleFile = true;
 
         _txsPerBlock = _testCase switch
         {
@@ -49,13 +50,16 @@ public static class Program
             _ => 1
         };
 
-        Task generateRequests = _testCase switch
-        {
-            TestCase.Warmup => GenerateTestCase(blockGasConsumptionTarget),
-            _ => GenerateTestCases()
-        };
 
-        await generateRequests;
+        if (generateSingleFile)
+        {
+            await GenerateTestCase(blockGasConsumptionTarget);
+            Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
+        }
+        else
+        {
+            await GenerateTestCases();
+        }
     }
 
     private static async Task GenerateTestCases()
@@ -132,7 +136,7 @@ public static class Program
         }
 
 
-        await File.WriteAllTextAsync($"{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
+        await File.WriteAllTextAsync($"testcases/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
     private static void OnEmptyProcessingQueue(object? sender, EventArgs e)
@@ -189,9 +193,44 @@ public static class Program
                     .WithGasLimit(_chainSpec.Genesis.GasLimit)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
+            case TestCase.Keccak256:
+                byte[] code = PrepareKeccak256Code(blockGasConsumptionTarget);
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(TestItem.AddressB)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(code)
+                    .WithGasLimit(_chainSpec.Genesis.GasLimit)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;;
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
+    }
+
+    private static byte[] PrepareKeccak256Code(int blockGasConsumptionTarget)
+    {
+        List<byte> byteCode = new();
+
+        int example = 1;
+        byte[] byteExample = example.ToByteArray();
+        UInt256 length = (UInt256)byteExample.Length;
+
+        long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+        long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
+
+        for (int i = 0; i < iterations; i++)
+        {
+            var data = i.ToByteArray();
+            byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
+            byteCode.AddRange(data);
+            byteCode.Add((byte)Instruction.KECCAK256);
+        }
+
+        return byteCode.ToArray();
     }
 
     private static IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
