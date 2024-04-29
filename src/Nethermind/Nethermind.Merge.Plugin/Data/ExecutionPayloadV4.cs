@@ -66,7 +66,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
 
             for (; i < requestsCount; ++i)
             {
-                requests[i] = WithdrawalRequests![i - depositsLength - 1];
+                requests[i] = WithdrawalRequests![i - depositsLength];
             }
 
             block!.Body.Requests = requests;

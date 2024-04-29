@@ -176,6 +176,23 @@ public partial class EngineModuleTests
         last!.IsGenesis.Should().BeTrue();
     }
 
+    [TestCase(30)]
+    public async Task can_progress_chain_one_by_one_v4_with_requests(int count)
+    {
+        ConsensusRequestsProcessorMock consensusRequestsProcessorMock = new();
+        using MergeTestBlockchain chain = await CreateBlockchain(Prague.Instance, null, null, null, consensusRequestsProcessorMock);
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 lastHash = (await ProduceBranchV4(rpc, chain, count, CreateParentBlockRequestOnHead(chain.BlockTree), true))
+            .LastOrDefault()?.BlockHash ?? Keccak.Zero;
+        chain.BlockTree.HeadHash.Should().Be(lastHash);
+        Block? last = RunForAllBlocksInBranch(chain.BlockTree, chain.BlockTree.HeadHash, b => b.IsGenesis, true);
+        last.Should().NotBeNull();
+        last!.IsGenesis.Should().BeTrue();
+
+        Block? head = chain.BlockTree.Head;
+        head!.Requests!.Length.Should().Be(consensusRequestsProcessorMock.Requests.Length);
+    }
+
     private async Task<IReadOnlyList<ExecutionPayload>> ProduceBranchV4(IEngineRpcModule rpc,
         MergeTestBlockchain chain,
         int count, ExecutionPayload startingParentBlock, bool setHead, Hash256? random = null)
