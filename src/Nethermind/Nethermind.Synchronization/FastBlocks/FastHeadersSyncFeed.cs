@@ -707,7 +707,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
-                _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
-            }
+            _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
         }
+    }
 }

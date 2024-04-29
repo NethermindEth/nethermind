@@ -138,16 +138,16 @@ public class BlockValidator : IBlockValidator
 
         if (validateHashes)
         {
-        if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
-        {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
-                errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
-            return false;
-        }
-
-        if (!ValidateWithdrawals(block, spec, out errorMessage))
+            if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
             {
-            return false;
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
+                errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
+                return false;
+            }
+
+            if (!ValidateWithdrawals(block, spec, out errorMessage))
+            {
+                return false;
             }
         }
 

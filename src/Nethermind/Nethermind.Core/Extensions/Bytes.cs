@@ -953,8 +953,8 @@ namespace Nethermind.Core.Extensions
 
             int leadingZeros = firstNonZero * 2;
             if ((bytes[firstNonZero] & 0b1111_0000) == 0)
-                {
-                    leadingZeros++;
+            {
+                leadingZeros++;
             }
 
             return leadingZeros;
@@ -964,7 +964,7 @@ namespace Nethermind.Core.Extensions
             => CountZeros((ReadOnlySpan<byte>)data);
 
         public static int CountZeros(this ReadOnlySpan<byte> data)
-                    {
+        {
             int totalZeros = 0;
             if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
             {
@@ -975,7 +975,7 @@ namespace Nethermind.Core.Extensions
                     Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
                     ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
                     totalZeros += BitOperations.PopCount(flags);
-                    }
+                }
 
                 data = data[i..];
             }
@@ -984,14 +984,14 @@ namespace Nethermind.Core.Extensions
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
                 int i = 0;
                 for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
-                    {
+                {
                     Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
                     uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
                     totalZeros += BitOperations.PopCount(flags);
-                    }
+                }
 
                 data = data[i..];
-                }
+            }
             if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
             {
                 ref byte bytes = ref MemoryMarshal.GetReference(data);
