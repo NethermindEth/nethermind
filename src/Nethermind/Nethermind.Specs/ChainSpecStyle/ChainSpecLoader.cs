@@ -418,7 +418,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (withdrawalsEnabled)
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
-        if (depositsEnabled || withdrawalRequestsEnabled)
+        var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled;
+        if (requestsEnabled)
             genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
 
         bool isEip4844Enabled = chainSpecJson.Params.Eip4844TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip4844TransitionTimestamp;
@@ -434,9 +435,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
         }
 
-        bool isEip7002Enabled = chainSpecJson.Params.Eip7002TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip7002TransitionTimestamp;
-        bool isEip6110Enabled = chainSpecJson.Params.Eip6110TransitionTimestamp is not null && genesisHeader.Timestamp >= chainSpecJson.Params.Eip6110TransitionTimestamp;
-        if (isEip6110Enabled || isEip7002Enabled)
+        if (requestsEnabled)
         {
             genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
@@ -450,7 +449,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 Array.Empty<Transaction>(),
                 Array.Empty<BlockHeader>(),
                 Array.Empty<Withdrawal>(),
-                depositsEnabled ? Array.Empty<Deposit>() : null);
+                requestsEnabled ? Array.Empty<ConsensusRequest>() : null);
         else
         {
             chainSpec.Genesis = new Block(genesisHeader);
