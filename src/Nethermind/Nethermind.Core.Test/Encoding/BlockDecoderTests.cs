@@ -47,7 +47,7 @@ public class BlockDecoderTests
 
         for (var i = 0; i < requests.Length; i++)
         {
-            if (i%2 == 0)
+            if (i % 2 == 0)
             {
                 requests[i] = new Deposit()
                 {
