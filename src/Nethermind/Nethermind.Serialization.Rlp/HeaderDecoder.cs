@@ -165,7 +165,7 @@ namespace Nethermind.Serialization.Rlp
                 blockHeader.BaseFeePerGas = rlpStream.DecodeUInt256();
             }
 
-            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 6);
+            int itemsRemaining = rlpStream.PeekNumberOfItemsRemaining(null, 5);
             if (itemsRemaining > 0 &&
                 rlpStream.PeekPrefixAndContentLength().ContentLength == Hash256.Size)
             {
