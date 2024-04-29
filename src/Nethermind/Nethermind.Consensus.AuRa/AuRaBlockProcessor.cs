@@ -43,7 +43,8 @@ namespace Nethermind.Consensus.AuRa
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
-            ContractRewriter? contractRewriter = null)
+            ContractRewriter? contractRewriter = null,
+            IConsensusRequestsProcessor? consensusRequestsProcessor = null)
             : base(
                 specProvider,
                 blockValidator,
@@ -53,7 +54,9 @@ namespace Nethermind.Consensus.AuRa
                 receiptStorage,
                 NullWitnessCollector.Instance,
                 logManager,
-                withdrawalProcessor)
+                withdrawalProcessor,
+                null,
+                consensusRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

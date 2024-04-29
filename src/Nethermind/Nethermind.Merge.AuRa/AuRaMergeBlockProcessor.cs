@@ -21,8 +21,7 @@ namespace Nethermind.Merge.AuRa;
 
 public class AuRaMergeBlockProcessor : AuRaBlockProcessor
 {
-    public AuRaMergeBlockProcessor(
-        ISpecProvider specProvider,
+    public AuRaMergeBlockProcessor(ISpecProvider specProvider,
         IBlockValidator blockValidator,
         IRewardCalculator rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -31,12 +30,11 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
         ILogManager logManager,
         IBlockTree blockTree,
         IWithdrawalProcessor withdrawalProcessor,
-        IDepositsProcessor depositsProcessor,
         IAuRaValidator? validator,
         ITxFilter? txFilter = null,
         AuRaContractGasLimitOverride? gasLimitOverride = null,
-        ContractRewriter? contractRewriter = null
-    ) : base(
+        ContractRewriter? contractRewriter = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null) : base(
             specProvider,
             blockValidator,
             rewardCalculator,
@@ -49,7 +47,8 @@ public class AuRaMergeBlockProcessor : AuRaBlockProcessor
             validator,
             txFilter,
             gasLimitOverride,
-            contractRewriter
+            contractRewriter,
+            consensusRequestsProcessor
         )
     { }
 

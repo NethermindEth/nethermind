@@ -59,6 +59,14 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
+        "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
+        "0xb3bafa4c9efb2f6f95345381f591d2b6f611b0911ca568fb499594cbec66e5d4",
+        "0xffadd136040966576fb63852506bba89c765cabe2884fa27797fd67aea5769dc",
+        "0x3c6a8926870bdeff")]
+    public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
+        => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
+
+    [TestCase(
         "0xe168b70ac8a6f7d90734010030801fbb2dcce03a657155c4024b36ba8d1e3926",
         "0x3e604e45a9a74b66a7e03f828cc2597f0cb5f5e7dc50c9211be3a62fbcd6396d",
         "0xdbd87b98a6be7d4e3f11ff8500c38a0736d9a5e7a47b5cb25628d37187a98cb9",
@@ -96,6 +104,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null, ILogManager? logManager = null, IConsensusRequestsProcessor? mockedConsensusRequestsProcessor = null)
             : base(mergeConfig, mockedPayloadPreparationService, logManager, mockedConsensusRequestsProcessor)
         {
+            ConsensusRequestsProcessor = mockedConsensusRequestsProcessor;
             SealEngineType = Core.SealEngineType.AuRa;
         }
 
@@ -137,7 +146,9 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                null,
+                ConsensusRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
@@ -171,7 +182,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager);
+                LogManager,
+                ConsensusRequestsProcessor);
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

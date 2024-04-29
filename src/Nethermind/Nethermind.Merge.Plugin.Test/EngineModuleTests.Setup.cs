@@ -211,7 +211,7 @@ public partial class EngineModuleTests
                 LogManager,
                 targetAdjustedGasLimitCalculator);
 
-            MergeTestBlockProducerEnvFactory blockProducerEnvFactory = new(
+            BlockProducerEnvFactory blockProducerEnvFactory = new(
                 WorldStateManager!,
                 BlockTree,
                 SpecProvider,
