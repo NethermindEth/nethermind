@@ -8,7 +8,9 @@ namespace Nethermind.Evm.Benchmark
 {
     public class TestBlockhashProvider : IBlockhashProvider
     {
-        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number) =>
-            Keccak.Compute(number.ToString());
+        public Hash256 GetBlockhash(BlockHeader currentBlock, in long number)
+        {
+            return Keccak.Compute(number.ToString());
+        }
     }
 }

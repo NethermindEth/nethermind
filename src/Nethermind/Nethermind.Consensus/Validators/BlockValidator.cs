@@ -88,15 +88,17 @@ public class BlockValidator : IBlockValidator
     {
         return ValidateSuggestedBlock(block, out _);
     }
+
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
     /// </summary>
     /// <param name="block">A block to validate</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
+    /// <param name="validateHashes"></param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block, out string? errorMessage)
+    public bool ValidateSuggestedBlock(Block block, out string? errorMessage, bool validateHashes = true)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
@@ -113,14 +115,14 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!ValidateUnclesHashMatches(block, out Hash256 unclesHash))
+        if (validateHashes && !ValidateUnclesHashMatches(block, out Hash256 unclesHash))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             errorMessage = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
-        if (!_unclesValidator.Validate(block.Header, block.Uncles))
+        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             errorMessage = BlockErrorMessages.InvalidUncle;
@@ -134,15 +136,20 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
+        if (validateHashes)
+        {
         if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
-            errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot, txRoot);
+                errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
             return false;
         }
 
         if (!ValidateWithdrawals(block, spec, out errorMessage))
+            {
             return false;
+            }
+        }
 
         return true;
     }

@@ -220,7 +220,7 @@ namespace Nethermind.Mev.Test
             }
 
             protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null,
-                UInt256? initialValues = null, bool addBlockOnStart = true, bool pruning = false)
+                UInt256? initialValues = null, bool addBlockOnStart = true)
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues);
                 MevRpcModule = new MevRpcModule(new JsonRpcConfig(),

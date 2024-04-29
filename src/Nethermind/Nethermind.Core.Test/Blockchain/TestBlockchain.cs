@@ -121,18 +121,14 @@ public class TestBlockchain : IDisposable
     protected virtual async Task<TestBlockchain> Build(
         ISpecProvider? specProvider = null,
         UInt256? initialValues = null,
-        bool addBlockOnStart = true,
-        bool pruning = false)
+        bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = pruning
-            ? new TrieStore(StateDb, new MemoryLimit(10.KB()), new ConstantInterval(10), LogManager)
-            : new TrieStore(StateDb, LogManager);
-
+        TrieStore = new TrieStore(StateDb, LogManager);
         State = new WorldState(TrieStore, DbProvider.CodeDb, LogManager);
 
         // Eip4788 precompile state account

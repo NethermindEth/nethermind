@@ -19,10 +19,6 @@
     <UserSecretsId>03db39d0-4200-473e-9ff8-4a48d496381f</UserSecretsId>
   </PropertyGroup>
 
-  <PropertyGroup>
-    <NoWarn>$(NoWarn);AD0001</NoWarn>
-  </PropertyGroup>
-  
   <ItemGroup>
     <PackageReference Include="AspNetCore.HealthChecks.UI.Client" />
     <PackageReference Include="Microsoft.Extensions.CommandLineUtils" />
@@ -82,6 +78,7 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
+    <Content Remove="..\Chains\kovan.json" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -123,7 +120,7 @@
     </ItemGroup>
   </Target>
 
-  <Target Name="CheckBranchName" AfterTargets="BeforeBuild" >
+  <Target Name="CheckBranchName" AfterTargets="BeforeBuild">
     <Exec Command="git branch --show-current" ConsoleToMSBuild="True" StandardOutputImportance="low">
       <Output PropertyName="BranchName" TaskParameter="ConsoleOutput" />
     </Exec>

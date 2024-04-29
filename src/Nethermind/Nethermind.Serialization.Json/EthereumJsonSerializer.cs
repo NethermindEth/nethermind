@@ -51,7 +51,7 @@ namespace Nethermind.Serialization.Json
 
         public string Serialize<T>(T value, bool indented = false)
         {
-            return JsonSerializer.Serialize(value, indented ? JsonOptionsIndented : _jsonOptions);
+            return JsonSerializer.Serialize<T>(value, indented ? JsonOptionsIndented : _jsonOptions);
         }
 
         public static JsonSerializerOptions CreateOptions(bool indented, IEnumerable<JsonConverter> converters = null, int maxDepth = 64)
@@ -86,7 +86,7 @@ namespace Nethermind.Serialization.Json
                     new MemoryByteConverter(),
                     new BigIntegerConverter(),
                     new NullableBigIntegerConverter(),
-                    new JavaScriptObjectConverter()
+                    new JavaScriptObjectConverter(),
                 }
             };
 
@@ -109,12 +109,12 @@ namespace Nethermind.Serialization.Json
 
         public static JsonSerializerOptions JsonOptionsIndented { get; private set; } = CreateOptions(indented: true);
 
-        private static readonly StreamPipeWriterOptions _optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
-        private static readonly StreamPipeWriterOptions _options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
+        private static readonly StreamPipeWriterOptions optionsLeaveOpen = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: true);
+        private static readonly StreamPipeWriterOptions options = new(pool: MemoryPool<byte>.Shared, minimumBufferSize: 4096, leaveOpen: false);
 
         private static CountingStreamPipeWriter GetPipeWriter(Stream stream, bool leaveOpen)
         {
-            return new CountingStreamPipeWriter(stream, leaveOpen ? _optionsLeaveOpen : _options);
+            return new CountingStreamPipeWriter(stream, leaveOpen ? optionsLeaveOpen : options);
         }
 
         public long Serialize<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
@@ -137,7 +137,7 @@ namespace Nethermind.Serialization.Json
 
         public async ValueTask<long> SerializeAsync<T>(Stream stream, T value, bool indented = false, bool leaveOpen = true)
         {
-            CountingStreamPipeWriter writer = GetPipeWriter(stream, leaveOpen);
+            var writer = GetPipeWriter(stream, leaveOpen);
             Serialize(writer, value, indented);
             await writer.CompleteAsync();
 

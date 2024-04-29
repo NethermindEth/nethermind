@@ -259,7 +259,7 @@ public partial class EngineModuleTests
 
         public IManualBlockFinalizationManager BlockFinalizationManager { get; } = new ManualBlockFinalizationManager();
 
-        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true, bool pruning = false)
+        protected override async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
         {
             TestBlockchain chain = await base.Build(specProvider, initialValues);
             return chain;
@@ -282,7 +282,7 @@ public class TestBlockProcessorInterceptor : IBlockProcessor
         DelayMs = delayMs;
     }
 
-    public Block[] Process(Hash256 newBranchStateRoot, IReadOnlyList<Block> suggestedBlocks, ProcessingOptions processingOptions,
+    public Block[] Process(Hash256 newBranchStateRoot, List<Block> suggestedBlocks, ProcessingOptions processingOptions,
         IBlockTracer blockTracer)
     {
         if (DelayMs > 0)

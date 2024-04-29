@@ -22,8 +22,9 @@ namespace Nethermind.Consensus.Processing
         ///     Block tracer to use. By default either <see cref="NullBlockTracer"/> or <see cref="BlockReceiptsTracer"/>
         /// </param>
         /// <returns>List of processed blocks.</returns>
-        Block[] Process(Hash256 newBranchStateRoot,
-            IReadOnlyList<Block> suggestedBlocks,
+        Block[] Process(
+            Hash256 newBranchStateRoot,
+            List<Block> suggestedBlocks,
             ProcessingOptions processingOptions,
             IBlockTracer blockTracer);
 

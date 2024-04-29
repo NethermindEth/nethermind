@@ -14,7 +14,13 @@ namespace Nethermind.Evm.CodeAnalysis
         public IPrecompile? Precompile { get; set; }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
-        public static CodeInfo Empty { get; } = new(Array.Empty<byte>());
+        public static CodeInfo Empty { get; } = new CodeInfo(Array.Empty<byte>());
+
+        public CodeInfo(byte[] code)
+        {
+            MachineCode = code;
+            _analyzer = code.Length == 0 ? _emptyAnalyzer : new JumpDestinationAnalyzer(code);
+        }
 
         public CodeInfo(ReadOnlyMemory<byte> code)
         {

@@ -26,12 +26,6 @@ namespace Nethermind.Synchronization.FastBlocks
 {
     public class HeadersSyncFeed : ActivatedSyncFeed<HeadersSyncBatch?>
     {
-        private readonly Dictionary<ulong, IDictionary<long, ulong>> _historicalOverrides = new Dictionary<ulong, IDictionary<long, ulong>>()
-        {
-            // Kovan has some wrong difficulty in early blocks before using proper AuRa difficulty calculation
-            // In order to support that we need to support another pivot
-            { BlockchainIds.Kovan, new Dictionary<long, ulong> { {148240, 19430113280} } }
-        };
 
         private readonly ILogger _logger;
         private readonly ISyncPeerPool _syncPeerPool;
@@ -184,8 +178,6 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 throw new InvalidOperationException("Entered fast headers mode without fast sync enabled in configuration.");
             }
-
-            _historicalOverrides.TryGetValue(_blockTree.NetworkId, out _expectedDifficultyOverride);
         }
 
         public override void InitializeFeed()
@@ -691,8 +683,6 @@ namespace Nethermind.Synchronization.FastBlocks
             Volatile.Write(ref _memoryEstimate, ulong.MaxValue);
         }
 
-        protected readonly IDictionary<long, ulong>? _expectedDifficultyOverride;
-
         private AddBlockResult InsertHeader(BlockHeader header)
         {
             if (header.IsGenesis)
@@ -717,14 +707,7 @@ namespace Nethermind.Synchronization.FastBlocks
         protected void SetExpectedNextHeaderToParent(BlockHeader header)
         {
             _nextHeaderHash = header.ParentHash!;
-            if (_expectedDifficultyOverride?.TryGetValue(header.Number, out ulong nextHeaderDiff) == true)
-            {
-                _nextHeaderDiff = nextHeaderDiff;
-            }
-            else
-            {
                 _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
             }
         }
-    }
 }

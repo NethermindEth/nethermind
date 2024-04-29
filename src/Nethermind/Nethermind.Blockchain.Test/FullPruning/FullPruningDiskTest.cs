@@ -53,8 +53,7 @@ namespace Nethermind.Blockchain.Test.FullPruning
             protected override async Task<TestBlockchain> Build(
                 ISpecProvider? specProvider = null,
                 UInt256? initialValues = null,
-                bool addBlockOnStart = true,
-                bool pruning = false
+                bool addBlockOnStart = true
             )
             {
                 TestBlockchain chain = await base.Build(specProvider, initialValues, addBlockOnStart);

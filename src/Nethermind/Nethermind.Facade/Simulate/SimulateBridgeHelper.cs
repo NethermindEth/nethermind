@@ -169,7 +169,7 @@ public class SimulateBridgeHelper(
                 //try
                 {
                     IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!);
-                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer);
+                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks.ToList(), processingFlags, tracer);
 
                 }
                 //catch (Exception)

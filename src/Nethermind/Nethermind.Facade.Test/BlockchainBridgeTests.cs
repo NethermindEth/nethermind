@@ -36,17 +36,17 @@ namespace Nethermind.Facade.Test
 {
     public class BlockchainBridgeTests
     {
-        private BlockchainBridge _blockchainBridge = null!;
-        private IBlockTree _blockTree = null!;
-        private ITxPool _txPool = null!;
-        private IReceiptStorage _receiptStorage = null!;
-        private IFilterStore _filterStore = null!;
-        private IFilterManager _filterManager = null!;
-        private ITransactionProcessor _transactionProcessor = null!;
-        private IEthereumEcdsa _ethereumEcdsa = null!;
-        private ManualTimestamper _timestamper = null!;
-        private ISpecProvider _specProvider = null!;
-        private IDbProvider _dbProvider = null!;
+        private BlockchainBridge _blockchainBridge;
+        private IBlockTree _blockTree;
+        private ITxPool _txPool;
+        private IReceiptStorage _receiptStorage;
+        private IFilterStore _filterStore;
+        private IFilterManager _filterManager;
+        private ITransactionProcessor _transactionProcessor;
+        private IEthereumEcdsa _ethereumEcdsa;
+        private ManualTimestamper _timestamper;
+        private ISpecProvider _specProvider;
+        private IDbProvider _dbProvider;
 
         [SetUp]
         public async Task SetUp()
