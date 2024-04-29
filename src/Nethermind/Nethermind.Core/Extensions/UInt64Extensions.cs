@@ -5,7 +5,6 @@ namespace Nethermind.Core.Extensions;
 
 public static class UInt64Extensions
 {
-    // ToDo add tests
     public static ulong ToULongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
     {
         if (bytes is null)

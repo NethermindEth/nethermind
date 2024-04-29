@@ -3,18 +3,14 @@
 
 using System;
 using System.Linq;
-using k8s;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.InvalidChainTracker;
 using Nethermind.Specs;
-using Nethermind.Specs.Forks;
 using NSubstitute;
 using NUnit.Framework;
 

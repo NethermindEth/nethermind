@@ -133,8 +133,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                     LogManager
             );
 
-            DepositsProcessor depositsProcessor = new();
-
             BlockValidator = CreateBlockValidator();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,

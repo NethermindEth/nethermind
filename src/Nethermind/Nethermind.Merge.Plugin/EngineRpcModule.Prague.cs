@@ -15,9 +15,6 @@ public partial class EngineRpcModule : IEngineRpcModule
 {
     private readonly IAsyncHandler<byte[], GetPayloadV4Result?> _getPayloadHandlerV4;
 
-    public Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null)
-        => ForkchoiceUpdated(forkchoiceState, payloadAttributes, EngineApiVersions.Prague);
-
     public Task<ResultWrapper<PayloadStatusV1>> engine_newPayloadV4(ExecutionPayloadV4 executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot) =>
         NewPayload(new ExecutionPayloadParams<ExecutionPayloadV4>(executionPayload, blobVersionedHashes, parentBeaconBlockRoot), EngineApiVersions.Prague);
 

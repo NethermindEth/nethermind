@@ -38,7 +38,7 @@ public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
 
         ConsensusRequest[]? requests = requestsList.ToArray();
         Hash256 root = new RequestsTrie(requests).RootHash;
-        block.Body.Requests = requests; // ToDo think about it
+        block.Body.Requests = requests;
         block.Header.RequestsRoot = root;
     }
 }

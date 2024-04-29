@@ -394,6 +394,10 @@ namespace Nethermind.Serialization.Rlp
             {
                 decoderContext.SkipItem(); // Skip withdrawals
             }
+            if (decoderContext.Position != blockCheck)
+            {
+                decoderContext.SkipItem(); // Skip requests
+            }
             if ((rlpBehaviors & RlpBehaviors.AllowExtraBytes) != RlpBehaviors.AllowExtraBytes)
             {
                 decoderContext.Check(blockCheck);

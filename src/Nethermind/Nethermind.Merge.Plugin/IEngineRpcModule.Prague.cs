@@ -12,13 +12,6 @@ namespace Nethermind.Merge.Plugin;
 
 public partial interface IEngineRpcModule : IRpcModule
 {
-
-    [JsonRpcMethod(
-        Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
-        IsSharable = true,
-        IsImplemented = true)]
-    Task<ResultWrapper<ForkchoiceUpdatedV1Result>> engine_forkchoiceUpdatedV4(ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes = null);
-
     [JsonRpcMethod(
         Description = "Verifies the payload according to the execution environment rules and returns the verification status and hash of the last valid block.",
         IsSharable = true,

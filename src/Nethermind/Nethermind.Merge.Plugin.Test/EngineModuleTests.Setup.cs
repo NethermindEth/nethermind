@@ -161,8 +161,6 @@ public partial class EngineModuleTests
 
         public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
 
-        public IDepositsProcessor? DepositsProcessor { get; set; }
-
         public ISyncPeerPool SyncPeerPool { get; set; }
 
         protected int _blockProcessingThrottle = 0;
@@ -245,7 +243,6 @@ public partial class EngineModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
-            DepositsProcessor = new DepositsProcessor();
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,

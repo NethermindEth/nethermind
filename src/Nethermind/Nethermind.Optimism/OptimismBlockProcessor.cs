@@ -32,8 +32,7 @@ public class OptimismBlockProcessor : BlockProcessor
         ILogManager? logManager,
         IOPConfigHelper opConfigHelper,
         Create2DeployerContractRewriter contractRewriter,
-        IWithdrawalProcessor? withdrawalProcessor = null,
-        IDepositsProcessor? depositsProcessor = null)
+        IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
             stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
     {
