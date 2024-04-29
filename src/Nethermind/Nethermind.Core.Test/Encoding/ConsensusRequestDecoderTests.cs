@@ -147,7 +147,7 @@ public class ConsensusRequestDecoderTests
 
         byte[] rlp = Rlp.Encode(requests).Bytes;
         RlpStream rlpStream = new(rlp);
-        ConsensusRequest[] decoded = Rlp.DecodeArray<ConsensusRequest>(rlpStream);
+        ConsensusRequest[] decoded = Rlp.DecodeArray(rlpStream, new ConsensusRequestDecoder());
         decoded.Should().BeEquivalentTo(requests);
     }
 }
