@@ -119,7 +119,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             UpdateMetrics(opts, effectiveGasPrice);
 
-            bool deleteCallerAccount = RecoverSenderIfNeeded(tx, spec, opts, effectiveGasPrice);
 
             if (!(result = ValidateSender(tx, header, spec, tracer, opts))) return result;
             if (!(result = BuyGas(tx, header, spec, tracer, opts, effectiveGasPrice, out UInt256 premiumPerGas, out UInt256 senderReservedGasPayment))) return result;
@@ -260,50 +259,6 @@ namespace Nethermind.Evm.TransactionProcessing
 
             return TransactionResult.Ok;
         }
-
-        // TODO Should we remove this already
-        protected bool RecoverSenderIfNeeded(Transaction tx, IReleaseSpec spec, ExecutionOptions opts, in UInt256 effectiveGasPrice)
-        {
-            bool commit = opts.HasFlag(ExecutionOptions.Commit) || !spec.IsEip658Enabled;
-            bool restore = opts.HasFlag(ExecutionOptions.Restore);
-            bool noValidation = opts.HasFlag(ExecutionOptions.NoValidation);
-
-            bool deleteCallerAccount = false;
-
-            Address sender = tx.SenderAddress;
-            if (sender is null || !WorldState.AccountExists(sender))
-            {
-                if (Logger.IsDebug) Logger.Debug($"TX sender account does not exist {sender} - trying to recover it");
-
-                // hacky fix for the potential recovery issue
-                if (tx.Signature is not null)
-                    tx.SenderAddress = Ecdsa.RecoverAddress(tx, !spec.ValidateChainId);
-
-                if (sender != tx.SenderAddress)
-                {
-                    if (Logger.IsWarn)
-                        Logger.Warn($"TX recovery issue fixed - tx was coming with sender {sender} and the now it recovers to {tx.SenderAddress}");
-                    sender = tx.SenderAddress;
-                }
-                else
-                {
-                    TraceLogInvalidTx(tx, $"SENDER_ACCOUNT_DOES_NOT_EXIST {sender}");
-                    if (!commit || noValidation || effectiveGasPrice.IsZero)
-                    {
-                        deleteCallerAccount = !commit || restore;
-                        WorldState.CreateAccount(sender, in UInt256.Zero);
-                    }
-                }
-
-                if (sender is null)
-                {
-                    ThrowInvalidDataException($"Failed to recover sender address on tx {tx.Hash} when previously recovered sender account did not exist.");
-                }
-            }
-
-            return deleteCallerAccount;
-        }
-
 
         protected virtual TransactionResult ValidateSender(Transaction tx, BlockHeader header, IReleaseSpec spec, ITxTracer tracer, ExecutionOptions opts)
         {
