@@ -136,19 +136,12 @@ namespace Nethermind.Evm.TransactionProcessing
             if (restore)
             {
                 WorldState.Reset();
-                if (deleteCallerAccount)
-                {
-                    WorldState.DeleteAccount(tx.SenderAddress);
-                }
-                else
-                {
-                    if (!opts.HasFlag(ExecutionOptions.NoValidation))
-                        WorldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
-                    if (!tx.IsSystem())
-                        WorldState.DecrementNonce(tx.SenderAddress);
+                if (!opts.HasFlag(ExecutionOptions.NoValidation))
+                    WorldState.AddToBalance(tx.SenderAddress, senderReservedGasPayment, spec);
+                if (!tx.IsSystem())
+                    WorldState.DecrementNonce(tx.SenderAddress);
 
-                    WorldState.Commit(spec);
-                }
+                WorldState.Commit(spec);
             }
             else if (commit)
             {
