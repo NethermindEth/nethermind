@@ -233,4 +233,47 @@ public class EthSimulateTestsBlocksAndTransactions
             executor.Execute(payload, BlockParameter.Latest);
         Assert.IsTrue(result.Result!.Error!.Contains("higher than sender balance"));
     }
+
+
+    [Test]
+    public async Task TestTransferLogsAddress()
+    {
+        EthereumJsonSerializer serializer = new();
+        string input = """
+                       {
+                              "traceTransfers": true,
+                        "blockStateCalls": [
+                          {
+                            "blockOverrides": {
+                              "baseFeePerGas": "0xa"
+                            },
+                            "stateOverrides": {
+                              "0xc000000000000000000000000000000000000000": {
+                                "balance": "0x35a4ece8"
+                              }
+                            },
+                            "calls": [
+                              {
+                                "from": "0xc000000000000000000000000000000000000000",
+                                "to": "0xc100000000000000000000000000000000000000",
+                                "gas": "0x5208",
+                                "maxFeePerGas": "0x14",
+                                "maxPriorityFeePerGas": "0x1",
+                                "maxFeePerBlobGas": "0x0",
+                                "value": "0x65",
+                                "nonce": "0x0",
+                                "input": "0x"
+                              }
+                            ]
+                          }
+                        ]
+                       }
+                       """;
+        var payload = serializer.Deserialize<SimulatePayload<TransactionForRpc>>(input);
+        TestRpcBlockchain chain = await EthRpcSimulateTestsBase.CreateChain();
+        Console.WriteLine("current test: simulateTransferOverBlockStateCalls");
+        var result = chain.EthRpcModule.eth_simulateV1(payload!, BlockParameter.Latest);
+        var logs = result.Data.First().Calls.First().Logs.ToArray();
+        Assert.That(logs.First().Address == new Address("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE"));
+    }
 }

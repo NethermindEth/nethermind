@@ -22,7 +22,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
     private readonly ulong _txIndex;
     private static readonly Hash256[] _topics = [Keccak.Zero];
     private readonly bool _isTracingTransfers;
-
+    private static Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
     public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong txIndex)
     {
@@ -81,6 +81,6 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         byte[] data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
             new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256), from, to, value);
-        yield return new LogEntry(Address.Zero, data, _topics);
+        yield return new LogEntry(Erc20Sender, data, _topics);
     }
 }
