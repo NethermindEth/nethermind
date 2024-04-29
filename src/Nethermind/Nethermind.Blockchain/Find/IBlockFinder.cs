@@ -103,8 +103,9 @@ namespace Nethermind.Blockchain.Find
                         blockParameter.RequireCanonical
                             ? BlockTreeLookupOptions.RequireCanonical
                             : BlockTreeLookupOptions.None),
-                BlockParameterType.BlockHash => FindBlock(blockParameter.BlockHash!,
-                    blockParameter.RequireCanonical
+                BlockParameterType.BlockHash => blockParameter.BlockHash! == HeadHash
+                    ? FindLatestBlock()
+                    : FindBlock(blockParameter.BlockHash!, blockParameter.RequireCanonical
                         ? BlockTreeLookupOptions.RequireCanonical
                         : BlockTreeLookupOptions.None),
                 _ => throw new ArgumentException($"{nameof(BlockParameterType)} not supported: {blockParameter.Type}")

@@ -670,6 +670,7 @@ namespace Nethermind.Trie.Pruning
                 Task deleteTask = Task.Run(() => RemovePastKeys(persistedHashes));
 
                 writeBatch.Dispose();
+                AnnounceReorgBoundaries();
                 deleteTask.Wait();
 
                 foreach (KeyValuePair<HashAndTinyPathAndHash, long> keyValuePair in _persistedLastSeens)

@@ -146,7 +146,7 @@ namespace Nethermind.JsonRpc.Test.Modules
             TxSealer = new TxSealer(txSigner, Timestamper);
             TxSender ??= new TxPoolSender(TxPool, TxSealer, NonceManager, EthereumEcdsa ?? new EthereumEcdsa(specProvider.ChainId, LogManager));
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
-            FeeHistoryOracle ??= new FeeHistoryOracle(BlockFinder, ReceiptStorage, SpecProvider);
+            FeeHistoryOracle ??= new FeeHistoryOracle(BlockTree, ReceiptStorage, SpecProvider);
             ISyncConfig syncConfig = new SyncConfig();
             EthRpcModule = new EthRpcModule(
                 RpcConfig,

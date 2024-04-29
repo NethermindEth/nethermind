@@ -166,10 +166,8 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
-                        Db.Metrics.StorageTreeWrites++;
-                        toUpdateRoots.Add(change.StorageCell.Address);
-                        tree.Set(change.StorageCell.Index, change.Value);
+                        SaveToTree(toUpdateRoots, change);
+
                         if (isTracing)
                         {
                             trace![change.StorageCell] = new ChangeTrace(change.Value);
@@ -204,8 +202,23 @@ namespace Nethermind.State
             }
         }
 
+        private void SaveToTree(HashSet<Address> toUpdateRoots, Change change)
+        {
+            if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
+                initialValue.AsSpan().SequenceEqual(change.Value))
+            {
+                // no need to update the tree if the value is the same
+                return;
+            }
+
+            StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
+            Db.Metrics.StorageTreeWrites++;
+            toUpdateRoots.Add(change.StorageCell.Address);
+            tree.Set(change.StorageCell.Index, change.Value);
+        }
+
         /// <summary>
-        /// Commit persisent storage trees
+        /// Commit persistent storage trees
         /// </summary>
         /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)

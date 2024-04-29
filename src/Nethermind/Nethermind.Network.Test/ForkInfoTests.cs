@@ -104,22 +104,6 @@ public class ForkInfoTests
         Test(head, headTimestamp, KnownHashes.MainnetGenesis, forkHashHex, next, description, provider);
     }
 
-    [TestCase(0, 0ul, "0xa3f5ab08", 1_561_651ul, "Unsynced")]
-    [TestCase(1_561_650L, 0ul, "0xa3f5ab08", 1_561_651ul, "Last Constantinople block")]
-    [TestCase(1_561_651L, 0ul, "0xc25efa5c", 4_460_644ul, "First Istanbul block")]
-    [TestCase(4_460_644L, 0ul, "0x757a1c47", 5_062_605ul, "First Berlin block")]
-    [TestCase(4_600_000L, 0ul, "0x757a1c47", 5_062_605ul, "Future Berlin block")]
-    [TestCase(5_062_605L, 0ul, "0xB8C6299D", 1678832736ul, "First London block")]
-    [TestCase(6_000_000, 0ul, "0xB8C6299D", 1678832736ul, "Future London block")]
-    [TestCase(6_000_001, 1678832736ul, "0xf9843abf", 1705473120ul, "First Shanghai timestamp")]
-    [TestCase(6_000_001, 1705473119ul, "0xf9843abf", 1705473120ul, "Future Shanghai timestamp")]
-    [TestCase(6_000_002, 1705473120ul, "0x70cc14e2", 0ul, "First Cancun timestamp")]
-    [TestCase(6_000_002, 1905473119ul, "0x70cc14e2", 0ul, "Future Cancun timestamp")]
-    public void Fork_id_and_hash_as_expected_on_goerli(long head, ulong headTimestamp, string forkHashHex, ulong next, string description)
-    {
-        Test(head, headTimestamp, KnownHashes.GoerliGenesis, forkHashHex, next, description, GoerliSpecProvider.Instance, "goerli.json");
-    }
-
     [TestCase(0, 0ul, "0xc61a6098", 1_696_000_704ul, "Unsynced")]
     [TestCase(1, 1_696_000_703ul, "0xc61a6098", 1_696_000_704ul, "Last genesis spec block")]
     [TestCase(2, 1_696_000_704ul, "0xfd4f016b", 1_707_305_664ul, "First Shanghai block")]

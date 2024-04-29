@@ -195,12 +195,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
         }
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingInstructions)
         {
-            _innerTracer.StartOperation(depth, gas, opcode, pc, isPostMerge);
+            _innerTracer.StartOperation(pc, opcode, gas, env);
         }
     }
 

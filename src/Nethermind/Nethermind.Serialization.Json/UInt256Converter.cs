@@ -72,12 +72,14 @@ public class UInt256Converter : JsonConverter<UInt256>
         UInt256 value,
         JsonSerializerOptions options)
     {
+        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         if (value.IsZero)
         {
-            writer.WriteRawValue("\"0x0\""u8);
+            writer.WriteRawValue(usedConversion == NumberConversion.ZeroPaddedHex
+                ? "\"0x0000000000000000000000000000000000000000000000000000000000000000\""u8
+                : "\"0x0\""u8);
             return;
         }
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         switch (usedConversion)
         {
             case NumberConversion.Hex:
@@ -93,6 +95,13 @@ public class UInt256Converter : JsonConverter<UInt256>
             case NumberConversion.Raw:
                 writer.WriteStringValue(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
+            case NumberConversion.ZeroPaddedHex:
+                {
+                    Span<byte> bytes = stackalloc byte[32];
+                    value.ToBigEndian(bytes);
+                    ByteArrayConverter.Convert(writer, bytes, skipLeadingZeros: false);
+                }
+                break;
             default:
                 throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
         }
@@ -104,23 +113,18 @@ public class UInt256Converter : JsonConverter<UInt256>
     [SkipLocalsInit]
     public override void WriteAsPropertyName(Utf8JsonWriter writer, UInt256 value, JsonSerializerOptions options)
     {
+        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         if (value.IsZero)
         {
-            writer.WritePropertyName("0x0"u8);
+            writer.WritePropertyName(usedConversion == NumberConversion.ZeroPaddedHex
+                ? "0x0000000000000000000000000000000000000000000000000000000000000000"u8
+                : "0x0"u8);
             return;
         }
-        NumberConversion usedConversion = ForcedNumberConversion.GetFinalConversion();
         switch (usedConversion)
         {
             case NumberConversion.Hex:
-                Span<byte> bytes = stackalloc byte[32];
-                value.ToBigEndian(bytes);
-                ByteArrayConverter.Convert(
-                    writer,
-                    bytes,
-                    static (w, h) => w.WritePropertyName(h),
-                    skipLeadingZeros: false,
-                    addQuotations: false);
+                WriteHexPropertyName(writer, value, false);
                 break;
             case NumberConversion.Decimal:
                 writer.WritePropertyName(value.ToString(CultureInfo.InvariantCulture));
@@ -128,9 +132,24 @@ public class UInt256Converter : JsonConverter<UInt256>
             case NumberConversion.Raw:
                 writer.WritePropertyName(((BigInteger)value).ToString(CultureInfo.InvariantCulture));
                 break;
+            case NumberConversion.ZeroPaddedHex:
+                WriteHexPropertyName(writer, value, true);
+                break;
             default:
                 throw new NotSupportedException($"{usedConversion} format is not supported for {nameof(UInt256)}");
         }
+    }
+
+    private static void WriteHexPropertyName(Utf8JsonWriter writer, UInt256 value, bool isZeroPadded)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        value.ToBigEndian(bytes);
+        ByteArrayConverter.Convert(
+            writer,
+            bytes,
+            static (w, h) => w.WritePropertyName(h),
+            skipLeadingZeros: !isZeroPadded,
+            addQuotations: false);
     }
 
     [DoesNotReturn]
