@@ -268,15 +268,14 @@ namespace Nethermind.Evm.Test.Tracing
             public IWorldState _stateProvider;
             public EstimateGasTracer tracer;
             public GasEstimator estimator;
-            private PaprikaStateFactory _stateDb;
+            private PaprikaStateFactory _stateFactory;
 
             public TestEnvironment()
             {
                 _specProvider = MainnetSpecProvider.Instance;
                 MemDb stateDb = new();
-                TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-                IStateFactory stateFactory = new PaprikaStateFactory();
-                _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
+                _stateFactory = new PaprikaStateFactory();
+                _stateProvider = new WorldState(_stateFactory, new MemDb(), LimboLogs.Instance);
                 _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
                 _stateProvider.Commit(_specProvider.GenesisSpec);
                 _stateProvider.CommitTree(0);
@@ -291,7 +290,7 @@ namespace Nethermind.Evm.Test.Tracing
                 estimator = new(_transactionProcessor, _stateProvider, _specProvider, blocksConfig);
             }
 
-            public ValueTask DisposeAsync() => _stateDb.DisposeAsync();
+            public ValueTask DisposeAsync() => _stateFactory.DisposeAsync();
         }
     }
 }

@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.Paprika;
 using Nethermind.State;
 using NUnit.Framework;
-using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Test;
 
@@ -32,7 +31,7 @@ public class VirtualMachineTestsBase
 
     private IEthereumEcdsa _ethereumEcdsa;
     protected ITransactionProcessor _processor;
-    private PaprikaStateFactory _stateDb;
+    private PaprikaStateFactory _stateFactory;
 
     protected VirtualMachine Machine { get; private set; }
     protected Nethermind.State.IWorldState TestState { get; private set; }
@@ -62,10 +61,8 @@ public class VirtualMachineTestsBase
         ILogManager logManager = GetLogManager();
 
         IDb codeDb = new MemDb();
-        _stateDb = new MemDb();
-        ITrieStore trieStore = new TrieStore(_stateDb, logManager);
-        IStateFactory stateFactory = new PaprikaStateFactory();
-        TestState = new WorldState(stateFactory, codeDb, logManager);
+        _stateFactory = new PaprikaStateFactory();
+        TestState = new WorldState(_stateFactory, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
         IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
@@ -73,7 +70,7 @@ public class VirtualMachineTestsBase
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.DisposeAsync();
+    public virtual void TearDown() => _stateFactory?.DisposeAsync();
 
     protected GethLikeTxTrace ExecuteAndTrace(params byte[] code)
     {

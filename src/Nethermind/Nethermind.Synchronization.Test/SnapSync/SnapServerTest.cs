@@ -11,6 +11,7 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.GethStyle.JavaScript;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
@@ -41,9 +42,10 @@ public class SnapServerTest
         IDbProvider dbProviderClient = new DbProvider();
         var stateDbClient = new MemDb();
         dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
 
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
 
         return new Context()
         {
@@ -182,8 +184,9 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
 
         (IOwnedReadOnlyList<PathWithStorageSlot[]> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
@@ -210,8 +213,9 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.State, new MemDb());
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
-        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        IStateFactory stateFactory = new PaprikaStateFactory();
+        ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)

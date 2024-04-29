@@ -32,7 +32,6 @@ using Nethermind.Paprika;
 using Nethermind.Core.Buffers;
 using Nethermind.State.Tracing;
 using NSubstitute;
-using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {

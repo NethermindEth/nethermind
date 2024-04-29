@@ -25,8 +25,6 @@ using Nethermind.Specs.Forks;
 using Nethermind.State;
 using FluentAssertions;
 using NUnit.Framework;
-using Nethermind.Config;
-using Nethermind.Paprika;
 
 namespace Nethermind.Evm.Test;
 
@@ -40,7 +38,7 @@ public class TransactionProcessorTests
     private readonly ISpecProvider _specProvider;
     private IEthereumEcdsa _ethereumEcdsa;
     private TransactionProcessor _transactionProcessor;
-    private PaprikaStateFactory _stateDb;
+    private PaprikaStateFactory _stateFactory;
     private IWorldState _stateProvider;
 
     public TransactionProcessorTests(bool eip155Enabled)
@@ -55,9 +53,8 @@ public class TransactionProcessorTests
     public void Setup()
     {
         MemDb stateDb = new();
-        TrieStore trieStore = new(stateDb, LimboLogs.Instance);
-        IStateFactory stateFactory = new PaprikaStateFactory();
-        _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
+        _stateFactory = new PaprikaStateFactory();
+        _stateProvider = new WorldState(_stateFactory, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -68,7 +65,7 @@ public class TransactionProcessorTests
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.DisposeAsync();
+    public virtual void TearDown() => _stateFactory?.DisposeAsync();
 
     [TestCase(true, true)]
     [TestCase(true, false)]

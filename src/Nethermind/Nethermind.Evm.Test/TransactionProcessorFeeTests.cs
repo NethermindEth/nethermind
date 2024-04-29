@@ -29,17 +29,15 @@ public class TransactionProcessorFeeTests
     private IWorldState _stateProvider;
     private OverridableReleaseSpec _spec;
 
-    private PaprikaStateFactory _stateDb;
+    private PaprikaStateFactory _stateFactory;
 
     [SetUp]
     public void Setup()
     {
         _spec = new(London.Instance);
         _specProvider = new TestSpecProvider(_spec);
-
-        TrieStore trieStore = new(new MemDb(), LimboLogs.Instance);
-        IStateFactory stateFactory = new PaprikaStateFactory();
-        _stateProvider = new WorldState(stateFactory, new MemDb(), LimboLogs.Instance);
+        _stateFactory = new PaprikaStateFactory();
+        _stateProvider = new WorldState(_stateFactory, new MemDb(), LimboLogs.Instance);
         _stateProvider.CreateAccount(TestItem.AddressA, 1.Ether());
         _stateProvider.Commit(_specProvider.GenesisSpec);
         _stateProvider.CommitTree(0);
@@ -50,7 +48,7 @@ public class TransactionProcessorFeeTests
     }
 
     [TearDown]
-    public virtual void TearDown() => _stateDb?.DisposeAsync();
+    public virtual void TearDown() => _stateFactory?.DisposeAsync();
 
     [TestCase(true, true)]
     [TestCase(false, true)]

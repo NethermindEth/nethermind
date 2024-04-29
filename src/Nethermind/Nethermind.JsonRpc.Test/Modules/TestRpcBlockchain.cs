@@ -29,6 +29,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Db;
 using Nethermind.Paprika;
 using Nethermind.State;
 using Nethermind.Synchronization.ParallelSync;

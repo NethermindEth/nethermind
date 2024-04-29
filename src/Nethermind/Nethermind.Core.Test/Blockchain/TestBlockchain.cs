@@ -86,8 +86,6 @@ public class TestBlockchain : IDisposable
 
     public IPoSSwitcher PoSSwitcher { get; set; } = null!;
 
-    public IStateFactory? StateFactory { get; private set; }
-
     protected TestBlockchain()
     {
     }
@@ -124,7 +122,6 @@ public class TestBlockchain : IDisposable
         SpecProvider = CreateSpecProvider(specProvider ?? MainnetSpecProvider.Instance);
         EthereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, LogManager);
         DbProvider = await CreateDbProvider();
-        TrieStore = new TrieStore(StateDb, LogManager);
 
         StateFactory = new PaprikaStateFactory();
 
@@ -151,7 +148,6 @@ public class TestBlockchain : IDisposable
         State.Commit(SpecProvider.GenesisSpec);
         State.CommitTree(0);
 
-        ReadOnlyTrieStore = TrieStore.AsReadOnly(StateDb);
         StateReader = new StateReader(StateFactory, CodeDb, LogManager);
 
         BlockTree = Builders.Build.A.BlockTree()

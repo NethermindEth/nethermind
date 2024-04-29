@@ -205,42 +205,28 @@ public class PaprikaStateFactory : IStateFactory
             }
         }
 
-        public void Set(ValueHash256 hash, Account? account)
+        public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaKeccak key = Convert(hash);
-
-            if (account == null)
+            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (retrieved.Balance.IsZero &&
+                retrieved.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
             {
-                wrapped.DestroyAccount(key);
+                account = default;
+                return false;
             }
-            else
-            {
-                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
-                    Convert(account.StorageRoot));
-                wrapped.SetAccount(key, actual);
-            }
-        }
 
-        public void Set(ValueHash256 hash, Account? account)
-        {
-            PaprikaKeccak key = Convert(hash);
-
-            if (account == null)
+            if (hasEmptyStorageAndCode)
             {
-                _wrapped.DestroyAccount(key);
+                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+                return true;
             }
-            else
-            {
-                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
-                    Convert(account.StorageRoot));
-                _wrapped.SetAccount(key, actual);
-            }
-        }
 
-        public Account? Get(Address address)
-        {
-            ValueHash256 hash = ValueKeccak.Compute(address.Bytes);
-            return Get(hash);
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+                Convert(retrieved.CodeHash));
+            return true;
         }
 
         public Account? Get(ValueHash256 hash)
@@ -260,36 +246,42 @@ public class PaprikaStateFactory : IStateFactory
                 Convert(account.CodeHash));
         }
 
-        public byte[] GetStorageAt(in StorageCell cell)
+        [SkipLocalsInit]
+        public EvmWord GetStorageAt(in StorageCell cell)
         {
-            // bytes are used for two purposes, first for the key encoding and second, for the result handling
             Span<byte> bytes = stackalloc byte[32];
             GetKey(cell.Index, bytes);
 
-            Span<byte> value = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(cell.Address), new PaprikaKeccak(bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
-        public byte[] GetStorageAt(Address address, in ValueHash256 hash)
+        [SkipLocalsInit]
+        public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
-            Span<byte> value = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
-            return value.IsEmpty ? new byte[] { 0 } : value.ToArray();
+            bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
         }
 
-        public void SetStorage(in StorageCell cell, ReadOnlySpan<byte> value)
+        [SkipLocalsInit]
+        public void SetStorage(in StorageCell cell, EvmWord value)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
-            wrapped.SetStorage(converted, new PaprikaKeccak(key),
-                value.IsZero() ? ReadOnlySpan<byte>.Empty : value);
+            wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
+        }
+
+        public void StorageMightBeSet(in StorageCell cell)
+        {
+            // TODO: notify world state about prefetching
         }
 
         public void Commit(long blockNumber)
         {
             wrapped.Commit((uint)blockNumber);
-            factory.Committed(wrapped, (uint)blockNumber);
+            factory.Committed(wrapped);
         }
 
         public void Reset() => wrapped.Reset();
@@ -310,12 +302,6 @@ public class PaprikaStateFactory : IStateFactory
             _factory = factory;
         }
 
-        public Account? Get(Address address)
-        {
-            ValueHash256 hash = ValueKeccak.Compute(address.Bytes);
-            return Get(hash);
-        }
-
         public Account? Get(ValueHash256 hash)
         {
             PaprikaAccount account = _wrapped.GetAccount(Convert(hash));
@@ -331,6 +317,30 @@ public class PaprikaStateFactory : IStateFactory
 
             return new Account(account.Nonce, account.Balance, Convert(account.StorageRootHash),
                 Convert(account.CodeHash));
+        }
+
+        public bool TryGet(Address address, out AccountStruct account)
+        {
+            PaprikaAccount retrieved = _wrapped.GetAccount(Convert(address));
+            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+            if (retrieved.Balance.IsZero &&
+                retrieved.Nonce.IsZero &&
+                hasEmptyStorageAndCode)
+            {
+                account = default;
+                return false;
+            }
+
+            if (hasEmptyStorageAndCode)
+            {
+                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
+                return true;
+            }
+
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+                Convert(retrieved.CodeHash));
+            return true;
         }
 
         public EvmWord GetStorageAt(in StorageCell cell)
@@ -359,9 +369,20 @@ public class PaprikaStateFactory : IStateFactory
             _wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
         }
 
-        public void StorageMightBeSet(in StorageCell cell)
+        public void SetAccount(ValueHash256 hash, Account? account)
         {
-            // TODO: notify world state about prefetching
+            PaprikaKeccak key = Convert(hash);
+
+            if (account is null)
+            {
+                _wrapped.DestroyAccount(key);
+            }
+            else
+            {
+                PaprikaAccount actual = new(account.Balance, account.Nonce, Convert(account.CodeHash),
+                    Convert(account.StorageRoot));
+                _wrapped.SetAccount(key, actual);
+            }
         }
 
         public void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
@@ -371,13 +392,6 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         public void Commit() => _wrapped.Commit();
-        public void Reset() => _wrapped.Reset();
-
-        public void Commit(long blockNumber)
-        {
-            _wrapped.Commit((uint)blockNumber);
-            _factory.Committed(_wrapped);
-        }
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 

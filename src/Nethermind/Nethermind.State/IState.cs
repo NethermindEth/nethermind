@@ -12,9 +12,6 @@ namespace Nethermind.State;
 
 public interface IState : IReadOnlyState
 {
-    void Set(Address address, Account? account);
-    void Set(ValueHash256 hash, Account? account);
-    void Set(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Set(Address address, in AccountStruct account, bool isNewHint = false);
 
     void SetStorage(in StorageCell cell, EvmWord value);
@@ -38,7 +35,6 @@ public interface IState : IReadOnlyState
 
 public interface IReadOnlyState : IDisposable
 {
-    Account? Get(Address address);
     Account? Get(ValueHash256 hash);
     bool TryGet(Address address, out AccountStruct account);
 

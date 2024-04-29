@@ -6,7 +6,6 @@ using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -24,15 +23,11 @@ using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.TxPool;
 using NUnit.Framework;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Paprika;
-using Nethermind.Trie.Pruning;
 using NSubstitute;
-using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules.Trace
 {
@@ -62,7 +57,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
 
             IStateFactory stateFactory = new PaprikaStateFactory();
 
-            ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
+            //ITrieStore trieStore = new TrieStore(stateDb, LimboLogs.Instance).AsReadOnly();
             WorldState stateProvider = new(stateFactory, codeDb, LimboLogs.Instance);
             _stateReader = new StateReader(stateFactory, codeDb, LimboLogs.Instance);
 

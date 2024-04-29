@@ -172,7 +172,7 @@ public partial class EthRpcModuleTests
         transaction.To = TestItem.AddressB;
 
         ctx.Test.StateDb.Clear();
-        ctx.Test.StateFactory.ClearCache();
+        //ctx.Test.StateFactory.ClearCache();
 
         string serialized =
             await ctx.Test.TestEthRpc("eth_call", ctx.Test.JsonSerializer.Serialize(transaction), "latest");
