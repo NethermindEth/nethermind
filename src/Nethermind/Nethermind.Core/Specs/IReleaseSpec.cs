@@ -273,6 +273,14 @@ namespace Nethermind.Core.Specs
         bool IsEip4788Enabled { get; }
         Address Eip4788ContractAddress { get; }
 
+
+        /// <summary>
+        /// EIP-6110: Supply validator deposits on chain
+        /// </summary>
+        bool IsEip6110Enabled { get; }
+        bool DepositsEnabled => IsEip6110Enabled;
+        Address Eip6110ContractAddress { get; }
+
         /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
@@ -288,7 +296,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

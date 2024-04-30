@@ -39,7 +39,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-
+    private readonly IDepositsProcessor _depositsProcessor;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -58,6 +58,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
+        IDepositsProcessor? depositsProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -70,6 +71,7 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _depositsProcessor = depositsProcessor ?? new DepositsProcessor(logManager);
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
 
         ReceiptsTracer = new BlockReceiptsTracer();
@@ -248,6 +250,7 @@ public partial class BlockProcessor : IBlockProcessor
         block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
+        _depositsProcessor.ProcessDeposits(block, receipts, spec);
         ReceiptsTracer.EndBlockTrace();
 
         _stateProvider.Commit(spec);
@@ -299,6 +302,7 @@ public partial class BlockProcessor : IBlockProcessor
             ReceiptsRoot = bh.ReceiptsRoot,
             BaseFeePerGas = bh.BaseFeePerGas,
             WithdrawalsRoot = bh.WithdrawalsRoot,
+            DepositsRoot = bh.DepositsRoot,
             IsPostMerge = bh.IsPostMerge,
             ParentBeaconBlockRoot = bh.ParentBeaconBlockRoot,
         };

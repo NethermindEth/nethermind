@@ -8,4 +8,5 @@ public static class EngineApiVersions
     public const int Paris = 1;
     public const int Shanghai = 2;
     public const int Cancun = 3;
+    public const int Prague = 4;
 }

@@ -99,6 +99,13 @@ namespace Nethermind.Core.Test.Builders
         public static Withdrawal WithdrawalE_5Eth = new() { Address = AddressE, Index = 5, ValidatorIndex = 2005, AmountInGwei = 5_000_000_000 };
         public static Withdrawal WithdrawalF_6Eth = new() { Address = AddressF, Index = 6, ValidatorIndex = 2006, AmountInGwei = 6_000_000_000 };
 
+        public static Deposit DepositA_1Eth = new() { Index = 1, PubKey = PublicKeyA.Bytes, Amount = 1_000_000_000, WithdrawalCredentials = AddressA.Bytes, Signature = KeccakA.Bytes.ToArray()};
+        public static Deposit DepositB_2Eth = new() { Index = 2, PubKey = PublicKeyB.Bytes, Amount = 2_000_000_000, WithdrawalCredentials = AddressB.Bytes, Signature = KeccakB.Bytes.ToArray()};
+        public static Deposit DepositC_3Eth = new() { Index = 3, PubKey = PublicKeyC.Bytes, Amount = 3_000_000_000, WithdrawalCredentials = AddressC.Bytes, Signature = KeccakC.Bytes.ToArray()};
+        public static Deposit DepositD_4Eth = new() { Index = 4, PubKey = PublicKeyD.Bytes, Amount = 4_000_000_000, WithdrawalCredentials = AddressD.Bytes, Signature = KeccakD.Bytes.ToArray()};
+        public static Deposit DepositE_5Eth = new() { Index = 5, PubKey = PublicKeyE.Bytes, Amount = 5_000_000_000, WithdrawalCredentials = AddressE.Bytes, Signature = KeccakE.Bytes.ToArray()};
+        public static Deposit DepositF_6Eth = new() { Index = 6, PubKey = PublicKeyF.Bytes, Amount = 6_000_000_000, WithdrawalCredentials = AddressF.Bytes, Signature = KeccakF.Bytes.ToArray()};
+
         public static IPEndPoint IPEndPointA = IPEndPoint.Parse("10.0.0.1");
         public static IPEndPoint IPEndPointB = IPEndPoint.Parse("10.0.0.2");
         public static IPEndPoint IPEndPointC = IPEndPoint.Parse("10.0.0.3");

@@ -160,6 +160,7 @@ namespace Nethermind.AuRa.Test
                 LimboLogs.Instance,
                 Substitute.For<IBlockTree>(),
                 new WithdrawalProcessor(stateProvider, LimboLogs.Instance),
+                new DepositsProcessor(LimboLogs.Instance),
                 null,
                 txFilter,
                 contractRewriter: contractRewriter);

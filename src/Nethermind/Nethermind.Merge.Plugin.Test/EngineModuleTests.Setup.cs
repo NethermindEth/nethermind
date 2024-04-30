@@ -93,6 +93,10 @@ public partial class EngineModuleTests
                 chain.PayloadPreparationService!,
                 chain.SpecProvider!,
                 chain.LogManager),
+            new GetPayloadV4Handler(
+                chain.PayloadPreparationService!,
+                chain.SpecProvider!,
+                chain.LogManager),
             new NewPayloadHandler(
                 chain.BlockValidator,
                 chain.BlockTree,
@@ -147,6 +151,8 @@ public partial class EngineModuleTests
         public BeaconSync? BeaconSync { get; set; }
 
         public IWithdrawalProcessor? WithdrawalProcessor { get; set; }
+
+        public IDepositsProcessor? DepositsProcessor { get; set; }
 
         public ISyncPeerPool SyncPeerPool { get; set; }
 
@@ -227,6 +233,7 @@ public partial class EngineModuleTests
         {
             BlockValidator = CreateBlockValidator();
             WithdrawalProcessor = new WithdrawalProcessor(State, LogManager);
+            DepositsProcessor = new DepositsProcessor(LogManager);
             IBlockProcessor processor = new BlockProcessor(
                 SpecProvider,
                 BlockValidator,
@@ -236,7 +243,8 @@ public partial class EngineModuleTests
                 ReceiptStorage,
                 NullWitnessCollector.Instance,
                 LogManager,
-                WithdrawalProcessor);
+                WithdrawalProcessor,
+                DepositsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
