@@ -59,7 +59,7 @@ namespace Nethermind.Init.Steps
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 
-                return await consensusPlugin.InitBlockProducer(consensusPlugin.DefaultBlockProductionTrigger);
+                return await blockProducerFactory.InitBlockProducer(consensusPlugin.DefaultBlockProductionTrigger);
             }
             else
             {
