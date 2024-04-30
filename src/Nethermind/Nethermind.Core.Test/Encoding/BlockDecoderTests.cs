@@ -49,25 +49,23 @@ public class BlockDecoderTests
         {
             if (i % 2 == 0)
             {
-                requests[i] = new Deposit()
-                {
-                    Index = long.MaxValue,
-                    PubKey = Keccak.EmptyTreeHash.ToBytes(),
-                    Signature = Keccak.EmptyTreeHash.ToBytes(),
-                    WithdrawalCredentials = Keccak.EmptyTreeHash.ToBytes(),
-                    Amount = int.MaxValue
-                };
+                requests[i] = Build.A.Deposit
+                    .WithIndex(long.MaxValue)
+                    .WithPublicKey(new byte[] { (byte)i })
+                    .WithSignature(new byte[] { (byte)i })
+                    .WithWithdrawalCredentials(new byte[] { (byte)i })
+                    .WithAmount(int.MaxValue)
+                    .TestObject;
             }
             else
             {
                 byte[] validatorPubkey = new byte[48];
                 validatorPubkey[11] = 11;
-                requests[i] = new WithdrawalRequest()
-                {
-                    SourceAddress = TestItem.AddressA,
-                    ValidatorPubkey = validatorPubkey,
-                    Amount = int.MaxValue
-                };
+                requests[i] = Build.A.WithdrawalRequest
+                    .WithSourceAddress(TestItem.AddressA)
+                    .WithValidatorPubkey(validatorPubkey)
+                    .WithAmount(int.MaxValue)
+                    .TestObject;
             }
         }
 
