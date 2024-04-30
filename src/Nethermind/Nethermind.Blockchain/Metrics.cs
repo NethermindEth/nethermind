@@ -15,6 +15,10 @@ namespace Nethermind.Blockchain
         [Description("Total MGas processed")]
         public static double Mgas { get; set; }
 
+        [GaugeMetric]
+        [Description("MGas processed per second")]
+        public static double MgasPerSec { get; set; }
+
         [CounterMetric]
         [Description("Total number of transactions processed")]
         public static long Transactions { get; set; }
