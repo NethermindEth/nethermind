@@ -876,10 +876,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int programCounter = vmState.ProgramCounter;
         int sectionIndex = vmState.FunctionIndex;
 
-        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection.Span;
+        ReadOnlySpan<byte> codeSection = env.CodeInfo.CodeSection(0).Span;
         ReadOnlySpan<byte> dataSection = env.CodeInfo.DataSection.Span;
-        ReadOnlySpan<byte> typeSection = env.CodeInfo.TypeSection.Span;
-        ReadOnlySpan<byte> containerSection = env.CodeInfo.ContainerSection.Span;
 
         EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
@@ -3020,8 +3018,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             case Instruction.EOFCREATE :
                 {
                     int initCodeIdx = codeSection[vmState.ProgramCounter++];
-                    SectionHeader containerSection = env.CodeInfo.ContainerOffset(initCodeIdx);
-                    initCode = env.CodeInfo.ContainerSection[containerSection.Start..containerSection.EndOffset];
+                    initCode = env.CodeInfo.ContainerSection(initCodeIdx);
                     break;
                 }
             case Instruction.TXCREATE :
