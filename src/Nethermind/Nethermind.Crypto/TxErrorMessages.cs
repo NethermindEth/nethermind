@@ -92,8 +92,8 @@ public static class TxErrorMessages
     public const string SenderIsContract
         = "SenderIsContract: sender address has deployed code.";
 
-    public const string GasPriceTooLow
-        = "GasPriceTooLow: max fee per gas less than block base fee.";
+    public static string GasPriceTooLow(in UInt256 baseFee, in UInt256 txMaxFeePerGas)
+        => $"GasPriceTooLow: max fee per gas less than block base fee. MaxFeePerGas: {txMaxFeePerGas}, BaseFee: {baseFee}";
 
     public const string InsufficientFundsForTxValue
         = "InsufficientFundsForTxValue: sender has insufficient funds for transaction value.";
@@ -116,4 +116,4 @@ public static class TxErrorMessages
     public const string AlreadyKnown
         = "AlreadyKnown: transaction is already known.";
 }
-}
+

@@ -4,6 +4,7 @@
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -31,8 +32,7 @@ namespace Nethermind.Consensus.Transactions
             bool allowed = skipCheck || tx.MaxFeePerGas >= baseFee;
             return allowed
                 ? AcceptTxResult.Accepted
-                : AcceptTxResult.FeeTooLow.WithMessage(
-                    $"MaxFeePerGas too low. MaxFeePerGas: {tx.MaxFeePerGas}, BaseFee: {baseFee}, MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
+                : AcceptTxResult.FeeTooLow.WithMessage(TxErrorMessages.GasPriceTooLow (baseFee, tx.MaxFeePerGas) + $" MaxPriorityFeePerGas:{tx.MaxPriorityFeePerGas}, Block number: {blockNumber}");
         }
     }
 }

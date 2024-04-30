@@ -37,7 +37,8 @@ namespace Nethermind.TxPool.Filters
 
                     if (_logger.IsTrace) _logger.Trace($"Skipped adding transaction {tx.ToString("  ")}, no sender.");
 
-                    return AcceptTxResult.FailedToResolveSender;
+                    return AcceptTxResult.FailedToResolveSender
+                        .WithMessage(TxErrorMessages.InvalidTxSignature);
                 }
             }
 

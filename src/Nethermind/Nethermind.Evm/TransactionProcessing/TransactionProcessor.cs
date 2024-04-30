@@ -278,7 +278,7 @@ namespace Nethermind.Evm.TransactionProcessing
                 if (!tx.TryCalculatePremiumPerGas(header.BaseFeePerGas, out premiumPerGas))
                 {
                     TraceLogInvalidTx(tx, "MINER_PREMIUM_IS_NEGATIVE");
-                    return TxErrorMessages.GasPriceTooLow;
+                    return TxErrorMessages.GasPriceTooLow(header.BaseFeePerGas, in premiumPerGas);
                 }
 
                 UInt256 senderBalance = WorldState.GetBalance(tx.SenderAddress);
