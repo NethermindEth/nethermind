@@ -5,7 +5,6 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Linq;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
@@ -245,16 +244,18 @@ internal class ShutterCrypto
     {
         Hash256 h = GenerateHash(instanceId, eon, slot, identities);
         Ecdsa ecdsa = new();
-        PublicKey? expectedPubkey = ecdsa.RecoverPublicKey(new Signature(signature), h);
+        PublicKey? expectedPubkey;
+
+        // todo: investigate bad recovery id 230
+        Signature s = new Signature(signature);
+        expectedPubkey = ecdsa.RecoverPublicKey(s, h);
 
         if (expectedPubkey is null)
         {
             return false;
         }
-        else
-        {
-            return keyperAddress == expectedPubkey.Address;
-        }
+
+        return keyperAddress == expectedPubkey.Address;
     }
 
     // todo: should keyperIndex and txPointer be included?
@@ -272,6 +273,6 @@ internal class ShutterCrypto
             Ssz.Encode(container[offset..(offset + 64)], identity.compress());
         }
 
-        return new(container);
+        return Keccak.Compute(container);
     }
 }

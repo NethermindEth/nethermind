@@ -22,6 +22,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Google.Protobuf.WellKnownTypes;
 using Nethermind.Consensus.Processing;
+using Nethermind.Evm.Precompiles.Bls;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -75,7 +76,7 @@ public class ShutterP2P
         ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-        long backoff = 10;
+        bool printTime = true;
         Task.Run(() =>
         {
             for (; ; )
@@ -89,14 +90,16 @@ public class ShutterP2P
                     {
                         ProcessP2PMessage(msg);
                         lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                        backoff = 10;
+                        printTime = true;
                     }
-                    else if (delta >= backoff)
+                    else if (delta > 0 && delta % 10 == 0)
                     {
-                        if (_logger.IsWarn) _logger.Warn("Not receiving Shutter messages, reconnecting...");
-                        ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
-                        lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                        backoff *= 2;
+                        if (printTime && _logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta}s)...");
+                        printTime = false;
+                    }
+                    else
+                    {
+                        printTime = true;
                     }
                 }
                 catch (Exception e)
@@ -133,9 +136,7 @@ public class ShutterP2P
             return;
         }
 
-        _eonInfo.Update();
-
-        if (CheckDecryptionKeys(decryptionKeys))
+        if (_eonInfo.Update() && CheckDecryptionKeys(decryptionKeys))
         {
             if (_logger.IsInfo) _logger.Info($"Validated Shutter decryption key for slot {decryptionKeys.Gnosis.Slot}");
             _onDecryptionKeysValidated(decryptionKeys);
@@ -158,14 +159,21 @@ public class ShutterP2P
             return false;
         }
 
-        // todo: enable when Shutter uses BLS
-        // foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable())
+        // if (decryptionKeys.Keys.Count() > 1)
         // {
-        //    if (!ShutterCrypto.CheckDecryptionKey(new(key.Key_.ToArray()), eonKey, new(key.Identity.ToArray())))
-        //     {
-        //         return false;
-        //     }
+        //     _logger.Info("more than 1 key");
         // }
+
+        foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
+        {
+            Bls.P1 dk = new(key.Key_.ToArray());
+            // Bls.P1 identity = new(key.Identity.ToArray());
+            // if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
+            // {
+            //     if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+            //     return false;
+            // }
+        }
 
         int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count();
 
@@ -187,16 +195,18 @@ public class ShutterP2P
             return false;
         }
 
-        // IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
+        IEnumerable<Bls.P1> identities = decryptionKeys.Keys.Skip(1).Select((Dto.Key key) => new Bls.P1(key.Identity.ToArray()));
 
-        // foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
-        // {
-        //     Address keyperAddress = _eonInfo.Addresses[signerIndex];
-        //     if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, eon, slot, identities, signature.Span, keyperAddress))
-        //     {
-        //         return false;
-        //     }
-        // }
+        foreach ((ulong signerIndex, ByteString signature) in decryptionKeys.Gnosis.SignerIndices.Zip(decryptionKeys.Gnosis.Signatures))
+        {
+            Address keyperAddress = _eonInfo.Addresses[signerIndex];
+            // todo: enable when Shutter fixes
+            // if (!ShutterCrypto.CheckSlotDecryptionIdentitiesSignature(InstanceID, _eonInfo.Eon, decryptionKeys.Gnosis.Slot, identities, signature.Span, keyperAddress))
+            // {
+            //     if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: bad signature.");
+            //     return false;
+            // }
+        }
 
         return true;
     }

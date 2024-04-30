@@ -9,6 +9,7 @@ using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Logging;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.Processing;
+using Nethermind.Core.Crypto;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -19,7 +20,7 @@ public class ShutterEonInfo
     public ulong Threshold;
     public Address[] Addresses = [];
     private readonly IReadOnlyBlockTree _readOnlyBlockTree;
-    private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
+    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ILogger _logger;
     private readonly Address KeyBroadcastContractAddress;
@@ -28,27 +29,33 @@ public class ShutterEonInfo
     public ShutterEonInfo(IReadOnlyBlockTree readOnlyBlockTree, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ILogger logger)
     {
         _readOnlyBlockTree = readOnlyBlockTree;
-        _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
         _abiEncoder = abiEncoder;
         _logger = logger;
         KeyBroadcastContractAddress = new(auraConfig.ShutterKeyBroadcastContractAddress);
         KeyperSetManagerContractAddress = new(auraConfig.ShutterKeyperSetManagerContractAddress);
     }
 
-    public void Update()
+    public bool Update()
     {
-        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(_readOnlyBlockTree.Head!.StateRoot!);
+        Hash256 stateRoot = _readOnlyBlockTree.Head!.StateRoot!;
+        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(stateRoot);
         BlockHeader header = _readOnlyBlockTree.Head!.Header;
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
+
+        long bestSuggestedNumber = _readOnlyBlockTree.FindBestSuggestedHeader()?.Number ?? 0;
+        long headNumberOrZero = _readOnlyBlockTree.Head?.Number ?? 0;
+        bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
+
+        if (isSyncing)
+        {
+            return false;
+        }
 
         ulong nextBlockNumber = (ulong)header.Number + 1;
         ulong eon = keyperSetManagerContract.GetKeyperSetIndexByBlock(header, nextBlockNumber);
 
-        if (Eon == eon)
-        {
-            return;
-        }
-        else
+        if (Eon != eon)
         {
             Eon = eon;
 
@@ -64,12 +71,11 @@ public class ShutterEonInfo
             KeyBroadcastContract keyBroadcastContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyBroadcastContractAddress);
             byte[] eonKeyBytes = keyBroadcastContract.GetEonKey(_readOnlyBlockTree.Head!.Header, eon);
 
-            // todo: remove once shutter fixes
-            eonKeyBytes = Convert.FromHexString("B068AD1BE382009AC2DCE123EC62DCA8337D6B93B909B3EE52E31CB9E4098D1B56D596BF3C08166C7B46CB3AA85C23381380055AB9F1A87786F2508F3E4CE5CAA5ABCDAE0A80141EE8CCC3626311E0A53BE5D873FA964FD85AD56771F2984579");
-
             Key = new(eonKeyBytes);
 
             if (_logger.IsInfo) _logger.Info($"Shutter eon: {Eon} key: {Convert.ToHexString(eonKeyBytes)} threshold: {Threshold} #keyperAddresses: {Addresses.Length}");
         }
+
+        return true;
     }
 }
