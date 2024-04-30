@@ -123,7 +123,7 @@ public class BlockDecoderTests
                 .WithBlobGasUsed(ulong.MaxValue)
                 .WithExcessBlobGas(ulong.MaxValue)
                 .WithMixHash(Keccak.EmptyTreeHash)
-                .WithConsensusRequests(0)
+                .WithConsensusRequests(requests)
                 .TestObject
         };
     }
