@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
@@ -38,7 +39,7 @@ namespace Nethermind.TxPool.Filters
                 bool isNotLocal = (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0;
                 return isNotLocal ?
                     AcceptTxResult.OldNonce :
-                    AcceptTxResult.OldNonce.WithMessage($"Current nonce: {currentNonce}, nonce of rejected tx: {tx.Nonce}");
+                    AcceptTxResult.OldNonce.WithMessage(TxErrorMessages.NonceTooLow(in currentNonce, tx.Nonce));
             }
 
             return AcceptTxResult.Accepted;

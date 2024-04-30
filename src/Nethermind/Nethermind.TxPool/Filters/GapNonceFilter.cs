@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
-using Nethermind.Int256;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 
@@ -37,8 +37,8 @@ namespace Nethermind.TxPool.Filters
             int numberOfSenderTxsInPending = tx.SupportsBlobs
                 ? _blobTxs.GetBucketCount(tx.SenderAddress!)
                 : _txs.GetBucketCount(tx.SenderAddress!); // since unknownSenderFilter will run before this one
-            UInt256 currentNonce = state.SenderAccount.Nonce;
-            long nextNonceInOrder = (long)currentNonce + numberOfSenderTxsInPending;
+            ulong currentNonce = (ulong)state.SenderAccount.Nonce; // TODO: This cast could break once nonces exceed ulong.MaxValue
+            ulong nextNonceInOrder = currentNonce + (ulong)numberOfSenderTxsInPending;
             bool isTxNonceNextInOrder = tx.Nonce <= nextNonceInOrder;
             if (!isTxNonceNextInOrder)
             {
@@ -50,7 +50,7 @@ namespace Nethermind.TxPool.Filters
 
                 return !isLocal ?
                     AcceptTxResult.NonceGap :
-                    AcceptTxResult.NonceGap.WithMessage($"Future nonce. Expected nonce: {nextNonceInOrder}");
+                    AcceptTxResult.NonceGap.WithMessage(TxErrorMessages.FutureNonce(in nextNonceInOrder, tx.Nonce));
             }
 
             return AcceptTxResult.Accepted;

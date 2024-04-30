@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Logging;
 
 namespace Nethermind.TxPool.Filters
@@ -31,7 +32,7 @@ namespace Nethermind.TxPool.Filters
             {
                 if (_logger.IsTrace) _logger.Trace($"Found tx in _hashCache. TxHash: {tx?.Hash}, Tx: {tx}");
                 Metrics.PendingTransactionsKnown++;
-                return AcceptTxResult.AlreadyKnown;
+                return AcceptTxResult.AlreadyKnown.WithMessage(TxErrorMessages.AlreadyKnown);
             }
 
             _hashCache.SetForCurrentBlock(tx.Hash!);
