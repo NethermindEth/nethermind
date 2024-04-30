@@ -562,8 +562,33 @@ namespace Nethermind.Evm.Test
             Assert.That(new Address(resultE.ToArray()), Is.EqualTo(TestItem.AddressD));
         }
 
-        [TestCase(1)]
-        public void ExecuteAUTHCALL_(int expectedCost)
+        public static IEnumerable<object[]> AUTHCALLCases()
+        {
+            yield return new object[]
+            {
+                //Cold access address
+                TestItem.AddressE,
+                0,
+                2600
+            };
+            yield return new object[]
+            {
+                //Warm access address
+                TestItem.AddressF,
+                0,
+                100
+            };
+            yield return new object[]
+            {
+                //Warm access address
+                TestItem.AddressF,
+                1,
+                6700 + 100
+            };
+        }
+
+        [TestCaseSource(nameof(AUTHCALLCases))]
+        public void ExecuteAUTHCALL_(Address target, int valueToSend, int expectedCost)
         {
             var signer = TestItem.PrivateKeyF;
             var authority = TestItem.AddressF;
@@ -594,9 +619,9 @@ namespace Nethermind.Evm.Test
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
+                .PushData(valueToSend)
+                .PushData(target)
                 .PushData(0)
-                .PushData(TestItem.AddressC)
-                .PushData(1000000)
                 .Done;
 
             var codeWithAuthCall = code.Concat(
@@ -664,11 +689,12 @@ namespace Nethermind.Evm.Test
 
 
         [Test]
-        public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebit()
+        public void ExecuteAUTHCALL_SendingMoreThanSignerBalance_SignerBalanceIsDebited()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
+            Address receivingAddress = TestItem.AddressC;
             byte[] code = Prepare.EvmCode
               .PushData(data[..32])
               .Op(Instruction.PUSH0)
@@ -694,8 +720,8 @@ namespace Nethermind.Evm.Test
               .PushData(0)
               .PushData(0)
               .PushData(0)
-              .PushData(2.Ether())
-              .PushData(TestItem.AddressC)
+              .PushData(1.Ether() + 1)
+              .PushData(receivingAddress)
               .PushData(1000000)
               .Op(Instruction.AUTHCALL)
               .Done;
@@ -704,14 +730,16 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            var addressBalance = TestState.GetBalance(signer.Address);
+            var signerBalance = TestState.GetBalance(signer.Address);
+            var receiverBalance = TestState.GetBalance(receivingAddress);
 
-            Assert.That(addressBalance, Is.EqualTo(1.Ether()));
+            Assert.That(signerBalance, Is.EqualTo(1.Ether()));
+            Assert.That(receiverBalance, Is.EqualTo((UInt256)0));
         }
 
 
         [Test]
-        public void ExecuteAUTHCALL_SignerHasCodeDeployed_()
+        public void ExecuteAUTHCALL_SignerHasCodeDeployed_CorrectErrorIsReturned()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
