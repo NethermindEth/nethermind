@@ -153,7 +153,7 @@ public class BlockValidator : IBlockValidator
             {
                 return false;
             }
-            
+
             if (!ValidateRequests(block, spec, out errorMessage))
                 return false;
         }
