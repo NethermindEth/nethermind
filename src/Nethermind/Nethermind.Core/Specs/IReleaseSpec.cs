@@ -274,6 +274,12 @@ namespace Nethermind.Core.Specs
         Address Eip4788ContractAddress { get; }
 
         /// <summary>
+        /// Execution layer triggerable exits
+        /// </summary>
+        bool IsEip7002Enabled { get; }
+        Address Eip7002ContractAddress { get; }
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -288,7 +294,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM

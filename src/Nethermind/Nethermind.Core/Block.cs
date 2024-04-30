@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using Nethermind.Blockchain.ValidatorExit;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -24,10 +25,11 @@ public class Block
         BlockHeader header,
         IEnumerable<Transaction> transactions,
         IEnumerable<BlockHeader> uncles,
-        IEnumerable<Withdrawal>? withdrawals = null)
+        IEnumerable<Withdrawal>? withdrawals = null,
+        IEnumerable<ValidatorExit>? validatorExits = null)
     {
         Header = header ?? throw new ArgumentNullException(nameof(header));
-        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray());
+        Body = new(transactions.ToArray(), uncles.ToArray(), withdrawals?.ToArray(), validatorExits?.ToArray());
     }
 
     public Block(BlockHeader header) : this(
@@ -57,6 +59,8 @@ public class Block
     public BlockHeader[] Uncles => Body.Uncles; // do not add setter here
 
     public Withdrawal[]? Withdrawals => Body.Withdrawals;
+
+    public ValidatorExit[]? ValidatorExits => Body.ValidatorExits; // do not add setter here
 
     public Hash256? Hash => Header.Hash; // do not add setter here
 
