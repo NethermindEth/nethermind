@@ -60,7 +60,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
                     if (CanReceiveTransactions)
                     {
                         PooledTransactionsMessage pooledTxMsg = Deserialize<PooledTransactionsMessage>(message.Content);
-                        Metrics.Eth65PooledTransactionsReceived++;
                         ReportIn(pooledTxMsg, size);
                         Handle(pooledTxMsg);
                     }
@@ -95,8 +94,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
 
         protected virtual void Handle(NewPooledTransactionHashesMessage msg)
         {
-            Metrics.Eth65NewPooledTransactionHashesReceived++;
-
             AddNotifiedTransactions(msg.Hashes);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -121,8 +118,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         private async ValueTask Handle(GetPooledTransactionsMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            Metrics.Eth65GetPooledTransactionsReceived++;
-
             var stopwatch = Stopwatch.StartNew();
             Send(await FulfillPooledTransactionsRequest(message, cancellationToken));
             stopwatch.Stop();
@@ -197,7 +192,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V65
         {
             NewPooledTransactionHashesMessage msg = new(hashes);
             Send(msg);
-            Metrics.Eth65NewPooledTransactionHashesSent++;
         }
     }
 }

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using FastEnumUtility;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,7 +10,7 @@ using Nethermind.Serialization.Rlp.Eip2930;
 
 namespace Nethermind.Serialization.Rlp
 {
-    public class TxDecoder : TxDecoder<Transaction>
+    public sealed class TxDecoder : TxDecoder<Transaction>
     {
         public const int MaxDelayedHashTxnSize = 32768;
         public static TxDecoder Instance = new TxDecoder();
