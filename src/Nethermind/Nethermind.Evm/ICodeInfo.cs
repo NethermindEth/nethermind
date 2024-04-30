@@ -15,11 +15,11 @@ public interface ICodeInfo
     IPrecompile? Precompile { get; }
     bool IsPrecompile => Precompile is not null;
     ReadOnlyMemory<byte> TypeSection => Memory<byte>.Empty;
-    ReadOnlyMemory<byte> CodeSection => MachineCode;
+    ReadOnlyMemory<byte> CodeSection(int _) => MachineCode;
     ReadOnlyMemory<byte> DataSection => Memory<byte>.Empty;
-    ReadOnlyMemory<byte> ContainerSection => Memory<byte>.Empty;
+    ReadOnlyMemory<byte> ContainerSection(int _) => Memory<byte>.Empty;
     SectionHeader SectionOffset(int idx);
-    SectionHeader ContainerOffset(int idx);
+    SectionHeader? ContainerOffset(int idx);
     (byte inputCount, byte outputCount, ushort maxStackHeight) GetSectionMetadata(int index) => (0, 0, 1024);
     bool ValidateJump(int destination, bool isSubroutine);
 }

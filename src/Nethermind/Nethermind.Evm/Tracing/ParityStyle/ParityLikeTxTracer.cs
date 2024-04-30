@@ -74,8 +74,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "call";
                 case ExecutionType.CREATE:
                 case ExecutionType.CREATE2:
-                case ExecutionType.CREATE3:
-                case ExecutionType.CREATE4:
+                case ExecutionType.EOFCREATE:
+                case ExecutionType.TXCREATE:
                     return "create";
                 case ExecutionType.CALL:
                     return "call";
@@ -98,8 +98,8 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "call";
                 case ExecutionType.CREATE:
                 case ExecutionType.CREATE2:
-                case ExecutionType.CREATE3:
-                case ExecutionType.CREATE4:
+                case ExecutionType.EOFCREATE:
+                case ExecutionType.TXCREATE:
                     return "create";
                 case ExecutionType.CALL:
                     return "call";
@@ -423,9 +423,9 @@ namespace Nethermind.Evm.Tracing.ParityStyle
                     return "create";
                 case ExecutionType.CREATE2:
                     return "create2";
-                case ExecutionType.CREATE3:
+                case ExecutionType.EOFCREATE:
                     return "create3";
-                case ExecutionType.CREATE4:
+                case ExecutionType.TXCREATE:
                     return "create4";
                 default:
                     return null;

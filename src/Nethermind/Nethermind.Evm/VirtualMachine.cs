@@ -441,12 +441,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             int containerIndex = callResult.Output.ContainerIndex.Value;
                             ReadOnlySpan<byte> auxExtraData = callResult.Output.Bytes.Span;
-                            (int start, int size) = previousState.Env.CodeInfo.ContainerOffset(containerIndex);
-                            ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection.Slice(start, size).Span;
-                            bool isEof_unvalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header);
+                            ReadOnlySpan<byte> container = previousState.Env.CodeInfo.ContainerSection(containerIndex).Span;
+                            bool isEof_invalidated = !EvmObjectFormat.TryExtractHeader(container, out EofHeader? header) && header?.DataSection.Size != auxExtraData.Length;
                             byte[] bytecodeResultArray = null;
 
-                            if (!isEof_unvalidated)
+                            if (!isEof_invalidated)
                             {
                                 Span<byte> bytecodeResult = new byte[container.Length + auxExtraData.Length];
 
@@ -912,7 +911,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 case Instruction.STOP:
                     {
-                        if (vmState.ExecutionType is ExecutionType.CREATE3 or ExecutionType.CREATE4)
+                        if (vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
                         {
                             goto InvalidInstruction;
                         }
@@ -2023,7 +2022,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.RETURN:
                     {
-                        if(vmState.ExecutionType is ExecutionType.CREATE3 or ExecutionType.CREATE4)
+                        if(vmState.ExecutionType is ExecutionType.EOFCREATE or ExecutionType.TXCREATE)
                         {
                             goto InvalidInstruction;
                         }
@@ -2433,7 +2432,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     {
                         if (!spec.IsEofEnabled && !vmState.ExecutionType.IsAnyCreateEof())
                             goto InvalidInstruction;
-
 
                         if (!UpdateGas(GasCostOf.ReturnContract, ref gasAvailable)) goto OutOfGas;
 
@@ -3004,8 +3002,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     {
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
-        var currentContext = instruction == Instruction.EOFCREATE ? ExecutionType.CREATE3: ExecutionType.CREATE4;
-        if (!UpdateGas(currentContext == ExecutionType.CREATE3 ? GasCostOf.Create3 : GasCostOf.Create4, ref gasAvailable)) // still undecided in EIP
+        var currentContext = instruction == Instruction.EOFCREATE ? ExecutionType.EOFCREATE: ExecutionType.TXCREATE;
+        if (!UpdateGas(GasCostOf.TxCreate, ref gasAvailable))
             return (EvmExceptionType.OutOfGas, null);
 
         if (!stack.PopUInt256(out UInt256 value) ||
@@ -3014,12 +3012,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !stack.PopUInt256(out UInt256 dataSize))
             return (EvmExceptionType.StackUnderflow, null);
 
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in dataOffset, dataSize)) return (EvmExceptionType.OutOfGas, null);
+
         ReadOnlyMemory<byte> initCode = ReadOnlyMemory<byte>.Empty;
         switch(instruction)
         {
             case Instruction.EOFCREATE :
                 {
-                    int initCodeIdx = codeSection[vmState.ProgramCounter];
+                    int initCodeIdx = codeSection[vmState.ProgramCounter++];
                     SectionHeader containerSection = env.CodeInfo.ContainerOffset(initCodeIdx);
                     initCode = env.CodeInfo.ContainerSection[containerSection.Start..containerSection.EndOffset];
                     break;
@@ -3054,14 +3054,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!UpdateGas(gasCost, ref gasAvailable)) return (EvmExceptionType.OutOfGas, null);
 
-        if (!EvmObjectFormat.IsValidEof(initCode.Span, instruction is Instruction.TXCREATE ? EvmObjectFormat.ValidationStrategy.ValidateSubContainers : EvmObjectFormat.ValidationStrategy.Validate, out _))
-        {
-            // handle invalid Eof code
-            _returnDataBuffer = Array.Empty<byte>();
-            stack.PushZero();
-            return (EvmExceptionType.None, null);
-        }
-
         // TODO: copy pasted from CALL / DELEGATECALL, need to move it outside?
         if (env.CallDepth >= MaxCallDepth) // TODO: fragile ordering / potential vulnerability for different clients
         {
@@ -3070,6 +3062,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             stack.PushZero();
             return (EvmExceptionType.None, null);
         }
+
+        Span<byte> calldata = vmState.Memory.LoadSpan(dataOffset, dataSize);
 
         UInt256 balance = _state.GetBalance(env.ExecutingAccount);
         if (value > balance)
@@ -3138,7 +3132,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             executingAccount: contractAddress,
             codeSource: null,
             codeInfo: codeinfo,
-            inputData: default,
+            inputData: calldata.ToArray(),
             transferValue: value,
             value: value
         );
@@ -3147,8 +3141,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             callEnv,
             instruction switch
             {
-                Instruction.EOFCREATE => ExecutionType.CREATE3,
-                Instruction.TXCREATE => ExecutionType.CREATE4,
+                Instruction.EOFCREATE => ExecutionType.EOFCREATE,
+                Instruction.TXCREATE => ExecutionType.TXCREATE,
                 _ => throw new UnreachableException()
             },
             false,

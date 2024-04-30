@@ -68,8 +68,7 @@ namespace Nethermind.Evm
         public const long DataCopy = 3;
         public const long DataSize = 2;
         public const long ReturnContract = 0;
-        public const long Create3 = 32000;
-        public const long Create4 = 32000;
+        public const long EofCreate = 32000;
         public const long ReturnDataLoad = 3;
 
 
