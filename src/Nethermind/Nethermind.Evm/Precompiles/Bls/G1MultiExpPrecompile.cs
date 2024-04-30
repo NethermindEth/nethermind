@@ -48,7 +48,7 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
 
         try
         {
-            G1 acc = G1.generator();
+            G1 acc = new();
             for (int i = 0; i < inputData.Length / ItemSize; i++)
             {
                 int offset = i * ItemSize;
