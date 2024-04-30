@@ -489,7 +489,7 @@ namespace Nethermind.Synchronization.Test
                 return true;
             }
 
-            public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
+            public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
             {
                 Thread.Sleep(1000);
                 error = null;
