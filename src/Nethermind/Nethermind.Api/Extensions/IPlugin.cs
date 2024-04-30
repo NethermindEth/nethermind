@@ -20,6 +20,9 @@ namespace Nethermind.Api.Extensions
 
         Task InitRpcModules();
 
+        // Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.
+        int Priority => 0;
+
         bool MustInitialize { get => false; }
     }
 }
