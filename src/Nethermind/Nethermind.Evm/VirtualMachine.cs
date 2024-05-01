@@ -2364,7 +2364,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!transferValue.IsZero)
         {
-            gasExtra += instruction == Instruction.AUTHCALL ? GasCostOf.CallValue - GasCostOf.CallStipend : GasCostOf.CallValue;
+            gasExtra += instruction == Instruction.AUTHCALL ? GasCostOf.AuthCallValue : GasCostOf.CallValue;
         }
 
         if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))

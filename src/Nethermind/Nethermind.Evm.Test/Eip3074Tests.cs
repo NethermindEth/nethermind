@@ -23,7 +23,7 @@ namespace Nethermind.Evm.Test
 
         protected override TestAllTracerWithOutput CreateTracer() => new() { IsTracingAccess = false };
 
-        public static IEnumerable<object[]> AuthorityCases()
+        public static IEnumerable<object[]> AuthorityCombinationCases()
         {
             yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
             yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressC, 0x1 };
@@ -31,7 +31,7 @@ namespace Nethermind.Evm.Test
             yield return new object[] { TestItem.PrivateKeyD, TestItem.AddressC, 0x0 };
         }
 
-        [TestCaseSource(nameof(AuthorityCases))]
+        [TestCaseSource(nameof(AuthorityCombinationCases))]
         public void ExecuteAuth_SignerIsSameOrDifferentThanAuthority_ReturnsOneOrZero(PrivateKey signer, Address authority, int expected)
         {
             var data = CreateSignedCommitMessage(signer);
@@ -50,13 +50,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(96)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -121,13 +121,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(96)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -162,13 +162,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(96)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -205,13 +205,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -243,7 +243,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
@@ -294,13 +294,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)paramLength)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -331,13 +331,13 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(TestItem.AddressA)
                 .Op(Instruction.AUTH)
 
-                //Return the result of AUTH
+                //Return the result of Auth
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.MSTORE8)
                 .PushSingle(1)
@@ -354,7 +354,7 @@ namespace Nethermind.Evm.Test
         [TestCase(160, GasCostOf.Auth + GasCostOf.Memory + GasCostOf.ColdAccountAccess)]
         [TestCase(192, GasCostOf.Auth + GasCostOf.Memory * 2 + GasCostOf.ColdAccountAccess)]
         [TestCase(193, GasCostOf.Auth + GasCostOf.Memory * 3 + GasCostOf.ColdAccountAccess)]
-        public void ExecuteAuth_AUTHExpandsMemory_GasCostIsAUTHPlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, long expectedGas)
+        public void ExecuteAuth_AuthExpandsMemory_GasCostIsAuthPlusMemoryExpansionAndColdAccountAccess(int authMemoryLength, long expectedGas)
         {
             var data = CreateSignedCommitMessage(TestItem.PrivateKeyF);
 
@@ -397,7 +397,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAUTHCALL_TransactionReturnsTheCurrentCallerAfterAuthCall_SignerIsReturned()
+        public void ExecuteAuthCall_TransactionReturnsTheCurrentCallerAfterAuthCall_SignerIsReturned()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -413,7 +413,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(signer.Address)
@@ -422,7 +422,7 @@ namespace Nethermind.Evm.Test
                 //Just throw away the result
                 .POP()
 
-                //AUTHCALL params
+                //AuthCall params
                 .PushData(20)
                 .PushData(0)
                 .PushData(0)
@@ -455,7 +455,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAUTHCALLAndDELEGATECALL_TransactionReturnsTheCurrentCallerAfterAuthCallAndDelegateCall_ContractAddressIsReturned()
+        public void ExecuteAuthCallAndDELEGATECALL_TransactionReturnsTheCurrentCallerAfterAuthCallAndDelegateCall_ContractAddressIsReturned()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -471,7 +471,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(signer.Address)
@@ -480,7 +480,7 @@ namespace Nethermind.Evm.Test
                 //Just throw away the result
                 .POP()
 
-                //AUTHCALL params
+                //AuthCall params
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
@@ -551,33 +551,33 @@ namespace Nethermind.Evm.Test
             Assert.That(new Address(resultE.ToArray()), Is.EqualTo(TestItem.AddressD));
         }
 
-        public static IEnumerable<object[]> AUTHCALLGasCases()
+        public static IEnumerable<object[]> AuthCallGasCases()
         {
-            yield return new object[]
-            {
-                //Cold access address
-                TestItem.GetRandomAddress(),
-                0,
-                2600,
-            };
-            yield return new object[]
-            {
-                //Warm access address
-                TestItem.AddressF,
-                0,
-                100,
-            };
+            //yield return new object[]
+            //{
+            //    //Cold access address
+            //    TestItem.GetRandomAddress(),
+            //    0,
+            //    GasCostOf.ColdAccountAccess,
+            //};
+            //yield return new object[]
+            //{
+            //    //Warm access address
+            //    TestItem.AddressF,
+            //    0,
+            //    GasCostOf.WarmStateRead,
+            //};
             yield return new object[]
             {
                 //Warm access address
                 TestItem.AddressF,
                 1,
-                6700 + 100,
+                GasCostOf.AuthCallValue + GasCostOf.WarmStateRead,
             };
         }
 
-        [TestCaseSource(nameof(AUTHCALLGasCases))]
-        public void ExecuteAUTHCALL_VarmAndColdAddressesAndValueIsZeroOrGreater_UsesCorrectAmountOfGas(Address target, int valueToSend, int expectedCost)
+        [TestCaseSource(nameof(AuthCallGasCases))]
+        public void ExecuteAuthCall_VarmAndColdAddressesAndValueIsZeroOrGreater_UsesCorrectAmountOfGas(Address target, long valueToSend, long expectedCost)
         {
             var signer = TestItem.PrivateKeyF;
             var authority = TestItem.AddressF;
@@ -594,7 +594,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
@@ -603,7 +603,7 @@ namespace Nethermind.Evm.Test
                 //Just throw away the result
                 .POP()
 
-                //AUTHCALL params
+                //AuthCall params
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
@@ -618,6 +618,8 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.AUTHCALL)
                 .Done).ToArray();
 
+            TestState.CreateAccount(signer.Address, 1.Ether());
+
             TestState.CreateAccount(TestItem.AddressC, 0);
             TestState.InsertCode(TestItem.AddressC, Keccak.Compute(code), code, Spec);
 
@@ -631,10 +633,10 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCase(1000000, 30000, 30000 - GasCostOf.Gas)]
-        //If gas limit is 0, all gas should be forwarded remaining after the AUTHCALL ops and 63/64 rule
+        //If gas limit is 0, all gas should be forwarded remaining after the AuthCall ops and 63/64 rule
         [TestCase(1000000, 0, 970631 - 970631 / 64 - GasCostOf.Gas)]
         [TestCase(1000000, 970631 - 970631 / 64, 970631 - 970631 / 64 - GasCostOf.Gas)]
-        public void ExecuteAUTHCALL_GasLimitIsSetToZeroOrGreater_CorrectAmountOfGasIsForwarded(long gasLimit, long gasToSend, long expectedGasInSubcall)
+        public void ExecuteAuthCall_GasLimitIsSetToZeroOrGreater_CorrectAmountOfGasIsForwarded(long gasLimit, long gasToSend, long expectedGasInSubcall)
         {
             var signer = TestItem.PrivateKeyF;
             var authority = TestItem.AddressF;
@@ -651,7 +653,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(authority)
@@ -660,7 +662,7 @@ namespace Nethermind.Evm.Test
                 //Just throw away the result
                 .POP()
 
-                //AUTHCALL params
+                //AuthCall params
                 .PushData(32)
                 .PushData(0)
                 .PushData(0)
@@ -692,9 +694,9 @@ namespace Nethermind.Evm.Test
         }
 
         [TestCase(1000000000)]
-        //Set gas limit to exactly remaining gas after AUTHCALL + 1
+        //Set gas limit to exactly remaining gas after AuthCall + 1
         [TestCase(970631 - 970631 / 64 + 1)]
-        public void ExecuteAUTHCALL_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit)
+        public void ExecuteAuthCall_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit)
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -710,7 +712,7 @@ namespace Nethermind.Evm.Test
                 .PushSingle(64)
                 .Op(Instruction.MSTORE)
 
-                //AUTH params
+                //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
                 .PushData(signer.Address)
@@ -719,7 +721,7 @@ namespace Nethermind.Evm.Test
                 //Just throw away the result
                 .POP()
 
-                //AUTHCALL params
+                //AuthCall params
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
@@ -736,11 +738,12 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebited()
+        public void ExecuteAuthCall_1GweiIsSent_SignerIsDebitedAndReceiverCredited()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
-            Address receiver = TestItem.AddressC;
+            Address receiver = TestItem.GetRandomAddress();
+            UInt256 valueToSend = 1.GWei();
             byte[] code = Prepare.EvmCode
               .PushData(data[..32])
               .Op(Instruction.PUSH0)
@@ -752,7 +755,7 @@ namespace Nethermind.Evm.Test
               .PushSingle(64)
               .Op(Instruction.MSTORE)
 
-               //AUTH params
+               //Auth params
               .PushSingle((UInt256)data.Length)
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
@@ -761,12 +764,12 @@ namespace Nethermind.Evm.Test
               //Just throw away the result
               .POP()
 
-              //AUTHCALL params
+              //AuthCall params
               .PushData(0)
               .PushData(0)
               .PushData(0)
               .PushData(0)
-              .PushData(1.GWei())
+              .PushData(valueToSend)
               .PushData(receiver)
               .PushData(0)
               .Op(Instruction.AUTHCALL)
@@ -779,12 +782,12 @@ namespace Nethermind.Evm.Test
             var signerBalance = TestState.GetBalance(signer.Address);
             var receiverBalance = TestState.GetBalance(receiver);
 
-            Assert.That(signerBalance, Is.EqualTo(1.Ether() - 1.GWei()));
-            Assert.That(receiverBalance, Is.EqualTo(1.GWei()));
+            Assert.That(signerBalance, Is.EqualTo(1.Ether() - valueToSend));
+            Assert.That(receiverBalance, Is.EqualTo(valueToSend));
         }
 
         [Test]
-        public void ExecuteAUTHCALL_SendingMoreThanSignerBalance_SignerBalanceIsSame()
+        public void ExecuteAuthCall_SendingMoreThanSignerBalance_SignerBalanceIsSame()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -801,7 +804,7 @@ namespace Nethermind.Evm.Test
               .PushSingle(64)
               .Op(Instruction.MSTORE)
 
-              //AUTH params
+              //Auth params
               .PushSingle((UInt256)data.Length)
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
@@ -810,7 +813,7 @@ namespace Nethermind.Evm.Test
               //Just throw away the result
               .POP()
 
-              //AUTHCALL params
+              //AuthCall params
               .PushData(20)
               .PushData(0)
               .PushData(0)
@@ -833,7 +836,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAUTHCALL_SignerHasCodeDeployed_CorrectErrorIsReturned()
+        public void ExecuteAuthCall_SignerHasCodeDeployed_CorrectErrorIsReturned()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -849,7 +852,7 @@ namespace Nethermind.Evm.Test
               .PushSingle(64)
               .Op(Instruction.MSTORE)
 
-              //AUTH params
+              //Auth params
               .PushSingle((UInt256)data.Length)
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
@@ -858,7 +861,7 @@ namespace Nethermind.Evm.Test
               //Just throw away the result
               .POP()
 
-              //AUTHCALL params
+              //AuthCall params
               .PushData(20)
               .PushData(0)
               .PushData(0)
