@@ -48,8 +48,8 @@ public class EngineRpcCapabilitiesProvider : IRpcCapabilitiesProvider
             #endregion
 
             #region Prague
-            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.DepositsEnabled || spec.WithdrawalRequestsEnabled, spec.DepositsEnabled || spec.WithdrawalRequestsEnabled);
-            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.DepositsEnabled || spec.WithdrawalRequestsEnabled, spec.DepositsEnabled || spec.WithdrawalRequestsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_getPayloadV4)] = (spec.ConsensusRequestsEnabled, spec.ConsensusRequestsEnabled);
+            _capabilities[nameof(IEngineRpcModule.engine_newPayloadV4)] = (spec.ConsensusRequestsEnabled, spec.ConsensusRequestsEnabled);
             #endregion
         }
 

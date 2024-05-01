@@ -196,7 +196,7 @@ public class BlockHeaderBuilder : BuilderBase<BlockHeader>
         return this;
     }
 
-    public BlockHeaderBuilder WithDepositsRoot(Hash256? requestsRoot)
+    public BlockHeaderBuilder WithRequestsRoot(Hash256? requestsRoot)
     {
         TestObjectInternal.RequestsRoot = requestsRoot;
         return this;

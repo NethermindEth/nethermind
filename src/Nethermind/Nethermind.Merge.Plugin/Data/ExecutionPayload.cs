@@ -217,7 +217,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
             return ValidationResult.Fail;
         }
 
-        if (spec.DepositsEnabled || spec.WithdrawalRequestsEnabled)
+        if (spec.ConsensusRequestsEnabled)
         {
             error = "ExecutionPayloadV4 expected";
             return ValidationResult.Fail;

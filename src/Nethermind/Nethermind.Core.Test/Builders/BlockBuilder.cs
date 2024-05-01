@@ -215,13 +215,6 @@ namespace Nethermind.Core.Test.Builders
             return this;
         }
 
-        public BlockBuilder WithDepositRoot(Hash256? depositsRoot)
-        {
-            TestObjectInternal.Header.RequestsRoot = depositsRoot;
-
-            return this;
-        }
-
         public BlockBuilder WithBloom(Bloom bloom)
         {
             TestObjectInternal.Header.Bloom = bloom;
