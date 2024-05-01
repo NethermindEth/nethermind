@@ -313,7 +313,7 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!spec.DepositsEnabled && !spec.IsEip7002Enabled && block.Requests is not null)
+        if (!spec.DepositsEnabled && !spec.WithdrawalRequestsEnabled && block.Requests is not null)
         {
             error = BlockErrorMessages.RequestsNotEnabled;
 
