@@ -9,6 +9,7 @@ using System.Numerics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus;
@@ -166,7 +167,7 @@ namespace Ethereum.Test.Base
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
-                blockTree,
+                new BlockhashStore(blockTree, specProvider, stateProvider),
                 _logManager);
 
             IBlockchainProcessor blockchainProcessor = new BlockchainProcessor(
