@@ -2381,7 +2381,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        else if (spec.Use63Over64Rule)
+        if (spec.Use63Over64Rule)
         {
             var sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
             if (instruction == Instruction.AUTHCALL && sixtyFourthDeducted < gasLimit)

@@ -708,7 +708,6 @@ namespace Nethermind.Evm.Test
         public void ExecuteAUTHCALL_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit)
         {
             var signer = TestItem.PrivateKeyF;
-            var authority = TestItem.AddressF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -725,7 +724,7 @@ namespace Nethermind.Evm.Test
                 //AUTH params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Just throw away the result
