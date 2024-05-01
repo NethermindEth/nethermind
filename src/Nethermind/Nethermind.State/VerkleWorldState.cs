@@ -125,13 +125,14 @@ public class VerkleWorldState : IWorldState
         set => _tree.StateRoot = value;
     }
 
-    public ExecutionWitness GenerateExecutionWitness(IReleaseSpec spec, byte[][] keys, out Banderwagon rootPoint)
+    public ExecutionWitness GenerateExecutionWitness(byte[][] keys, out Banderwagon rootPoint)
     {
-        ExecutionWitness executionWitness = _tree.GenerateExecutionWitnessFromStore(keys, out rootPoint);
-        Commit(spec);
-        _tree.UpdateExecutionWitness(executionWitness, keys);
+        return _tree.GenerateExecutionWitnessFromStore(keys, out rootPoint);
+    }
 
-        return executionWitness;
+    public void UpdateExecutionWitness(ExecutionWitness executionWitness, byte[][] keys)
+    {
+        _tree.UpdateExecutionWitness(executionWitness, keys);
     }
 
     public bool AccountExists(Address address)

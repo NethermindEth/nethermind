@@ -346,11 +346,17 @@ public partial class BlockProcessor : IBlockProcessor
             var verkleWorldState = worldState as VerkleWorldState;
             ExecutionWitness witness = witnessKeys.Length == 0
                 ? new ExecutionWitness()
-                : verkleWorldState?.GenerateExecutionWitness(spec, witnessKeys, out _);
+                : verkleWorldState?.GenerateExecutionWitness(witnessKeys, out _);
+
+            worldState.Commit(spec);
+
+            verkleWorldState?.UpdateExecutionWitness(witness, witnessKeys);
             block.Body.ExecutionWitness = witness;
         }
-
-        worldState.Commit(spec);
+        else
+        {
+            worldState.Commit(spec);
+        }
 
         if (ShouldComputeStateRoot(block.Header))
         {
