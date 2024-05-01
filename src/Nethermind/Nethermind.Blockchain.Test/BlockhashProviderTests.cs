@@ -254,7 +254,7 @@ namespace Nethermind.Blockchain.Test
                 (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
                 (new ForkActivation(0, current.Timestamp), specToUse));
             BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
-            BlockhashStore store = new (tree, specProvider, worldState);
+            BlockhashStore store = new(tree, specProvider, worldState);
 
             store.ApplyHistoryBlockHashes(current.Header);
             worldState.Commit(specToUse);
