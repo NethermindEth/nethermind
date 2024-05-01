@@ -457,8 +457,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void ExecuteAUTHCALLAndDELEGATECALL_TransactionReturnsTheCurrentCallerAfterAuthCallAndDelegateCall_ContractAddressIsReturned()
         {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
+            var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -475,31 +474,28 @@ namespace Nethermind.Evm.Test
                 //AUTH params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Just throw away the result
                 .POP()
 
                 //AUTHCALL params
-                .PushData(20)
+                .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(TestItem.AddressC)
-                .PushData(1000000)
+                .PushData(0)
                 .Op(Instruction.AUTHCALL)
-                //.PushSingle(20)
-                //.PushSingle(0)
-                //.Op(Instruction.RETURN)
                 .Done;
 
             byte[] firstCallCode = Prepare.EvmCode
                 .CALLER()
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.SSTORE)
-                .PushData(20)
+                .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
@@ -507,16 +503,13 @@ namespace Nethermind.Evm.Test
                 .PushData(TestItem.AddressD)
                 .PushData(1000000)
                 .Op(Instruction.CALL)
-                //.PushSingle(20)
-                //.PushSingle(0)
-                //.Op(Instruction.RETURN)
                 .Done;
 
             byte[] secondCallCode = Prepare.EvmCode
                 .CALLER()
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.SSTORE)
-                .PushData(20)
+                .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
@@ -524,9 +517,6 @@ namespace Nethermind.Evm.Test
                 .PushData(TestItem.AddressE)
                 .PushData(1000000)
                 .Op(Instruction.CALL)
-                //.PushSingle(20) 
-                //.PushSingle(0)
-                //.Op(Instruction.RETURN)
                 .Done;
 
             //Store caller in slot 0
@@ -750,7 +740,7 @@ namespace Nethermind.Evm.Test
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
-
+            Address receiver = TestItem.AddressC;
             byte[] code = Prepare.EvmCode
               .PushData(data[..32])
               .Op(Instruction.PUSH0)
@@ -777,7 +767,7 @@ namespace Nethermind.Evm.Test
               .PushData(0)
               .PushData(0)
               .PushData(1.GWei())
-              .PushData(TestItem.AddressC)
+              .PushData(receiver)
               .PushData(0)
               .Op(Instruction.AUTHCALL)
               .Done;
@@ -786,9 +776,11 @@ namespace Nethermind.Evm.Test
 
             Execute(code);
 
-            var addressBalance = TestState.GetBalance(signer.Address);
+            var signerBalance = TestState.GetBalance(signer.Address);
+            var receiverBalance = TestState.GetBalance(receiver);
 
-            Assert.That(addressBalance, Is.EqualTo(1.Ether() - 1.GWei()));
+            Assert.That(signerBalance, Is.EqualTo(1.Ether() - 1.GWei()));
+            Assert.That(receiverBalance, Is.EqualTo(1.GWei()));
         }
 
         [Test]

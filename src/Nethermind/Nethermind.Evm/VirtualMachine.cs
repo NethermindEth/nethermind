@@ -2347,7 +2347,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             _ => env.ExecutingAccount
         };
 
-        Address target = instruction is Instruction.CALL or Instruction.STATICCALL
+        Address target = instruction is Instruction.CALL or Instruction.STATICCALL or Instruction.AUTHCALL
             ? codeSource
             : env.ExecutingAccount;
 
@@ -2383,7 +2383,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (spec.Use63Over64Rule)
         {
-            var sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
+            UInt256 sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
             if (instruction == Instruction.AUTHCALL)
             {
                 //AUTHCALL forwards all, if gas param is zero
