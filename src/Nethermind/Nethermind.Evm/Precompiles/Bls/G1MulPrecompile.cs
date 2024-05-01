@@ -39,13 +39,12 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
-        bool success = Pairings.BlsG1Mul(inputData.Span, output);
+        bool success = SubgroupChecks.G1IsInSubGroup(inputData.Span[..(2 * BlsParams.LenFp)])
+            && Pairings.BlsG1Mul(inputData.Span, output);
+
         if (success)
         {
             result = (output.ToArray(), true);

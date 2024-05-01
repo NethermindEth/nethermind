@@ -41,6 +41,15 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
+        for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        {
+            int offset = i * ItemSize;
+            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
+        }
+
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];
