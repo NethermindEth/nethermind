@@ -43,8 +43,11 @@ namespace Nethermind.Evm
         public const long Log = 375;
         public const long LogTopic = 375;
         public const long LogData = 8;
+        public const long LogDataEip7667 = 10;
         public const long Sha3 = 30;
+        public const long Sha3Eip7667 = 300;
         public const long Sha3Word = 6;
+        public const long Sha3WordEip7667 = 60;
         public const long BlockHash = 20;
         public const long SelfDestruct = 0;
         public const long SelfDestructEip150 = 5000;
@@ -62,5 +65,14 @@ namespace Nethermind.Evm
         public const long AccessStorageListEntry = 1900; // eip-2930
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
+
+        public const long Blake2GFRoundEip7667 = 10;
+        public const long Blake2GFRound = 1;
+
+        public const long Sha256PrecompileBaseCostEip7667 = 300L;
+        public const long Sha256PrecompileBaseCost = 60L;
+
+        public const long Sha256PrecompileWordCostEip7667 = 60L;
+        public const long Sha256PrecompileWordCost = 12L;
     }
 }
