@@ -21,17 +21,21 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
 {
     private static readonly byte[] EmptyBytes = [0];
 
-    public void ApplyHistoryBlockHashes(BlockHeader blockHeader, IReleaseSpec spec)
+    public void ApplyHistoryBlockHashes(BlockHeader blockHeader)
     {
-        if (!spec.IsEip2935Enabled) return;
+        IReleaseSpec spec = specProvider.GetSpec(blockHeader);
+        if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
+
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        if (!worldState.AccountExists(eip2935Account)) return;
 
         // TODO: find a better way to handle this - no need to have this check everytime
         //      this would just be true on the fork block
         BlockHeader parentHeader = blockFinder.FindParentHeader(blockHeader, BlockTreeLookupOptions.None);
         if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
-            InitHistoryOnForkBlock(blockHeader);
+            InitHistoryOnForkBlock(blockHeader, eip2935Account);
         else
-            AddParentBlockHashToState(blockHeader);
+            AddParentBlockHashToState(blockHeader, eip2935Account);
     }
 
     public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
@@ -49,7 +53,7 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
     }
 
-    internal void InitHistoryOnForkBlock(BlockHeader currentBlock)
+    private void InitHistoryOnForkBlock(BlockHeader currentBlock, Address eip2935Account)
     {
         long current = currentBlock.Number;
         BlockHeader header = currentBlock;
@@ -57,7 +61,7 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         {
             // an extra check - don't think it is needed
             if (header.IsGenesis) break;
-            AddParentBlockHashToState(header);
+            AddParentBlockHashToState(header, eip2935Account);
             header = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
             {
@@ -67,18 +71,11 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         }
     }
 
-    internal void AddParentBlockHashToState(BlockHeader blockHeader)
+    private void AddParentBlockHashToState(BlockHeader blockHeader, Address eip2935Account)
     {
-        IReleaseSpec? spec = specProvider.GetSpec(blockHeader);
-        if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-
-        if (!worldState.AccountExists(eip2935Account)) return;
-
         Hash256 parentBlockHash = blockHeader.ParentHash;
         var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
-
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash.BytesToArray());
+        worldState.Set(blockHashStoreCell, parentBlockHash!.BytesToArray());
     }
 }

@@ -9,6 +9,6 @@ namespace Nethermind.Blockchain.Blocks;
 
 public interface IBlockhashStore
 {
-    public void ApplyHistoryBlockHashes(BlockHeader blockHeader, IReleaseSpec spec);
+    public void ApplyHistoryBlockHashes(BlockHeader blockHeader);
     public Hash256? GetBlockHashFromState(BlockHeader currentBlockHeader, long requiredBlockNumber);
 }
