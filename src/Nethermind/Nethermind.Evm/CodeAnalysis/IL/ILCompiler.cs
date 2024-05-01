@@ -137,10 +137,14 @@ internal class ILCompiler
                 case Instruction.PUSH32:
                     int count = (int)op.Operation - (int)Instruction.PUSH0;
                     ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
+                    method.LoadLocal(currentSP);
+                    method.InitializeObject(typeof(Word));
+                    method.LoadLocal(currentSP);
+
                     method.LoadArray(bytes.ToArray());
                     method.LoadConstant(0);
                     method.NewObject(typeof(UInt256), typeof(Span<byte>), typeof(bool));
-
+                    method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
                 case Instruction.ADD:
@@ -207,17 +211,17 @@ internal class ILCompiler
                     break;
                 case Instruction.ISZERO:
                     method.StackLoadPrevious(currentSP, 1);
+                    method.StackPop(currentSP, 1);
                     method.Call(Word.GetIsZero);
                     method.StackPush(currentSP);
-                    method.StackPop(currentSP, 1);
                     break;
                 case Instruction.CODESIZE:
                     method.LoadConstant(code.Length);
                     method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
+                    method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
                 case Instruction.POP:
-                    method.Pop();
                     method.StackPop(currentSP);
                     break;
                 case Instruction.DUP1:
