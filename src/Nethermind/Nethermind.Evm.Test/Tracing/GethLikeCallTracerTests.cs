@@ -42,7 +42,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     };
 
     [Test]
-    public void Test_callTrace_SingleCall()
+    public void Test_CallTrace_SingleCall()
     {
         byte[] code = Prepare.EvmCode
             .PushData(SampleHexData1.PadLeft(64, '0'))
@@ -70,7 +70,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls()
+    public void Test_CallTrace_NestedCalls()
     {
         byte[] code = CreateNestedCallsCode();
         string callTrace = ExecuteCallTrace(code);
@@ -133,7 +133,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_WithLog()
+    public void Test_CallTrace_NestedCalls_WithLog()
     {
         byte[] code = CreateNestedCallsCode();
         string callTrace = ExecuteCallTrace(code, WithLog);
@@ -222,7 +222,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_OnlyTopCall()
+    public void Test_CallTrace_NestedCalls_OnlyTopCall()
     {
         byte[] code = CreateNestedCallsCode();
         string callTrace = ExecuteCallTrace(code, OnlyTopCall);
@@ -241,7 +241,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_WithLogsAndOnlyTopCall()
+    public void Test_CallTrace_NestedCalls_WithLogsAndOnlyTopCall()
     {
         byte[] code = CreateNestedCallsCode();
         string callTrace = ExecuteCallTrace(code, WithLogAndOnlyTopCall);
@@ -268,7 +268,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_RevertParentCall()
+    public void Test_CallTrace_NestedCalls_RevertParentCall()
     {
         byte[] code = CreateNestedCallsCode(true);
         string callTrace = ExecuteCallTrace(code, WithLog);
@@ -332,7 +332,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_RevertInternalCall()
+    public void Test_CallTrace_NestedCalls_RevertInternalCall()
     {
         byte[] code = CreateNestedCallsCode(false, true);
         string callTrace = ExecuteCallTrace(code, WithLog);
@@ -423,7 +423,7 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
     }
 
     [Test]
-    public void Test_callTrace_NestedCalls_RevertAllCalls()
+    public void Test_CallTrace_NestedCalls_RevertAllCalls()
     {
         byte[] code = CreateNestedCallsCode(true, true);
         string callTrace = ExecuteCallTrace(code, WithLog);
@@ -485,6 +485,63 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
   ]
 }
 """;
+        Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Test_CallTrace_SelfDestruct()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        string callTrace = ExecuteCallTrace(code);
+        const string expectedCallTrace = """
+            {
+              "type": "CALL",
+              "from": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
+              "to": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+              "value": "0x1",
+              "gas": "0x186a0",
+              "gasUsed": "0x6593",
+              "input": "0x",
+              "calls": [
+                {
+                  "type": "SELFDESTRUCT",
+                  "from": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+                  "to": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
+                  "value": "0xad78ebc5ac6200001",
+                  "gas": "0x0",
+                  "gasUsed": "0x0",
+                  "input": "0x"
+                }
+              ]
+            }
+            """;
+        Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
+    }
+
+    [Test]
+    public void Test_CallTrace_SelfDestruct_OnlyTopCall()
+    {
+        byte[] code = Prepare.EvmCode
+            .PushData(TestItem.AddressA)
+            .Op(Instruction.SELFDESTRUCT)
+            .Done;
+
+        string callTrace = ExecuteCallTrace(code, OnlyTopCall);
+        const string expectedCallTrace = """
+            {
+              "type": "CALL",
+              "from": "0xb7705ae4c6f81b66cdb323c65f4e8133690fc099",
+              "to": "0x942921b14f1b1c385cd7e0cc2ef7abe5598c8358",
+              "value": "0x1",
+              "gas": "0x186a0",
+              "gasUsed": "0x6593",
+              "input": "0x"
+            }
+            """;
         Assert.That(callTrace, Is.EqualTo(expectedCallTrace));
     }
 

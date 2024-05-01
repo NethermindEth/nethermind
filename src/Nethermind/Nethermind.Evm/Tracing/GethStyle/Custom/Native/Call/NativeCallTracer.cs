@@ -136,6 +136,22 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.ReportActionRevert(gas, output);
     }
 
+    public override void ReportSelfDestruct(Address address, UInt256 balance, Address refundAddress)
+    {
+        base.ReportSelfDestruct(address, balance, refundAddress);
+        if (!_config.OnlyTopCall && _callStack.Count > 0)
+        {
+            NativeCallTracerCallFrame callFrame = new NativeCallTracerCallFrame
+            {
+                Type = Instruction.SELFDESTRUCT,
+                From = address,
+                To = refundAddress,
+                Value = balance
+            };
+            _callStack[^1].Calls.Add(callFrame);
+        }
+    }
+
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
