@@ -23,7 +23,7 @@ public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
     }
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)
     {
-        if (spec.IsEip6110Enabled == false && spec.IsEip7002Enabled == false)
+        if (!spec.DepositsEnabled && !spec.WithdrawalRequestsEnabled)
             return;
 
         List<ConsensusRequest> requestsList = [];
