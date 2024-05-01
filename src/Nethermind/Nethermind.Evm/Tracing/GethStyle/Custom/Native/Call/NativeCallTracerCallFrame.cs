@@ -1,15 +1,16 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Generic;
+using System;
 using System.Text.Json.Serialization;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing.GethStyle.Custom.Native.Call;
 
 [JsonConverter(typeof(NativeCallTracerCallFrameConverter))]
-public class NativeCallTracerCallFrame
+public class NativeCallTracerCallFrame : IDisposable
 {
     public Instruction Type { get; set; }
 
@@ -21,17 +22,28 @@ public class NativeCallTracerCallFrame
 
     public Address? To { get; set; }
 
-    public byte[]? Input { get; set; }
+    public ArrayPoolList<byte>? Input { get; set; }
 
-    public byte[]? Output { get; set; }
+    public ArrayPoolList<byte>? Output { get; set; }
 
     public string? Error { get; set; }
 
     public string? RevertReason { get; set; }
 
-    public List<NativeCallTracerCallFrame> Calls { get; set; }
+    public ArrayPoolList<NativeCallTracerCallFrame> Calls { get; set; }
 
-    public List<NativeCallTracerLogEntry>? Logs { get; set; }
+    public ArrayPoolList<NativeCallTracerLogEntry>? Logs { get; set; }
 
     public UInt256? Value { get; set; }
+
+    public void Dispose()
+    {
+        Input?.Dispose();
+        Output?.Dispose();
+        Logs?.Dispose();
+        foreach (NativeCallTracerCallFrame childCallFrame in Calls)
+        {
+            childCallFrame.Dispose();
+        }
+    }
 }

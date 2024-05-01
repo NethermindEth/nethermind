@@ -5,7 +5,9 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Int256;
 using Nethermind.Serialization.Json;
 
@@ -26,6 +28,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     private readonly NativeCallTracerConfig _config;
     private readonly List<NativeCallTracerCallFrame> _callStack = [];
 
+    private NativeCallTracerCallFrame? _firstCallFrame;
     private EvmExceptionType? _error;
     private long _remainingGas;
 
@@ -45,13 +48,19 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new();
+    protected override GethLikeTxTrace CreateTrace() => new(_firstCallFrame);
 
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        NativeCallTracerCallFrame firstCallFrame = _callStack[0];
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+        _firstCallFrame = _callStack[0];
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = _firstCallFrame };
+
+        for (int i=1; i < _callStack.Count; i++)
+        {
+            _callStack[i].Dispose();
+        }
+
         return result;
     }
 
@@ -70,8 +79,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             To = to,
             Gas = Depth == 0 ? _gasLimit : gas,
             Value = callOpcode == Instruction.STATICCALL ? null : value,
-            Input = input.ToArray(),
-            Calls = []
+            Input = input.Span.ToPooledList(),
+            Calls = new ArrayPoolList<NativeCallTracerCallFrame>(0)
         };
         _callStack.Add(callFrame);
     }
@@ -91,7 +100,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             log.Topics,
             (ulong)callFrame.Calls.Count);
 
-        callFrame.Logs ??= [];
+        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(1);
         callFrame.Logs.Add(callLog);
     }
 
@@ -132,7 +141,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.MarkAsSuccess(recipient, gasSpent, output, logs, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent;
-        firstCallFrame.Output = output;
+        firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
     }
 
     public override void MarkAsFailed(Address recipient, long gasSpent, byte[]? output, string error, Hash256? stateRoot = null)
@@ -140,7 +149,8 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         base.MarkAsFailed(recipient, gasSpent, output, error, stateRoot);
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
         firstCallFrame.GasUsed = gasSpent;
-        firstCallFrame.Output = output;
+        if (output is not null)
+            firstCallFrame.Output = new ArrayPoolList<byte>(output.Length, output);
 
         EvmExceptionType errorType = _error!.Value;
         firstCallFrame.Error = errorType.GetEvmExceptionDescription();
@@ -163,15 +173,15 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             NativeCallTracerCallFrame callFrame = _callStack[^1];
 
             int size = _callStack.Count;
-            if (size <= 1)
-                return;
+            if (size > 1)
+            {
+                _callStack.RemoveAt(size - 1);
+                callFrame.GasUsed = callFrame.Gas - gas;
 
-            _callStack.RemoveAt(size - 1);
-            callFrame.GasUsed = callFrame.Gas - gas;
+                ProcessOutput(callFrame, output, error);
 
-            ProcessOutput(callFrame, output, error);
-
-            _callStack[^1].Calls.Add(callFrame);
+                _callStack[^1].Calls.Add(callFrame);
+            }
         }
     }
 
@@ -187,10 +197,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
             if (error == EvmExceptionType.Revert && output?.Length != 0)
             {
-                byte[] outputArray = output?.ToArray();
-                callFrame.Output = outputArray;
+                ArrayPoolList<byte> outputList = output?.Span.ToPooledList();
+                callFrame.Output = outputList;
 
-                if (outputArray is not null && outputArray.Length >= 4)
+                if (outputList?.Count >= 4)
                 {
                     ProcessRevertReason(callFrame, output.Value);
                 }
@@ -198,7 +208,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
         else
         {
-            callFrame.Output = output?.ToArray();
+            callFrame.Output = output?.Span.ToPooledList();
         }
     }
 
