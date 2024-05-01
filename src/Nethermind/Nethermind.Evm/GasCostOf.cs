@@ -63,5 +63,6 @@ namespace Nethermind.Evm
         public const long TLoad = WarmStateRead; // eip-1153
         public const long TStore = WarmStateRead; // eip-1153
         public const long Auth = 3100; // eip-3074
+        public const long Gas = Base;
     }
 }

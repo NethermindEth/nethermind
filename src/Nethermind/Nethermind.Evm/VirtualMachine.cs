@@ -1697,7 +1697,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.GAS:
                     {
-                        gasAvailable -= GasCostOf.Base;
+                        gasAvailable -= GasCostOf.Gas;
                         // Ensure gas is positive before pushing to stack
                         if (gasAvailable < 0) goto OutOfGas;
 
@@ -2381,9 +2381,18 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        if (spec.Use63Over64Rule)
+        else if (spec.Use63Over64Rule)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            var sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
+            if (instruction == Instruction.AUTHCALL && sixtyFourthDeducted < gasLimit)
+            {
+                //AUTHCALL forwards all, if gas param is zero
+                if (gasLimit == 0)
+                    gasLimit = sixtyFourthDeducted;
+                else
+                    return EvmExceptionType.OutOfGas;
+            }
+            gasLimit = UInt256.Min(sixtyFourthDeducted, gasLimit);
         }
 
         if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;

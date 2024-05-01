@@ -562,33 +562,33 @@ namespace Nethermind.Evm.Test
             Assert.That(new Address(resultE.ToArray()), Is.EqualTo(TestItem.AddressD));
         }
 
-        public static IEnumerable<object[]> AUTHCALLCases()
+        public static IEnumerable<object[]> AUTHCALLGasCases()
         {
             yield return new object[]
             {
                 //Cold access address
-                TestItem.AddressE,
+                TestItem.GetRandomAddress(),
                 0,
-                2600
+                2600,
             };
             yield return new object[]
             {
                 //Warm access address
                 TestItem.AddressF,
                 0,
-                100
+                100,
             };
             yield return new object[]
             {
                 //Warm access address
                 TestItem.AddressF,
                 1,
-                6700 + 100
+                6700 + 100,
             };
         }
 
-        [TestCaseSource(nameof(AUTHCALLCases))]
-        public void ExecuteAUTHCALL_(Address target, int valueToSend, int expectedCost)
+        [TestCaseSource(nameof(AUTHCALLGasCases))]
+        public void ExecuteAUTHCALL_VarmAndColdAddressesAndValueIsZeroOrGreater_UsesCorrectAmountOfGas(Address target, int valueToSend, int expectedCost)
         {
             var signer = TestItem.PrivateKeyF;
             var authority = TestItem.AddressF;
@@ -621,7 +621,7 @@ namespace Nethermind.Evm.Test
                 .PushData(0)
                 .PushData(valueToSend)
                 .PushData(target)
-                .PushData(0)
+                .PushData(10000000)
                 .Done;
 
             var codeWithAuthCall = code.Concat(
@@ -640,7 +640,113 @@ namespace Nethermind.Evm.Test
 
             Assert.That(resultWithAuthCall.GasSpent - result.GasSpent, Is.EqualTo(expectedCost));
         }
-        
+
+        [TestCase(1000000, 30000, 30000 - GasCostOf.Gas)]
+        //If gas limit is 0, all gas should be forwarded remaining after the AUTHCALL ops and 63/64 rule
+        [TestCase(1000000, 0, 970631 - 970631 / 64 - GasCostOf.Gas)]
+        [TestCase(1000000, 970631 - 970631 / 64, 970631 - 970631 / 64 - GasCostOf.Gas)]
+        public void ExecuteAUTHCALL_GasLimitIsSetToZeroOrGreater_CorrectAmountOfGasIsForwarded(long gasLimit, long gasToSend, long expectedGasInSubcall)
+        {
+            var signer = TestItem.PrivateKeyF;
+            var authority = TestItem.AddressF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Just throw away the result
+                .POP()
+
+                //AUTHCALL params
+                .PushData(32)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.AddressC)
+                .PushData(gasToSend)
+                .Op(Instruction.AUTHCALL)
+                .PushSingle(32)
+                .PushSingle(0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            var codeStoreGas = Prepare.EvmCode
+                .GAS()
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushSingle(32)
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.RETURN)
+                .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(codeStoreGas), codeStoreGas, Spec);
+            
+            var result = ExecuteAndTrace(gasLimit, code);
+
+            Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedGasInSubcall));
+        }
+
+        [TestCase(1000000000)]
+        //Set gas limit to exactly remaining gas after AUTHCALL + 1
+        [TestCase(970631 - 970631 / 64 + 1)]
+        public void ExecuteAUTHCALL_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit)
+        {
+            var signer = TestItem.PrivateKeyF;
+            var authority = TestItem.AddressF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+                .PushData(data[..32])
+                .Op(Instruction.PUSH0)
+                .Op(Instruction.MSTORE)
+                .PushData(data[32..64])
+                .PushSingle(32)
+                .Op(Instruction.MSTORE)
+                .PushData(data[64..96])
+                .PushSingle(64)
+                .Op(Instruction.MSTORE)
+
+                //AUTH params
+                .PushSingle((UInt256)data.Length)
+                .Op(Instruction.PUSH0)
+                .PushData(authority)
+                .Op(Instruction.AUTH)
+
+                //Just throw away the result
+                .POP()
+
+                //AUTHCALL params
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(0)
+                .PushData(TestItem.GetRandomAddress())
+                .PushData(gasLimit)
+                .Op(Instruction.AUTHCALL)
+                .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
+        }
+
         [Test]
         public void ExecuteAUTHCALL_1GweiIsSent_SignerBalanceIsDebited()
         {
@@ -668,7 +774,7 @@ namespace Nethermind.Evm.Test
               .POP()
 
               //AUTHCALL params
-              .PushData(20)
+              .PushData(0)
               .PushData(0)
               .PushData(0)
               .PushData(0)
@@ -687,9 +793,8 @@ namespace Nethermind.Evm.Test
             Assert.That(addressBalance, Is.EqualTo(1.Ether() - 1.GWei()));
         }
 
-
         [Test]
-        public void ExecuteAUTHCALL_SendingMoreThanSignerBalance_SignerBalanceIsDebited()
+        public void ExecuteAUTHCALL_SendingMoreThanSignerBalance_SignerBalanceIsSame()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -736,7 +841,6 @@ namespace Nethermind.Evm.Test
             Assert.That(signerBalance, Is.EqualTo(1.Ether()));
             Assert.That(receiverBalance, Is.EqualTo((UInt256)0));
         }
-
 
         [Test]
         public void ExecuteAUTHCALL_SignerHasCodeDeployed_CorrectErrorIsReturned()
@@ -792,7 +896,6 @@ namespace Nethermind.Evm.Test
 
             Assert.That(result.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
         }
-
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
         {
