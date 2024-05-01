@@ -19,7 +19,6 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             _transactionProcessor = transactionProcessor ?? throw new ArgumentNullException(nameof(transactionProcessor));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-            _stateProvider.RecalculateStateRoot();
             _stateBefore = _stateProvider.StateRoot;
             _stateProvider.StateRoot = startState ?? throw new ArgumentNullException(nameof(startState));
         }
