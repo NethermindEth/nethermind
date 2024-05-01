@@ -23,7 +23,7 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 600L;
+        return 500L;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

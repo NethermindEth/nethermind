@@ -23,7 +23,7 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 4500L;
+        return 800L;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

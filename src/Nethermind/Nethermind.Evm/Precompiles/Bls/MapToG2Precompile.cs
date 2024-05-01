@@ -23,7 +23,7 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 110000;
+        return 75000;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

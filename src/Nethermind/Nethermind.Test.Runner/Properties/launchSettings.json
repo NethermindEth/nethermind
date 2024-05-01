@@ -2,7 +2,7 @@
   "profiles": {
     "State Test": {
       "commandName": "Project",
-      "commandLineArgs": "-i statetest1.json"
+      "commandLineArgs": "-i eip2537_bls_12_381_precompiles/bls12_g1add/gas.json"
     },
     "Blockchain Test": {
       "commandName": "Project",

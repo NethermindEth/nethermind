@@ -23,7 +23,7 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 55000L;
+        return 45000L;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
