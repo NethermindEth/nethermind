@@ -304,7 +304,7 @@ public class BlockValidator : IBlockValidator
 
     private bool ValidateRequests(Block block, IReleaseSpec spec, out string? error)
     {
-        if ((spec.DepositsEnabled || spec.IsEip7002Enabled) && block.Requests is null)
+        if ((spec.DepositsEnabled || spec.WithdrawalRequestsEnabled) && block.Requests is null)
         {
             error = BlockErrorMessages.MissingRequests;
 
