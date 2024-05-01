@@ -779,7 +779,7 @@ namespace Nethermind.Evm.Test
               .PushData(0)
               .PushData(1.GWei())
               .PushData(TestItem.AddressC)
-              .PushData(1000000)
+              .PushData(0)
               .Op(Instruction.AUTHCALL)
               .Done;
 

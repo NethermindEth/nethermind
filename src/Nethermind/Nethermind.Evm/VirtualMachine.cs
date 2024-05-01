@@ -2384,12 +2384,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (spec.Use63Over64Rule)
         {
             var sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
-            if (instruction == Instruction.AUTHCALL && sixtyFourthDeducted < gasLimit)
+            if (instruction == Instruction.AUTHCALL)
             {
                 //AUTHCALL forwards all, if gas param is zero
                 if (gasLimit == 0)
                     gasLimit = sixtyFourthDeducted;
-                else
+                else if(sixtyFourthDeducted < gasLimit)
                     return EvmExceptionType.OutOfGas;
             }
             gasLimit = UInt256.Min(sixtyFourthDeducted, gasLimit);
