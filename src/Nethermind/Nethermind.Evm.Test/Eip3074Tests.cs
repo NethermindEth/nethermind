@@ -829,7 +829,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAuthCall_SignerHasCodeDeployed_CorrectErrorIsReturned()
+        public void ExecuteAuthCall_SignerHasCodeDeployed_AuthorizedHasNotBeenSet()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -850,16 +850,20 @@ namespace Nethermind.Evm.Test
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
               .Op(Instruction.AUTH)
+
+              //AuthCall params
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(TestItem.GetRandomAddress())
+              .PushData(0)
+              .Op(Instruction.AUTHCALL)
               .Done;
 
             var signerCode = Prepare.EvmCode
-                .CALLDATASIZE()
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.PUSH0)
-                .CALLDATACOPY()
-                .CALLDATASIZE()
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.RETURN)
+                .Op(Instruction.STOP)
                 .Done;
 
             TestState.CreateAccount(signer.Address, 0);
@@ -867,7 +871,54 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
 
-            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.BadInstruction.ToString()));
+            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.AuthorizedNotSet.ToString()));
+        }
+
+        [Test]
+        public void ExecuteAuthCall_AuthCallIsCalledTwice_AuthorizedIsStillSet()
+        {
+            var signer = TestItem.PrivateKeyF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+              .PushData(data[..32])
+              .Op(Instruction.PUSH0)
+              .Op(Instruction.MSTORE)
+              .PushData(data[32..64])
+              .PushSingle(32)
+              .Op(Instruction.MSTORE)
+              .PushData(data[64..96])
+              .PushSingle(64)
+              .Op(Instruction.MSTORE)
+
+              //Auth params
+              .PushSingle((UInt256)data.Length)
+              .Op(Instruction.PUSH0)
+              .PushData(signer.Address)
+              .Op(Instruction.AUTH)
+
+              //AuthCall params
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(TestItem.GetRandomAddress())
+              .PushData(0)
+              .Op(Instruction.AUTHCALL)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(TestItem.GetRandomAddress())
+              .PushData(0)
+              .Op(Instruction.AUTHCALL)
+              .Done;
+
+            var result = Execute(code);
+
+            Assert.That(result.Error, Is.EqualTo(null));
         }
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)

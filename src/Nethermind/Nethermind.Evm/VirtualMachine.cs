@@ -2193,8 +2193,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
 
         if (_state.IsContract(authority))
-            //TODO maybe a specific exception is better?
-            return EvmExceptionType.BadInstruction;
+        {
+            vmState.Authorized = null;
+            stack.PushUInt256(0);
+            return EvmExceptionType.None;
+        }
 
         gasAvailable -= GasCostOf.Auth;
 
