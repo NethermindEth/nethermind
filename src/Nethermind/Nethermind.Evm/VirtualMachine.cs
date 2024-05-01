@@ -2192,6 +2192,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!stack.PopUInt256(out UInt256 offset)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
 
+        if (_state.IsContract(authority))
+            //TODO maybe a specific exception is better?
+            return EvmExceptionType.BadInstruction;
+
         gasAvailable -= GasCostOf.Auth;
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, offset, length))
@@ -2299,17 +2303,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled ||
             instruction == Instruction.AUTHCALL && !spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
 
-        if (instruction == Instruction.AUTHCALL)
+        if (instruction == Instruction.AUTHCALL && vmState.Authorized is null)
         {
-            if (vmState.Authorized is null)
-            {
-                return EvmExceptionType.AuthorizedNotSet;
-            }
-            else if (_state.IsContract(vmState.Authorized))
-            {
-                //TODO maybe a specific exception is better?
-                return EvmExceptionType.BadInstruction;
-            }
+            return EvmExceptionType.AuthorizedNotSet;
         }
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;

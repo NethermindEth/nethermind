@@ -25,10 +25,10 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<object[]> AuthorityCombinationCases()
         {
-            yield return new object[] { TestItem.PrivateKeyB, TestItem.AddressB, 0x1 };
-            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressC, 0x1 };
-            yield return new object[] { TestItem.PrivateKeyC, TestItem.AddressD, 0x0 };
-            yield return new object[] { TestItem.PrivateKeyD, TestItem.AddressC, 0x0 };
+            yield return new object[] { TestItem.PrivateKeyF, TestItem.AddressF, 0x1 };
+            yield return new object[] { TestItem.PrivateKeyE, TestItem.AddressE, 0x1 };
+            yield return new object[] { TestItem.PrivateKeyF, TestItem.AddressE, 0x0 };
+            yield return new object[] { TestItem.PrivateKeyE, TestItem.AddressF, 0x0 };
         }
 
         [TestCaseSource(nameof(AuthorityCombinationCases))]
@@ -104,7 +104,7 @@ namespace Nethermind.Evm.Test
         [TestCaseSource(nameof(BadMessageDataCases))]
         public void ExecuteAuth_OneOfMessageArgsIsWrong_ReturnsZero(byte magicNumber, byte[] chainId, byte[] nonce, byte[] address)
         {
-            PrivateKey signer = TestItem.PrivateKeyB;
+            PrivateKey signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer, magicNumber, chainId, nonce, address, new byte[32]);
 
             byte[] code = Prepare.EvmCode
@@ -143,7 +143,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void ExecuteAuth_CommitDataIsWrong_ReturnsZero()
         {
-            PrivateKey signer = TestItem.PrivateKeyB;
+            PrivateKey signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
             //Start index of commit
             data[65] = 0x1;
@@ -185,14 +185,12 @@ namespace Nethermind.Evm.Test
         [TestCase(false, 1)]
         public void ExecuteAuth_SignerNonceIsIncrementedAfterSigning_ReturnsExpected(bool incrementNonce, int expected)
         {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
-
+            var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
-            TestState.CreateAccount(TestItem.AddressB, 1.Ether());
+            TestState.CreateAccount(signer.Address, 1.Ether());
             if (incrementNonce)
-                TestState.IncrementNonce(TestItem.AddressB);
+                TestState.IncrementNonce(signer.Address);
 
             byte[] code = Prepare.EvmCode
                 .PushData(data[..32])
@@ -208,7 +206,7 @@ namespace Nethermind.Evm.Test
                 //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Return the result of Auth
@@ -227,9 +225,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void ExecuteAuth_InvalidAuthorityAfterValidHasBeenSet_CorrectErrorIsReturned()
         {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
-
+            var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -246,13 +242,13 @@ namespace Nethermind.Evm.Test
                 //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Wrong authority
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(TestItem.AddressF)
+                .PushData(TestItem.GetRandomAddress())
                 .Op(Instruction.AUTH)
 
                 .PushData(20)
@@ -278,9 +274,7 @@ namespace Nethermind.Evm.Test
         [TestCase(0, 0)]
         public void ExecuteAuth_ParamLengthIsLessOrGreaterThanValidSignature_ReturnsExpected(int paramLength, int expected)
         {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
-
+            var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -297,7 +291,7 @@ namespace Nethermind.Evm.Test
                 //Auth params
                 .PushSingle((UInt256)paramLength)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Return the result of Auth
@@ -553,20 +547,20 @@ namespace Nethermind.Evm.Test
 
         public static IEnumerable<object[]> AuthCallGasCases()
         {
-            //yield return new object[]
-            //{
-            //    //Cold access address
-            //    TestItem.GetRandomAddress(),
-            //    0,
-            //    GasCostOf.ColdAccountAccess,
-            //};
-            //yield return new object[]
-            //{
-            //    //Warm access address
-            //    TestItem.AddressF,
-            //    0,
-            //    GasCostOf.WarmStateRead,
-            //};
+            yield return new object[]
+            {
+                //Cold access address
+                TestItem.GetRandomAddress(),
+                0,
+                GasCostOf.ColdAccountAccess,
+            };
+            yield return new object[]
+            {
+                //Warm access address
+                TestItem.AddressF,
+                0,
+                GasCostOf.WarmStateRead,
+            };
             yield return new object[]
             {
                 //Warm access address
@@ -580,7 +574,6 @@ namespace Nethermind.Evm.Test
         public void ExecuteAuthCall_VarmAndColdAddressesAndValueIsZeroOrGreater_UsesCorrectAmountOfGas(Address target, long valueToSend, long expectedCost)
         {
             var signer = TestItem.PrivateKeyF;
-            var authority = TestItem.AddressF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -597,7 +590,7 @@ namespace Nethermind.Evm.Test
                 //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Just throw away the result
@@ -639,7 +632,6 @@ namespace Nethermind.Evm.Test
         public void ExecuteAuthCall_GasLimitIsSetToZeroOrGreater_CorrectAmountOfGasIsForwarded(long gasLimit, long gasToSend, long expectedGasInSubcall)
         {
             var signer = TestItem.PrivateKeyF;
-            var authority = TestItem.AddressF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -656,7 +648,7 @@ namespace Nethermind.Evm.Test
                 //Auth params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Just throw away the result
@@ -693,10 +685,11 @@ namespace Nethermind.Evm.Test
             Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedGasInSubcall));
         }
 
-        [TestCase(1000000000)]
+        [TestCase(1000000000, EvmExceptionType.OutOfGas)]
         //Set gas limit to exactly remaining gas after AuthCall + 1
-        [TestCase(970631 - 970631 / 64 + 1)]
-        public void ExecuteAuthCall_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit)
+        [TestCase(70631 - 70631 / 64 + 1, EvmExceptionType.OutOfGas)]
+        [TestCase(70631 - 70631 / 64, null)]
+        public void ExecuteAuthCall_GasLimitIsHigherThanRemainingGas_ReturnsOutOfGas(long gasLimit, EvmExceptionType? expectedErrorType)
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -734,7 +727,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
 
-            Assert.That(result.Error, Is.EqualTo(EvmExceptionType.OutOfGas.ToString()));
+            Assert.That(result.Error, Is.EqualTo(expectedErrorType?.ToString()));
         }
 
         [Test]
@@ -857,19 +850,6 @@ namespace Nethermind.Evm.Test
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
               .Op(Instruction.AUTH)
-
-              //Just throw away the result
-              .POP()
-
-              //AuthCall params
-              .PushData(20)
-              .PushData(0)
-              .PushData(0)
-              .PushData(0)
-              .PushData(2.Ether())
-              .PushData(TestItem.AddressC)
-              .PushData(1000000)
-              .Op(Instruction.AUTHCALL)
               .Done;
 
             var signerCode = Prepare.EvmCode
