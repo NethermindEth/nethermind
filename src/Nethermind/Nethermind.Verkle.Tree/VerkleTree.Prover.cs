@@ -39,28 +39,54 @@ public partial class VerkleTree
 
         VerkleProof proof = CreateVerkleProof(keys, out rootPoint);
 
-        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiff = new(Bytes.SpanEqualityComparer);
+        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiffWithCurrentValue = new(Bytes.SpanEqualityComparer);
         foreach (var key in keys)
         {
             SuffixStateDiff suffixData = new() { Suffix = key[31], CurrentValue = Get(key) };
             Span<byte> keyStem = key.AsSpan()[..31];
-            if (!stemStateDiff.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
+            if (!stemStateDiffWithCurrentValue.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
             {
                 suffixStateDiffList = [];
-                stemStateDiff.TryAdd(keyStem, suffixStateDiffList);
+                stemStateDiffWithCurrentValue.TryAdd(keyStem, suffixStateDiffList);
             }
             suffixStateDiffList.Add(suffixData);
         }
 
-        var stemStateDiffList = new StemStateDiff[stemStateDiff.Count];
+        var stemStateDiffList = new StemStateDiff[stemStateDiffWithCurrentValue.Count];
         int i = 0;
-        foreach (KeyValuePair<byte[], List<SuffixStateDiff>> stemStateDiffData in stemStateDiff)
+        foreach (KeyValuePair<byte[], List<SuffixStateDiff>> stemStateDiffData in stemStateDiffWithCurrentValue)
         {
             stemStateDiffList[i++] = new StemStateDiff
             { Stem = stemStateDiffData.Key, SuffixDiffs = stemStateDiffData.Value };
         }
 
         return new ExecutionWitness(stemStateDiffList, proof);
+    }
+
+    public void UpdateExecutionWitness(ExecutionWitness executionWitness, byte[][] keys)
+    {
+        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiffWithNewValue = new(Bytes.SpanEqualityComparer);
+        foreach (var key in keys)
+        {
+            SuffixStateDiff suffixData = new() { NewValue = Get(key) };
+            Span<byte> keyStem = key.AsSpan()[..31];
+            if (!stemStateDiffWithNewValue.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
+            {
+                suffixStateDiffList = [];
+                stemStateDiffWithNewValue.TryAdd(keyStem, suffixStateDiffList);
+            }
+            suffixStateDiffList.Add(suffixData);
+        }
+        executionWitness.StateDiff.ForEach(stateDiff =>
+        {
+            List<SuffixStateDiff> newValueSuffixDiffs = stemStateDiffWithNewValue[stateDiff.Stem.Bytes];
+            int i = 0;
+            stateDiff.SuffixDiffs.ForEach(suffixDiffs =>
+            {
+                suffixDiffs.NewValue = newValueSuffixDiffs[i].NewValue;
+                i++;
+            });
+        });
     }
 
     public VerkleProof CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
