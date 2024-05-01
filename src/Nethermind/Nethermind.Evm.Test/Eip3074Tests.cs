@@ -399,8 +399,7 @@ namespace Nethermind.Evm.Test
         [Test]
         public void ExecuteAUTHCALL_TransactionReturnsTheCurrentCallerAfterAuthCall_SignerIsReturned()
         {
-            var signer = TestItem.PrivateKeyB;
-            var authority = TestItem.AddressB;
+            var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
 
             byte[] code = Prepare.EvmCode
@@ -417,7 +416,7 @@ namespace Nethermind.Evm.Test
                 //AUTH params
                 .PushSingle((UInt256)data.Length)
                 .Op(Instruction.PUSH0)
-                .PushData(authority)
+                .PushData(signer.Address)
                 .Op(Instruction.AUTH)
 
                 //Just throw away the result
@@ -430,7 +429,7 @@ namespace Nethermind.Evm.Test
                 .PushData(0)
                 .PushData(0)
                 .PushData(TestItem.AddressC)
-                .PushData(1000000)
+                .PushData(0)
                 .Op(Instruction.AUTHCALL)
                 .PushSingle(20)
                 .PushSingle(0)
@@ -452,7 +451,7 @@ namespace Nethermind.Evm.Test
 
             var result = Execute(code);
 
-            Assert.That(new Address(result.ReturnValue), Is.EqualTo(TestItem.AddressB));
+            Assert.That(new Address(result.ReturnValue), Is.EqualTo(signer.Address));
         }
 
         [Test]
@@ -615,13 +614,13 @@ namespace Nethermind.Evm.Test
                 .POP()
 
                 //AUTHCALL params
-                .PushData(20)
+                .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(0)
                 .PushData(valueToSend)
                 .PushData(target)
-                .PushData(10000000)
+                .PushData(0)
                 .Done;
 
             var codeWithAuthCall = code.Concat(
