@@ -18,10 +18,9 @@ using NUnit.Framework;
 
 namespace Nethermind.Blockchain.Test
 {
-    [TestFixture]
+    [TestFixture, Parallelizable(ParallelScope.All)]
     public class BlockhashProviderTests
     {
-
         private static IWorldState CreateWorldState()
         {
             var trieStore = new TrieStore(new MemDb(), LimboLogs.Instance);
