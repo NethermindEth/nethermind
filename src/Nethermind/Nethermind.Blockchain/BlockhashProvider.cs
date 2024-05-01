@@ -18,13 +18,13 @@ namespace Nethermind.Blockchain
     public class BlockhashProvider : IBlockhashProvider
     {
         private static readonly int _maxDepth = 256;
-        private readonly IBlockTree _blockTree;
+        private readonly IBlockFinder _blockTree;
         private readonly ISpecProvider _specProvider;
         private readonly IWorldState _worldState;
         private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
 
-        public BlockhashProvider(IBlockTree blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
+        public BlockhashProvider(IBlockFinder blockTree, ISpecProvider specProvider, IWorldState worldState, ILogManager? logManager)
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider;
