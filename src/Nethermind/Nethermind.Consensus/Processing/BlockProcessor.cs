@@ -241,19 +241,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-
-        if (spec.IsEip2935Enabled)
-        {
-            // TODO: find a better way to handle this - no need to have this check everytime
-            //      this would just be true on the fork block
-            BlockHeader parentHeader = _blockTree.FindParentHeader(block.Header, BlockTreeLookupOptions.None);
-            if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
-                _blockhashStore.InitHistoryOnForkBlock(block.Header);
-            else
-                _blockhashStore.AddParentBlockHashToState(block.Header);
-
-        }
-
+        _blockhashStore.ApplyHistoryBlockHashes(block.Header, spec);
 
         _stateProvider.Commit(spec);
 

@@ -3,6 +3,7 @@
 
 using System;
 using System.IO;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -11,14 +12,44 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
 
+[assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Blockchain.Blocks;
 
 public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider, IWorldState worldState)
     : IBlockhashStore
 {
-    private static readonly byte[] _emptyBytes = [0];
+    private static readonly byte[] EmptyBytes = [0];
 
-    public void InitHistoryOnForkBlock(BlockHeader currentBlock)
+    public void ApplyHistoryBlockHashes(BlockHeader blockHeader, IReleaseSpec spec)
+    {
+        if (!spec.IsEip2935Enabled) return;
+
+        // TODO: find a better way to handle this - no need to have this check everytime
+        //      this would just be true on the fork block
+        BlockHeader parentHeader = blockFinder.FindParentHeader(blockHeader, BlockTreeLookupOptions.None);
+        if (parentHeader is not null && parentHeader!.Timestamp < spec.Eip2935TransitionTimestamp)
+            InitHistoryOnForkBlock(blockHeader);
+        else
+            AddParentBlockHashToState(blockHeader);
+    }
+
+    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
+    {
+        IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
+        if (requiredBlockNumber >= currentHeader.Number ||
+            requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
+        {
+            return null;
+        }
+        var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
+        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
+        return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
+    }
+
+    internal void InitHistoryOnForkBlock(BlockHeader currentBlock)
     {
         long current = currentBlock.Number;
         BlockHeader header = currentBlock;
@@ -35,7 +66,8 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
             }
         }
     }
-    public void AddParentBlockHashToState(BlockHeader blockHeader)
+
+    internal void AddParentBlockHashToState(BlockHeader blockHeader)
     {
         IReleaseSpec? spec = specProvider.GetSpec(blockHeader);
         if (!spec.IsEip2935Enabled || blockHeader.IsGenesis || blockHeader.ParentHash is null) return;
@@ -48,20 +80,5 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
 
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
         worldState.Set(blockHashStoreCell, parentBlockHash.BytesToArray());
-    }
-
-    public Hash256? GetBlockHashFromState(BlockHeader currentHeader, long requiredBlockNumber)
-    {
-        IReleaseSpec? spec = specProvider.GetSpec(currentHeader);
-        if (requiredBlockNumber >= currentHeader.Number ||
-            requiredBlockNumber + Eip2935Constants.RingBufferSize < currentHeader.Number)
-        {
-            return null;
-        }
-        var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
-        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-        StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(_emptyBytes) ? null : new Hash256(data);
     }
 }
