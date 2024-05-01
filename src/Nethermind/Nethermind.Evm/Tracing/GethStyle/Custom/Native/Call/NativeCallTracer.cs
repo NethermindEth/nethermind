@@ -56,7 +56,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         _firstCallFrame = _callStack[0];
         result.CustomTracerResult = new GethLikeCustomTrace { Value = _firstCallFrame };
 
-        for (int i=1; i < _callStack.Count; i++)
+        for (int i = 1; i < _callStack.Count; i++)
         {
             _callStack[i].Dispose();
         }
