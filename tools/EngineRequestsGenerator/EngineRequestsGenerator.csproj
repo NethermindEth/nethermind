@@ -1,6 +1,7 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <ItemGroup>
+    <ProjectReference Include="..\..\src\Nethermind\Nethermind.Core\Nethermind.Core.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin\Nethermind.Merge.Plugin.csproj" />
     <ProjectReference Include="..\..\src\Nethermind\Nethermind.Merge.Plugin.Test\Nethermind.Merge.Plugin.Test.csproj" />
   </ItemGroup>

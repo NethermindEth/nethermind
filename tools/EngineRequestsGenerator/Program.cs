@@ -215,19 +215,54 @@ public static class Program
     {
         List<byte> byteCode = new();
 
-        int example = 1;
-        byte[] byteExample = example.ToByteArray();
-        UInt256 length = (UInt256)byteExample.Length;
+        // int example = 1;
+        // byte[] byteExample = example.ToByteArray();
+        // UInt256 length = (UInt256)byteExample.Length;
 
-        long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-        long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
+        long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
+        // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+        // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
 
-        for (int i = 0; i < iterations; i++)
+        int i = 0;
+        while(gasLeft > 0)
         {
-            var data = i.ToByteArray();
+            var data = i++.ToByteArray();
+            int zeroData = data.AsSpan().CountZeros();
+            UInt256 length = (UInt256)data.Length;
+
+            long gasCost = 0;
+            // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+            // push value as source to compute hash
             byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
+            gasCost += GasCostOf.VeryLow;
             byteCode.AddRange(data);
+            gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+            // push memory position - 0
+            byteCode.Add((byte)(Instruction.PUSH1));
+            gasCost += GasCostOf.VeryLow;
+            byteCode.AddRange(new[] { Byte.MinValue });
+            gasCost += GasCostOf.TxDataZero;
+            // save in memory
+            byteCode.Add((byte)Instruction.MSTORE);
+            gasCost += GasCostOf.Memory;
+
+            // push byte size to read from memory - 4
+            byteCode.Add((byte)(Instruction.PUSH1));
+            gasCost += GasCostOf.VeryLow;
+            byteCode.AddRange(new[] { (byte)4 });
+            gasCost += GasCostOf.TxDataNonZeroEip2028;
+            // push byte offset in memory - 0
+            byteCode.Add((byte)(Instruction.PUSH1));
+            gasCost += GasCostOf.VeryLow;
+            byteCode.AddRange(new[] { Byte.MinValue });
+            gasCost += GasCostOf.TxDataZero;
+            // compute keccak
             byteCode.Add((byte)Instruction.KECCAK256);
+            gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+
+            gasLeft -= gasCost;
+
+            // now keccak of given data is in memory
         }
 
         return byteCode.ToArray();
