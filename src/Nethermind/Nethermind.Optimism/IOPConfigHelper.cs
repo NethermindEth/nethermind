@@ -12,6 +12,7 @@ public interface IOPConfigHelper
     bool IsBedrock(BlockHeader header);
     bool IsRegolith(BlockHeader header);
     bool IsCanyon(BlockHeader header);
+    bool IsEcotone(BlockHeader header);
     Address? Create2DeployerAddress { get; }
     byte[]? Create2DeployerCode { get; }
 }

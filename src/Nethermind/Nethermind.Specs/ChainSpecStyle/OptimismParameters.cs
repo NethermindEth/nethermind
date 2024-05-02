@@ -14,6 +14,8 @@ namespace Nethermind.Specs.ChainSpecStyle
 
         public ulong? CanyonTimestamp { get; set; }
 
+        public ulong? EcotoneTimestamp { get; set; }
+
         public Address L1FeeRecipient { get; set; }
 
         public Address L1BlockAddress { get; set; }
