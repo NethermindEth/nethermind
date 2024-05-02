@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 
 public class NodeLifecycleManager : INodeLifecycleManager
 {
+    private readonly static IPAddress _localhost = IPAddress.Parse("127.0.0.1");
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
@@ -190,7 +192,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         foreach (Node node in msg.Nodes)
         {
-            if (node.Address.Address.ToString().Contains("127.0.0.1"))
+            if (node.Address.Address == _localhost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
