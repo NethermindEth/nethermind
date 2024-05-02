@@ -29,7 +29,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 55000L * k * Discount.For(k) / 1000;
+        return 45000L * k * Discount.For(k) / 1000;
     }
 
     private const int ItemSize = 288;

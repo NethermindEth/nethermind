@@ -21,11 +21,11 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
     public static PairingPrecompile Instance = new PairingPrecompile();
 
-    public long BaseGasCost(IReleaseSpec releaseSpec) => 115000L;
+    public long BaseGasCost(IReleaseSpec releaseSpec) => 65000L;
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
-        return 23000L * (inputData.Length / PairSize);
+        return 43000L * (inputData.Length / PairSize);
     }
 
     public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
