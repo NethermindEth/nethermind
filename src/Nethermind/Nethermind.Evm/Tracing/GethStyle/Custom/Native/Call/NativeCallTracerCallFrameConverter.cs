@@ -49,13 +49,13 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             }
             else
             {
-                JsonSerializer.Serialize(writer, value.Input.AsSpan().ToArray(), options);
+                JsonSerializer.Serialize(writer, value.Input.AsMemory(), options);
             }
 
             if (value.Output?.Count > 0)
             {
                 writer.WritePropertyName("output"u8);
-                JsonSerializer.Serialize(writer, value.Output.AsSpan().ToArray(), options);
+                JsonSerializer.Serialize(writer, value.Output.AsMemory(), options);
             }
 
             if (value.Error is not null)
@@ -73,13 +73,13 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             if (value.Logs?.Count > 0)
             {
                 writer.WritePropertyName("logs"u8);
-                JsonSerializer.Serialize(writer, value.Logs.AsSpan().ToArray(), options);
+                JsonSerializer.Serialize(writer, value.Logs.AsMemory(), options);
             }
 
             if (value.Calls?.Count > 0)
             {
                 writer.WritePropertyName("calls"u8);
-                JsonSerializer.Serialize(writer, value.Calls.AsSpan().ToArray(), options);
+                JsonSerializer.Serialize(writer, value.Calls.AsMemory(), options);
             }
 
             writer.WriteEndObject();

@@ -319,4 +319,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 #endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, Count);
+
+    public Memory<T> AsMemory() => _array.AsMemory(0, Count);
 }
