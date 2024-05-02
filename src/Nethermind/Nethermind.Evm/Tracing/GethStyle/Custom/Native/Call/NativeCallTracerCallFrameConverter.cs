@@ -43,7 +43,7 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             JsonSerializer.Serialize(writer, value.GasUsed, options);
 
             writer.WritePropertyName("input"u8);
-            if (value.Input is null)
+            if (value.Input is null || value.Input.Count == 0)
             {
                 writer.WriteStringValue("0x"u8);
             }
