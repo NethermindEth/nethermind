@@ -144,5 +144,4 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
 
         return tree;
     }
-
 }

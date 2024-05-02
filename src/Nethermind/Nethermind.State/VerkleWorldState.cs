@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading.Tasks.Dataflow;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -563,6 +564,39 @@ public class VerkleWorldState : IWorldState
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
     }
 
+    protected void BulkSet(Dictionary<Address, Account> accountChange)
+    {
+        void SetStateKV(KeyValuePair<Address, Account> keyValuePair)
+        {
+            SetState(keyValuePair.Key, keyValuePair.Value);
+        }
+
+        if (accountChange.Count == 1)
+        {
+            foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+            {
+                SetStateKV(keyValuePair);
+            }
+
+            return;
+        }
+
+        ActionBlock<KeyValuePair<Address, Account>> setStateAction = new ActionBlock<KeyValuePair<Address, Account>>(
+            SetStateKV,
+            new ExecutionDataflowBlockOptions()
+            {
+                MaxDegreeOfParallelism = Environment.ProcessorCount
+            });
+
+        foreach (KeyValuePair<Address, Account> keyValuePair in accountChange)
+        {
+            setStateAction.Post(keyValuePair);
+        }
+
+        setStateAction.Complete();
+        setStateAction.Completion.Wait();
+    }
+
     protected void SetState(Address address, Account? account)
     {
         Db.Metrics.StateTreeWrites++;
@@ -802,6 +836,7 @@ public class VerkleWorldState : IWorldState
             trace = new Dictionary<Address, ChangeTrace>();
         }
 
+        Dictionary<Address, Account?> accountChange = new Dictionary<Address, Account?>();
         for (int i = 0; i <= _currentPosition; i++)
         {
             Change change = _changes[_currentPosition - i];
@@ -849,7 +884,7 @@ public class VerkleWorldState : IWorldState
                         if (_logger.IsTrace)
                             if (change.Account != null)
                                 _logger.Trace($"  Commit update {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce} C = {change.Account.CodeHash}");
-                        SetState(change.Address, change.Account);
+                        accountChange[change.Address] = change.Account;
                         if (isTracing)
                         {
                             trace[change.Address] = new ChangeTrace(change.Account);
@@ -863,7 +898,7 @@ public class VerkleWorldState : IWorldState
                         if (change.Account != null && (!releaseSpec.IsEip158Enabled || !change.Account.IsEmpty || isGenesis || change.Address == new Address("0xfffffffffffffffffffffffffffffffffffffffe")))
                         {
                             if (_logger.IsTrace) _logger.Trace($"  Commit create {change.Address} B = {change.Account.Balance} N = {change.Account.Nonce}");
-                            SetState(change.Address, change.Account);
+                            accountChange[change.Address] = change.Account;
                             if (isTracing)
                             {
                                 trace[change.Address] = new ChangeTrace(change.Account);
@@ -888,7 +923,7 @@ public class VerkleWorldState : IWorldState
 
                         if (!wasItCreatedNow)
                         {
-                            SetState(change.Address, null);
+                            accountChange[change.Address] = null;
                             if (isTracing)
                             {
                                 trace[change.Address] = new ChangeTrace(null);
@@ -911,6 +946,7 @@ public class VerkleWorldState : IWorldState
             }
         }
 
+        BulkSet(accountChange);
         _tree.Commit();
         Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition);
         _committedThisRound.Reset();
