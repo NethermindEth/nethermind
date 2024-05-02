@@ -921,6 +921,56 @@ namespace Nethermind.Evm.Test
             Assert.That(result.Error, Is.EqualTo(null));
         }
 
+        [Test]
+        public void ExecuteAuthCall_AuthorizedIsSetAndAuthCallIsCalledInSubcall_AuthorizedIsNotSetInSubcall()
+        {
+            var signer = TestItem.PrivateKeyF;
+            var data = CreateSignedCommitMessage(signer);
+
+            byte[] code = Prepare.EvmCode
+              .PushData(data[..32])
+              .Op(Instruction.PUSH0)
+              .Op(Instruction.MSTORE)
+              .PushData(data[32..64])
+              .PushSingle(32)
+              .Op(Instruction.MSTORE)
+              .PushData(data[64..96])
+              .PushSingle(64)
+              .Op(Instruction.MSTORE)
+
+              //Auth params
+              .PushSingle((UInt256)data.Length)
+              .Op(Instruction.PUSH0)
+              .PushData(signer.Address)
+              .Op(Instruction.AUTH)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(TestItem.AddressC)
+              .PushData(10000)
+              .Op(Instruction.CALL)
+              .Done;
+
+            var authCall = Prepare.EvmCode
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(0)
+              .PushData(TestItem.GetRandomAddress())
+              .PushData(0)
+              .Op(Instruction.AUTHCALL)
+              .Done;
+
+            TestState.CreateAccount(TestItem.AddressC, 0);
+            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(authCall), authCall, Spec);
+
+            var result = ExecuteAndTrace(code);
+            Assert.That(result.Entries.Last(e=> e.Opcode.Equals(Instruction.AUTHCALL.ToString())).Error, Is.Not.Null);
+        }
+
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
         {
             return CreateSignedCommitMessage(
