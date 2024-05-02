@@ -2,7 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections;
-using System.Runtime.InteropServices;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -160,12 +160,12 @@ public class NodeTable : INodeTable
 
     public struct ClosestNodesFromNodeEnumerator : IEnumerator<Node>, IEnumerable<Node>
     {
-        private readonly List<Node> _sortedNodes;
+        private readonly ArrayPoolList<Node> _sortedNodes;
         private int _currentIndex;
 
         public ClosestNodesFromNodeEnumerator(NodeBucket[] buckets, byte[] targetNodeId, INodeDistanceCalculator calculator, int bucketSize)
         {
-            _sortedNodes = new List<Node>();
+            _sortedNodes = new ArrayPoolList<Node>(capacity: bucketSize);
             Hash256 idHash = Keccak.Compute(targetNodeId);
             foreach (var bucket in buckets)
             {
@@ -181,7 +181,7 @@ public class NodeTable : INodeTable
             _sortedNodes.Sort((a, b) => calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId)));
             if (_sortedNodes.Count > bucketSize)
             {
-                CollectionsMarshal.SetCount(_sortedNodes, bucketSize);
+                _sortedNodes.ReduceCount(bucketSize);
             }
 
             _currentIndex = -1;
@@ -204,7 +204,10 @@ public class NodeTable : INodeTable
         }
 
         void IEnumerator.Reset() => throw new NotSupportedException();
-        public void Dispose() { }
+        public void Dispose()
+        {
+            _sortedNodes.Dispose();
+        }
 
         public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
         IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
