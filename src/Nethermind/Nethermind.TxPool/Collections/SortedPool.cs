@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
@@ -90,7 +92,18 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public TValue[] GetSnapshot()
         {
-            using var lockRelease = Lock.Acquire();
+            TValue[]? snapshot = Volatile.Read(ref _snapshot);
+            if (snapshot is not null)
+            {
+                return snapshot;
+            }
+
+            return GetSnapShotLocked();
+        }
+
+        private TValue[] GetSnapShotLocked()
+        {
+            using var handle = Lock.Acquire();
 
             TValue[]? snapshot = _snapshot;
             if (snapshot is not null)
