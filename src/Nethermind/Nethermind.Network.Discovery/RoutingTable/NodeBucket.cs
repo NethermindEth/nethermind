@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
 using System.Diagnostics;
 using Nethermind.Stats.Model;
 
@@ -28,26 +29,69 @@ public class NodeBucket
 
     public int BucketSize { get; }
 
-    public IEnumerable<NodeBucketItem> BondedItems
+    public bool AnyBondedItems()
     {
-        get
+        foreach (NodeBucketItem _ in BondedItems)
         {
-            lock (_nodeBucketLock)
+            return true;
+        }
+
+        return false;
+    }
+
+    public BondedItemsEnumerator BondedItems
+        => new(this);
+
+    public struct BondedItemsEnumerator : IEnumerator<NodeBucketItem>, IEnumerable<NodeBucketItem>
+    {
+        private NodeBucket _nodeBucket;
+        private LinkedListNode<NodeBucketItem>? _currentNode;
+        private DateTime _referenceTime;
+
+        public BondedItemsEnumerator(NodeBucket nodeBucket)
+        {
+            _nodeBucket = nodeBucket;
+            _referenceTime = DateTime.UtcNow;
+            lock (_nodeBucket._nodeBucketLock)
             {
-                LinkedListNode<NodeBucketItem>? node = _items.Last;
-                DateTime utcNow = DateTime.UtcNow;
-                while (node is not null)
+                _currentNode = nodeBucket._items.Last;
+            }
+            Current = default!;
+        }
+
+        public NodeBucketItem Current { get; private set; }
+
+        object IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            lock (_nodeBucket._nodeBucketLock)
+            {
+                while (_currentNode != null)
                 {
-                    if (!node.Value.IsBonded(utcNow))
+                    if (!_currentNode.Value.IsBonded(_referenceTime))
                     {
                         break;
                     }
 
-                    yield return node.Value;
-                    node = node.Previous;
+                    Current = _currentNode.Value;
+                    _currentNode = _currentNode.Previous;
+                    return true;
                 }
             }
+            return false;
         }
+
+        public void Reset() => throw new NotSupportedException();
+
+        public readonly void Dispose() { }
+        public BondedItemsEnumerator GetEnumerator() => this;
+
+        IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()
+            => GetEnumerator();
+
+        IEnumerator IEnumerable.GetEnumerator()
+            => GetEnumerator();
     }
 
     public int BondedItemsCount
