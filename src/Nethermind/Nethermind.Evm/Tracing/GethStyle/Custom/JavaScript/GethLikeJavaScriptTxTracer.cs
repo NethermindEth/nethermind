@@ -121,32 +121,9 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
     public override void ReportOperationError(EvmExceptionType error)
     {
         base.ReportOperationError(error);
-        _log.error = GetJavaScriptErrorDescription(error);
+        _log.error = error.GetEvmExceptionDescription();
         _tracer.fault(_log, _db);
     }
-
-    private static string? GetJavaScriptErrorDescription(EvmExceptionType evmExceptionType) =>
-        evmExceptionType switch
-        {
-            EvmExceptionType.None => null,
-            EvmExceptionType.BadInstruction => "invalid instruction",
-            EvmExceptionType.StackOverflow => "max call depth exceeded",
-            EvmExceptionType.StackUnderflow => "stack underflow",
-            EvmExceptionType.OutOfGas => "out of gas",
-            EvmExceptionType.GasUInt64Overflow => "gas uint64 overflow",
-            EvmExceptionType.InvalidSubroutineEntry => "invalid jump destination",
-            EvmExceptionType.InvalidSubroutineReturn => "invalid jump destination",
-            EvmExceptionType.InvalidJumpDestination => "invalid jump destination",
-            EvmExceptionType.AccessViolation => "return data out of bounds",
-            EvmExceptionType.StaticCallViolation => "write protection",
-            EvmExceptionType.PrecompileFailure => "precompile error",
-            EvmExceptionType.TransactionCollision => "contract address collision",
-            EvmExceptionType.NotEnoughBalance => "insufficient balance for transfer",
-            EvmExceptionType.Other => "error",
-            EvmExceptionType.Revert => "execution reverted",
-            EvmExceptionType.InvalidCode => "invalid code: must not begin with 0xef",
-            _ => "error"
-        };
 
     public override void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
     {
@@ -162,16 +139,16 @@ public sealed class GethLikeJavaScriptTxTracer : GethLikeTxTracer, ITxTracer
         InvokeExit(gas, output);
     }
 
-    public void ReportActionRevert(long gasLeft, byte[] output)
+    public override void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
         base.ReportActionError(EvmExceptionType.Revert);
-        InvokeExit(gasLeft, output, GetJavaScriptErrorDescription(EvmExceptionType.Revert));
+        InvokeExit(gasLeft, output, EvmExceptionType.Revert.GetEvmExceptionDescription());
     }
 
     public override void ReportActionError(EvmExceptionType evmExceptionType)
     {
         base.ReportActionError(evmExceptionType);
-        InvokeExit(0, Array.Empty<byte>(), GetJavaScriptErrorDescription(evmExceptionType));
+        InvokeExit(0, Array.Empty<byte>(), evmExceptionType.GetEvmExceptionDescription());
     }
 
     private void InvokeExit(long gas, ReadOnlyMemory<byte> output, string? error = null)

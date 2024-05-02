@@ -59,6 +59,8 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public bool IsTracingStorage => InnerTracer.IsTracingStorage;
 
+    public bool IsTracingLogs => InnerTracer.IsTracingLogs;
+
     public bool IsBreakpoitnSet(int depth, int programCounter) => _breakPoints.ContainsKey((depth, programCounter));
 
     public void SetBreakPoint((int depth, int pc) point, Func<EvmState, bool> condition = null)
@@ -200,6 +202,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
     public void ReportOperationRemainingGas(long gas)
         => InnerTracer.ReportOperationRemainingGas(gas);
 
+    public void ReportLog(LogEntry log)
+        => InnerTracer.ReportLog(log);
+
     public void SetOperationStack(TraceStack stack)
         => InnerTracer.SetOperationStack(stack);
 
@@ -232,6 +237,9 @@ public class DebugTracer : ITxTracer, ITxTracerWrapper, IDisposable
 
     public void ReportActionError(EvmExceptionType evmExceptionType)
         => InnerTracer.ReportActionError(evmExceptionType);
+
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
+        => InnerTracer.ReportActionRevert(gas, output);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode)
         => InnerTracer.ReportActionEnd(gas, deploymentAddress, deployedCode);
