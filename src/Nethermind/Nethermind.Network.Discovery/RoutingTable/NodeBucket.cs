@@ -77,7 +77,7 @@ public class NodeBucket
             return false;
         }
 
-        public void Reset() => throw new NotSupportedException();
+        void IEnumerator.Reset() => throw new NotSupportedException();
 
         public void Dispose()
         {

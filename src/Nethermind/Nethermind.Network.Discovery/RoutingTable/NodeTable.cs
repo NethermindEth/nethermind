@@ -136,7 +136,7 @@ public class NodeTable : INodeTable
             return false;
         }
 
-        public void Reset() => throw new NotSupportedException();
+        void IEnumerator.Reset() => throw new NotSupportedException();
 
         public void Dispose() { }
 
@@ -203,7 +203,7 @@ public class NodeTable : INodeTable
             return false;
         }
 
-        public void Reset() => throw new NotSupportedException();
+        void IEnumerator.Reset() => throw new NotSupportedException();
         public void Dispose() { }
 
         public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
