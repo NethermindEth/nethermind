@@ -49,13 +49,13 @@ public class NativeCallTracerCallFrameConverter : JsonConverter<NativeCallTracer
             }
             else
             {
-                JsonSerializer.Serialize(writer, (ReadOnlyMemory<byte>)value.Input.AsMemory(), options);
+                JsonSerializer.Serialize(writer, value.Input.AsMemory(), options);
             }
 
             if (value.Output?.Count > 0)
             {
                 writer.WritePropertyName("output"u8);
-                JsonSerializer.Serialize(writer, (ReadOnlyMemory<byte>)value.Output.AsMemory(), options);
+                JsonSerializer.Serialize(writer, value.Output.AsMemory(), options);
             }
 
             if (value.Error is not null)
