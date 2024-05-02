@@ -18,7 +18,7 @@ namespace Ethereum.Transition.Test
         {
             string[] directories = Directory.GetDirectories(Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Tests"))
                 .Select(Path.GetFileName)
-                .Except(new[] { "bcArrowGlacierToMerge" }) // this one is missing
+                .Except(new[] { "bcArrowGlacierToMerge", "bcArrowGlacierToParis" }) // these ones are missing
                 .ToArray();
             Type[] types = GetType().Assembly.GetTypes();
             List<string> missingCategories = new List<string>();
