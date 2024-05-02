@@ -18,20 +18,17 @@ namespace Nethermind.TxPool.Collections
     public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
     {
         public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
-        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, ref Transaction? lastElement);
+        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
 
         private readonly UpdateTransactionDelegate _updateTx;
         private readonly List<Transaction> _transactionsToRemove = new();
         protected int _poolCapacity;
-        private readonly ILogger _logger;
-
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
             _poolCapacity = capacity;
             _updateTx = UpdateTransaction;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -103,7 +100,7 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        private void UpdateTransaction(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, ref Transaction? lastElement)
+        private void UpdateTransaction(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement)
         {
             if (changedGasBottleneck is null)
             {
@@ -119,7 +116,6 @@ namespace Nethermind.TxPool.Collections
                 }
 
                 UpdateWorstValue();
-                lastElement = bucket.Max;
             }
             else
             {

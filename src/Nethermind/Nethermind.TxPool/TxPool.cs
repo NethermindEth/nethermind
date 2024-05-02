@@ -495,12 +495,12 @@ namespace Nethermind.TxPool
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
-                UpdateGasBottleneck(transactions, currentNonce, balance, ref lastElement, updateTx);
+                UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
             }
         }
 
         private void UpdateGasBottleneck(
-            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
+            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -513,7 +513,7 @@ namespace Nethermind.TxPool
                 if (tx.Nonce < currentNonce)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
-                    updateTx(transactions, tx, changedGasBottleneck: null, ref lastElement);
+                    updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                 }
                 else
                 {
@@ -535,14 +535,14 @@ namespace Nethermind.TxPool
                         {
                             // balance too low, remove tx from the pool
                             _broadcaster.StopBroadcast(tx.Hash!);
-                            updateTx(transactions, tx, changedGasBottleneck: null, ref lastElement);
+                            updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                         }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        updateTx(transactions, tx, gasBottleneck, ref lastElement);
+                        updateTx(transactions, tx, gasBottleneck, lastElement);
                     }
 
                     previousTxBottleneck = gasBottleneck;
@@ -598,12 +598,12 @@ namespace Nethermind.TxPool
                         // to come back in the future, so it is removed from long term cache as well.
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
 
-                        updateTx(transactions, transaction, changedGasBottleneck: null, ref lastElement);
+                        updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                     }
                 }
                 else
                 {
-                    UpdateGasBottleneck(transactions, currentNonce, balance, ref lastElement, updateTx);
+                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }
