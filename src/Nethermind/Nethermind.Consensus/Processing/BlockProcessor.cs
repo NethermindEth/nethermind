@@ -61,8 +61,8 @@ public partial class BlockProcessor : IBlockProcessor
         IWitnessCollector? witnessCollector,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null,
-        IConsensusRequestsProcessor? consensusRequestsProcessor = null)
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null,
+        IReceiptsRootCalculator? receiptsRootCalculator = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));

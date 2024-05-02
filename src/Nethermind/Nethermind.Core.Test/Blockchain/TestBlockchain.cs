@@ -361,7 +361,6 @@ public class TestBlockchain : IDisposable
             NullWitnessCollector.Instance,
             LogManager,
             null,
-            null,
             ConsensusRequestsProcessor);
 
     public async Task WaitForNewHead()
