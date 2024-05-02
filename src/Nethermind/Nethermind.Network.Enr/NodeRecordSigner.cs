@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Net;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
@@ -52,44 +53,54 @@ public class NodeRecordSigner : INodeRecordSigner
         long enrSequence = rlpStream.DecodeLong();
         while (rlpStream.Position < startPosition + recordRlpLength)
         {
-            string key = rlpStream.DecodeString();
-            switch (key)
+            ReadOnlySpan<byte> key = rlpStream.DecodeByteArraySpan();
+            if (key.Length == 2)
             {
-                case EnrContentKey.Eth:
+                if (key.SequenceEqual(EnrContentKey.IdU8))
+                {
+                    rlpStream.SkipItem();
+                    nodeRecord.SetEntry(IdEntry.Instance);
+                }
+                else if (key.SequenceEqual(EnrContentKey.IpU8))
+                {
+                    ReadOnlySpan<byte> ipBytes = rlpStream.DecodeByteArraySpan();
+                    IPAddress address = new(ipBytes);
+                    nodeRecord.SetEntry(new IpEntry(address));
+                }
+            }
+            else if (key.Length == 3)
+            {
+                if (key.SequenceEqual(EnrContentKey.EthU8))
+                {
                     _ = rlpStream.ReadSequenceLength();
                     _ = rlpStream.ReadSequenceLength();
                     byte[] forkHash = rlpStream.DecodeByteArray();
                     long nextBlock = rlpStream.DecodeLong();
                     nodeRecord.SetEntry(new EthEntry(forkHash, nextBlock));
-                    break;
-                case EnrContentKey.Id:
-                    rlpStream.SkipItem();
-                    nodeRecord.SetEntry(IdEntry.Instance);
-                    break;
-                case EnrContentKey.Ip:
-                    ReadOnlySpan<byte> ipBytes = rlpStream.DecodeByteArraySpan();
-                    IPAddress address = new(ipBytes);
-                    nodeRecord.SetEntry(new IpEntry(address));
-                    break;
-                case EnrContentKey.Tcp:
+                }
+                else if (key.SequenceEqual(EnrContentKey.TcpU8))
+                {
                     int tcpPort = rlpStream.DecodeInt();
                     nodeRecord.SetEntry(new TcpEntry(tcpPort));
-                    break;
-                case EnrContentKey.Udp:
+                }
+                else if (key.SequenceEqual(EnrContentKey.UdpU8))
+                {
                     int udpPort = rlpStream.DecodeInt();
                     nodeRecord.SetEntry(new UdpEntry(udpPort));
-                    break;
-                case EnrContentKey.Secp256K1:
-                    ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
-                    CompressedPublicKey reportedKey = new(keyBytes);
-                    nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
-                    break;
+                }
+            }
+            else if (key.SequenceEqual(EnrContentKey.Secp256K1U8))
+            {
+                ReadOnlySpan<byte> keyBytes = rlpStream.DecodeByteArraySpan();
+                CompressedPublicKey reportedKey = new(keyBytes);
+                nodeRecord.SetEntry(new Secp256K1Entry(reportedKey));
+            }
+            else
+            {
                 // snap
-                default:
-                    canVerify = false;
-                    rlpStream.SkipItem();
-                    nodeRecord.Snap = true;
-                    break;
+                canVerify = false;
+                rlpStream.SkipItem();
+                nodeRecord.Snap = true;
             }
         }
 
