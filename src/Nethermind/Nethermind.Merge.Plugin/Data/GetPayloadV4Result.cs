@@ -6,12 +6,4 @@ using Nethermind.Int256;
 
 namespace Nethermind.Merge.Plugin.Data;
 
-public class GetPayloadV4Result : GetPayloadV3Result
-{
-    public GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : base(block, blockFees, blobsBundle)
-    {
-        ExecutionPayload = new(block);
-    }
-
-    public override ExecutionPayloadV4 ExecutionPayload { get; }
-}
+public class GetPayloadV4Result(Block block, UInt256 blockFees, BlobsBundleV1 blobsBundle) : GetPayloadV3Result<ExecutionPayloadV4>(block, blockFees, blobsBundle);

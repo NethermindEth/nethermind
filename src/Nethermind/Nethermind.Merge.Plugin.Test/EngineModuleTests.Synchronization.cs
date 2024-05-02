@@ -55,7 +55,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        await rpc.engine_newPayloadV1(new ExecutionPayload(block));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         // sync has not started yet
         chain.BeaconSync!.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
@@ -225,7 +225,7 @@ public partial class EngineModuleTests
             .WithPostMergeFlag(true)
             .TestObject;
 
-        await rpc.engine_newPayloadV1(new ExecutionPayload(block));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(block));
         // sync has not started yet
         chain.BeaconSync!.IsBeaconSyncHeadersFinished().Should().BeTrue();
         chain.BeaconSync.IsBeaconSyncFinished(block.Header).Should().BeTrue();
@@ -259,7 +259,7 @@ public partial class EngineModuleTests
         pointers.LowestInsertedHeader = block.Header;
         AssertBlockTreePointers(chain.BlockTree, pointers);
 
-        await rpc.engine_newPayloadV1(new ExecutionPayload(nextUnconnectedBlock));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(nextUnconnectedBlock));
         forkchoiceStateV1 = new(nextUnconnectedBlock.Hash!, startingHead, startingHead);
         forkchoiceUpdatedResult = await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
         forkchoiceUpdatedResult.Data.PayloadStatus.Status.Should()
@@ -298,7 +298,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayload startingNewPayload = new(block);
+        ExecutionPayload startingNewPayload = ExecutionPayload.Create(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
 
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
@@ -320,7 +320,7 @@ public partial class EngineModuleTests
             r.TryGetBlock(out Block? newBlock);
             newBlock!.Header.GasLimit = long.MaxValue; // incorrect gas limit
             newBlock.Header.Hash = newBlock.CalculateHash();
-            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock));
+            ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock));
             payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Invalid).ToUpper());
             payloadStatus.Data.LatestValidHash.Should().BeNull();
         }
@@ -333,7 +333,7 @@ public partial class EngineModuleTests
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
 
-        ExecutionPayload parentBlockRequest = new(Build.A.Block.WithNumber(2).TestObject);
+        ExecutionPayload parentBlockRequest = ExecutionPayload.Create(Build.A.Block.WithNumber(2).TestObject);
         ExecutionPayload[] requests = CreateBlockRequestBranch(chain, parentBlockRequest, Address.Zero, 7);
         ResultWrapper<PayloadStatusV1> payloadStatus;
         foreach (ExecutionPayload r in requests)
@@ -391,7 +391,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayload startingNewPayload = new(block);
+        ExecutionPayload startingNewPayload = ExecutionPayload.Create(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -432,7 +432,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayload startingNewPayload = new(block);
+        ExecutionPayload startingNewPayload = ExecutionPayload.Create(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -490,7 +490,7 @@ public partial class EngineModuleTests
         newBlock2.CalculateHash();
 
         chain.BeaconPivot!.BeaconPivotExists().Should().BeFalse();
-        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock2));
+        ResultWrapper<PayloadStatusV1> result = await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
         result.Data.Status.Should().Be(PayloadStatus.Syncing);
         chain.BeaconPivot.BeaconPivotExists().Should().BeTrue();
     }
@@ -524,7 +524,7 @@ public partial class EngineModuleTests
             .WithStateRoot(new Hash256("0x1ef7300d8961797263939a3d29bbba4ccf1702fabf02d8ad7a20b454edb6fd2f")).TestObject;
         newBlock2.CalculateHash();
 
-        await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock2));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
 
         await rpc.engine_forkchoiceUpdatedV1(new ForkchoiceStateV1(newBlock2.Hash!, newBlock2.Hash!, newBlock2.Hash!), null);
         chain.BlockTree.FindLevel(10)!.BlockInfos[0].Metadata.Should().Be(BlockMetadata.None);
@@ -562,7 +562,7 @@ public partial class EngineModuleTests
         newBlock2.CalculateHash();
         await chain.BlockTree.SuggestBlockAsync(newBlock2!, BlockTreeSuggestOptions.FillBeaconBlock);
 
-        await rpc.engine_newPayloadV1(new ExecutionPayload(newBlock2));
+        await rpc.engine_newPayloadV1(ExecutionPayload.Create(newBlock2));
         Block? block = chain.BlockTree.FindBlock(newBlock2.GetOrCalculateHash(), BlockTreeLookupOptions.None);
         block?.TotalDifficulty.Should().NotBe((UInt256)0);
         BlockInfo? blockInfo = chain.BlockTree.FindLevel(newBlock2.Number!)?.BlockInfos[0];
@@ -590,7 +590,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayload startingNewPayload = new(block);
+        ExecutionPayload startingNewPayload = ExecutionPayload.Create(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         ResultWrapper<ForkchoiceUpdatedV1Result> forkchoiceUpdatedResult =
@@ -650,7 +650,7 @@ public partial class EngineModuleTests
             .WithAuthor(Address.Zero)
             .WithPostMergeFlag(true)
             .TestObject;
-        ExecutionPayload startingNewPayload = new(block);
+        ExecutionPayload startingNewPayload = ExecutionPayload.Create(block);
         await rpc.engine_newPayloadV1(startingNewPayload);
         ForkchoiceStateV1 forkchoiceStateV1 = new(block.Hash!, startingHead, startingHead);
         await rpc.engine_forkchoiceUpdatedV1(forkchoiceStateV1);
@@ -691,7 +691,7 @@ public partial class EngineModuleTests
         using MergeTestBlockchain chain = await CreateBlockchain();
         Hash256 startingHead = chain.BlockTree.HeadHash;
         IEngineRpcModule rpc = CreateEngineModule(chain);
-        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, new ExecutionPayload(chain.BlockTree.Head!), Address.Zero, 7);
+        ExecutionPayload[] requests = CreateBlockRequestBranch(chain, ExecutionPayload.Create(chain.BlockTree.Head!), Address.Zero, 7);
 
         ResultWrapper<PayloadStatusV1> payloadStatus;
         for (int i = 4; i < requests.Length - 1; i++)
@@ -739,7 +739,7 @@ public partial class EngineModuleTests
         Hash256 startingHead = chain.BlockTree.HeadHash;
         // create 7 block gap
         int gap = 7;
-        ExecutionPayload headBlockRequest = new(chain.BlockTree.Head!);
+        ExecutionPayload headBlockRequest = ExecutionPayload.Create(chain.BlockTree.Head!);
         Block[] missingBlocks = new Block[gap];
         for (int i = 0; i < gap; i++)
         {
@@ -851,7 +851,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
-        ExecutionPayload prePivotRequest = new(blockBeforePivot);
+        ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatusV1.Syncing).ToUpper());
         chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().BeNull();
@@ -876,7 +876,7 @@ public partial class EngineModuleTests
 
         IEngineRpcModule rpc = CreateEngineModule(chain, syncConfig);
         Block blockBeforePivot = syncedBlockTree.FindBlock(2, BlockTreeLookupOptions.None)!;
-        ExecutionPayload prePivotRequest = new(blockBeforePivot);
+        ExecutionPayload prePivotRequest = ExecutionPayload.Create(blockBeforePivot);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(prePivotRequest);
         payloadStatus.Data.Status.Should().Be(nameof(PayloadStatus.Valid).ToUpper());
         chain.BlockTree.FindBlock(prePivotRequest.BlockHash).Should().NotBeNull();
@@ -898,7 +898,7 @@ public partial class EngineModuleTests
         // create block gap from fast sync pivot
         int gap = 7;
         ExecutionPayload[] requests =
-            CreateBlockRequestBranch(chain, new ExecutionPayload(syncedBlockTree.Head!), Address.Zero, gap);
+            CreateBlockRequestBranch(chain, ExecutionPayload.Create(syncedBlockTree.Head!), Address.Zero, gap);
         // setting up beacon pivot
         ExecutionPayload pivotRequest = CreateBlockRequest(chain, requests[^1], Address.Zero);
         ResultWrapper<PayloadStatusV1> payloadStatus = await rpc.engine_newPayloadV1(pivotRequest);
