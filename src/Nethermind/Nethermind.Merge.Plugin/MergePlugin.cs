@@ -58,6 +58,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
                                            _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+    public int Priority => PluginPriorities.Merge;
 
     // Don't remove default constructor. It is used by reflection when we're loading plugins
     public MergePlugin() { }

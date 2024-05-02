@@ -5,27 +5,14 @@ using System.Threading.Tasks;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Api.Extensions
 {
-    public interface IConsensusPlugin : INethermindPlugin
+    public interface IConsensusPlugin : INethermindPlugin, IBlockProducerFactory
     {
-        /// <summary>
-        /// Creates a block producer.
-        /// </summary>
-        /// <param name="blockProductionTrigger">Optional parameter. If present this should be the only block production trigger for created block producer. If absent <see cref="DefaultBlockProductionTrigger"/> should be used.</param>
-        /// <param name="additionalTxSource">Optional parameter. If present this transaction source should be used before any other transaction sources, except consensus ones. Plugin still should use their own transaction sources.</param>
-        /// <remarks>
-        /// Can be called many times, with different parameters, each time should create a new instance. Example usage in MEV plugin.
-        /// </remarks>
-        Task<IBlockProducer> InitBlockProducer(
-            IBlockProductionTrigger? blockProductionTrigger = null,
-            ITxSource? additionalTxSource = null);
-
         string SealEngineType { get; }
 
         /// <summary>
