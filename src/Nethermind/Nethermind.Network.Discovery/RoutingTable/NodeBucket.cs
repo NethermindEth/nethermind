@@ -52,10 +52,8 @@ public class NodeBucket
         {
             _nodeBucket = nodeBucket;
             _referenceTime = DateTime.UtcNow;
-            lock (_nodeBucket._nodeBucketLock)
-            {
-                _currentNode = nodeBucket._items.Last;
-            }
+            Monitor.Enter(_nodeBucket._nodeBucketLock);
+            _currentNode = nodeBucket._items.Last;
             Current = null!;
         }
 
@@ -65,16 +63,13 @@ public class NodeBucket
 
         public bool MoveNext()
         {
-            lock (_nodeBucket._nodeBucketLock)
+            while (_currentNode is not null)
             {
-                while (_currentNode is not null)
+                Current = _currentNode.Value;
+                _currentNode = _currentNode.Previous;
+                if (Current.IsBonded(_referenceTime))
                 {
-                    Current = _currentNode.Value;
-                    _currentNode = _currentNode.Previous;
-                    if (Current.IsBonded(_referenceTime))
-                    {
-                        return true;
-                    }
+                    return true;
                 }
             }
 
@@ -84,7 +79,14 @@ public class NodeBucket
 
         public void Reset() => throw new NotSupportedException();
 
-        public readonly void Dispose() { }
+        public void Dispose()
+        {
+            if (_nodeBucket is not null)
+            {
+                Monitor.Exit(_nodeBucket._nodeBucketLock);
+            }
+            _nodeBucket = null!;
+        }
         public BondedItemsEnumerator GetEnumerator() => this;
 
         IEnumerator<NodeBucketItem> IEnumerable<NodeBucketItem>.GetEnumerator()

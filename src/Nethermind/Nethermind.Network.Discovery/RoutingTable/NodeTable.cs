@@ -109,6 +109,7 @@ public class NodeTable : INodeTable
             {
                 if (!_enumeratorSet || !_itemEnumerator.MoveNext())
                 {
+                    _itemEnumerator.Dispose();
                     _bucketIndex++;
                     if (_bucketIndex >= _buckets.Length)
                     {
@@ -124,6 +125,8 @@ public class NodeTable : INodeTable
                 _count++;
                 return true;
             }
+
+            _itemEnumerator.Dispose();
             return false;
         }
 
