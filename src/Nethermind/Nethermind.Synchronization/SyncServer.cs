@@ -328,26 +328,12 @@ namespace Nethermind.Synchronization
             if (block.Author is not null)
             {
                 sb.Append(" sealer ");
-                if (KnownAddresses.GoerliValidators.TryGetValue(block.Author, out string value))
-                {
-                    sb.Append(value);
-                }
-                else
-                {
-                    sb.Append(block.Author);
-                }
+                sb.Append(block.Author);
             }
             else if (block.Beneficiary is not null)
             {
                 sb.Append(" miner ");
-                if (KnownAddresses.KnownMiners.TryGetValue(block.Beneficiary, out string value))
-                {
-                    sb.Append(value);
-                }
-                else
-                {
-                    sb.Append(block.Beneficiary);
-                }
+                sb.Append(block.Beneficiary);
             }
 
             sb.Append($", sent by {syncPeer:s}");

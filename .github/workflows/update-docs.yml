@@ -57,7 +57,7 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.REPOSITORY_DISPATCH_TOKEN }}
         run: |
-          version=${{ github.event_name == 'release' && join(' of v', github.event.release.tag_name) || '' }}
+          version="${{ github.event_name == 'release' && format(' of v{0}', github.event.release.tag_name) || '' }}"
           head_branch=feature/auto-update-${{ github.run_number }}-${{ github.run_attempt }}
           git config user.name "${{ github.actor }}"
           git config user.email "${{ github.actor }}@users.noreply.github.com"

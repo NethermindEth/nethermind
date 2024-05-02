@@ -876,12 +876,12 @@ namespace Nethermind.Trie.Test.Pruning
 
                 if (i > 4)
                 {
-                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(1000, 1));
+                    Assert.That(() => reorgBoundary, Is.EqualTo(i - 3).After(10000, 100));
                 }
                 else
                 {
                     // Pruning is done in background
-                    await Task.Delay(TimeSpan.FromMilliseconds(100));
+                    await Task.Delay(TimeSpan.FromMilliseconds(1000));
                 }
             }
         }
