@@ -55,10 +55,10 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
     {
         GethLikeTxTrace result = base.BuildResult();
         NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+        Debug.Assert(_callStack.Count == 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
         _callStack.RemoveAt(0);
         _disposables.Add(firstCallFrame);
         result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
-        Debug.Assert(_callStack.Count > 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
         _resultBuilt = true;
         return result;
     }
