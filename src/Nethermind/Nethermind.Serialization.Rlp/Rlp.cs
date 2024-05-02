@@ -98,7 +98,7 @@ namespace Nethermind.Serialization.Rlp
             _decoders = null;
         }
 
-        public static void RegisterDecoders(Assembly assembly)
+        public static void RegisterDecoders(Assembly assembly, bool canOverrideExistingDecoders = false)
         {
             foreach (Type? type in assembly.GetExportedTypes())
             {
@@ -130,7 +130,7 @@ namespace Nethermind.Serialization.Rlp
                         }
 
                         Type key = implementedInterface.GenericTypeArguments[0];
-                        if (!_decoderBuilder.ContainsKey(key))
+                        if (!_decoderBuilder.ContainsKey(key) || canOverrideExistingDecoders)
                         {
                             _decoderBuilder[key] = (IRlpDecoder)Activator.CreateInstance(type);
                         }

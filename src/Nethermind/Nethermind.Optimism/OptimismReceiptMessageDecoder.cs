@@ -8,9 +8,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
 
-public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
+public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt>, IRlpStreamDecoder<TxReceipt>
 {
-    public static readonly OptimismReceiptDecoder Instance = new();
+    public static readonly OptimismReceiptMessageDecoder Instance = new();
 
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
@@ -21,7 +21,8 @@ public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
             txReceipt.TxType = (TxType)rlpStream.ReadByte();
         }
 
-        _ = rlpStream.ReadSequenceLength();
+        int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
+
         byte[] firstItem = rlpStream.DecodeByteArray();
         if (firstItem.Length == 1 && (firstItem[0] == 0 || firstItem[0] == 1))
         {
@@ -41,9 +42,9 @@ public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
 
         txReceipt.Bloom = rlpStream.DecodeBloom();
 
-        int lastCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
+        int logEntriesCheck = rlpStream.ReadSequenceLength() + rlpStream.Position;
 
-        int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(lastCheck);
+        int numberOfReceipts = rlpStream.PeekNumberOfItemsRemaining(logEntriesCheck);
         LogEntry[] entries = new LogEntry[numberOfReceipts];
         for (int i = 0; i < numberOfReceipts; i++)
         {
@@ -161,5 +162,20 @@ public class OptimismReceiptDecoder : IRlpStreamDecoder<OptimismTxReceipt>
             rlpStream.Encode(item.DepositNonce!.Value);
             rlpStream.Encode(item.DepositReceiptVersion.Value);
         }
+    }
+
+    TxReceipt IRlpStreamDecoder<TxReceipt>.Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors)
+    {
+        return Decode(rlpStream, rlpBehaviors);
+    }
+
+    public void Encode(RlpStream stream, TxReceipt item, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
+    {
+        Encode(stream, (OptimismTxReceipt)item, rlpBehaviors);
+    }
+
+    public int GetLength(TxReceipt item, RlpBehaviors rlpBehaviors)
+    {
+        return GetLength((OptimismTxReceipt)item, rlpBehaviors);
     }
 }

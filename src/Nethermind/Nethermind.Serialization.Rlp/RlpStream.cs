@@ -25,7 +25,7 @@ namespace Nethermind.Serialization.Rlp
         private static readonly BlockDecoder _blockDecoder = new();
         private static readonly BlockInfoDecoder _blockInfoDecoder = new();
         private static readonly TxDecoder _txDecoder = new();
-        private static readonly ReceiptMessageDecoder _receiptDecoder = new();
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
         private static readonly WithdrawalDecoder _withdrawalDecoder = new();
         private static readonly LogEntryDecoder _logEntryDecoder = LogEntryDecoder.Instance;
 
