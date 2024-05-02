@@ -1,13 +1,18 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+
 namespace Nethermind.Core.Extensions;
 
 public static class UInt64Extensions
 {
-    public static ulong ToULongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes)
+    public static ulong ToULongFromBigEndianByteArrayWithoutLeadingZeros(this byte[]? bytes) =>
+        ToULongFromBigEndianByteArrayWithoutLeadingZeros(bytes.AsSpan());
+
+    public static ulong ToULongFromBigEndianByteArrayWithoutLeadingZeros(this ReadOnlySpan<byte> bytes)
     {
-        if (bytes is null)
+        if (bytes.IsEmpty)
         {
             return 0L;
         }

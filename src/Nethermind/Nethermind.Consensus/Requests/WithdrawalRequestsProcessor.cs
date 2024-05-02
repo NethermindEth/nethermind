@@ -2,9 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
+using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -24,24 +26,16 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
     private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
 
     // Will be moved to system transaction
-    public WithdrawalRequest[]? ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
+    public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
-        if (spec.IsEip7002Enabled == false)
-            return null;
+        if (!spec.IsEip7002Enabled)
+            yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;
         if (!state.AccountExists(eip7002Account))
-            return Array.Empty<WithdrawalRequest>();
+            yield break;
 
-        WithdrawalRequest[] exits = DequeueWithdrawalRequests(spec, state);
-        UpdateExcessExits(spec, state);
-        ResetExitCount(spec, state);
-        return exits;
-    }
-
-    // Reads validator exit information from the precompile
-    private WithdrawalRequest[] DequeueWithdrawalRequests(IReleaseSpec spec, IWorldState state)
-    {
+        // Reads validator exit information from the precompile
         StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
         StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
 
@@ -51,7 +45,6 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
         UInt256 numInQueue = queueTailIndex - queueHeadIndex;
         UInt256 numDequeued = UInt256.Min(numInQueue, MaxWithdrawalRequestsPerBlock);
 
-        var withdrawalRequests = new WithdrawalRequest[(int)numDequeued];
         for (UInt256 i = 0; i < numDequeued; ++i)
         {
             UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
@@ -59,12 +52,11 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
             StorageCell validatorAddressFirstCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 1);
             StorageCell validatorAddressSecondCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 2);
             Address sourceAddress = new(state.Get(sourceAddressCell)[..20].ToArray());
-            byte[] validatorPubkey =
-                state.Get(validatorAddressFirstCell)[..32].ToArray()
-                    .Concat(state.Get(validatorAddressSecondCell)[..16].ToArray())
-                    .ToArray();
-            ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
-            withdrawalRequests[(int)i] = new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubkey, Amount = amount };
+            byte[] validatorPubKey = new byte[48];
+            state.Get(validatorAddressFirstCell)[..32].CopyTo(validatorPubKey[..32]);
+            state.Get(validatorAddressSecondCell)[..16].CopyTo(validatorPubKey[32..]);
+            ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
+            yield return new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubKey, Amount = amount };
         }
 
         UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;
@@ -78,7 +70,8 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
             state.Set(queueHeadIndexCell, newQueueHeadIndex.ToBigEndian());
         }
 
-        return withdrawalRequests;
+        UpdateExcessExits(spec, state);
+        ResetExitCount(spec, state);
     }
 
     private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)
