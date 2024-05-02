@@ -120,12 +120,9 @@ public class NodeTable : INodeTable
                     continue;
                 }
 
-                if (_itemEnumerator.Current.Node is not null)
-                {
-                    Current = _itemEnumerator.Current.Node;
-                    _count++;
-                    return true;
-                }
+                Current = _itemEnumerator.Current.Node!;
+                _count++;
+                return true;
             }
             return false;
         }

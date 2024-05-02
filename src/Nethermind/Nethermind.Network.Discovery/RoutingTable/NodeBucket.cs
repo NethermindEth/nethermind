@@ -56,7 +56,7 @@ public class NodeBucket
             {
                 _currentNode = nodeBucket._items.Last;
             }
-            Current = default!;
+            Current = null!;
         }
 
         public NodeBucketItem Current { get; private set; }
@@ -77,6 +77,8 @@ public class NodeBucket
                     }
                 }
             }
+
+            Current = null!;
             return false;
         }
 
