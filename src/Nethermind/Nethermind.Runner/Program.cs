@@ -14,6 +14,7 @@ using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 #if !DEBUG
 using DotNetty.Common;
 #endif
@@ -30,6 +31,7 @@ using Nethermind.Core.Exceptions;
 using Nethermind.Db.Rocks;
 using Nethermind.Hive;
 using Nethermind.Init.Snapshot;
+using Nethermind.Init.Steps;
 using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
 using Nethermind.Logging.NLog;
@@ -184,32 +186,13 @@ public static class Program
             if (_logger.IsDebug) _logger.Debug($"Nethermind config:{Environment.NewLine}{serializer.Serialize(initConfig, true)}{Environment.NewLine}");
             if (_logger.IsInfo) _logger.Info($"RocksDb Version: {DbOnTheRocks.GetRocksDbVersion()}");
 
-            ApiBuilder apiBuilder = new(configProvider, logManager);
-
-            IList<INethermindPlugin> plugins = new List<INethermindPlugin>();
-            foreach (Type pluginType in pluginLoader.PluginTypes)
-            {
-                try
-                {
-                    if (Activator.CreateInstance(pluginType) is INethermindPlugin plugin)
-                    {
-                        plugins.Add(plugin);
-                    }
-                }
-                catch (Exception e)
-                {
-                    if (_logger.IsError) _logger.Error($"Failed to create plugin {pluginType.FullName}", e);
-                }
-            }
-
-            INethermindApi nethermindApi = apiBuilder.Create(plugins.OfType<IConsensusPlugin>());
-            ((List<INethermindPlugin>)nethermindApi.Plugins).AddRange(plugins);
-            nethermindApi.ProcessExit = _processExitSource;
-
+            NethermindContainerBuilder nethermindContainerBuilder = new(configProvider, _processExitSource, logManager);
+            IContainer container = nethermindContainerBuilder.Create(pluginLoader.PluginTypes);
+            EthereumRunner ethereumRunner = null;
             _appClosed.Reset();
-            EthereumRunner ethereumRunner = new(nethermindApi);
             try
             {
+                ethereumRunner = container.Resolve<EthereumRunner>();
                 await ethereumRunner.Start(_processExitSource.Token);
 
                 await _processExitSource.ExitTask;
@@ -229,7 +212,8 @@ public static class Program
             }
 
             _logger.Info("Closing, please wait until all functions are stopped properly...");
-            await ethereumRunner.StopAsync();
+            await ethereumRunner?.StopAsync();
+            await container.DisposeAsync();
             _logger.Info("All done, goodbye!");
             _appClosed.Set();
 

@@ -13,7 +13,6 @@ namespace Nethermind.Hive
     public class HivePlugin : INethermindPlugin
     {
         private INethermindApi _api = null!;
-        private IHiveConfig _hiveConfig = null!;
         private ILogger _logger;
         private readonly CancellationTokenSource _disposeCancellationToken = new();
 
@@ -29,14 +28,17 @@ namespace Nethermind.Hive
         public string Description => "Plugin used for executing Hive Ethereum Tests";
 
         public string Author => "Nethermind";
+        public bool Enabled { get; }
+
+        public HivePlugin(IHiveConfig hiveConfig)
+        {
+            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || hiveConfig.Enabled;
+        }
 
         public Task Init(INethermindApi api)
         {
             _api = api ?? throw new ArgumentNullException(nameof(api));
-            _hiveConfig = _api.ConfigProvider.GetConfig<IHiveConfig>();
             _logger = _api.LogManager.GetClassLogger();
-
-            Enabled = Environment.GetEnvironmentVariable("NETHERMIND_HIVE_ENABLED")?.ToLowerInvariant() == "true" || _hiveConfig.Enabled;
 
             return Task.CompletedTask;
         }
@@ -74,6 +76,5 @@ namespace Nethermind.Hive
             return Task.CompletedTask;
         }
 
-        private bool Enabled { get; set; }
     }
 }

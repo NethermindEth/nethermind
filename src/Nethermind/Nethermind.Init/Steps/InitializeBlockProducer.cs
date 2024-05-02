@@ -14,7 +14,7 @@ using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Init.Steps
 {
-    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(SetupKeyStore), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
+    [RunnerStepDependencies(typeof(StartBlockProcessor), typeof(InitializeNetwork), typeof(ReviewBlockTree))]
     public class InitializeBlockProducer : IStep
     {
         private readonly IApiWithBlockchain _api;

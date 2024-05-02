@@ -1,41 +1,37 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using Nethermind.Api;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api.Extensions;
+using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Open.Nat;
 
 namespace Nethermind.UPnP.Plugin;
 
-public class UPnPPlugin : INethermindPlugin
+[RunnerStepDependencies(typeof(InitializeBlockTree))]
+public class UPnPPlugin : Module, INethermindPlugin, IStep
 {
     public string Name => "UPnP";
     public string Description => "Automatic port forwarding with UPnP";
     public string Author => "Nethermind";
+    public bool Enabled => _networkConfig.EnableUPnP;
 
     // Routers tend to clean mapping, so we need to periodically
     private readonly TimeSpan ExpirationRate = TimeSpan.FromMinutes(10);
     private PeriodicTimer? _timer = null;
-    private readonly CancellationTokenSource _cancellationTokenSource = new();
-    private INetworkConfig _networkConfig = new NetworkConfig();
+    private readonly INetworkConfig _networkConfig = new NetworkConfig();
     private ILogger _logger = NullLogger.Instance;
 
-    public Task Init(INethermindApi api)
+    public UPnPPlugin(INetworkConfig networkConfig, ILogger logger)
     {
-        _networkConfig = api.Config<INetworkConfig>();
-        _logger = api.LogManager.GetClassLogger<UPnPPlugin>();
-
-        if (_networkConfig.EnableUPnP)
-        {
-            Task.Factory.StartNew(RunRefreshLoop, TaskCreationOptions.LongRunning);
-        }
-
-        return Task.CompletedTask;
+        _networkConfig = networkConfig;
+        _logger = logger;
     }
 
-    private async Task RunRefreshLoop()
+    public async Task Execute(CancellationToken cancellationToken)
     {
         _timer = new PeriodicTimer(ExpirationRate);
 
@@ -43,26 +39,26 @@ public class UPnPPlugin : INethermindPlugin
         {
             try
             {
-                await SetupMapping();
+                await SetupMapping(cancellationToken);
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Error("Unable to setup UPnP mapping.", exception);
             }
 
-            await _timer.WaitForNextTickAsync(_cancellationTokenSource.Token);
-            if (_cancellationTokenSource.Token.IsCancellationRequested)
+            await _timer.WaitForNextTickAsync(cancellationToken);
+            if (cancellationToken.IsCancellationRequested)
             {
                 break;
             }
         } while (true);
     }
 
-    private async Task SetupMapping()
+    private async Task SetupMapping(CancellationToken cancellationToken)
     {
         if (_logger.IsInfo) _logger.Info("Setting up port forwarding via UPnP...");
 
-        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(_cancellationTokenSource.Token);
+        using CancellationTokenSource cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(TimeSpan.FromSeconds(10));
         NatDiscoverer discoverer = new();
         NatDevice device;
@@ -93,21 +89,17 @@ public class UPnPPlugin : INethermindPlugin
         if (_logger.IsDebug) _logger.Debug("UPnP mapping added");
     }
 
-    public Task InitNetworkProtocol()
-    {
-        return Task.CompletedTask;
-    }
-
-    public Task InitRpcModules()
-    {
-        return Task.CompletedTask;
-    }
-
     public ValueTask DisposeAsync()
     {
-        _cancellationTokenSource.Cancel();
-        _cancellationTokenSource.Dispose();
         _timer?.Dispose();
         return ValueTask.CompletedTask;
     }
+
+    protected override void Load(ContainerBuilder builder)
+    {
+        base.Load(builder);
+        builder.RegisterIStep(typeof(UPnPPlugin));
+    }
+
+    public IModule? Module => this;
 }

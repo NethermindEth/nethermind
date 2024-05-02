@@ -19,20 +19,20 @@ namespace Nethermind.Mev.Test
         [Test]
         public void Can_create()
         {
-            _ = new MevPlugin();
+            _ = new MevPlugin(new MevConfig() { Enabled = true });
         }
 
         [Test]
         public void Throws_on_null_api_in_init()
         {
-            MevPlugin plugin = new();
+            MevPlugin plugin = new(new MevConfig() { Enabled = true });
             Assert.Throws<ArgumentNullException>(() => plugin.Init(null));
         }
 
         [Test]
         public void Can_initialize()
         {
-            MevPlugin plugin = new();
+            MevPlugin plugin = new(new MevConfig() { Enabled = true });
             plugin.Init(Runner.Test.Ethereum.Build.ContextWithMocks());
             plugin.InitRpcModules();
         }
@@ -41,11 +41,10 @@ namespace Nethermind.Mev.Test
         public async Task Can_initialize_block_producer()
         {
             // Setup
-            MevPlugin plugin = new();
+            MevPlugin plugin = new(new MevConfig() { Enabled = true });
             NethermindApi context = Runner.Test.Ethereum.Build.ContextWithMocks();
 
             await plugin.Init(context);
-            plugin.Enabled.Returns(true);
             await plugin.InitRpcModules();
 
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();

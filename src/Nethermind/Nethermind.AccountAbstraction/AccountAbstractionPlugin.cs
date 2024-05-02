@@ -39,7 +39,11 @@ namespace Nethermind.AccountAbstraction;
 
 public class AccountAbstractionPlugin : IConsensusWrapperPlugin
 {
-    private IAccountAbstractionConfig _accountAbstractionConfig = null!;
+    private readonly IAccountAbstractionConfig _accountAbstractionConfig;
+    private readonly MevPlugin _mevPlugin;
+    private readonly IInitConfig _initConfig;
+    private readonly IMiningConfig _miningConfig;
+
     private AbiDefinition _entryPointContractAbi = null!;
     private ILogger _logger;
 
@@ -53,6 +57,18 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     private IUserOperationBroadcaster? _userOperationBroadcaster;
 
     private IBundler? _bundler;
+
+    public AccountAbstractionPlugin(
+        MevPlugin mevPlugin,
+        IAccountAbstractionConfig accountAbstractionConfig,
+        IInitConfig initConfig,
+        IMiningConfig miningConfig)
+    {
+        _mevPlugin = mevPlugin;
+        _accountAbstractionConfig = accountAbstractionConfig;
+        _initConfig = initConfig;
+        _miningConfig = miningConfig;
+    }
 
     private MevPlugin MevPlugin => _nethermindApi
         .GetConsensusWrapperPlugins()
@@ -180,7 +196,6 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
     public Task Init(INethermindApi nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        _accountAbstractionConfig = _nethermindApi.Config<IAccountAbstractionConfig>();
         _logger = _nethermindApi.LogManager.GetClassLogger();
 
         if (_accountAbstractionConfig.Enabled)
@@ -381,8 +396,8 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return consensusPlugin.InitBlockProducer(UserOperationTxSource);
     }
 
-    public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;
-    public bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_nethermindApi.Config<IInitConfig>().IsMining || _nethermindApi.Config<IMiningConfig>().Enabled);
+    private bool MevPluginEnabled => _mevPlugin.Enabled;
+    private bool BundleMiningEnabled => _accountAbstractionConfig.Enabled && (_initConfig.IsMining || _miningConfig.Enabled);
     public bool Enabled => BundleMiningEnabled && !MevPluginEnabled; // IConsensusWrapperPlugin.Enabled
 
     private static AbiDefinition LoadEntryPointContract()

@@ -40,7 +40,7 @@ namespace Nethermind.Api
         IBlockProducer? BlockProducer { get; set; }
         IBlockProducerRunner? BlockProducerRunner { get; set; }
         IBlockValidator? BlockValidator { get; set; }
-        IEnode? Enode { get; set; }
+        IEnode? Enode { get; }
         IFilterStore? FilterStore { get; set; }
         IFilterManager? FilterManager { get; set; }
         IUnclesValidator? UnclesValidator { get; set; }
@@ -84,7 +84,7 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
-        IGasLimitCalculator? GasLimitCalculator { get; set; }
+        IGasLimitCalculator GasLimitCalculator { get; }
 
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
 

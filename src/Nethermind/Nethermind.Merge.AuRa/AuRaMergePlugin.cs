@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
@@ -12,8 +14,10 @@ using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Init.Steps;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Merge.AuRa
 {
@@ -21,13 +25,19 @@ namespace Nethermind.Merge.AuRa
     /// Plugin for AuRa -> PoS migration
     /// </summary>
     /// <remarks>IMPORTANT: this plugin should always come before MergePlugin</remarks>
-    public class AuRaMergePlugin : MergePlugin, IInitializationPlugin
+    public class AuRaMergePlugin : MergePlugin
     {
         private AuRaNethermindApi? _auraApi;
 
         public override string Name => "AuRaMerge";
         public override string Description => "AuRa Merge plugin for ETH1-ETH2";
-        protected override bool MergeEnabled => ShouldRunSteps(_api);
+
+        protected override bool MergeEnabled => _mergeConfig.Enabled && _chainSpec.SealEngineType == SealEngineType.AuRa;
+
+        public AuRaMergePlugin(ChainSpec chainSpec, IMergeConfig mergeConfig)
+            : base(chainSpec, mergeConfig)
+        {
+        }
 
         public override async Task Init(INethermindApi nethermindApi)
         {
@@ -42,7 +52,7 @@ namespace Nethermind.Merge.AuRa
                 // this runs before all init steps that use tx filters
                 TxAuRaFilterBuilders.CreateFilter = (originalFilter, fallbackFilter) =>
                     originalFilter is MinGasPriceContractTxFilter ? originalFilter
-                    : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
+                        : new AuRaMergeTxFilter(_poSSwitcher, originalFilter, fallbackFilter);
             }
         }
 
@@ -73,10 +83,17 @@ namespace Nethermind.Merge.AuRa
                 _blocksConfig,
                 _api.LogManager);
 
-        public bool ShouldRunSteps(INethermindApi api)
+        public override IModule? Module => new AuraMergeModule();
+
+        private class AuraMergeModule : Module
         {
-            _mergeConfig = api.Config<IMergeConfig>();
-            return _mergeConfig.Enabled && api.ChainSpec.SealEngineType == SealEngineType.AuRa;
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                builder.RegisterIStepsFromAssembly(typeof(MergePlugin).Assembly);
+                builder.RegisterIStepsFromAssembly(GetType().Assembly);
+            }
         }
     }
 }

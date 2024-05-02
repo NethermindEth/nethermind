@@ -24,50 +24,66 @@ namespace Nethermind.Init
     {
         private readonly ILogger _logger;
         private readonly MallocHelper _mallocHelper;
+        private readonly IInitConfig _initConfig;
+        private readonly IDbConfig _dbConfig;
+        private readonly INetworkConfig _networkConfig;
+        private readonly ISyncConfig _syncConfig;
+        private readonly ITxPoolConfig _txPoolConfig;
 
-        public MemoryHintMan(ILogManager logManager, MallocHelper? mallocHelper = null)
-        {
-            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
-            _logger = logManager?.GetClassLogger<MemoryHintMan>()
-                      ?? throw new ArgumentNullException(nameof(logManager));
-        }
-
-        public void SetMemoryAllowances(
-            IDbConfig dbConfig,
+        public MemoryHintMan(
+            ILogger logger,
             IInitConfig initConfig,
+            IDbConfig dbConfig,
             INetworkConfig networkConfig,
             ISyncConfig syncConfig,
             ITxPoolConfig txPoolConfig,
-            uint cpuCount)
+            MallocHelper? mallocHelper = null
+        )
         {
-            TotalMemory = initConfig.MemoryHint ?? 2.GB();
+            _mallocHelper = mallocHelper ?? MallocHelper.Instance;
+            _logger = logger;
+            _initConfig = initConfig;
+            _dbConfig = dbConfig;
+            _networkConfig = networkConfig;
+            _syncConfig = syncConfig;
+            _txPoolConfig = txPoolConfig;
+        }
+
+        public void SetMemoryAllowances(uint cpuCount)
+        {
+            if (_initConfig.MemoryHint == null)
+            {
+                return;
+            }
+
+            TotalMemory = _initConfig.MemoryHint ?? 2.GB();
             ValidateCpuCount(cpuCount);
 
             checked
             {
-                SetupMallocOpts(initConfig);
+                SetupMallocOpts(_initConfig);
 
                 if (_logger.IsInfo) _logger.Info("Setting up memory allowances");
                 if (_logger.IsInfo) _logger.Info($"  Memory hint:        {TotalMemory / 1000 / 1000,5} MB");
-                _remainingMemory = initConfig.MemoryHint ?? 2.GB();
+                _remainingMemory = _initConfig.MemoryHint ?? 2.GB();
                 _remainingMemory -= GeneralMemory;
                 if (_logger.IsInfo) _logger.Info($"  General memory:     {GeneralMemory / 1000 / 1000,5} MB");
-                AssignPeersMemory(networkConfig);
+                AssignPeersMemory(_networkConfig);
                 _remainingMemory -= PeersMemory;
                 if (_logger.IsInfo) _logger.Info($"  Peers memory:       {PeersMemory / 1000 / 1000,5} MB");
-                AssignNettyMemory(networkConfig, cpuCount);
+                AssignNettyMemory(_networkConfig, cpuCount);
                 _remainingMemory -= NettyMemory;
                 if (_logger.IsInfo) _logger.Info($"  Netty memory:       {NettyMemory / 1000 / 1000,5} MB");
-                AssignTxPoolMemory(txPoolConfig);
+                AssignTxPoolMemory(_txPoolConfig);
                 _remainingMemory -= TxPoolMemory;
                 if (_logger.IsInfo) _logger.Info($"  Mempool memory:     {TxPoolMemory / 1000 / 1000,5} MB");
-                AssignFastBlocksMemory(syncConfig);
+                AssignFastBlocksMemory(_syncConfig);
                 _remainingMemory -= FastBlocksMemory;
                 if (_logger.IsInfo) _logger.Info($"  Fast blocks memory: {FastBlocksMemory / 1000 / 1000,5} MB");
-                AssignTrieCacheMemory(dbConfig);
+                AssignTrieCacheMemory(_dbConfig);
                 _remainingMemory -= TrieCacheMemory;
                 if (_logger.IsInfo) _logger.Info($"  Trie memory:        {TrieCacheMemory / 1000 / 1000,5} MB");
-                UpdateDbConfig(dbConfig, initConfig);
+                UpdateDbConfig(_dbConfig, _initConfig);
                 _remainingMemory -= DbMemory;
                 if (_logger.IsInfo) _logger.Info($"  DB memory:          {DbMemory / 1000 / 1000,5} MB");
 
@@ -89,7 +105,7 @@ namespace Nethermind.Init
             // On 16C/32T machine, this reduces memory usage by about 7GB.
             // There aren't much difference between 16KB to 64KB, but the system cpu time increase slightly as threshold
             // lowers. 4k significantly increase cpu system time.
-            bool success = MallocHelper.Instance.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
+            bool success = _mallocHelper.MallOpt(MallocHelper.Option.M_MMAP_THRESHOLD, (int)64.KiB());
             if (!success && _logger.IsDebug) _logger.Debug("Unable to set M_MAP_THRESHOLD");
         }
 

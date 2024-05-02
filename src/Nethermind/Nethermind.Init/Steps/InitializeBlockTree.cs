@@ -4,6 +4,7 @@
 using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
@@ -13,10 +14,12 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
+using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Db.Blooms;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Repositories;
+using Nethermind.Wallet;
 
 namespace Nethermind.Init.Steps
 {
@@ -25,10 +28,12 @@ namespace Nethermind.Init.Steps
     {
         private readonly IBasicApi _get;
         private readonly IApiWithStores _set;
+        private readonly ProtectedPrivateKey _signerKey;
 
-        public InitializeBlockTree(INethermindApi api)
+        public InitializeBlockTree(INethermindApi api, [KeyFilter(PrivateKeyName.SignerKey)] ProtectedPrivateKey signerKey)
         {
             (_get, _set) = api.ForInit;
+            _signerKey = signerKey;
         }
 
         public Task Execute(CancellationToken cancellationToken)
@@ -70,7 +75,7 @@ namespace Nethermind.Init.Steps
             ISignerStore signerStore = NullSigner.Instance;
             if (_get.Config<IMiningConfig>().Enabled)
             {
-                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _get.OriginalSignerKey!, _get.LogManager);
+                Signer signerAndStore = new(_get.SpecProvider!.ChainId, _signerKey, _get.LogManager);
                 signer = signerAndStore;
                 signerStore = signerAndStore;
             }
