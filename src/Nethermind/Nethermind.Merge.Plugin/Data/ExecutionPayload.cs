@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -15,33 +16,16 @@ using Nethermind.Core.ConsensusRequests;
 
 namespace Nethermind.Merge.Plugin.Data;
 
+public interface IExecutionPayloadFactory<out TExecutionPayload> where TExecutionPayload : ExecutionPayload
+{
+    static abstract TExecutionPayload Create(Block block);
+}
+
 /// <summary>
 /// Represents an object mapping the <c>ExecutionPayload</c> structure of the beacon chain spec.
 /// </summary>
-public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
+public class ExecutionPayload : IForkValidator, IExecutionPayloadParams, IExecutionPayloadFactory<ExecutionPayload>
 {
-    public ExecutionPayload() { } // Needed for tests
-
-    public ExecutionPayload(Block block)
-    {
-        BlockHash = block.Hash!;
-        ParentHash = block.ParentHash!;
-        FeeRecipient = block.Beneficiary!;
-        StateRoot = block.StateRoot!;
-        BlockNumber = block.Number;
-        GasLimit = block.GasLimit;
-        GasUsed = block.GasUsed;
-        ReceiptsRoot = block.ReceiptsRoot!;
-        LogsBloom = block.Bloom!;
-        PrevRandao = block.MixHash ?? Keccak.Zero;
-        ExtraData = block.ExtraData!;
-        Timestamp = block.Timestamp;
-        BaseFeePerGas = block.BaseFeePerGas;
-        Withdrawals = block.Withdrawals;
-
-        SetTransactions(block.Transactions);
-    }
-
     public UInt256 BaseFeePerGas { get; set; }
 
     public Hash256 BlockHash { get; set; } = Keccak.Zero;
@@ -125,7 +109,32 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <see href="https://eips.ethereum.org/EIPS/eip-4788">EIP-4788</see>.
     /// </summary>
     [JsonIgnore]
-    public virtual Hash256? ParentBeaconBlockRoot { get; set; }
+    public Hash256? ParentBeaconBlockRoot { get; set; }
+
+    public static ExecutionPayload Create(Block block) => Create<ExecutionPayload>(block);
+
+    protected static TExecutionPayload Create<TExecutionPayload>(Block block) where TExecutionPayload : ExecutionPayload, new()
+    {
+        TExecutionPayload executionPayload = new()
+        {
+            BlockHash = block.Hash!,
+            ParentHash = block.ParentHash!,
+            FeeRecipient = block.Beneficiary!,
+            StateRoot = block.StateRoot!,
+            BlockNumber = block.Number,
+            GasLimit = block.GasLimit,
+            GasUsed = block.GasUsed,
+            ReceiptsRoot = block.ReceiptsRoot!,
+            LogsBloom = block.Bloom!,
+            PrevRandao = block.MixHash ?? Keccak.Zero,
+            ExtraData = block.ExtraData!,
+            Timestamp = block.Timestamp,
+            BaseFeePerGas = block.BaseFeePerGas,
+            Withdrawals = block.Withdrawals,
+        };
+        executionPayload.SetTransactions(block.Transactions);
+        return executionPayload;
+    }
 
     /// <summary>
     /// Creates the execution block from payload.
@@ -133,7 +142,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     /// <param name="block">When this method returns, contains the execution block.</param>
     /// <param name="totalDifficulty">A total difficulty of the block.</param>
     /// <returns><c>true</c> if block created successfully; otherwise, <c>false</c>.</returns>
-    public virtual bool TryGetBlock(out Block? block, UInt256? totalDifficulty = null)
+    public virtual bool TryGetBlock([NotNullWhen(true)] out Block? block, UInt256? totalDifficulty = null)
     {
         try
         {
@@ -209,7 +218,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
     ExecutionPayload IExecutionPayloadParams.ExecutionPayload => this;
 
-    public virtual ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
+    public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
         if (spec.IsEip4844Enabled)
         {
@@ -235,16 +244,13 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
         return error is null ? ValidationResult.Success : ValidationResult.Fail;
     }
 
-    private int GetExecutionPayloadVersion()
+    private int GetExecutionPayloadVersion() => this switch
     {
-        return this switch
-        {
-            { Deposits: not null, WithdrawalRequests: not null } => 4,
-            { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
-            { Withdrawals: not null } => 2,
-            _ => 1
-        };
-    }
+        { Deposits: not null, WithdrawalRequests: not null } => 4,
+        { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
+        { Withdrawals: not null } => 2,
+        _ => 1
+    };
 
     public virtual bool ValidateFork(ISpecProvider specProvider) =>
         !specProvider.GetSpec(BlockNumber, Timestamp).IsEip4844Enabled;
