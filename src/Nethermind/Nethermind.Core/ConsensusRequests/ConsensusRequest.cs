@@ -38,7 +38,7 @@ public class ConsensusRequest
 
 public static class ConsensusRequestExtensions
 {
-    public static (int depositCount, int WithdrawalRequestCount) GetTypeCounts(this ConsensusRequest[]? requests)
+    public static (int depositCount, int withdrawalRequestCount) GetTypeCounts(this ConsensusRequest[]? requests)
     {
         int depositCount = 0;
         int withdrawalRequestCount = 0;
