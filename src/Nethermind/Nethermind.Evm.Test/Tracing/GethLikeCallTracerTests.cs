@@ -32,7 +32,9 @@ public class GethLikeCallTracerTests : VirtualMachineTestsBase
                 code,
                 MainnetSpecProvider.CancunActivation)
             .BuildResult();
-        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions);
+        return JsonSerializer.Serialize(callTrace.CustomTracerResult?.Value, SerializerOptions)
+            // fix for windows, can be done better in .NET 9: https://github.com/dotnet/runtime/issues/84117
+            .ReplaceLineEndings("\n");
     }
 
     private static GethTraceOptions GetGethTraceOptions(string? config) => GethTraceOptions.Default with
