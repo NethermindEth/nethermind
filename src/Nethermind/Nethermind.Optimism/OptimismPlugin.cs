@@ -25,6 +25,7 @@ using Nethermind.Synchronization.ParallelSync;
 using Nethermind.HealthChecks;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
 
@@ -73,6 +74,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ILogManager logManager, ChainSpec chainSpec) =>
         new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
+    public void InitRlpDecoders(INethermindApi api)
+    {
+        if (ShouldRunSteps(api))
+        {
+            Rlp.RegisterDecoders(typeof(OptimismReceiptMessageDecoder).Assembly, true);
+        }
+    }
+
     public Task Init(INethermindApi api)
     {
         if (!ShouldRunSteps(api))
@@ -108,8 +117,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         return Task.CompletedTask;
     }
-
-    public Task InitNetworkProtocol() => Task.CompletedTask;
 
     public Task InitSynchronization()
     {

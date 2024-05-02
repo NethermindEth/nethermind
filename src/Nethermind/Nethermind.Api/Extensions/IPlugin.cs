@@ -4,22 +4,23 @@
 using System;
 using System.Threading.Tasks;
 
-namespace Nethermind.Api.Extensions
+namespace Nethermind.Api.Extensions;
+
+public interface INethermindPlugin : IAsyncDisposable
 {
-    public interface INethermindPlugin : IAsyncDisposable
-    {
-        string Name { get; }
+    string Name { get; }
 
-        string Description { get; }
+    string Description { get; }
 
-        string Author { get; }
+    string Author { get; }
 
-        Task Init(INethermindApi nethermindApi);
+    void InitRlpDecoders(INethermindApi api) { }
 
-        Task InitNetworkProtocol();
+    Task Init(INethermindApi nethermindApi) => Task.CompletedTask;
 
-        Task InitRpcModules();
+    Task InitNetworkProtocol() => Task.CompletedTask;
 
-        bool MustInitialize { get => false; }
-    }
+    Task InitRpcModules() => Task.CompletedTask;
+
+    bool MustInitialize => true;
 }

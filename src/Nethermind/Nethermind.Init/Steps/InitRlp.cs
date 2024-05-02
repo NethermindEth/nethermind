@@ -36,7 +36,7 @@ namespace Nethermind.Init.Steps
 
             foreach (INethermindPlugin plugin in _api.Plugins)
             {
-                Rlp.RegisterDecoders(plugin.GetType().Assembly, true);
+                plugin.InitRlpDecoders(_api);
             }
 
             return Task.CompletedTask;

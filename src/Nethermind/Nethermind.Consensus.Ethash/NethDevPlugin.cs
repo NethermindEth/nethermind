@@ -107,15 +107,5 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
         public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
-
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
     }
 }
