@@ -1,10 +1,13 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Stats.Model;
+using static Nethermind.Network.Discovery.RoutingTable.NodeBucket;
 
 namespace Nethermind.Network.Discovery.RoutingTable;
 
@@ -73,42 +76,143 @@ public class NodeTable : INodeTable
         bucket.RefreshNode(node);
     }
 
-    public IEnumerable<Node> GetClosestNodes()
+    public ClosestNodesEnumerator GetClosestNodes()
     {
-        int count = 0;
-        int bucketSize = _discoveryConfig.BucketSize;
-
-        foreach (NodeBucket nodeBucket in Buckets)
-        {
-            foreach (NodeBucketItem nodeBucketItem in nodeBucket.BondedItems)
-            {
-                if (count < bucketSize)
-                {
-                    count++;
-                    if (nodeBucketItem.Node is not null)
-                    {
-                        yield return nodeBucketItem.Node;
-                    }
-                }
-                else
-                {
-                    yield break;
-                }
-            }
-        }
+        return new ClosestNodesEnumerator(Buckets, _discoveryConfig.BucketSize);
     }
 
-    public IEnumerable<Node> GetClosestNodes(byte[] nodeId)
+    public struct ClosestNodesEnumerator : IEnumerator<Node>, IEnumerable<Node>
+    {
+        private readonly NodeBucket[] _buckets;
+        private readonly int _bucketSize;
+        private BondedItemsEnumerator _itemEnumerator;
+        private bool _enumeratorSet;
+        private int _bucketIndex;
+        private int _count;
+
+        public ClosestNodesEnumerator(NodeBucket[] buckets, int bucketSize)
+        {
+            _buckets = buckets;
+            _bucketSize = bucketSize;
+            Current = null!;
+            _bucketIndex = -1;
+            _count = 0;
+        }
+
+        public Node Current { get; private set; }
+
+        object IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            try
+            {
+                while (_count < _bucketSize)
+                {
+                    if (!_enumeratorSet || !_itemEnumerator.MoveNext())
+                    {
+                        _itemEnumerator.Dispose();
+                        _bucketIndex++;
+                        if (_bucketIndex >= _buckets.Length)
+                        {
+                            return false;
+                        }
+
+                        _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
+                        _enumeratorSet = true;
+                        continue;
+                    }
+
+                    Current = _itemEnumerator.Current.Node!;
+                    _count++;
+                    return true;
+                }
+            }
+            finally
+            {
+                _itemEnumerator.Dispose();
+            }
+
+            return false;
+        }
+
+        void IEnumerator.Reset() => throw new NotSupportedException();
+
+        public void Dispose() { }
+
+        public ClosestNodesEnumerator GetEnumerator() => this;
+
+        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+
+        IEnumerator IEnumerable.GetEnumerator() => this;
+    }
+
+    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId)
+    {
+        return GetClosestNodes(nodeId, _discoveryConfig.BucketSize);
+    }
+
+    public ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId, int bucketSize)
     {
         CheckInitialization();
+        return new ClosestNodesFromNodeEnumerator(Buckets, nodeId, _nodeDistanceCalculator, Math.Min(bucketSize, _discoveryConfig.BucketSize));
+    }
 
-        Hash256 idHash = Keccak.Compute(nodeId);
-        return Buckets.SelectMany(x => x.BondedItems)
-            .Where(x => x.Node?.IdHash != idHash && x.Node is not null)
-            .Select(x => new { x.Node, Distance = _nodeDistanceCalculator.CalculateDistance(x.Node!.Id.Bytes, nodeId) })
-            .OrderBy(x => x.Distance)
-            .Take(_discoveryConfig.BucketSize)
-            .Select(x => x.Node!);
+    public struct ClosestNodesFromNodeEnumerator : IEnumerator<Node>, IEnumerable<Node>
+    {
+        private readonly ArrayPoolList<Node> _sortedNodes;
+        private int _currentIndex;
+
+        public ClosestNodesFromNodeEnumerator(NodeBucket[] buckets, byte[] targetNodeId, INodeDistanceCalculator calculator, int bucketSize)
+        {
+            _sortedNodes = new ArrayPoolList<Node>(capacity: bucketSize);
+            Hash256 idHash = Keccak.Compute(targetNodeId);
+            foreach (var bucket in buckets)
+            {
+                foreach (var item in bucket.BondedItems)
+                {
+                    if (item.Node != null && item.Node.IdHash != idHash)
+                    {
+                        _sortedNodes.Add(item.Node);
+                    }
+                }
+            }
+
+            _sortedNodes.Sort((a, b) => calculator.CalculateDistance(a.Id.Bytes, targetNodeId).CompareTo(calculator.CalculateDistance(b.Id.Bytes, targetNodeId)));
+            if (_sortedNodes.Count > bucketSize)
+            {
+                _sortedNodes.ReduceCount(bucketSize);
+            }
+
+            _currentIndex = -1;
+        }
+
+        public readonly int Count => _sortedNodes.Count;
+
+        public Node Current => _sortedNodes[_currentIndex];
+
+        object IEnumerator.Current => Current;
+
+        public bool MoveNext()
+        {
+            if (_currentIndex + 1 < _sortedNodes.Count)
+            {
+                _currentIndex++;
+                return true;
+            }
+            return false;
+        }
+
+        void IEnumerator.Reset() => throw new NotSupportedException();
+        public void Dispose()
+        {
+            _sortedNodes.Dispose();
+        }
+
+        public ClosestNodesFromNodeEnumerator GetEnumerator() => this;
+        IEnumerator<Node> IEnumerable<Node>.GetEnumerator() => this;
+
+        IEnumerator IEnumerable.GetEnumerator() => this;
     }
 
     public void Initialize(PublicKey masterNodeKey)
