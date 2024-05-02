@@ -366,8 +366,8 @@ public partial class EngineModuleTests
 
         using SemaphoreSlim blockImprovementLock = new(0);
 
-        MergeTestBlockchain blockchain = CreateBaseBlockchain(null, null, LimboLogs.Instance);
-        blockchain.InitialStateMutator = (state) =>
+        MergeTestBlockchain blockchain = CreateBaseBlockchain(logManager: LimboLogs.Instance);
+        blockchain.InitialStateMutator = state =>
         {
             state.CreateAccount(new Address("0xBC2Fd1637C49839aDB7Bb57F9851EAE3194A90f7"), (UInt256)1200482917041833040, 1);
         };

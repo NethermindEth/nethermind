@@ -444,7 +444,7 @@ public partial class EngineModuleTests
     [Test]
     public async Task executePayloadV1_result_is_fail_when_blockchainprocessor_report_exception()
     {
-        using MergeTestBlockchain chain = await CreateBaseBlockchain(null, null)
+        using MergeTestBlockchain chain = await CreateBaseBlockchain()
             .Build(new TestSingleReleaseSpecProvider(London.Instance));
         IEngineRpcModule rpc = CreateEngineModule(chain);
 
