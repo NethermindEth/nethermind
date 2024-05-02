@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Text.Json;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -26,12 +27,12 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
 
     private readonly long _gasLimit;
     private readonly NativeCallTracerConfig _config;
-    private readonly List<NativeCallTracerCallFrame> _callStack = [];
+    private readonly ArrayPoolList<NativeCallTracerCallFrame> _callStack = new(1024);
+    private readonly CompositeDisposable _disposables = new();
 
-    private NativeCallTracerCallFrame? _firstCallFrame;
     private EvmExceptionType? _error;
     private long _remainingGas;
-
+    private bool _resultBuilt = false;
 
     public NativeCallTracer(
         Transaction? tx,
@@ -48,20 +49,29 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
         }
     }
 
-    protected override GethLikeTxTrace CreateTrace() => new(_firstCallFrame);
+    protected override GethLikeTxTrace CreateTrace() => new(_disposables);
 
     public override GethLikeTxTrace BuildResult()
     {
         GethLikeTxTrace result = base.BuildResult();
-        _firstCallFrame = _callStack[0];
-        result.CustomTracerResult = new GethLikeCustomTrace { Value = _firstCallFrame };
+        NativeCallTracerCallFrame firstCallFrame = _callStack[0];
+        _callStack.RemoveAt(0);
+        _disposables.Add(firstCallFrame);
+        result.CustomTracerResult = new GethLikeCustomTrace { Value = firstCallFrame };
+        Debug.Assert(_callStack.Count > 1, $"Unexpected frames on call stack, expected only master frame, found {_callStack.Count} frames.");
+        _resultBuilt = true;
+        return result;
+    }
 
-        for (int i = 1; i < _callStack.Count; i++)
+    public override void Dispose()
+    {
+        base.Dispose();
+        for (int i = _resultBuilt ? 1 : 0; i < _callStack.Count; i++)
         {
             _callStack[i].Dispose();
         }
 
-        return result;
+        _callStack.Dispose();
     }
 
     public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
@@ -79,8 +89,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             To = to,
             Gas = Depth == 0 ? _gasLimit : gas,
             Value = callOpcode == Instruction.STATICCALL ? null : value,
-            Input = input.Span.ToPooledList(),
-            Calls = new ArrayPoolList<NativeCallTracerCallFrame>(0)
+            Input = input.Span.ToPooledList()
         };
         _callStack.Add(callFrame);
     }
@@ -100,7 +109,7 @@ public sealed class NativeCallTracer : GethLikeNativeTxTracer
             log.Topics,
             (ulong)callFrame.Calls.Count);
 
-        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(1);
+        callFrame.Logs ??= new ArrayPoolList<NativeCallTracerLogEntry>(8);
         callFrame.Logs.Add(callLog);
     }
 
