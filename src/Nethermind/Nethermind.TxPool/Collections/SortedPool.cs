@@ -93,8 +93,29 @@ namespace Nethermind.TxPool.Collections
             using var lockRelease = Lock.Acquire();
 
             TValue[]? snapshot = _snapshot;
-            snapshot ??= _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
+            if (snapshot is not null)
+            {
+                return snapshot;
+            }
 
+            var count = 0;
+            foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
+            {
+                count += bucket.Value.Count;
+            }
+
+            snapshot = new TValue[count];
+            var index = 0;
+            foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
+            {
+                foreach (TValue value in bucket.Value)
+                {
+                    snapshot[index] = value;
+                    index++;
+                }
+            }
+
+            _snapshot = snapshot;
             return snapshot;
         }
 
