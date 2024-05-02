@@ -427,15 +427,13 @@ public class BlockValidator(
 
     public static bool ValidateWithdrawalsHashMatches(BlockHeader header, BlockBody body, out Hash256? withdrawalsRoot)
     {
-        // if one is null and other isn't
-        if (body.Withdrawals is null ^ header.WithdrawalsRoot is null)
+        if (body.Withdrawals is null)
         {
             withdrawalsRoot = null;
-            return false;
+            return header.WithdrawalsRoot is null;
         }
 
-        withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash;
-        return header.WithdrawalsRoot == withdrawalsRoot;
+        return (withdrawalsRoot = new WithdrawalTrie(body.Withdrawals).RootHash) == header.WithdrawalsRoot;
     }
 
     public static bool ValidateRequestsHashMatches(Block block, out Hash256? withdrawalsRoot) =>
@@ -443,15 +441,13 @@ public class BlockValidator(
 
     public static bool ValidateRequestsHashMatches(BlockHeader header, BlockBody body, out Hash256? requestsRoot)
     {
-        // if one is null and other isn't
-        if (body.Requests is null ^ header.RequestsRoot is null)
+        if (body.Requests == null)
         {
             requestsRoot = null;
-            return false;
+            return header.RequestsRoot is null;
         }
 
-        requestsRoot = new RequestsTrie(body.Requests).RootHash;
-        return requestsRoot == header.RequestsRoot;
+        return (requestsRoot = new RequestsTrie(body.Requests).RootHash) == header.RequestsRoot;
     }
 
     private static string Invalid(Block block) =>
