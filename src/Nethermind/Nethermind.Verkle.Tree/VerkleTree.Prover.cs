@@ -67,9 +67,12 @@ public partial class VerkleTree
     {
         executionWitness.StateDiff.ForEach(stateDiff =>
         {
+            byte[] key = new byte[32];
+            Array.Copy(stateDiff.Stem.Bytes, key, stateDiff.Stem.Bytes.Length);
+
             stateDiff.SuffixDiffs.ForEach(suffixDiffs =>
             {
-                byte[] key = stateDiff.Stem.Bytes.Append(suffixDiffs.Suffix).ToArray();
+                key[31] = suffixDiffs.Suffix;
                 suffixDiffs.NewValue = Get(key);
             });
         });
