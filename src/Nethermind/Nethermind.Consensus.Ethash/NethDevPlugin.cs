@@ -15,6 +15,7 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
@@ -22,6 +23,7 @@ namespace Nethermind.Consensus.Ethash
     public class NethDevPlugin : IConsensusPlugin
     {
         private INethermindApi? _nethermindApi;
+        private readonly ChainSpec _chainSpec;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -30,6 +32,12 @@ namespace Nethermind.Consensus.Ethash
         public string Description => "NethDev (Spaceneth)";
 
         public string Author => "Nethermind";
+        public bool Enabled => _chainSpec.SealEngineType == SealEngineType;
+
+        public NethDevPlugin(ChainSpec chainSpec)
+        {
+            _chainSpec = chainSpec;
+        }
 
         public Task Init(INethermindApi nethermindApi)
         {

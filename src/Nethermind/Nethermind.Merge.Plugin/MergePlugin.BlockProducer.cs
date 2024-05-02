@@ -68,9 +68,5 @@ namespace Nethermind.Merge.Plugin
 
             return baseRunner;
         }
-
-        // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin
-        // while MergeEnabled comes from merge config
-        public bool Enabled => MergeEnabled;
     }
 }

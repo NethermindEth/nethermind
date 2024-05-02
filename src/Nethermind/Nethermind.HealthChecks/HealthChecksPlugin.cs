@@ -6,6 +6,7 @@ using System.IO.Abstractions;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using Nethermind.Api;
@@ -15,6 +16,7 @@ using Nethermind.Logging;
 using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Core.Extensions;
+using Nethermind.Network;
 using Nethermind.Merge.Plugin;
 
 namespace Nethermind.HealthChecks
@@ -31,6 +33,7 @@ namespace Nethermind.HealthChecks
 
         private ClHealthLogger _clHealthLogger;
         private FreeDiskSpaceChecker _freeDiskSpaceChecker;
+        private IPResolver _ipResolver;
 
         private const int ClUnavailableReportMessageDelay = 5;
 
@@ -51,8 +54,14 @@ namespace Nethermind.HealthChecks
         public string Description => "Endpoints that takes care of node`s health";
 
         public string Author => "Nethermind";
+        public bool Enabled => _healthChecksConfig.Enabled;
 
         public bool MustInitialize => true;
+
+        public HealthChecksPlugin(IHealthChecksConfig healthChecksConfig)
+        {
+            _healthChecksConfig = healthChecksConfig;
+        }
 
         public FreeDiskSpaceChecker FreeDiskSpaceChecker => LazyInitializer.EnsureInitialized(ref _freeDiskSpaceChecker,
             () => new FreeDiskSpaceChecker(
@@ -65,7 +74,7 @@ namespace Nethermind.HealthChecks
         public Task Init(INethermindApi api)
         {
             _api = api;
-            _healthChecksConfig = _api.Config<IHealthChecksConfig>();
+            _ipResolver = api.BaseContainer.Resolve<IPResolver>();
             _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
             _initConfig = _api.Config<IInitConfig>();
             _mergeConfig = _api.Config<IMergeConfig>();
@@ -110,7 +119,7 @@ namespace Nethermind.HealthChecks
 
                                 string hostname = Dns.GetHostName();
 
-                                HealthChecksWebhookInfo info = new(description, _api.IpResolver, metricsConfig, hostname);
+                                HealthChecksWebhookInfo info = new(description, _ipResolver, metricsConfig, hostname);
                                 return info.GetFullInfo();
                             }
                         );

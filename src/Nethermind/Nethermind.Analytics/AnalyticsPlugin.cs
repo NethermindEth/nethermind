@@ -14,11 +14,10 @@ namespace Nethermind.Analytics
 {
     public class AnalyticsPlugin : INethermindPlugin
     {
-        private IAnalyticsConfig _analyticsConfig;
+        private readonly IAnalyticsConfig _analyticsConfig;
+        private readonly InitConfig _initConfig;
         private IList<IPublisher> _publishers;
         private INethermindApi _api;
-
-        private bool _isOn;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
@@ -27,20 +26,24 @@ namespace Nethermind.Analytics
         public string Description => "Various Analytics Extensions";
 
         public string Author => "Nethermind";
+        public bool Enabled => _initConfig.WebSocketsEnabled &&
+                    (_analyticsConfig.PluginsEnabled ||
+                     _analyticsConfig.StreamBlocks ||
+                     _analyticsConfig.StreamTransactions);
+
+        public AnalyticsPlugin(InitConfig initConfig, IAnalyticsConfig analyticsConfig)
+        {
+            _initConfig = initConfig;
+            _analyticsConfig = analyticsConfig;
+        }
 
         public Task Init(INethermindApi api)
         {
             _api = api;
             var (getFromAPi, _) = _api.ForInit;
-            _analyticsConfig = getFromAPi.Config<IAnalyticsConfig>();
 
             IInitConfig initConfig = getFromAPi.Config<IInitConfig>();
-            _isOn = initConfig.WebSocketsEnabled &&
-                    (_analyticsConfig.PluginsEnabled ||
-                     _analyticsConfig.StreamBlocks ||
-                     _analyticsConfig.StreamTransactions);
-
-            if (!_isOn)
+            if (!Enabled)
             {
                 if (!initConfig.WebSocketsEnabled)
                 {
@@ -70,13 +73,9 @@ namespace Nethermind.Analytics
         public Task InitNetworkProtocol()
         {
             var (getFromAPi, _) = _api.ForNetwork;
-            if (_isOn)
+            if (Enabled)
             {
                 getFromAPi.TxPool!.NewDiscovered += TxPoolOnNewDiscovered;
-            }
-
-            if (_isOn)
-            {
                 AnalyticsWebSocketsModule webSocketsModule = new(getFromAPi.EthereumJsonSerializer, getFromAPi.LogManager);
                 getFromAPi.WebSocketsManager!.AddModule(webSocketsModule, true);
                 getFromAPi.Publishers.Add(webSocketsModule);

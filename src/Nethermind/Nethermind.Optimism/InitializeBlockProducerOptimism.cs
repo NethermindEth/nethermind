@@ -49,7 +49,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.L1CostHelper,
             _api.LogManager);
 
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
         BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
         _api.BlockProducer = new OptimismPostMergeBlockProducer(

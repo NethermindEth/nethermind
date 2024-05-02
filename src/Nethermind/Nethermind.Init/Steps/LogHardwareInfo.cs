@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Logging;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Steps;
@@ -14,9 +15,9 @@ public class LogHardwareInfo : IStep
 
     public bool MustInitialize => false;
 
-    public LogHardwareInfo(INethermindApi api)
+    public LogHardwareInfo(ILogger logger)
     {
-        _logger = api.LogManager.GetClassLogger();
+        _logger = logger;
     }
 
     public Task Execute(CancellationToken cancellationToken)

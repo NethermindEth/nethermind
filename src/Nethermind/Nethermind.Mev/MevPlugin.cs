@@ -38,12 +38,16 @@ public class MevPlugin : IConsensusWrapperPlugin
 
     public string Author => "Nethermind";
 
+    public MevPlugin(IMevConfig mevConfig)
+    {
+        _mevConfig = mevConfig;
+    }
+
     public int Priority => PluginPriorities.Mev;
 
     public Task Init(INethermindApi? nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
-        _mevConfig = _nethermindApi.Config<IMevConfig>();
         _logger = _nethermindApi.LogManager.GetClassLogger();
 
         return Task.CompletedTask;

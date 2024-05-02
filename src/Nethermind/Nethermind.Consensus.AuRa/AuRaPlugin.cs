@@ -3,14 +3,15 @@
 
 using System.Runtime.CompilerServices;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Logging;
-using Nethermind.Serialization.Json;
+using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
 
 [assembly: InternalsVisibleTo("Nethermind.Merge.AuRa")]
@@ -20,19 +21,25 @@ namespace Nethermind.Consensus.AuRa
     /// <summary>
     /// Consensus plugin for AuRa setup.
     /// </summary>
-    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+    public class AuRaPlugin : IConsensusPlugin, ISynchronizationPlugin
     {
         private AuRaNethermindApi? _nethermindApi;
+        private readonly ChainSpec _chainSpec;
         public string Name => SealEngineType;
 
         public string Description => $"{SealEngineType} Consensus Engine";
 
         public string Author => "Nethermind";
+        public bool Enabled => _chainSpec.SealEngineType == SealEngineType;
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
         private StartBlockProducerAuRa? _blockProducerStarter;
 
+        public AuRaPlugin(ChainSpec chainSpec)
+        {
+            _chainSpec = chainSpec;
+        }
 
         public ValueTask DisposeAsync()
         {
@@ -87,9 +94,31 @@ namespace Nethermind.Consensus.AuRa
                 _nethermindApi.BlockProducer!);
         }
 
-        public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-            ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+        public IModule? Module => new AuraModule();
 
-        public bool ShouldRunSteps(INethermindApi api) => true;
+        public class AuraModule : Module
+        {
+            protected override void Load(ContainerBuilder builder)
+            {
+                base.Load(builder);
+
+                builder.RegisterType<AuRaNethermindApi>()
+                    .AsSelf()
+                    .As<INethermindApi>()
+                    .SingleInstance();
+
+                builder.RegisterDecorator<IGasLimitCalculator>((ctx, _, baseGasLimit) =>
+                {
+                    // So aura does a strange thing where the gas limit calculator is replaced later on. Not sure exactly
+                    // why gas limit calculator is normally declared very early on. In any case, since its gas limit
+                    // calculator is very complicated, it can't be resolved until more of the stack is migrated to DI.
+                    AuRaNethermindApi api = ctx.Resolve<AuRaNethermindApi>();
+                    if (api.AuraGasLimitCalculator != null) return api.AuraGasLimitCalculator;
+                    return baseGasLimit;
+                });
+
+                builder.RegisterIStepsFromAssembly(GetType().Assembly);
+            }
+        }
     }
 }

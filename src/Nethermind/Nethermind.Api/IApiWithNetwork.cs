@@ -28,11 +28,10 @@ namespace Nethermind.Api
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
-        IIPResolver? IpResolver { get; set; }
         IMessageSerializationService MessageSerializationService { get; }
         IGossipPolicy GossipPolicy { get; set; }
         IMonitoringService MonitoringService { get; set; }
-        INodeStatsManager? NodeStatsManager { get; set; }
+        INodeStatsManager NodeStatsManager { get; }
         IPeerManager? PeerManager { get; set; }
         IPeerPool? PeerPool { get; set; }
         IProtocolsManager? ProtocolsManager { get; set; }

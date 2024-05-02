@@ -22,13 +22,15 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
+using Autofac;
+using Autofac.Core;
 using Nethermind.HealthChecks;
-using Nethermind.Serialization.Json;
+using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Optimism;
 
-public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitializationPlugin
+public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin
 {
     public string Author => "Nethermind";
     public string Name => "Optimism";
@@ -45,8 +47,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     private IPeerRefresher? _peerRefresher;
     private IBeaconPivot? _beaconPivot;
     private BeaconSync? _beaconSync;
+    private readonly ChainSpec _chainSpec;
 
-    public bool ShouldRunSteps(INethermindApi api) => api.ChainSpec.SealEngineType == SealEngineType;
+    public bool Enabled => _chainSpec.SealEngineType == SealEngineType;
 
     #region IConsensusPlugin
 
@@ -68,13 +71,14 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     #endregion
 
-    public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
-        ILogManager logManager, ChainSpec chainSpec) =>
-        new OptimismNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+    public OptimismPlugin(ChainSpec chainSpec)
+    {
+        _chainSpec = chainSpec;
+    }
 
     public Task Init(INethermindApi api)
     {
-        if (!ShouldRunSteps(api))
+        if (!Enabled)
             return Task.CompletedTask;
 
         _api = (OptimismNethermindApi)api;
@@ -112,7 +116,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public Task InitSynchronization()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return Task.CompletedTask;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -174,7 +178,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public async Task InitRpcModules()
     {
-        if (_api is null || !ShouldRunSteps(_api))
+        if (_api is null || !Enabled)
             return;
 
         ArgumentNullException.ThrowIfNull(_api.SpecProvider);
@@ -275,4 +279,24 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
 
     public bool MustInitialize => true;
+
+    public IModule? Module => new OptimismModule();
+
+    private class OptimismModule : Module
+    {
+        protected override void Load(ContainerBuilder builder)
+        {
+            base.Load(builder);
+
+            builder.RegisterType<OptimismNethermindApi>()
+                .As<INethermindApi>()
+                .SingleInstance();
+
+            builder.RegisterType<OptimismGasLimitCalculator>()
+                .As<IGasLimitCalculator>()
+                .SingleInstance();
+
+            builder.RegisterIStepsFromAssembly(GetType().Assembly);
+        }
+    }
 }

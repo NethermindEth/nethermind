@@ -6,6 +6,7 @@
     <PackageVersion Include="AspNetCore.HealthChecks.UI" Version="8.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.Client" Version="8.0.0" />
     <PackageVersion Include="AspNetCore.HealthChecks.UI.InMemory.Storage" Version="8.0.0" />
+    <PackageVersion Include="Autofac" Version="7.1.0" />
     <PackageVersion Include="BenchmarkDotNet" Version="0.13.11" />
     <PackageVersion Include="BenchmarkDotNet.Diagnostics.Windows" Version="0.13.11" />
     <PackageVersion Include="Ckzg.Bindings" Version="0.4.3.750" />

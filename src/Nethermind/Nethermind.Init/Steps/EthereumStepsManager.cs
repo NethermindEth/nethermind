@@ -9,6 +9,7 @@ using System.Linq;
 using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Core.Extensions;
 using Nethermind.Logging;
@@ -20,22 +21,19 @@ namespace Nethermind.Init.Steps
         private readonly ILogger _logger;
 
         private readonly AutoResetEvent _autoResetEvent = new AutoResetEvent(true);
-        private readonly INethermindApi _api;
+        private readonly ILifetimeScope _container;
         private readonly List<StepInfo> _allSteps;
         private readonly Dictionary<Type, StepInfo> _allStepsByBaseType;
 
         public EthereumStepsManager(
             IEthereumStepsLoader loader,
-            INethermindApi context,
-            ILogManager logManager)
+            ILifetimeScope container,
+            ILogger logger)
         {
-            ArgumentNullException.ThrowIfNull(loader);
+            _container = container;
+            _logger = logger;
 
-            _api = context ?? throw new ArgumentNullException(nameof(context));
-            _logger = logManager?.GetClassLogger<EthereumStepsManager>()
-                      ?? throw new ArgumentNullException(nameof(logManager));
-
-            _allSteps = loader.LoadSteps(_api.GetType()).ToList();
+            _allSteps = loader.LoadSteps().ToList();
             _allStepsByBaseType = _allSteps.ToDictionary(s => s.StepBaseType, s => s);
         }
 
@@ -192,7 +190,7 @@ namespace Nethermind.Init.Steps
             IStep? step = null;
             try
             {
-                step = Activator.CreateInstance(stepInfo.StepType, _api) as IStep;
+                step = (IStep)_container.Resolve(stepInfo.StepType);
             }
             catch (Exception e)
             {

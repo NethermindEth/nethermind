@@ -1,71 +1,83 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
+using System.Linq;
 using System.Net;
 using System.Threading;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Crypto;
-using Nethermind.KeyStore;
-using Nethermind.KeyStore.Config;
+using Nethermind.Logging;
 using Nethermind.Network.Config;
+using Nethermind.Network.Discovery;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Wallet;
 
-namespace Nethermind.Init.Steps
+namespace Nethermind.Init.Steps;
+
+[RunnerStepDependencies(typeof(ResolveIps))]
+public class SetupKeyStore : IStep
 {
-    [RunnerStepDependencies(typeof(ResolveIps))]
-    public class SetupKeyStore : IStep
+    private readonly ProtectedPrivateKey _nodeKey;
+    private readonly ChainSpec _chainSpec;
+    private readonly INetworkConfig _networkConfig;
+    private readonly IDiscoveryConfig _discoveryConfig;
+    private readonly EnodeContainer _enodeContainer;
+    private readonly ILogManager _logManager;
+
+    public SetupKeyStore(
+        [KeyFilter(PrivateKeyName.NodeKey)] ProtectedPrivateKey nodeKey,
+        ChainSpec chainSpec,
+        INetworkConfig networkConfig,
+        IDiscoveryConfig discoveryConfig,
+        EnodeContainer enodeContainer,
+        ILogManager logManager
+    )
     {
-        private readonly IApiWithBlockchain _api;
+        _nodeKey = nodeKey;
+        _chainSpec = chainSpec;
+        _networkConfig = networkConfig;
+        _discoveryConfig = discoveryConfig;
+        _logManager = logManager;
+        _enodeContainer = enodeContainer;
+    }
 
-        public SetupKeyStore(INethermindApi api)
-        {
-            _api = api;
-        }
+    public Task Execute(CancellationToken cancellationToken)
+    {
+        SetEnode();
+        FilterBootNodes();
+        UpdateDiscoveryConfig();
 
-        public async Task Execute(CancellationToken cancellationToken)
+        return Task.CompletedTask;
+    }
+
+    private void SetEnode()
+    {
+        IPAddress ipAddress = _networkConfig.ExternalIp is not null ? IPAddress.Parse(_networkConfig.ExternalIp) : IPAddress.Loopback;
+        IEnode enode = _enodeContainer.Enode = new Enode(_nodeKey!.PublicKey, ipAddress, _networkConfig.P2PPort);
+        _logManager.SetGlobalVariable("enode", enode.ToString());
+    }
+
+    private void FilterBootNodes()
+    {
+        _chainSpec.Bootnodes = _chainSpec.Bootnodes?.Where(n => !n.NodeId?.Equals(_nodeKey.PublicKey) ?? false).ToArray() ?? Array.Empty<NetworkNode>();
+    }
+
+    private void UpdateDiscoveryConfig()
+    {
+        if (_discoveryConfig.Bootnodes != string.Empty)
         {
-            (IApiWithStores get, IApiWithBlockchain set) = _api.ForInit;
-            // why is the await Task.Run here?
-            await Task.Run(() =>
+            if (_chainSpec.Bootnodes.Length != 0)
             {
-                IKeyStoreConfig keyStoreConfig = get.Config<IKeyStoreConfig>();
-                INetworkConfig networkConfig = get.Config<INetworkConfig>();
-
-                AesEncrypter encrypter = new(keyStoreConfig, get.LogManager);
-
-                IKeyStore? keyStore = set.KeyStore = new FileKeyStore(
-                    keyStoreConfig,
-                    get.EthereumJsonSerializer,
-                    encrypter,
-                    get.CryptoRandom,
-                    get.LogManager,
-                    new PrivateKeyStoreIOSettingsProvider(keyStoreConfig));
-
-                set.Wallet = get.Config<IInitConfig>() switch
-                {
-                    var config when config.EnableUnsecuredDevWallet && config.KeepDevWalletInMemory => new DevWallet(get.Config<IWalletConfig>(), get.LogManager),
-                    var config when config.EnableUnsecuredDevWallet && !config.KeepDevWalletInMemory => new DevKeyStoreWallet(get.KeyStore, get.LogManager),
-                    _ => new ProtectedKeyStoreWallet(keyStore, new ProtectedPrivateKeyFactory(get.CryptoRandom, get.Timestamper, keyStoreConfig.KeyStoreDirectory),
-                        get.Timestamper, get.LogManager),
-                };
-
-                new AccountUnlocker(keyStoreConfig, get.Wallet, get.LogManager, new KeyStorePasswordProvider(keyStoreConfig))
-                    .UnlockAccounts();
-
-                BasePasswordProvider passwordProvider = new KeyStorePasswordProvider(keyStoreConfig)
-                    .OrReadFromConsole($"Provide password for validator account {keyStoreConfig.BlockAuthorAccount}");
-
-                INodeKeyManager nodeKeyManager = new NodeKeyManager(get.CryptoRandom, get.KeyStore, keyStoreConfig, get.LogManager, passwordProvider, get.FileSystem);
-                ProtectedPrivateKey? nodeKey = set.NodeKey = nodeKeyManager.LoadNodeKey();
-
-                set.OriginalSignerKey = nodeKeyManager.LoadSignerKey();
-                IPAddress ipAddress = networkConfig.ExternalIp is not null ? IPAddress.Parse(networkConfig.ExternalIp) : IPAddress.Loopback;
-                IEnode enode = set.Enode = new Enode(nodeKey.PublicKey, ipAddress, networkConfig.P2PPort);
-
-                get.LogManager.SetGlobalVariable("enode", enode.ToString());
-            }, cancellationToken);
+                _discoveryConfig.Bootnodes += "," + string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
+            }
+        }
+        else
+        {
+            _discoveryConfig.Bootnodes = string.Join(",", _chainSpec.Bootnodes.Select(bn => bn.ToString()));
         }
     }
 }
