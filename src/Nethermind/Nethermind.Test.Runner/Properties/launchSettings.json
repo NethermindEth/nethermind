@@ -10,7 +10,7 @@
     },
     "Regex State Test": {
       "commandName": "Project",
-      "commandLineArgs": "-i statetest1.json -f \"randomStatetestmartin-Wed_10_02_29-14338-([0-9]+)\""
+      "commandLineArgs": "-i C:\\Users\\marek\\Nethermind\\fixtures\\fixtures\\state_tests\\prague\\eip2537_bls_12_381_precompiles\\bls12_g1add\\call_types.json"
     },
     "Regex Blockchain Test": {
       "commandName": "Project",

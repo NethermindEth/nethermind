@@ -19,7 +19,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x11);
+    public static Address Address { get; } = Address.FromNumber(0x10);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
