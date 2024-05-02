@@ -130,9 +130,9 @@ public class VerkleWorldState : IWorldState
         return _tree.GenerateExecutionWitnessFromStore(keys, out rootPoint);
     }
 
-    public void UpdateExecutionWitness(ExecutionWitness executionWitness, byte[][] keys)
+    public void UpdateWithPostStateValues(ExecutionWitness executionWitness)
     {
-        _tree.UpdateExecutionWitness(executionWitness, keys);
+        _tree.UpdateWithPostStateValues(executionWitness);
     }
 
     public bool AccountExists(Address address)

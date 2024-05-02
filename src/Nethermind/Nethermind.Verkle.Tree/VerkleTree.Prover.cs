@@ -39,22 +39,22 @@ public partial class VerkleTree
 
         VerkleProof proof = CreateVerkleProof(keys, out rootPoint);
 
-        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiffWithCurrentValue = new(Bytes.SpanEqualityComparer);
+        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiff = new(Bytes.SpanEqualityComparer);
         foreach (var key in keys)
         {
             SuffixStateDiff suffixData = new() { Suffix = key[31], CurrentValue = Get(key) };
             Span<byte> keyStem = key.AsSpan()[..31];
-            if (!stemStateDiffWithCurrentValue.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
+            if (!stemStateDiff.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
             {
                 suffixStateDiffList = [];
-                stemStateDiffWithCurrentValue.TryAdd(keyStem, suffixStateDiffList);
+                stemStateDiff.TryAdd(keyStem, suffixStateDiffList);
             }
             suffixStateDiffList.Add(suffixData);
         }
 
-        var stemStateDiffList = new StemStateDiff[stemStateDiffWithCurrentValue.Count];
+        var stemStateDiffList = new StemStateDiff[stemStateDiff.Count];
         int i = 0;
-        foreach (KeyValuePair<byte[], List<SuffixStateDiff>> stemStateDiffData in stemStateDiffWithCurrentValue)
+        foreach (KeyValuePair<byte[], List<SuffixStateDiff>> stemStateDiffData in stemStateDiff)
         {
             stemStateDiffList[i++] = new StemStateDiff
             { Stem = stemStateDiffData.Key, SuffixDiffs = stemStateDiffData.Value };
@@ -63,28 +63,14 @@ public partial class VerkleTree
         return new ExecutionWitness(stemStateDiffList, proof);
     }
 
-    public void UpdateExecutionWitness(ExecutionWitness executionWitness, byte[][] keys)
+    public void UpdateWithPostStateValues(ExecutionWitness executionWitness)
     {
-        SpanDictionary<byte, List<SuffixStateDiff>> stemStateDiffWithNewValue = new(Bytes.SpanEqualityComparer);
-        foreach (var key in keys)
-        {
-            SuffixStateDiff suffixData = new() { NewValue = Get(key) };
-            Span<byte> keyStem = key.AsSpan()[..31];
-            if (!stemStateDiffWithNewValue.TryGetValue(keyStem, out List<SuffixStateDiff> suffixStateDiffList))
-            {
-                suffixStateDiffList = [];
-                stemStateDiffWithNewValue.TryAdd(keyStem, suffixStateDiffList);
-            }
-            suffixStateDiffList.Add(suffixData);
-        }
         executionWitness.StateDiff.ForEach(stateDiff =>
         {
-            List<SuffixStateDiff> newValueSuffixDiffs = stemStateDiffWithNewValue[stateDiff.Stem.Bytes];
-            int i = 0;
             stateDiff.SuffixDiffs.ForEach(suffixDiffs =>
             {
-                suffixDiffs.NewValue = newValueSuffixDiffs[i].NewValue;
-                i++;
+                byte[] key = stateDiff.Stem.Bytes.Append(suffixDiffs.Suffix).ToArray();
+                suffixDiffs.NewValue = Get(key);
             });
         });
     }

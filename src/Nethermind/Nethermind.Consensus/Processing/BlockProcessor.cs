@@ -350,7 +350,7 @@ public partial class BlockProcessor : IBlockProcessor
 
             worldState.Commit(spec);
 
-            verkleWorldState?.UpdateExecutionWitness(witness, witnessKeys);
+            verkleWorldState?.UpdateWithPostStateValues(witness);
             block.Body.ExecutionWitness = witness;
         }
         else
