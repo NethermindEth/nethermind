@@ -67,16 +67,14 @@ public class NodeBucket
         {
             lock (_nodeBucket._nodeBucketLock)
             {
-                while (_currentNode != null)
+                while (_currentNode is not null)
                 {
-                    if (!_currentNode.Value.IsBonded(_referenceTime))
-                    {
-                        break;
-                    }
-
                     Current = _currentNode.Value;
                     _currentNode = _currentNode.Previous;
-                    return true;
+                    if (Current.IsBonded(_referenceTime))
+                    {
+                        return true;
+                    }
                 }
             }
             return false;

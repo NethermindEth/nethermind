@@ -85,7 +85,8 @@ public class NodeTable : INodeTable
     {
         private readonly NodeBucket[] _buckets;
         private readonly int _bucketSize;
-        private BondedItemsEnumerator? _itemEnumerator;
+        private BondedItemsEnumerator _itemEnumerator;
+        private bool _enumeratorSet;
         private int _bucketIndex;
         private int _count;
 
@@ -93,7 +94,6 @@ public class NodeTable : INodeTable
         {
             _buckets = buckets;
             _bucketSize = bucketSize;
-            _itemEnumerator = null;
             Current = null!;
             _bucketIndex = -1;
             _count = 0;
@@ -107,7 +107,7 @@ public class NodeTable : INodeTable
         {
             while (_count < _bucketSize)
             {
-                if (_itemEnumerator == null || !_itemEnumerator.Value.MoveNext())
+                if (!_enumeratorSet || !_itemEnumerator.MoveNext())
                 {
                     _bucketIndex++;
                     if (_bucketIndex >= _buckets.Length)
@@ -116,12 +116,13 @@ public class NodeTable : INodeTable
                     }
 
                     _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
+                    _enumeratorSet = true;
                     continue;
                 }
 
-                if (_itemEnumerator.Value.Current?.Node is not null)
+                if (_itemEnumerator.Current.Node is not null)
                 {
-                    Current = _itemEnumerator.Value.Current.Node;
+                    Current = _itemEnumerator.Current.Node;
                     _count++;
                     return true;
                 }
@@ -131,10 +132,7 @@ public class NodeTable : INodeTable
 
         public void Reset() => throw new NotSupportedException();
 
-        public void Dispose()
-        {
-            _itemEnumerator?.Dispose();
-        }
+        public void Dispose() { }
 
         public ClosestNodesEnumerator GetEnumerator() => this;
 
