@@ -20,7 +20,6 @@ namespace Nethermind.Blockchain
         private static readonly int _maxDepth = 256;
         private readonly IBlockFinder _blockTree;
         private readonly ISpecProvider _specProvider;
-        private readonly IWorldState _worldState;
         private readonly IBlockhashStore _blockhashStore;
         private readonly ILogger _logger;
 
@@ -28,8 +27,7 @@ namespace Nethermind.Blockchain
         {
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
             _specProvider = specProvider;
-            _worldState = worldState;
-            _blockhashStore = new Blocks.BlockhashStore(blockTree, specProvider, worldState);
+            _blockhashStore = new BlockhashStore(blockTree, specProvider, worldState);
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         }
 
