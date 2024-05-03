@@ -403,7 +403,7 @@ namespace Nethermind.Blockchain.Receipts
                 EnsureCanonical(block);
             }
         }
-        
+
         private void SaveToDb(Block block, TxReceipt[]? txReceipts, RlpBehaviors behaviors)
         {
             using NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors);
