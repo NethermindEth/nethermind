@@ -38,6 +38,8 @@ public class MevPlugin : IConsensusWrapperPlugin
 
     public string Author => "Nethermind";
 
+    public int Priority => PluginPriorities.Mev;
+
     public Task Init(INethermindApi? nethermindApi)
     {
         _nethermindApi = nethermindApi ?? throw new ArgumentNullException(nameof(nethermindApi));
@@ -131,7 +133,7 @@ public class MevPlugin : IConsensusWrapperPlugin
         return Task.CompletedTask;
     }
 
-    public async Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+    public async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource)
     {
         if (!Enabled)
         {
@@ -163,11 +165,11 @@ public class MevPlugin : IConsensusWrapperPlugin
             blockProducers.Add(bundleProducer);
         }
 
-        return new MevBlockProducer(consensusPlugin.DefaultBlockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
+        return new MevBlockProducer(blockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
     }
 
     private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
-        IConsensusPlugin consensusPlugin,
+        IBlockProducerFactory consensusPlugin,
         int bundleLimit = 0,
         ITxSource? additionalTxSource = null)
     {

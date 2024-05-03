@@ -55,7 +55,7 @@ namespace Nethermind.Consensus.Validators
             return false;
         }
 
-        public bool ValidateSuggestedBlock(Block block, out string? error)
+        public bool ValidateSuggestedBlock(Block block, out string? error, bool validateHashes = true)
         {
             error = null;
             return false;

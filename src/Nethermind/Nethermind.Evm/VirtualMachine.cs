@@ -2561,7 +2561,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+    private EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
@@ -2584,6 +2584,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             data.ToArray(),
             topics);
         vmState.Logs.Add(logEntry);
+
+        if (_txTracer.IsTracingLogs)
+        {
+            _txTracer.ReportLog(logEntry);
+        }
 
         return EvmExceptionType.None;
     }

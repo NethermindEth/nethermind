@@ -213,7 +213,7 @@ namespace Nethermind.Trie
                         {
                             TrieNode?[] output = new TrieNode?[16];
                             currentNode.ResolveAllChildBranch(nodeResolver, ref path, output);
-                            currentNode.AppendChildPathBranch(ref path, 0);
+                            path.AppendMut(0);
                             for (int i = 0; i < 16; i++)
                             {
                                 if (output[i] == null) continue;

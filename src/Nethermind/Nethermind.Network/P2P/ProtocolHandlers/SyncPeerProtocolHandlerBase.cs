@@ -282,7 +282,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockHeadersMessage> Handle(GetBlockHeadersMessage getBlockHeadersMessage, CancellationToken cancellationToken)
         {
             using GetBlockHeadersMessage message = getBlockHeadersMessage;
-            Metrics.Eth62GetBlockHeadersReceived++;
             Stopwatch stopwatch = Stopwatch.StartNew();
             if (Logger.IsTrace)
             {
@@ -338,7 +337,6 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
         protected async Task<BlockBodiesMessage> Handle(GetBlockBodiesMessage request, CancellationToken cancellationToken)
         {
             using GetBlockBodiesMessage message = request;
-            Metrics.Eth62GetBlockBodiesReceived++;
             if (Logger.IsTrace)
             {
                 Logger.Trace($"Received bodies request of length {message.BlockHashes.Count} from {Session.Node:c}:");
@@ -376,20 +374,17 @@ namespace Nethermind.Network.P2P.ProtocolHandlers
 
         protected void Handle(BlockHeadersMessage message, long size)
         {
-            Metrics.Eth62BlockHeadersReceived++;
             _headersRequests.Handle(message.BlockHeaders, size);
         }
 
         protected void HandleBodies(BlockBodiesMessage blockBodiesMessage, long size)
         {
-            Metrics.Eth62BlockBodiesReceived++;
             _bodiesRequests.Handle((blockBodiesMessage.Bodies, size), size);
         }
 
         protected async Task<ReceiptsMessage> Handle(GetReceiptsMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            Metrics.Eth63GetReceiptsReceived++;
             if (message.Hashes.Count > 512)
             {
                 throw new EthSyncException("Incoming receipts request for more than 512 blocks");

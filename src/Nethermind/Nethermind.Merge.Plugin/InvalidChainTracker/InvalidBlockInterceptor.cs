@@ -69,13 +69,9 @@ public class InvalidBlockInterceptor : IBlockValidator
         return result;
     }
 
-    public bool ValidateSuggestedBlock(Block block)
+    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error, bool validateHashes = true)
     {
-        return ValidateSuggestedBlock(block, out _);
-    }
-    public bool ValidateSuggestedBlock(Block block, [NotNullWhen(false)] out string? error)
-    {
-        bool result = _baseValidator.ValidateSuggestedBlock(block, out error);
+        bool result = _baseValidator.ValidateSuggestedBlock(block, out error, validateHashes);
         if (!result)
         {
             if (_logger.IsTrace) _logger.Trace($"Intercepted a bad block {block}");

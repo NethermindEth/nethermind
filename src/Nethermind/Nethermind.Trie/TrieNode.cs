@@ -21,7 +21,7 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Trie
 {
-    public partial class TrieNode
+    public sealed partial class TrieNode
     {
 #if DEBUG
         private static int _idCounter;
@@ -56,6 +56,8 @@ namespace Nethermind.Trie
         public bool IsPersisted { get; set; }
 
         public Hash256? Keccak { get; internal set; }
+
+        public bool HasRlp => _rlp != null;
 
         public ref readonly CappedArray<byte> FullRlp
         {
@@ -507,7 +509,10 @@ namespace Nethermind.Trie
             if (rlp is null || IsDirty)
             {
                 ref readonly CappedArray<byte> oldRlp = ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Empty;
-                CappedArray<byte> fullRlp = RlpEncode(tree, ref path, bufferPool);
+                CappedArray<byte> fullRlp = NodeType == NodeType.Branch ?
+                    TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool) :
+                    RlpEncode(tree, ref path, bufferPool);
+
                 if (fullRlp.IsNotNullOrEmpty)
                 {
                     bufferPool.SafeReturnBuffer(oldRlp);
@@ -529,15 +534,20 @@ namespace Nethermind.Trie
 
         internal CappedArray<byte> RlpEncode(ITrieNodeResolver tree, ref TreePath path, ICappedArrayPool? bufferPool = null)
         {
-            CappedArray<byte> rlp = TrieNodeDecoder.Encode(tree, ref path, this, bufferPool);
-            // just included here to improve the class reading
-            // after some analysis I believe that any non-test Ethereum cases of a trie ever have nodes with RLP shorter than 32 bytes
-            // if (rlp.Bytes.Length < 32)
-            // {
-            //     throw new InvalidDataException("Unexpected less than 32");
-            // }
+            return NodeType switch
+            {
+                NodeType.Branch => TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool),
+                NodeType.Extension => TrieNodeDecoder.EncodeExtension(this, tree, ref path, bufferPool),
+                NodeType.Leaf => TrieNodeDecoder.EncodeLeaf(this, bufferPool),
+                _ => ThrowUnhandledNodeType(this)
+            };
 
-            return rlp;
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static CappedArray<byte> ThrowUnhandledNodeType(TrieNode item)
+            {
+                throw new TrieException($"An attempt was made to encode a trie node of type {item.NodeType}");
+            }
         }
 
         public object GetData(int index)
@@ -660,11 +670,6 @@ namespace Nethermind.Trie
             }
 
             return previousLength;
-        }
-
-        public void AppendChildPathBranch(ref TreePath currentPath, int childIndex)
-        {
-            currentPath.AppendMut(childIndex);
         }
 
         public TrieNode? GetChild(ITrieNodeResolver tree, ref TreePath path, int childIndex)
@@ -1159,7 +1164,7 @@ namespace Nethermind.Trie
             RlpFactory rlp = _rlp;
             if (rlp is null)
             {
-                AppendChildPathBranch(ref path, 0);
+                path.AppendMut(0);
                 for (int i = 0; i < 16; i++)
                 {
                     path.SetLast(i);
@@ -1173,7 +1178,7 @@ namespace Nethermind.Trie
             rlpStream.Reset();
             rlpStream.SkipLength();
 
-            AppendChildPathBranch(ref path, 0);
+            path.AppendMut(0);
             for (int i = 0; i < 16; i++)
             {
                 int prefix = rlpStream.PeekByte();

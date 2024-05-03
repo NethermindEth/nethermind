@@ -347,7 +347,7 @@ namespace Nethermind.Trie
         public void UpdateRootHash()
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, true, bufferPool: _bufferPool);
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
@@ -730,7 +730,7 @@ namespace Nethermind.Trie
                                 }
                             }
 
-                            node.AppendChildPathBranch(ref path, childNodeIndex);
+                            path.AppendMut(childNodeIndex);
                             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childNodeIndex);
                             if (childNode is null)
                             {
@@ -926,7 +926,7 @@ namespace Nethermind.Trie
             }
 
             int childIdx = traverseContext.UpdatePath[traverseContext.CurrentIndex];
-            node.AppendChildPathBranch(ref path, childIdx);
+            path.AppendMut(childIdx);
             TrieNode childNode = node.GetChildWithChildPath(TrieStore, ref path, childIdx);
             if (traverseContext.IsUpdate)
             {
