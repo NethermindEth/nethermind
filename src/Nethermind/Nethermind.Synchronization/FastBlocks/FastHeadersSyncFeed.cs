@@ -250,6 +250,10 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
+            foreach (HeadersSyncBatch dependency in _dependencies.Values)
+            {
+                dependency.Dispose();
+            }
             _dependencies.Clear();
             MarkDirty();
         }
@@ -274,6 +278,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 MarkDirty();
                 InsertHeaders(dependentBatch!);
+                dependentBatch.Dispose();
                 lowest = LowestInsertedBlockHeader?.Number;
                 cancellationToken.ThrowIfCancellationRequested();
 
