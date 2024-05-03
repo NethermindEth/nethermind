@@ -10,6 +10,7 @@ using System.IO.Abstractions;
 using System.IO.Pipelines;
 using System.Linq;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.AspNetCore.Connections;
 using Microsoft.AspNetCore.Http;
@@ -119,6 +120,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
     {
         reader = await RecordRequest(reader);
         Stopwatch stopwatch = Stopwatch.StartNew();
+        CancellationTokenSource timeoutSource = new(_jsonRpcConfig.Timeout);
 
         // Handles general exceptions during parsing and validation.
         // Sends an error response and stops the stopwatch.
@@ -137,7 +139,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
         try
         {
             // Asynchronously reads data from the PipeReader.
-            ReadResult readResult = await reader.ReadToEndAsync();
+            ReadResult readResult = await reader.ReadToEndAsync(timeoutSource.Token);
 
             buffer = readResult.Buffer;
             // Placeholder for a result in case of deserialization failure.
