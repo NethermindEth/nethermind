@@ -234,16 +234,20 @@ namespace Nethermind.Blockchain.Test
             Assert.That(result, Is.EqualTo(head.Hash));
         }
 
-        [Test, Timeout(Timeout.MaxTestTime)]
-        public void Eip2935_init_block_history_and_then_get_hash()
+        [Timeout(Timeout.MaxTestTime)]
+        [TestCase(1)]
+        [TestCase(512)]
+        [TestCase(8192)]
+        [TestCase(8193)]
+        public void Eip2935_init_block_history_and_then_get_hash(int chainLength)
         {
-            const int chainLength = 512;
-
             Block genesis = Build.A.Block.Genesis.TestObject;
             BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(chainLength).TestObject;
 
             BlockHeader? head = tree.FindHeader(chainLength - 1, BlockTreeLookupOptions.None);
+            // number = chainLength
             Block current = Build.A.Block.WithParent(head!).TestObject;
+            tree.SuggestHeader(current.Header);
 
             IWorldState worldState = CreateWorldState();
             var specToUse = new OverridableReleaseSpec(Prague.Instance)
@@ -261,16 +265,27 @@ namespace Nethermind.Blockchain.Test
 
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
+            AssertGenesisHash(provider, current.Header, genesis.Hash!);
 
-            tree.SuggestHeader(current.Header);
             head = current.Header;
+            // number = chainLength + 1
             current = Build.A.Block.WithParent(head!).TestObject;
+            tree.SuggestHeader(current.Header);
+
             store.ApplyHistoryBlockHashes(current.Header);
             result = provider.GetBlockhash(current.Header, chainLength);
             Assert.That(result, Is.EqualTo(head?.Hash));
 
-            result = provider.GetBlockhash(current.Header, 0);
-            Assert.That(result, Is.EqualTo(genesis.Hash));
+            AssertGenesisHash(provider, current.Header, genesis.Hash!);
+        }
+
+        private static void AssertGenesisHash(BlockhashProvider provider, BlockHeader currentHeader, Hash256 genesisHash)
+        {
+            Hash256? result = provider.GetBlockhash(currentHeader, 0);
+            if (currentHeader.Number > Eip2935Constants.RingBufferSize)
+                Assert.That(result, Is.Null);
+            else
+                Assert.That(result, Is.EqualTo(genesisHash));
         }
     }
 }
