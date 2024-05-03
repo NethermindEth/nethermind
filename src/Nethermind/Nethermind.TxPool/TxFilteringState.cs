@@ -5,7 +5,7 @@ using Nethermind.Core;
 
 namespace Nethermind.TxPool;
 
-public class TxFilteringState(Transaction tx, IAccountStateProvider accounts)
+public ref struct TxFilteringState(Transaction tx, IAccountStateProvider accounts)
 {
     private AccountStruct _senderAccount;
 

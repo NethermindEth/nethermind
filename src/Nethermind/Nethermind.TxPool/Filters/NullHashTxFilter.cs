@@ -12,7 +12,7 @@ namespace Nethermind.TxPool.Filters
     /// </summary>
     internal sealed class NullHashTxFilter : IIncomingTxFilter
     {
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             if (tx.Hash is null)
             {
