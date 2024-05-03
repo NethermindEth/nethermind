@@ -37,12 +37,17 @@ internal class ShutterCrypto
 
     public static G1 ComputeIdentity(Bytes32 identityPrefix, Address sender)
     {
-        Span<byte> identity = stackalloc byte[52];
-        identityPrefix.Unwrap().CopyTo(identity);
-        sender.Bytes.CopyTo(identity[32..]);
+        Span<byte> preimage = stackalloc byte[52];
+        identityPrefix.Unwrap().CopyTo(preimage);
+        sender.Bytes.CopyTo(preimage[32..]);
 
+        return ComputeIdentity(preimage);
+    }
+
+    public static G1 ComputeIdentity(ReadOnlySpan<byte> preimage)
+    {
         // todo: check if need to reverse?
-        Span<byte> hash = Keccak.Compute(identity).Bytes;
+        Span<byte> hash = Keccak.Compute(preimage).Bytes;
         hash.Reverse();
         return G1.generator().mult(hash.ToArray());
     }
@@ -236,8 +241,8 @@ internal class ShutterCrypto
 
     public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity)
     {
-        // todo: check against version in spec
-        return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
+        // todo: fix this
+        return GT.finalverify(new(decryptionKey, G2.generator().neg()), new(identity, eonPublicKey));
     }
 
     public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, ReadOnlySpan<byte> signature, Address keyperAddress)

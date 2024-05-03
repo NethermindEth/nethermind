@@ -15,12 +15,9 @@ using Nethermind.Crypto;
 using Multiformats.Address;
 using Nethermind.Core;
 using Google.Protobuf;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Abi;
-using Nethermind.Merge.AuRa.Shutter.Contracts;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
-using Google.Protobuf.WellKnownTypes;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.Precompiles.Bls;
 
@@ -167,12 +164,12 @@ public class ShutterP2P
         foreach (Dto.Key key in decryptionKeys.Keys.AsEnumerable().Skip(1))
         {
             Bls.P1 dk = new(key.Key_.ToArray());
-            // Bls.P1 identity = new(key.Identity.ToArray());
-            // if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
-            // {
-            //     if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
-            //     return false;
-            // }
+            Bls.P1 identity = ShutterCrypto.ComputeIdentity(key.Identity.Span);
+            if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
+            {
+                if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+                return false;
+            }
         }
 
         int signerIndicesCount = decryptionKeys.Gnosis.SignerIndices.Count();

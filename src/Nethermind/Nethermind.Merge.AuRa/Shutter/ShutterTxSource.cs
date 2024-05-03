@@ -32,7 +32,6 @@ using G1 = Bls.P1;
 public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
-    public ulong? TxPointer; //todo: might not need local txPointer once Shutter updates?
     private bool _validatorsRegistered = false;
     private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
     private readonly IAbiEncoder _abiEncoder;
@@ -79,23 +78,16 @@ public class ShutterTxSource : ITxSource
 
         // todo: add to specprovider
         ulong nextSlot = (((ulong)DateTimeOffset.UtcNow.ToUnixTimeSeconds() - ChiadoSpecProvider.BeaconChainGenesisTimestamp) / 5) + 1;
-        if (DecryptionKeys is null || TxPointer is null || DecryptionKeys.Gnosis.Slot != nextSlot)
+        if (DecryptionKeys is null || DecryptionKeys.Gnosis.Slot != nextSlot)
         {
             if (_logger.IsWarn) _logger.Warn($"Decryption keys not received for slot {nextSlot}, cannot include Shutter transactions");
             return [];
         }
 
-        // todo: how to check slot number? get from fork choice?
-
-        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, TxPointer.Value);
+        IEnumerable<SequencedTransaction> sequencedTransactions = GetNextTransactions(DecryptionKeys.Eon, DecryptionKeys.Gnosis.TxPointer);
         if (_logger.IsInfo) _logger.Info($"Got {sequencedTransactions.Count()} transactions from Shutter mempool...");
 
-        TxPointer = DecryptionKeys.Gnosis.TxPointer;
-
-        // todo: change once keypers are aware of validator contract
-        // skip block decryption key, does it do anything?
-        // IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys).Select(x => DecryptSequencedTransaction(x.Item1, x.Item2));
-        IEnumerable<Transaction> transactions = sequencedTransactions.Select(x => DecryptSequencedTransaction(x, new())).OfType<Transaction>();
+        IEnumerable<Transaction> transactions = sequencedTransactions.Zip(DecryptionKeys.Keys.Skip(1)).Select(x => DecryptSequencedTransaction(x.First, x.Second)).OfType<Transaction>();
         if (_logger.IsInfo) _logger.Info($"Decrypted {transactions.Count()} Shutter transactions...");
 
         transactions.ForEach((tx) =>
@@ -110,12 +102,8 @@ public class ShutterTxSource : ITxSource
     {
         ShutterCrypto.EncryptedMessage encryptedMessage = ShutterCrypto.DecodeEncryptedMessage(sequencedTransaction.EncryptedTransaction);
 
-        // todo: remove once Shutter swaps to BLS
-        UInt256 sk = 123456789;
-        Address senderAddress = new("3834a349678eF446baE07e2AefFC01054184af00");
-        Bytes32 identityPrefix = new(Convert.FromHexString("3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834").AsSpan());
-        G1 identity = ShutterCrypto.ComputeIdentity(identityPrefix, senderAddress);
-        G1 key = identity.dup().mult(sk.ToLittleEndian());
+        G1 key = new(decryptionKey.Key_.ToArray());
+        G1 identity = ShutterCrypto.ComputeIdentity(decryptionKey.Identity.Span);
 
         if (!identity.is_equal(sequencedTransaction.Identity))
         {

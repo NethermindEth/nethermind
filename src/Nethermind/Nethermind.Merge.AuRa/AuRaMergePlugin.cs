@@ -123,11 +123,6 @@ namespace Nethermind.Merge.AuRa
                 Action<Shutter.Dto.DecryptionKeys> onDecryptionKeysValidated = (Shutter.Dto.DecryptionKeys decryptionKeys) =>
                 {
                     shutterTxSource.DecryptionKeys = decryptionKeys;
-
-                    if (shutterTxSource.TxPointer is null)
-                    {
-                        shutterTxSource.TxPointer = decryptionKeys.Gnosis.TxPointer;
-                    }
                 };
 
                 ShutterP2P shutterP2P = new(onDecryptionKeysValidated, shouldProccessDecryptionKeys, readOnlyBlockTree, readOnlyTxProcessingEnvFactory, _api.AbiEncoder!, _auraConfig, _api.LogManager);
