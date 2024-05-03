@@ -4,9 +4,9 @@
 namespace EngineRequestsGenerator;
 
 [AttributeUsage(AttributeTargets.Field)]
-public class TestCaseMetadataAttribute(string name, string description) : Attribute
+public class TestCaseMetadataAttribute(string title, string description) : Attribute
 {
-    public string Name { get; set; } = name;
+    public string Title { get; set; } = title;
 
     public string Description { get; set; } = description;
 }

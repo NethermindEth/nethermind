@@ -35,7 +35,6 @@ public class TestCaseGenerator
     private TestCase _testCase;
     private readonly string _outputPath;
     private TaskCompletionSource<bool>? _taskCompletionSource;
-    private readonly MetadataGenerator _metadataGenerator;
     private Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
     public TestCaseGenerator(
@@ -50,7 +49,6 @@ public class TestCaseGenerator
         _chainSpecPath = chainSpecPath;
         _testCase = testCase;
         _outputPath = outputPath;
-        _metadataGenerator = new MetadataGenerator(_outputPath);
     }
     public async Task Generate()
     {
@@ -74,8 +72,6 @@ public class TestCaseGenerator
             await GenerateTestCase(blockGasConsumptionTarget);
             Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
         }
-
-        _metadataGenerator.Generate(_testCase);
     }
 
     private async Task GenerateTestCase(long blockGasConsumptionTarget)
