@@ -82,11 +82,11 @@ namespace Nethermind.TxPool.Collections
                 Debug.Assert(bucket.Count > 0);
 
                 accounts.TryGetAccount(address, out AccountStruct account);
-                UpdateGroupNonLocked(address, account, bucket, updateElements);
+                UpdateGroupNonLocked(account, bucket, updateElements);
             }
         }
 
-        private void UpdateGroupNonLocked(Address groupKey, AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
+        private void UpdateGroupNonLocked(AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
@@ -132,7 +132,7 @@ namespace Nethermind.TxPool.Collections
             {
                 Debug.Assert(bucket.Count > 0);
 
-                UpdateGroupNonLocked(groupKey, groupValue, bucket, updateElements);
+                UpdateGroupNonLocked(groupValue, bucket, updateElements);
             }
         }
 
