@@ -343,7 +343,7 @@ public class GethLikeJavaScriptTracerTests : VirtualMachineTestsBase
     public void call_tracer()
     {
         using GethLikeBlockJavaScriptTracer tracer = ExecuteBlock(
-                GetTracer("callTracer"),
+                GetTracer("callTracer_legacy"),
                 NestedCalls(),
                 MainnetSpecProvider.CancunActivation);
         GethLikeTxTrace traces = tracer.BuildResult().First();

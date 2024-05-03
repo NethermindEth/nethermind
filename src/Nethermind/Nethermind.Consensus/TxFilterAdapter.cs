@@ -24,7 +24,7 @@ namespace Nethermind.Consensus
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             if (tx is not GeneratedTransaction)
             {

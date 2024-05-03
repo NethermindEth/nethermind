@@ -26,7 +26,7 @@ public class TransactionSubstate
     private const int RevertPrefix = 4;
     private const int WordSize = EvmPooledMemory.WordSize;
 
-    private const string RevertedErrorMessagePrefix = "Reverted ";
+    public const string RevertedErrorMessagePrefix = "Reverted ";
     public static readonly byte[] ErrorFunctionSelector = Keccak.Compute("Error(string)").BytesToArray()[..RevertPrefix];
     public static readonly byte[] PanicFunctionSelector = Keccak.Compute("Panic(uint256)").BytesToArray()[..RevertPrefix];
 
@@ -97,53 +97,57 @@ public class TransactionSubstate
         );
     }
 
-    private static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
+    public static string EncodeErrorMessage(ReadOnlySpan<byte> span) =>
         Utf8.IsValid(span) ? Encoding.UTF8.GetString(span) : span.ToHexString(true);
+
+    public static string? GetErrorMessage(ReadOnlySpan<byte> span)
+    {
+        if (span.Length < RevertPrefix) return null;
+        ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
+        UInt256 start, length;
+
+        if (prefix.SequenceEqual(PanicFunctionSelector))
+        {
+            if (span.Length < WordSize) return null;
+
+            UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
+            {
+                return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
+            }
+
+            return panicReason;
+        }
+
+        if (span.Length < WordSize * 2) return null;
+
+        if (prefix.SequenceEqual(ErrorFunctionSelector))
+        {
+            start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (start != WordSize) return null;
+
+            length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
+            if (length > span.Length) return null;
+
+            ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
+            return EncodeErrorMessage(binaryMessage);
+        }
+
+        start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
+        if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
+
+        length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
+        if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
+
+        span = span.Slice((int)lengthOffset, (int)length);
+        return EncodeErrorMessage(span);
+    }
 
     private string? TryGetErrorMessage(ReadOnlySpan<byte> span)
     {
         try
         {
-            if (span.Length < RevertPrefix) return null;
-            ReadOnlySpan<byte> prefix = span.TakeAndMove(RevertPrefix);
-            UInt256 start, length;
-
-            if (prefix.SequenceEqual(PanicFunctionSelector))
-            {
-                if (span.Length < WordSize) return null;
-
-                UInt256 panicCode = new(span.TakeAndMove(WordSize), isBigEndian: true);
-                if (!PanicReasons.TryGetValue(panicCode, out string panicReason))
-                {
-                    return $"unknown panic code ({panicCode.ToHexString(skipLeadingZeros: true)})";
-                }
-
-                return panicReason;
-            }
-
-            if (span.Length < WordSize * 2) return null;
-
-            if (prefix.SequenceEqual(ErrorFunctionSelector))
-            {
-                start = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
-                if (start != WordSize) return null;
-
-                length = new UInt256(span.TakeAndMove(WordSize), isBigEndian: true);
-                if (length > span.Length) return null;
-
-                ReadOnlySpan<byte> binaryMessage = span.TakeAndMove((int)length);
-                return EncodeErrorMessage(binaryMessage);
-
-            }
-
-            start = new UInt256(span.Slice(0, WordSize), isBigEndian: true);
-            if (UInt256.AddOverflow(start, WordSize, out UInt256 lengthOffset) || lengthOffset > span.Length) return null;
-
-            length = new UInt256(span.Slice((int)start, WordSize), isBigEndian: true);
-            if (UInt256.AddOverflow(lengthOffset, length, out UInt256 endOffset) || endOffset != span.Length) return null;
-
-            span = span.Slice((int)lengthOffset, (int)length);
-            return EncodeErrorMessage(span);
+            return GetErrorMessage(span);
         }
         catch (Exception e) // shouldn't happen, just for being safe
         {
