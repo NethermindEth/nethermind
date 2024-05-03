@@ -405,9 +405,9 @@ namespace Nethermind.Trie.Pruning
             if (_pruningStrategy.PruningEnabled)
             {
                 DirtyNodesCache.Key key = new DirtyNodesCache.Key(address, nodeCommitInfo.Path, node.Keccak);
-                if (IsNodeCached(key))
+                if (_dirtyNodes.TryGetValue(in key, out TrieNode cachedNodeCopy))
                 {
-                    TrieNode cachedNodeCopy = FindCachedOrUnknown(key, false);
+                    Metrics.LoadedFromCacheNodesCount++;
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
                         if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
