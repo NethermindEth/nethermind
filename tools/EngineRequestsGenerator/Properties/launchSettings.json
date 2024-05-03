@@ -3,7 +3,7 @@
   "profiles": {
     "EngineRequestsGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "-c ../../../../../src/Nethermind/Chains/holesky.json"
+      "commandLineArgs": "-c ../../../../../src/Nethermind/Chains/holesky.json -t Keccak256From32Bytes"
     }
   }
 }

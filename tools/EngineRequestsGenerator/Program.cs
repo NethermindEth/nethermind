@@ -26,6 +26,9 @@ public static class Program
     {
         [Option('c', "chainspecpath", Required = false, HelpText = "Path to chainspec used to generate tests")]
         public string ChainspecPath { get; set; }
+
+        [Option('t', "testcase", Required = false, HelpText = "Name of the test case")]
+        public string TestCaseName { get; set; }
     }
 
     private static int _numberOfBlocksToProduce;
@@ -57,10 +60,12 @@ public static class Program
         _chainSpecPath = options.ChainspecPath;
 
         int blockGasConsumptionTarget = 30_000_000;
-        _testCase = TestCase.Keccak256From32Bytes;
+        var foundTestCase = Enum.TryParse(options.TestCaseName, out TestCase testCase);
+        if (!foundTestCase)
+            throw new ArgumentException($"Test case {options.TestCaseName} not found");
+        _testCase = testCase;
+
         bool generateSingleFile = false;
-
-
         if (generateSingleFile)
         {
             await GenerateTestCase(blockGasConsumptionTarget);
