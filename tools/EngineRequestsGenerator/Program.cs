@@ -15,11 +15,19 @@ using Nethermind.Merge.Plugin.Test;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using CommandLine;
 
 namespace EngineRequestsGenerator;
 
+
 public static class Program
 {
+    public class Options
+    {
+        [Option('c', "chainspecpath", Required = false, HelpText = "Path to chainspec used to generate tests")]
+        public string ChainspecPath { get; set; }
+    }
+
     private static int _numberOfBlocksToProduce;
     private static int _maxNumberOfWithdrawalsPerBlock;
     private static int _numberOfWithdrawals;
@@ -34,12 +42,19 @@ public static class Program
 
     static async Task Main(string[] args)
     {
+        ParserResult<Options> result = Parser.Default.ParseArguments<Options>(args);
+        if (result is Parsed<Options> options)
+            await Run(options.Value);
+    }
+
+    private static async Task Run(Options options)
+    {
         // draft of setup options
         _numberOfBlocksToProduce = 2;
 
         _maxNumberOfWithdrawalsPerBlock = 16;
         _numberOfWithdrawals = 1600;
-        _chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
+        _chainSpecPath = options.ChainspecPath;
 
         int blockGasConsumptionTarget = 30_000_000;
         _testCase = TestCase.Keccak256From32Bytes;
