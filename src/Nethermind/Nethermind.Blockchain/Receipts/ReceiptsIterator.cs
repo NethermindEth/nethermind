@@ -12,7 +12,7 @@ namespace Nethermind.Blockchain.Receipts
 {
     public ref struct ReceiptsIterator
     {
-        private readonly IDb _blocksDb;
+        //private readonly IDb _blocksDb;
         private readonly int _length;
         private Rlp.ValueDecoderContext _decoderContext;
         private readonly int _startingPosition;
@@ -28,7 +28,7 @@ namespace Nethermind.Blockchain.Receipts
         public ReceiptsIterator(scoped in Span<byte> receiptsData, IDb blocksDb, Func<IReceiptsRecovery.IRecoveryContext?>? recoveryContextFactory, IReceiptRefDecoder receiptRefDecoder)
         {
             _decoderContext = receiptsData.AsRlpValueContext();
-            _blocksDb = blocksDb;
+            //_blocksDb = blocksDb;
             _receipts = null;
             _receiptIndex = 0;
             _recoveryContextFactory = recoveryContextFactory;
@@ -53,7 +53,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             _decoderContext = new Rlp.ValueDecoderContext();
             _length = receipts.Length;
-            _blocksDb = null;
+            //_blocksDb = null;
             _receipts = receipts;
             _receiptIndex = 0;
             _recoveryContextConfigured = true;
@@ -108,7 +108,7 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_receipts is null && !_decoderContext.Data.IsEmpty)
             {
-                _blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
+                //_blocksDb?.DangerousReleaseMemory(_decoderContext.Data);
             }
             _recoveryContext?.Dispose();
         }

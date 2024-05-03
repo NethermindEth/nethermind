@@ -13,6 +13,7 @@ namespace Nethermind.Db
 
         private readonly IDb _wrappedDb;
         private readonly bool _createInMemWriteStore;
+        public string? DbPath => _wrappedDb.DbPath;
 
         public ReadOnlyDb(IDb wrappedDb, bool createInMemWriteStore)
         {

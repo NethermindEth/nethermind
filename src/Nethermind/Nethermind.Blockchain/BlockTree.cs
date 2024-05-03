@@ -298,7 +298,7 @@ namespace Nethermind.Blockchain
                 throw new InvalidOperationException("Genesis block should not be inserted.");
             }
 
-            _blockStore.Insert(block, writeFlags: blockWriteFlags);
+            _blockStore.Insert(block, writeFlags: blockWriteFlags, shouldCache: ShouldCache(block.Number));
             _headerStore.InsertBlockNumber(block.Hash, block.Number);
 
             bool saveHeader = (insertBlockOptions & BlockTreeInsertBlockOptions.SaveHeader) != 0;
@@ -366,7 +366,7 @@ namespace Nethermind.Blockchain
                     throw new InvalidOperationException("An attempt to suggest block with a null hash.");
                 }
 
-                _blockStore.Insert(block);
+                _blockStore.Insert(block, shouldCache: true);
             }
 
             if (!isKnown)
@@ -1293,8 +1293,6 @@ namespace Nethermind.Blockchain
         public Hash256? FinalizedHash { get; private set; }
         public Hash256? SafeHash { get; private set; }
 
-        private readonly McsLock _allocatorLock = new();
-
         public Block? FindBlock(Hash256? blockHash, BlockTreeLookupOptions options, long? blockNumber = null)
         {
             if (blockHash is null || blockHash == Keccak.Zero)
@@ -1306,31 +1304,11 @@ namespace Nethermind.Blockchain
             blockNumber ??= _headerStore.GetBlockNumber(blockHash);
             if (blockNumber is not null)
             {
-                if (OperatingSystem.IsWindows())
-                {
-                    // Although thread-safe, because the blocks are so large it
-                    // causes a lot of contention on the allocator used inside RocksDb
-                    // on Windows; which then impacts block processing heavily. We
-                    // take the lock here instead to reduce contention on the allocator
-                    // in the db; so the contention is in this method rather than
-                    // across the whole database.
-                    // A better solution would be to change the allocator https://github.com/NethermindEth/nethermind/issues/6107
-                    using var handle = _allocatorLock.Acquire();
-
-                    block = _blockStore.Get(
-                        blockNumber.Value,
-                        blockHash,
-                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                        shouldCache: false);
-                }
-                else
-                {
-                    block = _blockStore.Get(
-                        blockNumber.Value,
-                        blockHash,
-                        (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
-                        shouldCache: false);
-                }
+                block = _blockStore.Get(
+                    blockNumber.Value,
+                    blockHash,
+                    (options & BlockTreeLookupOptions.ExcludeTxHashes) != 0 ? RlpBehaviors.ExcludeHashes : RlpBehaviors.None,
+                    shouldCache: false);
             }
 
             if (block is null)

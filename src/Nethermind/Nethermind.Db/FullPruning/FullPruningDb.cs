@@ -28,6 +28,7 @@ namespace Nethermind.Db.FullPruning
 
         // current main DB, will be written to and will be main source for reading
         private IDb _currentDb;
+        public string? DbPath => _currentDb.DbPath;
 
         // current pruning context, secondary DB that the state will be written to, as well as state trie will be copied to
         // this will be null if no full pruning is in progress

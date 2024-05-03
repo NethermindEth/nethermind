@@ -112,15 +112,16 @@ namespace Nethermind.Serialization.Rlp
                 return;
             }
 
-            var (total, topics) = GetContentLength(item);
+            var (total, topicsLength) = GetContentLength(item);
             rlpStream.StartSequence(total);
 
             rlpStream.Encode(item.LoggersAddress);
-            rlpStream.StartSequence(topics);
+            rlpStream.StartSequence(topicsLength);
 
-            for (var i = 0; i < item.Topics.Length; i++)
+            Hash256[] topics = item.Topics;
+            for (var i = 0; i < topics.Length; i++)
             {
-                rlpStream.Encode(item.Topics[i].Bytes.WithoutLeadingZerosOrEmpty());
+                rlpStream.Encode(topics[i].Bytes.WithoutLeadingZerosOrEmpty());
             }
 
             ReadOnlySpan<byte> withoutLeadingZero = item.Data.WithoutLeadingZerosOrEmpty();

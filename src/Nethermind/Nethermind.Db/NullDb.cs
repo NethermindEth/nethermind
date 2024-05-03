@@ -16,6 +16,7 @@ namespace Nethermind.Db
         }
 
         private static NullDb? _instance;
+        public string? DbPath => null;
 
         public static NullDb Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new NullDb());
 

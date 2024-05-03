@@ -28,6 +28,7 @@ public class DbOnTheRocks : IDb, ITunableDb
     protected ILogger _logger;
 
     private string? _fullPath;
+    public string? DbPath => _fullPath;
 
     private static readonly ConcurrentDictionary<string, RocksDb> _dbsByPath = new();
 

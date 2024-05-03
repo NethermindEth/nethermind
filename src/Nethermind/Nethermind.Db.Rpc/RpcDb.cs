@@ -20,6 +20,9 @@ namespace Nethermind.Db.Rpc
         private readonly ILogger _logger;
         private readonly IJsonRpcClient _rpcClient;
         private readonly IDb _recordDb;
+#pragma warning disable CS8632 // The annotation for nullable reference types should only be used in code within a '#nullable' annotations context.
+        string? IDb.DbPath => null;
+#pragma warning restore CS8632 // The annotation for nullable reference types should only be used in code within a '#nullable' annotations context.
 
         public RpcDb(string dbName, IJsonSerializer jsonSerializer, IJsonRpcClient rpcClient, ILogManager logManager, IDb recordDb)
         {

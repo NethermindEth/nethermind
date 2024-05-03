@@ -2,26 +2,38 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using System.Threading.Tasks;
+using Microsoft.IO;
+using Microsoft.Win32.SafeHandles;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Threading;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Serialization.Rlp;
+
+using Snappier;
 #pragma warning disable 618
 
 namespace Nethermind.Blockchain.Receipts
 {
     public class PersistentReceiptStorage : IReceiptStorage
     {
+        private string? _basePath;
         private readonly IColumnsDb<ReceiptsColumns> _database;
         private readonly ISpecProvider _specProvider;
         private readonly IReceiptsRecovery _receiptsRecovery;
@@ -38,6 +50,9 @@ namespace Nethermind.Blockchain.Receipts
         private readonly bool _legacyHashKey;
 
         private const int CacheSize = 64;
+        private const int BlocksPerEra = 8192;
+        private const int FileSplit = 8;
+        private const int BlocksPerFile = BlocksPerEra / FileSplit;
         private readonly LruCache<ValueHash256, TxReceipt[]> _receiptsCache = new(CacheSize, CacheSize, "receipts");
 
         public event EventHandler<BlockReplacementEventArgs> ReceiptsInserted;
@@ -73,6 +88,12 @@ namespace Nethermind.Blockchain.Receipts
             _legacyHashKey = firstValue.HasValue && firstValue.Value.Key is not null && firstValue.Value.Key.Length == Hash256.Size;
 
             _blockTree.BlockAddedToMain += BlockTreeOnBlockAddedToMain;
+
+            var basePath = _defaultColumn.DbPath;
+            if (basePath is not null)
+            {
+                _basePath = Path.Combine(basePath, "receiptfiles");
+            }
         }
 
         private void BlockTreeOnBlockAddedToMain(object? sender, BlockReplacementEventArgs e)
@@ -151,6 +172,20 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             Span<byte> receiptsData = GetReceiptData(block.Number, blockHash);
+            if (receiptsData.IsNullOrEmpty())
+            {
+                receipts = _storageDecoder.Decode(in receiptsData);
+
+                if (recover)
+                {
+                    _receiptsRecovery.TryRecover(block, receipts);
+                    _receiptsCache.Set(blockHash, receipts);
+                }
+
+                return receipts;
+            }
+
+            receiptsData = GetReceiptDataDb(block.Number, blockHash);
 
             try
             {
@@ -179,6 +214,59 @@ namespace Nethermind.Blockchain.Receipts
 
         [SkipLocalsInit]
         private unsafe Span<byte> GetReceiptData(long blockNumber, Hash256 blockHash)
+        {
+            string? path = null;
+            string? filename = null;
+            if (_basePath is not null)
+            {
+                (string directory, filename, _) = GetReceiptsDirectoryAndPath(blockNumber, _basePath);
+                path = Path.Combine(directory, filename);
+            }
+            if (path is not null && File.Exists(path))
+            {
+                using FileStream file = new(path, mode: FileMode.Open, access: FileAccess.Read, share: FileShare.ReadWrite);
+                var fileHandle = file.SafeFileHandle;
+                long headerOffset = (blockNumber / FileSplit) % BlocksPerFile;
+
+                Vector128<long> headerEntry = default;
+                Span<byte> headerData = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref headerEntry, 1));
+                long read = RandomAccess.Read(fileHandle, headerData, Vector128<byte>.Count * headerOffset);
+                if (read == Vector128<byte>.Count && headerEntry != default)
+                {
+                    long offset = headerEntry.GetElement(0);
+                    int length = (int)headerEntry.GetElement(1);
+
+                    var array = ArrayPool<byte>.Shared.Rent(length);
+                    try
+                    {
+                        var input = array.AsSpan(0, length);
+                        read = RandomAccess.Read(fileHandle, input, offset);
+                        if (read == length)
+                        {
+                            using RecyclableMemoryStream output = RecyclableStream.GetStream(filename);
+                            using (SnappyStream decompressor = new(new MemoryStream(array, 0, length), CompressionMode.Decompress))
+                            {
+                                decompressor.CopyTo(output);
+                            }
+
+                            ArrayPool<byte>.Shared.Return(array);
+                            array = null;
+
+                            return output.ToArray();
+                        }
+                    }
+                    finally
+                    {
+                        if (array is not null) ArrayPool<byte>.Shared.Return(array);
+                    }
+                }
+            }
+
+            return default;
+        }
+
+        [SkipLocalsInit]
+        private unsafe Span<byte> GetReceiptDataDb(long blockNumber, Hash256 blockHash)
         {
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
@@ -262,6 +350,20 @@ namespace Nethermind.Blockchain.Receipts
             return result;
         }
 
+        private readonly ConcurrentDictionary<int, McsLock> _locks = new();
+
+        private static (string directory, string filename, int lockId) GetReceiptsDirectoryAndPath(long blockNumber, string basePath)
+        {
+            var era = (int)(blockNumber / BlocksPerEra);
+            long eraGroup = era / 100;
+            int blockDigit = (int)(blockNumber % FileSplit);
+
+            string directory = Path.Combine(basePath, eraGroup.ToString("D3"));
+            string path = $"{era:D5}-{blockDigit:D1}.sz";
+
+            return (directory, path, era * FileSplit + blockDigit);
+        }
+
         [SkipLocalsInit]
         public void Insert(Block block, TxReceipt[]? txReceipts, bool ensureCanonical = true)
         {
@@ -276,29 +378,97 @@ namespace Nethermind.Blockchain.Receipts
             }
 
             _receiptsRecovery.TryRecover(block, txReceipts, false);
+            _receiptsCache.Set(block.Hash, txReceipts);
 
-            var blockNumber = block.Number;
-            var spec = _specProvider.GetSpec(block.Header);
+            IReleaseSpec spec = _specProvider.GetSpec(block.Header);
             RlpBehaviors behaviors = spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts | RlpBehaviors.Storage : RlpBehaviors.Storage;
 
-            using (NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors))
+            if (_basePath is not null)
             {
-                Span<byte> blockNumPrefixed = stackalloc byte[40];
-                GetBlockNumPrefixedKey(blockNumber, block.Hash!, blockNumPrefixed);
-
-                _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
+                SaveToDisk(block, txReceipts, behaviors);
+            }
+            else
+            {
+                SaveToDb(block, txReceipts, behaviors);
             }
 
+            long blockNumber = block.Number;
             if (blockNumber < MigratedBlockNumber)
             {
                 MigratedBlockNumber = blockNumber;
             }
 
-            _receiptsCache.Set(block.Hash, txReceipts);
-
             if (ensureCanonical)
             {
                 EnsureCanonical(block);
+            }
+        }
+        
+        private void SaveToDb(Block block, TxReceipt[]? txReceipts, RlpBehaviors behaviors)
+        {
+            using NettyRlpStream stream = _storageDecoder.EncodeToNewNettyStream(txReceipts, behaviors);
+
+            Span<byte> blockNumPrefixed = stackalloc byte[40];
+            GetBlockNumPrefixedKey(block.Number, block.Hash!, blockNumPrefixed);
+
+            _blocksDb.PutSpan(blockNumPrefixed, stream.AsSpan());
+        }
+
+        private void SaveToDisk(Block block, TxReceipt[]? txReceipts, RlpBehaviors behaviors)
+        {
+            (string directory, string filename, int lockId) = GetReceiptsDirectoryAndPath(block.Number, _basePath);
+            using RecyclableMemoryStream output = RecyclableStream.GetStream(filename);
+            using (RecyclableRlpStream newRlp = _storageDecoder.EncodeToNewRecyclableRlpStream(txReceipts, filename, behaviors))
+            {
+                using SnappyStream compressor = new(output, CompressionMode.Compress, leaveOpen: true);
+                newRlp.CopyTo(compressor);
+            }
+
+            output.Position = 0;
+
+            string path = Path.Combine(directory, filename);
+
+            bool newLock = false;
+            using var handle = _locks.GetOrAdd(lockId, _ =>
+            {
+                newLock = true;
+                return new McsLock();
+            }).Acquire();
+
+            if (newLock)
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            using FileStream file = new(path, mode: FileMode.OpenOrCreate, access: FileAccess.Write, share: FileShare.Read);
+            SafeFileHandle fileHandle = file.SafeFileHandle;
+            long fileOffset = Math.Max(RandomAccess.GetLength(fileHandle), Vector128<byte>.Count * BlocksPerFile);
+
+            long outputLength = output.Length;
+            if (output.TryGetBuffer(out ArraySegment<byte> buffer))
+            {
+                ReadOnlySpan<byte> outputData = buffer.Array.AsSpan(buffer.Offset, (int)outputLength);
+                RandomAccess.Write(fileHandle, outputData, fileOffset);
+            }
+            else
+            {
+                WriteReadOnlySequence(fileHandle, output, fileOffset);
+            }
+
+            long headerOffset = (block.Number / FileSplit) % BlocksPerFile;
+            Vector128<long> headerEntry = Vector128.Create(fileOffset, outputLength);
+            ReadOnlySpan<byte> headerData = MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref headerEntry, 1));
+            RandomAccess.Write(fileHandle, headerData, Vector128<byte>.Count * headerOffset);
+
+            static void WriteReadOnlySequence(SafeFileHandle fileHandle, RecyclableMemoryStream output, long fileOffset)
+            {
+                ReadOnlySequence<byte> sequence = output.GetReadOnlySequence();
+                foreach (ReadOnlyMemory<byte> memory in sequence)
+                {
+                    ReadOnlySpan<byte> outputData = memory.Span;
+                    RandomAccess.Write(fileHandle, outputData, fileOffset);
+                    fileOffset += outputData.Length;
+                }
             }
         }
 
@@ -335,6 +505,9 @@ namespace Nethermind.Blockchain.Receipts
         {
             if (_receiptsCache.Contains(blockHash)) return true;
 
+            bool hasFilesystem = HasBlockOnFilesystem(blockNumber);
+            if (hasFilesystem) return true;
+
             Span<byte> blockNumPrefixed = stackalloc byte[40];
             if (_legacyHashKey)
             {
@@ -348,6 +521,28 @@ namespace Nethermind.Blockchain.Receipts
                 GetBlockNumPrefixedKey(blockNumber, blockHash, blockNumPrefixed);
                 return _blocksDb.KeyExists(blockNumPrefixed) || _blocksDb.KeyExists(blockHash);
             }
+        }
+
+        private bool HasBlockOnFilesystem(long blockNumber)
+        {
+            (string directory, string filename, _) = GetReceiptsDirectoryAndPath(blockNumber, _basePath);
+            var path = Path.Combine(directory, filename);
+            if (File.Exists(path))
+            {
+                using FileStream file = new(path, mode: FileMode.Open, access: FileAccess.Read, share: FileShare.ReadWrite);
+                var fileHandle = file.SafeFileHandle;
+                long headerOffset = (blockNumber / FileSplit) % BlocksPerFile;
+
+                Vector128<long> headerEntry = default;
+                var headerData = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref headerEntry, 1));
+                long read = RandomAccess.Read(fileHandle, headerData, Vector128<long>.Count * headerOffset);
+                if (read == Vector128<byte>.Count && headerEntry != default)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void EnsureCanonical(Block block)
