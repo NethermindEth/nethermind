@@ -69,7 +69,7 @@ public class TestCaseGenerator
 
     private async Task GenerateTestCases()
     {
-        foreach (int blockGasConsumptionTarget in BlockGasVariants.GetValuesAsUnderlyingType<BlockGasVariants>())
+        foreach (long blockGasConsumptionTarget in BlockGasVariants.Variants)
         {
             await GenerateTestCase(blockGasConsumptionTarget);
             Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
@@ -78,7 +78,7 @@ public class TestCaseGenerator
         _metadataGenerator.Generate(_testCase);
     }
 
-    private async Task GenerateTestCase(int blockGasConsumptionTarget)
+    private async Task GenerateTestCase(long blockGasConsumptionTarget)
     {
         // _txsPerBlock = blockGasConsumptionTarget / 854_000;
         // _txsPerBlock = blockGasConsumptionTarget / 970_000;
@@ -86,7 +86,7 @@ public class TestCaseGenerator
 
         _txsPerBlock = _testCase switch
         {
-            TestCase.Transfers => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
+            TestCase.Transfers => (int)blockGasConsumptionTarget / (int)GasCostOf.Transaction,
             _ => 1
         };
 
@@ -168,7 +168,7 @@ public class TestCaseGenerator
         // }
     }
 
-    private void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, int blockGasConsumptionTarget)
+    private void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, long blockGasConsumptionTarget)
     {
         int txsPerAddress = _txsPerBlock / _maxNumberOfWithdrawalsPerBlock;
         int txsLeft = _txsPerBlock % _maxNumberOfWithdrawalsPerBlock;
@@ -198,7 +198,7 @@ public class TestCaseGenerator
         }
     }
 
-    private Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, int blockGasConsumptionTarget)
+    private Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, long blockGasConsumptionTarget)
     {
         switch (testCase)
         {
@@ -412,7 +412,7 @@ public class TestCaseGenerator
     //     return byteCode.ToArray();
     // }
 
-    private byte[] PrepareKeccak256Code(int blockGasConsumptionTarget, int bytesToComputeKeccak)
+    private byte[] PrepareKeccak256Code(long blockGasConsumptionTarget, int bytesToComputeKeccak)
     {
         List<byte> byteCode = new();
 
