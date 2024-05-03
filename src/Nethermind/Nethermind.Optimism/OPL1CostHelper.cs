@@ -50,9 +50,14 @@ public class OPL1CostHelper : IL1CostHelper
             // Ecotone formula: (dataGas) * (16*l1BaseFee*l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
             UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
+
             ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
-            UInt256 l1BaseFeeScalar = new(scalarData[12..16], true);
-            UInt256 l1BlobBaseFeeScalar = new(scalarData[8..12], true);
+            Span<byte> scalarDataAligned = stackalloc byte[32];
+            scalarData.CopyTo(scalarDataAligned[(32 - scalarData.Length)..]);
+
+            const int offset = 32 - 12 - 4;
+            UInt256 l1BaseFeeScalar = new(scalarDataAligned[offset..(offset + 4)], true);
+            UInt256 l1BlobBaseFeeScalar = new(scalarDataAligned[(offset + 4)..(offset + 8)], true);
 
             return (UInt256)dataGas * (16 * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) /
                    1_000_000;
