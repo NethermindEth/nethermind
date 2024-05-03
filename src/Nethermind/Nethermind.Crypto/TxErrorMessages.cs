@@ -14,7 +14,7 @@ public static class TxErrorMessages
         "IntrinsicGasTooLow: gas limit is below intrinsic gas.";
 
     public const string InvalidTxSignature =
-        "InvalidTxSignature: signature is invalid.";
+        "InvalidTxSignature: invalid sender.";
     public static string InvalidTxChainId(ulong expected, ulong? actual) =>
         $"InvalidTxChainId: expected {expected}, got {actual}.";
 
@@ -115,5 +115,8 @@ public static class TxErrorMessages
 
     public const string AlreadyKnown
         = "AlreadyKnown: transaction is already known.";
+
+    public static string Underpriced(in UInt256 premiumPerGas, in UInt256 minGasPriceFloor, in UInt256 baseFeePerGas)
+        => $"Underpriced: transaction underpriced. EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}";
 }
 

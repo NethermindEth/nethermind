@@ -2,8 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Config;
+using Nethermind.Consensus.Messages;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.TxPool;
 
@@ -47,8 +49,8 @@ namespace Nethermind.Consensus.Transactions
             bool allowed = premiumPerGas >= minGasPriceFloor;
             return allowed
                 ? AcceptTxResult.Accepted
-                : AcceptTxResult.FeeTooLow.WithMessage(
-                    $"EffectivePriorityFeePerGas too low {premiumPerGas} < {minGasPriceFloor}, BaseFee: {baseFeePerGas}");
+                : AcceptTxResult.FeeTooLow.WithMessage(TxErrorMessages
+                .Underpriced(premiumPerGas, minGasPriceFloor, baseFeePerGas));
         }
     }
 }
