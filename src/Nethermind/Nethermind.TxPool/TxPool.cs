@@ -379,7 +379,7 @@ namespace Nethermind.TxPool
 
             TxFilteringState state = new(tx, _accounts);
 
-            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, state);
+            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
 
             if (!accepted)
             {
@@ -387,7 +387,7 @@ namespace Nethermind.TxPool
             }
             else
             {
-                accepted = AddCore(tx, state, startBroadcast);
+                accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
                     // Clear proper snapshot
@@ -401,12 +401,12 @@ namespace Nethermind.TxPool
             return accepted;
         }
 
-        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
+        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted)
                 {
@@ -418,7 +418,7 @@ namespace Nethermind.TxPool
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
             }
@@ -426,7 +426,7 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
