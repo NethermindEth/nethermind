@@ -41,6 +41,7 @@ public class AlwaysCancelTxTracer : ITxTracer
     public bool IsTracingBlockHash => true;
     public bool IsTracingAccess => true;
     public bool IsTracingFees => true;
+    public bool IsTracingLogs => true;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null) => throw new OperationCanceledException(ErrorMessage);
 
@@ -51,6 +52,8 @@ public class AlwaysCancelTxTracer : ITxTracer
     public void ReportOperationError(EvmExceptionType error) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportOperationRemainingGas(long gas) => throw new OperationCanceledException(ErrorMessage);
+
+    public void ReportLog(LogEntry log) => throw new OperationCanceledException(ErrorMessage);
 
     public void SetOperationMemorySize(ulong newSize) => throw new OperationCanceledException(ErrorMessage);
 
@@ -85,6 +88,7 @@ public class AlwaysCancelTxTracer : ITxTracer
 
     public void ReportActionEnd(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
     public void ReportActionError(EvmExceptionType exceptionType) => throw new OperationCanceledException(ErrorMessage);
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output) => throw new OperationCanceledException(ErrorMessage);
 
     public void ReportActionEnd(long gas, Address deploymentAddress, ReadOnlyMemory<byte> deployedCode) => throw new OperationCanceledException(ErrorMessage);
     public void ReportBlockHash(Hash256 blockHash) => throw new OperationCanceledException(ErrorMessage);
