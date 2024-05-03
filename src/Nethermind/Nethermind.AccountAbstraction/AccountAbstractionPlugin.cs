@@ -32,6 +32,7 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Config;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Network.Contract.P2P;
 
 namespace Nethermind.AccountAbstraction;
@@ -347,7 +348,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return ValueTask.CompletedTask;
     }
 
-    public Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+    public Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource)
     {
         if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
