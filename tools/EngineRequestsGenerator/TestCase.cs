@@ -5,13 +5,21 @@ namespace EngineRequestsGenerator;
 
 public enum TestCase
 {
+    [TestCaseMetadata("Warmup", "warmup")]
     Warmup,
 
-    [TestCase("Simple transfers", "ETH transfers")]
+    [TestCaseMetadata("Simple transfers", "ETH transfers")]
     Transfers,
 
+    [TestCaseMetadata("TxDataZero", "Data with zeros")]
     TxDataZero,
+
+    [TestCaseMetadata("Keccak", "keccak calculations")]
     Keccak256From1Byte,
+
+    [TestCaseMetadata("Keccak", "keccak calculations")]
     Keccak256From8Bytes,
+
+    [TestCaseMetadata("Keccak", "keccak calculations")]
     Keccak256From32Bytes
 }

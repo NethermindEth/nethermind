@@ -33,12 +33,15 @@ public class TestCaseGenerator
     private ChainSpec _chainSpec;
     private ChainSpecBasedSpecProvider _chainSpecBasedSpecProvider;
     private TestCase _testCase;
+    private readonly string _outputPath;
     private TaskCompletionSource<bool>? _taskCompletionSource;
+    private readonly MetadataGenerator _metadataGenerator;
     private Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
     public TestCaseGenerator(
         string chainSpecPath,
-        TestCase testCase)
+        TestCase testCase,
+        string outputPath)
     {
         _numberOfBlocksToProduce = 2;
 
@@ -46,6 +49,8 @@ public class TestCaseGenerator
         _numberOfWithdrawals = 1600;
         _chainSpecPath = chainSpecPath;
         _testCase = testCase;
+        _outputPath = outputPath;
+        _metadataGenerator = new MetadataGenerator(_outputPath);
     }
     public async Task Generate()
     {
@@ -69,6 +74,8 @@ public class TestCaseGenerator
             await GenerateTestCase(blockGasConsumptionTarget);
             Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
         }
+
+        _metadataGenerator.Generate(_testCase);
     }
 
     private async Task GenerateTestCase(int blockGasConsumptionTarget)
@@ -148,10 +155,9 @@ public class TestCaseGenerator
             previousBlock = block;
         }
 
-        string folder = "testcases";
-        if (!Directory.Exists(folder))
-            Directory.CreateDirectory(folder);
-        await File.WriteAllTextAsync($"{folder}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
+        if (!Directory.Exists(_outputPath))
+            Directory.CreateDirectory(_outputPath);
+        await File.WriteAllTextAsync($"{_outputPath}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
     private void OnEmptyProcessingQueue(object? sender, EventArgs e)
