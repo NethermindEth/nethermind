@@ -59,8 +59,6 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         BlockHeader header = currentBlock;
         for (var i = 0; i < Math.Min(Eip2935Constants.RingBufferSize, current); i++)
         {
-            // an extra check - don't think it is needed
-            if (header.IsGenesis) break;
             AddParentBlockHashToState(header, eip2935Account);
             header = blockFinder.FindParentHeader(header, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
             if (header is null)
