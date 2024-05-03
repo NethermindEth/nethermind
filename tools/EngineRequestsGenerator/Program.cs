@@ -28,6 +28,7 @@ public static class Program
 
     private static string _chainSpecPath;
     private static ChainSpec _chainSpec;
+    private static ChainSpecBasedSpecProvider _chainSpecBasedSpecProvider;
     private static TaskCompletionSource<bool>? _taskCompletionSource;
     private static Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
@@ -41,14 +42,8 @@ public static class Program
         _chainSpecPath = "../../../../../src/Nethermind/Chains/holesky.json";
 
         int blockGasConsumptionTarget = 30_000_000;
-        _testCase = TestCase.Keccak256;
-        bool generateSingleFile = true;
-
-        _txsPerBlock = _testCase switch
-        {
-            TestCase.Warmup => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
-            _ => 1
-        };
+        _testCase = TestCase.Keccak256From32Bytes;
+        bool generateSingleFile = false;
 
 
         if (generateSingleFile)
@@ -73,17 +68,27 @@ public static class Program
 
     private static async Task GenerateTestCase(int blockGasConsumptionTarget)
     {
+        // _txsPerBlock = blockGasConsumptionTarget / 854_000;
+        // _txsPerBlock = blockGasConsumptionTarget / 970_000;
+        // _txsPerBlock = blockGasConsumptionTarget / 987_000;
+
+        _txsPerBlock = _testCase switch
+        {
+            TestCase.Transfers => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
+            _ => 1
+        };
+
         // chain initialization
         StringBuilder stringBuilder = new();
         EthereumJsonSerializer serializer = new();
 
         ChainSpecLoader chainSpecLoader = new(serializer);
         _chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(_chainSpecPath, LimboLogs.Instance.GetClassLogger());
-        ChainSpecBasedSpecProvider chainSpecBasedSpecProvider = new(_chainSpec);
+        _chainSpecBasedSpecProvider = new(_chainSpec);
 
-        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, chainSpecBasedSpecProvider);
+        EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, _chainSpecBasedSpecProvider);
 
-        GenesisLoader genesisLoader = new(_chainSpec, chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
+        GenesisLoader genesisLoader = new(_chainSpec, _chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
         Block genesisBlock = genesisLoader.Load();
 
         chain.BlockTree.SuggestBlock(genesisBlock);
@@ -111,6 +116,9 @@ public static class Program
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
+
+            Console.WriteLine($"testcase {blockGasConsumptionTarget} gasUsed: {block.GasUsed}");
+
 
             ExecutionPayloadV3 executionPayload = new(block);
             string executionPayloadString = serializer.Serialize(executionPayload);
@@ -161,6 +169,18 @@ public static class Program
             {
                 Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i, testCase, blockGasConsumptionTarget);
                 txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+
+                // tx = Build.A.Transaction
+                //     .WithNonce((UInt256)i)
+                //     .WithType(TxType.EIP1559)
+                //     .WithMaxFeePerGas(1.GWei())
+                //     .WithMaxPriorityFeePerGas(1.GWei())
+                //     .WithTo(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1].Address)
+                //     .WithChainId(BlockchainIds.Holesky)
+                //     .WithGasLimit(blockGasConsumptionTarget)
+                //     .SignedAndResolved(privateKeys[previousBlockWithdrawal.ValidatorIndex - 2])
+                //     .TestObject;;
+                // txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             }
         }
     }
@@ -170,6 +190,7 @@ public static class Program
         switch (testCase)
         {
             case TestCase.Warmup:
+            case TestCase.Transfers:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
@@ -193,17 +214,40 @@ public static class Program
                     .WithGasLimit(_chainSpec.Genesis.GasLimit)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
-            case TestCase.Keccak256:
-                byte[] code = PrepareKeccak256Code(blockGasConsumptionTarget);
+            case TestCase.Keccak256From1Byte:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
                     .WithMaxFeePerGas(1.GWei())
                     .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(TestItem.AddressB)
+                    .WithTo(null)
                     .WithChainId(BlockchainIds.Holesky)
-                    .WithData(code)
-                    .WithGasLimit(_chainSpec.Genesis.GasLimit)
+                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 1))
+                    .WithGasLimit(blockGasConsumptionTarget)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;;
+            case TestCase.Keccak256From8Bytes:
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(null)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 8))
+                    .WithGasLimit(blockGasConsumptionTarget)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;;
+            case TestCase.Keccak256From32Bytes:
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(null)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 32))
+                    .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
             default:
@@ -211,59 +255,215 @@ public static class Program
         }
     }
 
-    private static byte[] PrepareKeccak256Code(int blockGasConsumptionTarget)
+    // private static byte[] PrepareKeccak256CodeInIntVersion(int blockGasConsumptionTarget)
+    // {
+    //     List<byte> byteCode = new();
+    //
+    //     // int example = 1;
+    //     // byte[] byteExample = example.ToByteArray();
+    //     // UInt256 length = (UInt256)byteExample.Length;
+    //
+    //     long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
+    //     // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+    //     // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
+    //
+    //     int i = 0;
+    //     long dataCost = 0;
+    //     // while(gasLeft > 0)
+    //     for (int j = 0; j < 3500; j++)
+    //     {
+    //         List<byte> iterationCode = new();
+    //         var data = i++.ToByteArray();
+    //         // int zeroData = data.AsSpan().CountZeros();
+    //         UInt256 length = (UInt256)data.Length;
+    //
+    //         long gasCost = 0;
+    //         // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //         // push value as source to compute hash
+    //         iterationCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(data);
+    //
+    //         // gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //         // push memory position - 0
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { Byte.MinValue });
+    //         // gasCost += GasCostOf.TxDataZero;
+    //         // save in memory
+    //         iterationCode.Add((byte)Instruction.MSTORE);
+    //         gasCost += GasCostOf.Memory;
+    //
+    //         // push byte size to read from memory - 4
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { (byte)4 });
+    //         // gasCost += GasCostOf.TxDataNonZeroEip2028;
+    //         // push byte offset in memory - 0
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { Byte.MinValue });
+    //         // gasCost += GasCostOf.TxDataZero;
+    //         // compute keccak
+    //         iterationCode.Add((byte)Instruction.KECCAK256);
+    //         gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+    //
+    //         //remove from stack
+    //         iterationCode.Add((byte)(Instruction.POP));
+    //         gasCost += GasCostOf.Base;
+    //
+    //         byteCode.AddRange(iterationCode);
+    //
+    //         int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
+    //
+    //         gasCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //
+    //         dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //
+    //         gasLeft -= gasCost;
+    //
+    //         // now keccak of given data is in memory
+    //     }
+    //
+    //     return byteCode.ToArray();
+    // }
+    //
+    // private static byte[] PrepareKeccak256CodeInByteVersion(int blockGasConsumptionTarget)
+    // {
+    //     List<byte> byteCode = new();
+    //
+    //     // int example = 1;
+    //     // byte[] byteExample = example.ToByteArray();
+    //     // UInt256 length = (UInt256)byteExample.Length;
+    //
+    //     long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
+    //     // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
+    //     // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
+    //
+    //     byte i = 0;
+    //     long dataCost = 0;
+    //     for (int j = 0; j < 4455; j++)
+    //     {
+    //         List<byte> iterationCode = new();
+    //         var data = i++;
+    //         // int zeroData = data.AsSpan().CountZeros();
+    //
+    //         long gasCost = 0;
+    //         // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //         // push value as source to compute hash
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.Add(data);
+    //
+    //         // gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //         // push memory position - 0
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { Byte.MinValue });
+    //         // gasCost += GasCostOf.TxDataZero;
+    //         // save in memory
+    //         iterationCode.Add((byte)Instruction.MSTORE);
+    //         gasCost += GasCostOf.Memory;
+    //
+    //         // push byte size to read from memory - 1
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { (byte)1 });
+    //         // gasCost += GasCostOf.TxDataNonZeroEip2028;
+    //         // push byte offset in memory - 0
+    //         iterationCode.Add((byte)(Instruction.PUSH1));
+    //         gasCost += GasCostOf.VeryLow;
+    //         iterationCode.AddRange(new[] { Byte.MinValue });
+    //         // gasCost += GasCostOf.TxDataZero;
+    //         // compute keccak
+    //         iterationCode.Add((byte)Instruction.KECCAK256);
+    //         gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(1);
+    //
+    //         //remove from stack
+    //         iterationCode.Add((byte)(Instruction.POP));
+    //         gasCost += GasCostOf.Base;
+    //
+    //         byteCode.AddRange(iterationCode);
+    //
+    //         int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
+    //
+    //         gasCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //
+    //         dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+    //
+    //         gasLeft -= gasCost;
+    //
+    //         // now keccak of given data is in memory
+    //     }
+    //
+    //     return byteCode.ToArray();
+    // }
+
+    private static byte[] PrepareKeccak256Code(int blockGasConsumptionTarget, int bytesToComputeKeccak)
     {
         List<byte> byteCode = new();
-
-        // int example = 1;
-        // byte[] byteExample = example.ToByteArray();
-        // UInt256 length = (UInt256)byteExample.Length;
 
         long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
         // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
         // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
 
-        int i = 0;
-        while(gasLeft > 0)
+        long gasCost = 0;
+        long dataCost = 0;
+
+        List<byte> preIterationCode = new();
+
+        preIterationCode.Add((byte)(Instruction.PUSH1));
+        preIterationCode.Add(0x00);
+        gasCost += GasCostOf.VeryLow;
+
+        List<byte> iterationCode = new();
+        long gasCostPerIteration = 0;
+
+        // push memory position - 0
+        iterationCode.Add((byte)(Instruction.PUSH1));
+        gasCostPerIteration += GasCostOf.VeryLow;
+        iterationCode.AddRange(new[] { Byte.MinValue });
+        // save in memory
+        iterationCode.Add((byte)Instruction.MSTORE);
+        gasCostPerIteration += GasCostOf.Memory;
+
+        // push byte size to read from memory - bytesToComputeKeccak
+        iterationCode.Add((byte)(Instruction.PUSH1));
+        gasCostPerIteration += GasCostOf.VeryLow;
+        iterationCode.AddRange(new[] { (byte)bytesToComputeKeccak });
+        // push byte offset in memory - 0
+        iterationCode.Add((byte)(Instruction.PUSH1));
+        gasCostPerIteration += GasCostOf.VeryLow;
+        iterationCode.AddRange(new[] { Byte.MinValue });
+        // compute keccak
+        iterationCode.Add((byte)Instruction.KECCAK256);
+        gasCostPerIteration += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(1);
+
+        // now keccak of given data is on top of stack
+
+
+        // int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
+        //
+        // dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+        // gasCost += dataCost;
+
+
+        gasLeft -= gasCost;
+
+        long iterations = (_chainSpecBasedSpecProvider.GenesisSpec.MaxInitCodeSize - preIterationCode.Count) / iterationCode.Count;
+
+        byteCode.AddRange(preIterationCode);
+
+        for (int i = 0; i < iterations; i++)
         {
-            var data = i++.ToByteArray();
-            int zeroData = data.AsSpan().CountZeros();
-            UInt256 length = (UInt256)data.Length;
-
-            long gasCost = 0;
-            // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-            // push value as source to compute hash
-            byteCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
-            gasCost += GasCostOf.VeryLow;
-            byteCode.AddRange(data);
-            gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-            // push memory position - 0
-            byteCode.Add((byte)(Instruction.PUSH1));
-            gasCost += GasCostOf.VeryLow;
-            byteCode.AddRange(new[] { Byte.MinValue });
-            gasCost += GasCostOf.TxDataZero;
-            // save in memory
-            byteCode.Add((byte)Instruction.MSTORE);
-            gasCost += GasCostOf.Memory;
-
-            // push byte size to read from memory - 4
-            byteCode.Add((byte)(Instruction.PUSH1));
-            gasCost += GasCostOf.VeryLow;
-            byteCode.AddRange(new[] { (byte)4 });
-            gasCost += GasCostOf.TxDataNonZeroEip2028;
-            // push byte offset in memory - 0
-            byteCode.Add((byte)(Instruction.PUSH1));
-            gasCost += GasCostOf.VeryLow;
-            byteCode.AddRange(new[] { Byte.MinValue });
-            gasCost += GasCostOf.TxDataZero;
-            // compute keccak
-            byteCode.Add((byte)Instruction.KECCAK256);
-            gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-
-            gasLeft -= gasCost;
-
-            // now keccak of given data is in memory
+            byteCode.AddRange(iterationCode);
+            gasCost += gasCostPerIteration;
         }
+
+        int zeroData = byteCode.ToArray().AsSpan().CountZeros();
+        dataCost += zeroData * GasCostOf.TxDataZero + (byteCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+
+        gasCost += dataCost;
 
         return byteCode.ToArray();
     }
