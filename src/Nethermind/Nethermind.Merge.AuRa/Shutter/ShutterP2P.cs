@@ -20,6 +20,7 @@ using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.Precompiles.Bls;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -168,6 +169,7 @@ public class ShutterP2P
             if (!ShutterCrypto.CheckDecryptionKey(dk, _eonInfo.Key, identity))
             {
                 if (_logger.IsWarn) _logger.Warn($"Invalid decryption keys received on P2P network: decryption key did not match eon key.");
+                _logger.Info($"dk={dk.compress().ToHexString()} ek={_eonInfo.Key.compress().ToHexString()} idPre={key.Identity.ToByteArray().ToHexString()}");
                 return false;
             }
         }

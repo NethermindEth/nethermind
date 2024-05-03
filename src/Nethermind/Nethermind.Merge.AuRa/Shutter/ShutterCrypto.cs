@@ -44,14 +44,6 @@ internal class ShutterCrypto
         return ComputeIdentity(preimage);
     }
 
-    public static G1 ComputeIdentity(ReadOnlySpan<byte> preimage)
-    {
-        // todo: check if need to reverse?
-        Span<byte> hash = Keccak.Compute(preimage).Bytes;
-        hash.Reverse();
-        return G1.generator().mult(hash.ToArray());
-    }
-
     public static byte[] Decrypt(EncryptedMessage encryptedMessage, G1 key)
     {
         Bytes32 sigma = RecoverSigma(encryptedMessage, key);
@@ -181,7 +173,8 @@ internal class ShutterCrypto
         return new(Keccak.Compute(bytes).Bytes);
     }
 
-    public static G1 Hash1(ReadOnlySpan<byte> bytes)
+    // Hash1 in spec
+    public static G1 ComputeIdentity(ReadOnlySpan<byte> bytes)
     {
         byte[] preimage = new byte[bytes.Length + 1];
         preimage[0] = 0x1;
@@ -190,7 +183,6 @@ internal class ShutterCrypto
         // todo: change once shutter updates
         // return new G1().hash_to(preimage);
 
-        // todo: check if need to reverse?
         Span<byte> hash = Keccak.Compute(preimage).Bytes;
         hash.Reverse();
         return G1.generator().mult(hash.ToArray());
@@ -241,8 +233,7 @@ internal class ShutterCrypto
 
     public static bool CheckDecryptionKey(G1 decryptionKey, G2 eonPublicKey, G1 identity)
     {
-        // todo: fix this
-        return GT.finalverify(new(decryptionKey, G2.generator().neg()), new(identity, eonPublicKey));
+        return GT.finalverify(new(decryptionKey, G2.generator()), new(identity, eonPublicKey));
     }
 
     public static bool CheckSlotDecryptionIdentitiesSignature(ulong instanceId, ulong eon, ulong slot, IEnumerable<G1> identities, ReadOnlySpan<byte> signature, Address keyperAddress)
