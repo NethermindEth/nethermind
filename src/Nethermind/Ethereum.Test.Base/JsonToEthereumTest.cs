@@ -206,6 +206,7 @@ namespace Ethereum.Test.Base
             }
 
             List<GeneralStateTest> blockchainTests = new();
+            Console.WriteLine($"Loaded {testJson}");
             foreach (KeyValuePair<string, PostStateJson[]> postStateBySpec in testJson.Post)
             {
                 int iterationNumber = 0;
@@ -284,9 +285,11 @@ namespace Ethereum.Test.Base
         {
             Dictionary<string, GeneralStateTestJson> testsInFile =
                 _serializer.Deserialize<Dictionary<string, GeneralStateTestJson>>(json);
+
             List<GeneralStateTest> tests = new();
             foreach (KeyValuePair<string, GeneralStateTestJson> namedTest in testsInFile)
             {
+                Console.WriteLine($"Loading {namedTest.Key}\n {namedTest.Value.Post}");
                 tests.AddRange(Convert(namedTest.Key, namedTest.Value));
             }
 

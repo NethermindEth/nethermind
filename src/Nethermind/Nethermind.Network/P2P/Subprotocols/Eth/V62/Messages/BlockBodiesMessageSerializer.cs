@@ -70,6 +70,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             {
                 if (b.Withdrawals is not null)
                 {
+                    if (b.Requests is not null)
+                    {
+                        return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
+                               Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals)) +
+                               Rlp.LengthOfSequence(GetRequestsLength(b.Requests));
+                    }
                     return Rlp.LengthOfSequence(GetTxLength(b.Transactions)) +
                            Rlp.LengthOfSequence(GetUnclesLength(b.Uncles)) + Rlp.LengthOfSequence(GetWithdrawalsLength(b.Withdrawals));
                 }
@@ -90,6 +96,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             private int GetWithdrawalsLength(Withdrawal[] withdrawals)
             {
                 return withdrawals.Sum(t => _withdrawalDecoderDecoder.GetLength(t, RlpBehaviors.None));
+            }
+
+            private int GetRequestsLength(ConsensusRequest[] requests)
+            {
+                return requests.Sum(t => _requestsDecoder.GetLength(t, RlpBehaviors.None));
             }
 
             public BlockBody? Decode(ref Rlp.ValueDecoderContext ctx, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -141,6 +152,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                     foreach (Withdrawal? withdrawal in body.Withdrawals)
                     {
                         stream.Encode(withdrawal);
+                    }
+                }
+
+                if (body.Requests is not null)
+                {
+                    stream.StartSequence(GetRequestsLength(body.Requests));
+                    foreach (ConsensusRequest? request in body.Requests)
+                    {
+                        stream.Encode(request);
                     }
                 }
             }
