@@ -16,11 +16,11 @@ public class CancunBlockchainTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
-    
+
     private static IEnumerable<BlockchainTest> LoadTests()
     {
         TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), $"fixtures/blockchain_tests/cancun");
         return loader.LoadTests().Cast<BlockchainTest>();
     }
-    
+
 }
