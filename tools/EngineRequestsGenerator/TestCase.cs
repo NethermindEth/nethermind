@@ -6,7 +6,10 @@ namespace EngineRequestsGenerator;
 public enum TestCase
 {
     Warmup,
+
+    [TestCase("Simple transfers", "ETH transfers")]
     Transfers,
+
     TxDataZero,
     Keccak256From1Byte,
     Keccak256From8Bytes,
