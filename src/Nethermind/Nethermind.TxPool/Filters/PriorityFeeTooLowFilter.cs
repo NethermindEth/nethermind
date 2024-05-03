@@ -19,7 +19,7 @@ public class PriorityFeeTooLowFilter : IIncomingTxFilter
         _logger = logger;
     }
 
-    public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+    public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
     {
         if (tx.SupportsBlobs && tx.MaxPriorityFeePerGas < _minBlobsPriorityFee)
         {

@@ -17,7 +17,7 @@ namespace Nethermind.TxPool.Filters
         {
             _specProvider = specProvider;
         }
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions txHandlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions txHandlingOptions)
         {
             return _specProvider.GetCurrentHeadSpec().IsEip3607Enabled && state.SenderAccount.HasCode
                 ? AcceptTxResult.SenderIsContract
