@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
@@ -12,7 +12,7 @@ namespace Ethereum.Blockchain.Pyspec.Test;
 
 [TestFixture]
 [Parallelizable(ParallelScope.All)]
-public class CancunBlockChainTests : BlockchainTestBase
+public class CancunBlockchainTests : BlockchainTestBase
 {
     [TestCaseSource(nameof(LoadTests))]
     public async Task Test(BlockchainTest test) => (await RunTest(test)).Pass.Should().BeTrue();
