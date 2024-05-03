@@ -33,7 +33,7 @@ public class ShutterTxSource : ITxSource
 {
     public Dto.DecryptionKeys? DecryptionKeys;
     private bool _validatorsRegistered = false;
-    private readonly IReadOnlyTxProcessorSource _readOnlyTxProcessorSource;
+    private readonly ReadOnlyTxProcessingEnvFactory _readOnlyTxProcessingEnvFactory;
     private readonly IAbiEncoder _abiEncoder;
     private readonly ISpecProvider _specProvider;
     private readonly IAuraConfig _auraConfig;
@@ -47,7 +47,7 @@ public class ShutterTxSource : ITxSource
     public ShutterTxSource(ILogFinder logFinder, IFilterStore filterStore, ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory, IAbiEncoder abiEncoder, IAuraConfig auraConfig, ISpecProvider specProvider, ILogManager logManager, IEthereumEcdsa ethereumEcdsa, IEnumerable<(ulong, byte[])> validatorsInfo)
         : base()
     {
-        _readOnlyTxProcessorSource = readOnlyTxProcessingEnvFactory.Create();
+        _readOnlyTxProcessingEnvFactory = readOnlyTxProcessingEnvFactory;
         _abiEncoder = abiEncoder;
         _auraConfig = auraConfig;
         _specProvider = specProvider;
@@ -61,7 +61,7 @@ public class ShutterTxSource : ITxSource
 
     public IEnumerable<Transaction> GetTransactions(BlockHeader parent, long gasLimit, PayloadAttributes? payloadAttributes = null)
     {
-        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessorSource.Build(parent.StateRoot!);
+        IReadOnlyTransactionProcessor readOnlyTransactionProcessor = _readOnlyTxProcessingEnvFactory.Create().Build(parent.StateRoot!);
         ValidatorRegistryContract validatorRegistryContract = new(readOnlyTransactionProcessor, _abiEncoder, ValidatorRegistryContractAddress, _auraConfig, _specProvider, _logger);
 
         if (!_validatorsRegistered)
