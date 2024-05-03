@@ -66,6 +66,22 @@ class ShutterCryptoTests
 
     [Test]
     [TestCase(
+        "909fa1ea85410c05c6aaafb798f89c33270509e61e0cf47e86c3fe86165391109d1be10208fba22ed22b13354d445bf4",
+        "8fc1a5ba43a3a7e427ae907a6e9291f13f63f44ff6457f8558eaa31c0aa1b0d22320e296e79211c20633bf52306511a711162c799eaf0085c22f26f64e423f328711097f249192283efd74407817d96df8dc069f57ca5b38763e491d61ffed89",
+        "3834a349678ef446bae07e2aeffc01054184af003834383438343834383438343834a349678ef446bae07e2aeffc01054184af00"
+    )]
+    public void Can_check_decryption_keys(string dkHex, string eonKeyHex, string identityPreimageHex)
+    {
+        G1 dk = new(Convert.FromHexString(dkHex));
+        G2 eonKey = new(Convert.FromHexString(eonKeyHex));
+        byte[] identityPreimage = Convert.FromHexString(identityPreimageHex);
+        G1 identity = ShutterCrypto.ComputeIdentity(identityPreimage);
+
+        Assert.That(ShutterCrypto.CheckDecryptionKey(dk, eonKey, identity));
+    }
+
+    [Test]
+    [TestCase(
         "f869820248849502f900825208943834a349678ef446bae07e2aeffc01054184af008203e880824fd3a001e44318458b1f279bf81aef969df1b9991944bf8b9d16fd1799ed5b0a7986faa058f572cce63aaff3326df9c902d338b0c416c8fb93109446d6aadd5a65d3d115",
         "3834a349678eF446baE07e2AefFC01054184af00",
         "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834",
