@@ -8,6 +8,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Numerics;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Threading.Tasks.Dataflow;
@@ -199,7 +200,9 @@ namespace Nethermind.Trie.Pruning
             {
                 internal const long MemoryUsage = 8 + 36 + 8; // (address (probably shared), path, keccak pointer (shared with TrieNode))
                 public Hash256? Address { get; }
-                public TreePath Path { get; }
+                // Direct member rather than property for large struct, so members are called directly,
+                // rather than struct copy through the property. Could also return a ref through property.
+                public readonly TreePath Path;
                 public Hash256 Keccak { get; }
 
                 public Key(Hash256? address, in TreePath path, Hash256 keccak)
@@ -212,7 +215,14 @@ namespace Nethermind.Trie.Pruning
                 [SkipLocalsInit]
                 public override int GetHashCode()
                 {
-                    return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Keccak.GetHashCode()) + (Address?.GetHashCode() ?? 0);
+                    Hash256? address = Address;
+                    var addressHash = 0;
+                    if (address is not null)
+                    {
+                        addressHash = address.ValueHash256.GetHashCode();
+                    }
+
+                    return Keccak.ValueHash256.GetChainedHashCode((uint)Path.GetHashCode()) ^ addressHash;
                 }
 
                 public bool Equals(Key other)
@@ -710,7 +720,7 @@ namespace Nethermind.Trie.Pruning
                     !IsNoLongerNeeded(node)) return false;
 
                 // We don't have it in cache, but we know it was re-committed, so if it is still needed, don't remove
-                if (_persistedLastSeens.TryGetValue((address, path, keccak), out long commitBlock) &&
+                if (_persistedLastSeens.TryGetValue(new(address, in path, in keccak), out long commitBlock) &&
                     !IsNoLongerNeeded(commitBlock)) return false;
 
                 return true;
@@ -721,7 +731,7 @@ namespace Nethermind.Trie.Pruning
             void DoAct(KeyValuePair<HashAndTinyPath, Hash256> keyValuePair)
             {
                 HashAndTinyPath key = keyValuePair.Key;
-                if (_pastPathHash.TryGet((key.addr, key.path), out ValueHash256 prevHash))
+                if (_pastPathHash.TryGet(new(key.addr, in key.path), out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
                     if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
@@ -843,21 +853,22 @@ namespace Nethermind.Trie.Pruning
         private void TrackPrunedPersistedNodes(in DirtyNodesCache.Key key, TrieNode node)
         {
             if (key.Path.Length > TinyTreePath.MaxNibbleLength) return;
-            TinyTreePath treePath = new TinyTreePath(key.Path);
+            TinyTreePath treePath = new(key.Path);
             // Persisted node with LastSeen is a node that has been re-committed, likely due to processing
             // recalculated to the same hash.
             if (node.LastSeen != null)
             {
                 // Update _persistedLastSeen to later value.
-                if (!_persistedLastSeens.TryGetValue((key.Address, treePath, key.Keccak), out long currentLastSeen) || currentLastSeen < node.LastSeen.Value)
-                {
-                    _persistedLastSeens[(key.Address, treePath, key.Keccak)] = node.LastSeen.Value;
-                }
+                _persistedLastSeens.AddOrUpdate(
+                    new(key.Address, in treePath, key.Keccak),
+                    (_, newValue) => newValue,
+                    (_, newValue, currentLastSeen) => Math.Max(newValue, currentLastSeen),
+                    node.LastSeen.Value);
             }
 
             // This persisted node is being removed from cache. Keep it in mind in case of an update to the same
             // path.
-            _pastPathHash.Set((key.Address, treePath), key.Keccak);
+            _pastPathHash.Set(new(key.Address, in treePath), key.Keccak);
         }
 
         /// <summary>
@@ -947,16 +958,17 @@ namespace Nethermind.Trie.Pruning
             {
                 if (persistedHashes != null && path.Length <= TinyTreePath.MaxNibbleLength)
                 {
-                    (Hash256 address2, TinyTreePath path) key = (address2, new TinyTreePath(path));
-                    if (persistedHashes.ContainsKey(key))
+                    HashAndTinyPath key = new(address2, new TinyTreePath(path));
+                    ref Hash256? hash = ref CollectionsMarshal.GetValueRefOrAddDefault(persistedHashes, key, out bool exists);
+                    if (exists)
                     {
                         // Null mark that there are multiple saved hash for this path. So we don't attempt to remove anything.
                         // Otherwise this would have to be a list, which is such a rare case that its not worth it to have a list.
-                        persistedHashes[key] = null;
+                        hash = null;
                     }
                     else
                     {
-                        persistedHashes[key] = tn.Keccak;
+                        hash = tn.Keccak;
                     }
                 }
                 this.PersistNode(address2, path, tn, commitSet.BlockNumber, writeFlags, writeBatch);
@@ -1247,36 +1259,42 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
-        private readonly struct HashAndTinyPath(Hash256? hash, TinyTreePath path) : IEquatable<HashAndTinyPath>
+        private readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
             public readonly Hash256? addr = hash;
             public readonly TinyTreePath path = path;
 
-            public static implicit operator HashAndTinyPath((Hash256? hash, TinyTreePath path) value) => new HashAndTinyPath(value.hash, value.path);
-
             public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
-            public override int GetHashCode() => (int)BitOperations.Crc32C((uint)path.GetHashCode(), (uint)(addr?.GetHashCode() ?? 0));
+            public override int GetHashCode()
+            {
+                Hash256? address = addr;
+                var addressHash = 0;
+                if (address is not null)
+                {
+                    addressHash = address.ValueHash256.GetHashCode();
+                }
+                return path.GetHashCode() ^ addressHash;
+            }
         }
 
-        private readonly struct HashAndTinyPathAndHash(Hash256? hash, TinyTreePath path, ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
+        private readonly struct HashAndTinyPathAndHash(Hash256? hash, in TinyTreePath path, in ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
         {
             public readonly Hash256? hash = hash;
             public readonly TinyTreePath path = path;
             public readonly ValueHash256 valueHash = valueHash;
 
-            public static implicit operator HashAndTinyPathAndHash((Hash256? hash, TinyTreePath path, ValueHash256 valueHash) value) => new HashAndTinyPathAndHash(value.hash, value.path, value.valueHash);
-
             public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                uint hashCode = BitOperations.Crc32C((uint)valueHash.GetHashCode(), (uint)path.GetHashCode());
+                var hashHash = 0;
                 if (hash is not null)
                 {
-                    hashCode = BitOperations.Crc32C(hashCode, (uint)hash.GetHashCode());
+                    hashHash = hash.ValueHash256.GetHashCode();
                 }
-                return (int)hashCode;
+
+                return valueHash.GetChainedHashCode((uint)path.GetHashCode()) ^ hashHash;
             }
         }
     }
