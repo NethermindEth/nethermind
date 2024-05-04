@@ -5,8 +5,8 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
-using System.Numerics;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
@@ -61,11 +61,17 @@ namespace Nethermind.Trie.Pruning
                 else
                 {
                     trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
-                    if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
+                    if (_trieStore._logger.IsTrace) Trace(trieNode);
                     SaveInCache(key, trieNode);
                 }
 
                 return trieNode;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                void Trace(TrieNode trieNode)
+                {
+                    _trieStore._logger.Trace($"Creating new node {trieNode}");
+                }
             }
 
             public TrieNode FromCachedRlpOrUnknown(in Key key)
@@ -92,8 +98,14 @@ namespace Nethermind.Trie.Pruning
                     trieNode = new TrieNode(NodeType.Unknown, key.Keccak);
                 }
 
-                if (_trieStore._logger.IsTrace) _trieStore._logger.Trace($"Creating new node {trieNode}");
+                if (_trieStore._logger.IsTrace) Trace(trieNode);
                 return trieNode;
+
+                [MethodImpl(MethodImplOptions.NoInlining)]
+                void Trace(TrieNode trieNode)
+                {
+                    _trieStore._logger.Trace($"Creating new node {trieNode}");
+                }
             }
 
             private readonly ConcurrentDictionary<Key, TrieNode> _byKeyObjectCache = new();
@@ -373,29 +385,29 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
-        public void CommitNode(long blockNumber, Hash256? address, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
+        public void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None)
         {
             ArgumentOutOfRangeException.ThrowIfNegative(blockNumber);
             EnsureCommitSetExistsForBlock(blockNumber);
 
-            if (_logger.IsTrace) _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
+            if (_logger.IsTrace) Trace(blockNumber, in nodeCommitInfo);
             if (!nodeCommitInfo.IsEmptyBlockMarker && !nodeCommitInfo.Node.IsBoundaryProofNode)
             {
                 TrieNode node = nodeCommitInfo.Node!;
 
                 if (node!.Keccak is null)
                 {
-                    throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
+                    ThrowUnknownHash(node);
                 }
 
                 if (CurrentPackage is null)
                 {
-                    throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
+                    ThrowUnknownPackage(blockNumber, node);
                 }
 
                 if (node!.LastSeen.HasValue)
                 {
-                    throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
+                    ThrowNodeHasBeenSeen(blockNumber, node);
                 }
 
                 node = SaveOrReplaceInDirtyNodesCache(address, nodeCommitInfo, node);
@@ -407,6 +419,33 @@ namespace Nethermind.Trie.Pruning
                 }
 
                 CommittedNodesCount++;
+            }
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(long blockNumber, in NodeCommitInfo nodeCommitInfo)
+            {
+                _logger.Trace($"Committing {nodeCommitInfo} at {blockNumber}");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnknownHash(TrieNode node)
+            {
+                throw new TrieStoreException($"The hash of {node} should be known at the time of committing.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowUnknownPackage(long blockNumber, TrieNode node)
+            {
+                throw new TrieStoreException($"{nameof(CurrentPackage)} is NULL when committing {node} at {blockNumber}.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNodeHasBeenSeen(long blockNumber, TrieNode node)
+            {
+                throw new TrieStoreException($"{nameof(TrieNode.LastSeen)} set on {node} committed at {blockNumber}.");
             }
         }
 
@@ -420,12 +459,12 @@ namespace Nethermind.Trie.Pruning
                     Metrics.LoadedFromCacheNodesCount++;
                     if (!ReferenceEquals(cachedNodeCopy, node))
                     {
-                        if (_logger.IsTrace) _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+                        if (_logger.IsTrace) Trace(node, cachedNodeCopy);
                         TreePath path = nodeCommitInfo.Path;
                         cachedNodeCopy.ResolveKey(GetTrieStore(address), ref path, nodeCommitInfo.IsRoot);
                         if (node.Keccak != cachedNodeCopy.Keccak)
                         {
-                            throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+                            ThrowNodeIsNotSame(node, cachedNodeCopy);
                         }
 
                         if (!nodeCommitInfo.IsRoot)
@@ -444,6 +483,20 @@ namespace Nethermind.Trie.Pruning
             }
 
             return node;
+
+            [MethodImpl(MethodImplOptions.NoInlining)]
+            void Trace(TrieNode node, TrieNode cachedNodeCopy)
+            {
+                _logger.Trace($"Replacing {node} with its cached copy {cachedNodeCopy}.");
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowNodeIsNotSame(TrieNode node, TrieNode cachedNodeCopy)
+            {
+                throw new InvalidOperationException($"The hash of replacement node {cachedNodeCopy} is not the same as the original {node}.");
+            }
+
         }
 
         public void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None)
@@ -522,10 +575,17 @@ namespace Nethermind.Trie.Pruning
             byte[]? rlp = TryLoadRlp(address, path, keccak, nodeStorage, readFlags);
             if (rlp is null)
             {
-                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+                ThrowMissingNode(keccak);
             }
 
             return rlp;
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowMissingNode(Hash256 keccak)
+            {
+                throw new TrieNodeException($"Node {keccak} is missing from the DB", keccak);
+            }
         }
 
         public virtual byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) => LoadRlp(address, path, hash, null, flags);
