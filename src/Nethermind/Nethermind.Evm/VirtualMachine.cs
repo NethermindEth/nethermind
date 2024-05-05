@@ -1936,6 +1936,39 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
+    private EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+        where TTracing : struct, IIsTracing
+    {
+        if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
+        long topicsCount = instruction - Instruction.LOG0;
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
+        if (!UpdateGas(
+                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
+                (long)length * GasCostOf.LogData, ref gasAvailable)) return EvmExceptionType.OutOfGas;
+
+        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
+        Hash256[] topics = new Hash256[topicsCount];
+        for (int i = 0; i < topicsCount; i++)
+        {
+            topics[i] = new Hash256(stack.PopWord256());
+        }
+
+        LogEntry logEntry = new(
+            vmState.Env.ExecutingAccount,
+            data.ToArray(),
+            topics);
+        vmState.Logs.Add(logEntry);
+
+        if (_txTracer.IsTracingLogs)
+        {
+            _txTracer.ReportLog(logEntry);
+        }
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
     private EvmExceptionType InstructionSLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing

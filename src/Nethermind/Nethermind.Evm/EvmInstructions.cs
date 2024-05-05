@@ -92,40 +92,6 @@ internal sealed partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionLog<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, Instruction instruction)
-        where TTracingInstructions : struct, IIsTracing
-    {
-        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
-
-        if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
-        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
-        long topicsCount = instruction - Instruction.LOG0;
-        if (!UpdateMemoryCost(vmState, ref gasAvailable, in position, length)) return EvmExceptionType.OutOfGas;
-        if (!UpdateGas(
-                GasCostOf.Log + topicsCount * GasCostOf.LogTopic +
-                (long)length * GasCostOf.LogData, ref gasAvailable))
-        {
-            return EvmExceptionType.OutOfGas;
-        }
-
-        ReadOnlyMemory<byte> data = vmState.Memory.Load(in position, length);
-        Hash256[] topics = new Hash256[topicsCount];
-        for (int i = 0; i < topicsCount; i++)
-        {
-            topics[i] = new Hash256(stack.PopWord256());
-        }
-
-        LogEntry logEntry = new(
-            vmState.Env.ExecutingAccount,
-            data.ToArray(),
-            topics);
-        vmState.Logs.Add(logEntry);
-
-        return EvmExceptionType.None;
-    }
-
-    [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
     public static EvmExceptionType InstructionExp<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
     {

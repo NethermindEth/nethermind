@@ -121,6 +121,49 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
     }
 
     public int Count { get; private set; } = 0;
+    public void ReduceCount(int count)
+    {
+        GuardDispose();
+        var oldCount = Count;
+        if (count == oldCount) return;
+
+        if (count > oldCount)
+        {
+            ThrowOnlyReduce(count);
+        }
+
+        Count = count;
+        if (count < _capacity / 2)
+        {
+            // Reduced to less than half of the capacity, resize the array.
+            T[] newArray = _arrayPool.Rent(count);
+            _array.AsSpan(0, count).CopyTo(newArray);
+            T[] oldArray = Interlocked.Exchange(ref _array, newArray);
+            _capacity = newArray.Length;
+            _arrayPool.Return(oldArray);
+        }
+        else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
+        {
+            // Release any references to the objects in the array that are no longer in use.
+            Array.Clear(_array, count, oldCount);
+        }
+
+        void ThrowOnlyReduce(int count)
+        {
+            throw new ArgumentException($"Count can only be reduced. {count} is larger than {Count}", nameof(count));
+        }
+    }
+
+    public void Sort(Comparison<T> comparison)
+    {
+        ArgumentNullException.ThrowIfNull(comparison);
+        GuardDispose();
+
+        if (Count > 1)
+        {
+            _array.AsSpan(0, Count).Sort(comparison);
+        }
+    }
 
     public int Capacity => _capacity;
 
@@ -319,4 +362,6 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
 #endif
 
     public Span<T> AsSpan() => _array.AsSpan(0, Count);
+
+    public ReadOnlyMemory<T> AsMemory() => new(_array, 0, Count);
 }
