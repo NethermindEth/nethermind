@@ -26,21 +26,12 @@ namespace Nethermind.Evm.CodeAnalysis
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public bool ValidateJump(int destination)
         {
-            ReadOnlySpan<byte> machineCode = MachineCode.Span;
-            _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap(machineCode);
+            _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
 
-            var result = false;
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the span.
-            if ((uint)destination < (uint)machineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination))
-            {
-                // Store byte to int, as less expensive operations at word size
-                int codeByte = machineCode[destination];
-                result = codeByte == JUMPDEST;
-            }
-
-            return result;
+            return ((uint)destination < (uint)MachineCode.Length) && IsJumpDestination(_jumpDestinationBitmap, destination);
         }
 
         /// <summary>
@@ -62,7 +53,7 @@ namespace Nethermind.Evm.CodeAnalysis
         private static int GetInt64ArrayLengthFromBitLength(int n) =>
             (n - 1 + (1 << BitShiftPerInt64)) >>> BitShiftPerInt64;
 
-        private long[] CreateOrWaitForJumpDestinationBitmap(ReadOnlySpan<byte> code)
+        private long[] CreateOrWaitForJumpDestinationBitmap()
         {
             ManualResetEventSlim previous = Volatile.Read(ref _analysisCompleteEvent);
             if (previous is null)
@@ -72,7 +63,7 @@ namespace Nethermind.Evm.CodeAnalysis
                 if (previous is null)
                 {
                     // Not already in progress, so start it.
-                    var bitmap = CreateJumpDestinationBitmap(code);
+                    var bitmap = CreateJumpDestinationBitmap();
                     analysisComplete.Set();
                     return bitmap;
                 }
@@ -95,8 +86,9 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        private static long[] CreateJumpDestinationBitmap(ReadOnlySpan<byte> code)
+        private long[] CreateJumpDestinationBitmap()
         {
+            var code = MachineCode.Span;
             long[] jumpDestinationBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
             int programCounter = 0;
             // We accumulate each array segment to a register and then flush to memory when we move to next.
@@ -186,6 +178,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Checks if the position is in a code segment.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsJumpDestination(long[] bitvec, int pos)
         {
             int vecIndex = pos >> BitShiftPerInt64;
@@ -214,7 +207,7 @@ namespace Nethermind.Evm.CodeAnalysis
                     // Boost the priority of the thread as block processing may be waiting on this.
                     thread.Priority = ThreadPriority.AboveNormal;
 
-                    _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(MachineCode.Span);
+                    _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
 
                     // Signal complete.
                     analysisComplete.Set();

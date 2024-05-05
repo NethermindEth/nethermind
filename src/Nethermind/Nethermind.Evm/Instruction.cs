@@ -180,9 +180,6 @@ namespace Nethermind.Evm
             instruction switch
             {
                 Instruction.PREVRANDAO when !isPostMerge => "DIFFICULTY",
-                Instruction.TLOAD => "TLOAD",
-                Instruction.TSTORE => "TSTORE",
-                Instruction.MCOPY => "MCOPY",
                 _ => FastEnum.IsDefined(instruction) ? FastEnum.GetName(instruction) : null
             };
     }
