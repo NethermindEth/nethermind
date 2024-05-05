@@ -1944,6 +1944,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
+        if (vmState.IsStatic) return EvmExceptionType.StaticCallViolation;
+
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
         long topicsCount = instruction - Instruction.LOG0;
