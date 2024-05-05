@@ -208,7 +208,7 @@ public class TestCaseGenerator
                     .WithTo(TestItem.AddressB)
                     .WithChainId(BlockchainIds.Holesky)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.TxDataZero:
                 long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;
                 byte[] data = new byte[numberOfBytes];
@@ -222,7 +222,7 @@ public class TestCaseGenerator
                     .WithData(data)
                     .WithGasLimit(_chainSpec.Genesis.GasLimit)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From1Byte:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -234,7 +234,7 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 1))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From8Bytes:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -246,7 +246,7 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 8))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From32Bytes:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -258,7 +258,19 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 32))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
+            case TestCase.SHA2From32Bytes:
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(null)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 32))
+                    .WithGasLimit(blockGasConsumptionTarget)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

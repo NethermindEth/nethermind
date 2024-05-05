@@ -21,5 +21,8 @@ public enum TestCase
     Keccak256From8Bytes,
 
     [TestCaseMetadata("Keccak", "keccak calculations")]
-    Keccak256From32Bytes
+    Keccak256From32Bytes,
+
+    [TestCaseMetadata("SHA2From32Bytes", "SHA-2 calculations")]
+    SHA2From32Bytes
 }
