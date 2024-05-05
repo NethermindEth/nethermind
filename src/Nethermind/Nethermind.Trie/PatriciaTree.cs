@@ -9,6 +9,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -611,13 +612,28 @@ namespace Nethermind.Trie
 
         private void ResolveNode(TrieNode node, in TraverseContext traverseContext, in TreePath path)
         {
+            if (node.NodeType != NodeType.Unknown) return;
+
             try
             {
-                node.ResolveNode(TrieStore, path);
+                node.ResolveUnknownNode(TrieStore, path);
+            }
+            catch (RlpException rlpException)
+            {
+                ThrowDecodingError(node, in traverseContext, rlpException);
             }
             catch (TrieNodeException e)
             {
                 ThrowMissingTrieNodeException(e, in traverseContext);
+            }
+
+            [DoesNotReturn]
+            [StackTraceHidden]
+            static void ThrowDecodingError(TrieNode node, in TraverseContext traverseContext, RlpException rlpException)
+            {
+                var exception = new TrieNodeException($"Error when decoding node {node.Keccak}", node.Keccak ?? Keccak.Zero, rlpException);
+                exception = (TrieNodeException)ExceptionDispatchInfo.SetCurrentStackTrace(exception);
+                ThrowMissingTrieNodeException(exception, in traverseContext);
             }
         }
 
