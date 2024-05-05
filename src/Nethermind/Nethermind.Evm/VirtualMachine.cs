@@ -7,6 +7,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
+using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.CompilerServices;
 using System.Threading;
@@ -126,17 +127,16 @@ public class VirtualMachine : IVirtualMachine
         }.ToFrozenDictionary();
     }
 
-    internal readonly ref struct CallResult
+    internal readonly struct CallResult
     {
-        public static CallResult OutOfGasException => new(EvmExceptionType.OutOfGas);
-        public static CallResult AccessViolationException => new(EvmExceptionType.AccessViolation);
-        public static CallResult InvalidJumpDestination => new(EvmExceptionType.InvalidJumpDestination);
-        public static CallResult InvalidInstructionException => new(EvmExceptionType.BadInstruction);
-        public static CallResult StaticCallViolationException => new(EvmExceptionType.StaticCallViolation);
-        public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
-        public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult Empty => new(Array.Empty<byte>(), null);
+        public static CallResult OutOfGasException = new(EvmExceptionType.OutOfGas);
+        public static CallResult AccessViolationException = new(EvmExceptionType.AccessViolation);
+        public static CallResult InvalidJumpDestination = new(EvmExceptionType.InvalidJumpDestination);
+        public static CallResult InvalidInstructionException = new(EvmExceptionType.BadInstruction);
+        public static CallResult StaticCallViolationException = new(EvmExceptionType.StaticCallViolation);
+        public static CallResult StackOverflowException = new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult StackUnderflowException = new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
+        public static CallResult Empty = new(Array.Empty<byte>(), null);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -781,14 +781,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
         object returnData;
-        uint codeLength = (uint)code.Length;
-        while ((uint)programCounter < codeLength)
+        while ((uint)programCounter < (uint)code.Length)
         {
+            Instruction instruction =
+                (Instruction)Add(ref MemoryMarshal.GetReference(code), (uint)programCounter);
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
-            Instruction instruction = (Instruction)code[programCounter];
-
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
@@ -832,6 +831,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.SIGNEXTEND:
                     exceptionType = InstructionSignExtend(ref stack, ref gasAvailable);
                     break;
+                // Gap: 0xc to 0xf
                 case Instruction.LT:
                     exceptionType = InstructionMath2Param<OpLt, TTracingInstructions>(ref stack, ref gasAvailable);
                     break;
@@ -865,23 +865,34 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.BYTE:
                     exceptionType = InstructionByte(ref stack, ref gasAvailable, spec);
                     break;
+                case Instruction.SHL:
+                    exceptionType = InstructionShift<OpShl, TTracingInstructions>(ref stack, ref gasAvailable, spec);
+                    break;
+                case Instruction.SHR:
+                    exceptionType = InstructionShift<OpShr, TTracingInstructions>(ref stack, ref gasAvailable, spec);
+                    break;
+                case Instruction.SAR:
+                    exceptionType = InstructionSar(ref stack, ref gasAvailable, spec);
+                    break;
+                // Gap: 0x1e to 0x1f
                 case Instruction.KECCAK256:
                     exceptionType = InstructionKeccak256(vmState, ref stack, ref gasAvailable);
                     break;
+                // Gap: 0x21 to 0x2f
                 case Instruction.ADDRESS:
                     InstructionEnvBytes<OpAddress, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.BALANCE:
                     exceptionType = InstructionBalance(vmState, ref stack, ref gasAvailable, spec);
                     break;
+                case Instruction.ORIGIN:
+                    InstructionEnvBytes<OpOrigin, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
+                    break;
                 case Instruction.CALLER:
                     InstructionEnvBytes<OpCaller, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.CALLVALUE:
                     InstructionEnvUInt256<OpCallValue, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.ORIGIN:
-                    InstructionEnvBytes<OpOrigin, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.CALLDATALOAD:
                     exceptionType = InstructionCallDataLoad(vmState, ref stack, ref gasAvailable);
@@ -920,20 +931,23 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.RETURNDATACOPY:
                     exceptionType = InstructionReturnDataCopy(vmState, ref stack, ref gasAvailable, spec);
                     break;
+                case Instruction.EXTCODEHASH:
+                    exceptionType = InstructionExtCodeHash(vmState, ref stack, ref gasAvailable, spec);
+                    break;
                 case Instruction.BLOCKHASH:
                     exceptionType = InstructionBlockHash(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.COINBASE:
                     InstructionEnvBytes<OpCoinbase, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
-                case Instruction.PREVRANDAO:
-                    InstructionPrevRandao(vmState, ref stack, ref gasAvailable);
-                    break;
                 case Instruction.TIMESTAMP:
                     InstructionEnvUInt256<OpTimestamp, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.NUMBER:
                     InstructionEnvUInt256<OpNumber, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
+                    break;
+                case Instruction.PREVRANDAO:
+                    InstructionPrevRandao(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.GASLIMIT:
                     InstructionEnvUInt256<OpGasLimit, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
@@ -956,6 +970,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.BLOBBASEFEE:
                     exceptionType = InstructionBlobBaseFee(vmState, ref stack, ref gasAvailable, spec);
                     break;
+                // Gap: 0x4b to 0x4f
                 case Instruction.POP:
                     gasAvailable -= GasCostOf.Base;
                     stack.PopLimbo();
@@ -993,6 +1008,15 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     break;
                 case Instruction.JUMPDEST:
                     gasAvailable -= GasCostOf.JumpDest;
+                    break;
+                case Instruction.TLOAD:
+                    exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
+                    break;
+                case Instruction.TSTORE:
+                    exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
+                    break;
+                case Instruction.MCOPY:
+                    exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable, spec);
                     break;
                 case Instruction.PUSH0:
                     if (!spec.IncludePush0Instruction) goto InvalidInstruction;
@@ -1090,6 +1114,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.LOG4:
                     exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
                     break;
+                // Gap: 0xa5 to 0xef
                 case Instruction.CREATE:
                 case Instruction.CREATE2:
                     (exceptionType, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, spec, instruction);
@@ -1111,6 +1136,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                     goto DataReturn;
+                // Gap: 0xfc
                 case Instruction.REVERT:
                     exceptionType = InstructionRevert(vmState, ref stack, ref gasAvailable, spec, out returnData);
                     if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
@@ -1123,27 +1149,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     exceptionType = InstructionSelfDestruct(vmState, ref stack, ref gasAvailable, spec);
                     if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
                     goto EmptyReturn;
-                case Instruction.SHL:
-                    exceptionType = InstructionShift<OpShl, TTracingInstructions>(ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.SHR:
-                    exceptionType = InstructionShift<OpShr, TTracingInstructions>(ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.SAR:
-                    exceptionType = InstructionSar(ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.EXTCODEHASH:
-                    exceptionType = InstructionExtCodeHash(vmState, ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.TLOAD:
-                    exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.TSTORE:
-                    exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable, spec);
-                    break;
-                case Instruction.MCOPY:
-                    exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable, spec);
-                    break;
                 default:
                     goto InvalidInstruction;
             }
@@ -1969,6 +1974,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
+    [MethodImpl(MethodImplOptions.NoInlining)]
     private EvmExceptionType InstructionSLoad<TTracingInstructions, TTracingStorage>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
         where TTracingInstructions : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
@@ -2141,21 +2147,22 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return EvmExceptionType.None;
     }
 
-    private CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)
+    [MethodImpl(MethodImplOptions.NoInlining)]
+    private ref readonly CallResult GetFailureReturn<TTracingInstructions>(long gasAvailable, EvmExceptionType exceptionType)
         where TTracingInstructions : struct, IIsTracing
     {
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTraceError(gasAvailable, exceptionType);
 
-        return exceptionType switch
+        switch (exceptionType)
         {
-            EvmExceptionType.OutOfGas => CallResult.OutOfGasException,
-            EvmExceptionType.BadInstruction => CallResult.InvalidInstructionException,
-            EvmExceptionType.StaticCallViolation => CallResult.StaticCallViolationException,
-            EvmExceptionType.StackOverflow => CallResult.StackOverflowException,
-            EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
-            EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
-            EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
-            _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
+            case EvmExceptionType.OutOfGas: return ref CallResult.OutOfGasException;
+            case EvmExceptionType.BadInstruction: return ref CallResult.InvalidInstructionException;
+            case EvmExceptionType.StaticCallViolation: return ref CallResult.StaticCallViolationException;
+            case EvmExceptionType.StackOverflow: return ref CallResult.StackOverflowException;
+            case EvmExceptionType.StackUnderflow: return ref CallResult.StackUnderflowException;
+            case EvmExceptionType.InvalidJumpDestination: return ref CallResult.InvalidJumpDestination;
+            case EvmExceptionType.AccessViolation: return ref CallResult.AccessViolationException;
+            default: throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "");
         };
     }
 

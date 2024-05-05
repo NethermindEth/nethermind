@@ -81,6 +81,11 @@ namespace Nethermind.Evm
         MSIZE = 0x59,
         GAS = 0x5a,
         JUMPDEST = 0x5b,
+
+        // EIP-1153
+        TLOAD = 0x5c,
+        TSTORE = 0x5d,
+
         MCOPY = 0x5e,
 
         PUSH0 = 0x5f, // EIP-3855
@@ -156,10 +161,6 @@ namespace Nethermind.Evm
         LOG2 = 0xa2,
         LOG3 = 0xa3,
         LOG4 = 0xa4,
-
-        // EIP-1153
-        TLOAD = 0x5c,
-        TSTORE = 0x5d,
 
         CREATE = 0xf0,
         CALL = 0xf1,
