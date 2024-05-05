@@ -494,8 +494,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
         var codeInfo = new CodeInfo(code);
-        // Start generating the JumpDestinationBitmap in background.
-        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         _state.InsertCode(callCodeOwner, codeHash, code, spec);
@@ -1911,6 +1910,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         EvmState callState = new(
             callGas,

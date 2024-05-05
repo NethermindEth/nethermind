@@ -42,9 +42,14 @@ namespace Nethermind.Evm.CodeAnalysis
             return _analyzer.ValidateJump(destination);
         }
 
-        void IThreadPoolWorkItem.Execute()
+        void IThreadPoolWorkItem.Execute() => _analyzer.Execute();
+
+        public void AnalyseInBackgroundIfRequired()
         {
-            _analyzer.Execute();
+            if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            }
         }
     }
 }
