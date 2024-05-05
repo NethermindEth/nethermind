@@ -41,7 +41,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
             }
         }
 
-        Deposits = deposits?.ToArray() ?? [];
+        DepositRequests = deposits?.ToArray() ?? [];
         WithdrawalRequests = withdrawalRequests?.ToArray() ?? [];
     }
 
@@ -52,7 +52,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
             return false;
         }
 
-        var depositsLength = Deposits?.Length ?? 0;
+        var depositsLength = DepositRequests?.Length ?? 0;
         var withdrawalRequestsLength = WithdrawalRequests?.Length ?? 0;
         var requestsCount = depositsLength + withdrawalRequestsLength;
         if (requestsCount > 0)
@@ -61,7 +61,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
             int i = 0;
             for (; i < depositsLength; ++i)
             {
-                requests[i] = Deposits![i];
+                requests[i] = DepositRequests![i];
             }
 
             for (; i < requestsCount; ++i)
@@ -90,7 +90,7 @@ public class ExecutionPayloadV4 : ExecutionPayloadV3
     /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
     /// </summary>
     [JsonRequired]
-    public override Deposit[]? Deposits { get; set; }
+    public override Deposit[]? DepositRequests { get; set; }
 
     /// <summary>
     /// Gets or sets <see cref="Block.WithdrawalRequests"/> as defined in

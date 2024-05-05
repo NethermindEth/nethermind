@@ -93,10 +93,10 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
 
 
     /// <summary>
-    /// Gets or sets a collection of <see cref="Deposits"/> as defined in
+    /// Gets or sets a collection of <see cref="DepositRequests"/> as defined in
     /// <see href="https://eips.ethereum.org/EIPS/eip-6110">EIP-6110</see>.
     /// </summary>
-    public virtual Deposit[]? Deposits { get; set; }
+    public virtual Deposit[]? DepositRequests { get; set; }
 
 
     /// <summary>
@@ -239,7 +239,7 @@ public class ExecutionPayload : IForkValidator, IExecutionPayloadParams
     {
         return this switch
         {
-            { Deposits: not null, WithdrawalRequests: not null } => 4,
+            { DepositRequests: not null, WithdrawalRequests: not null } => 4,
             { BlobGasUsed: not null } or { ExcessBlobGas: not null } or { ParentBeaconBlockRoot: not null } => 3,
             { Withdrawals: not null } => 2,
             _ => 1
