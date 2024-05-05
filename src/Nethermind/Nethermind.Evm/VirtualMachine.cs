@@ -1695,35 +1695,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
         Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: caller,
-            codeSource: codeSource,
-            executingAccount: target,
-            transferValue: transferValue,
-            value: callValue,
-            inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
-        );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
-        if (outputLength == 0)
+        if (As<UInt256, Vector256<byte>>(ref outputLength) == default)
         {
             // TODO: when output length is 0 outputOffset can have any value really
             // and the value does not matter and it can cause trouble when beyond long range
-            outputOffset = 0;
+            outputOffset = default;
         }
 
         ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
         returnData = new EvmState(
             gasLimitUl,
-            callEnv,
+            env: new
+            (
+                txExecutionContext: in env.TxExecutionContext,
+                callDepth: env.CallDepth + 1,
+                caller: caller,
+                codeSource: codeSource,
+                executingAccount: target,
+                transferValue: transferValue,
+                value: callValue,
+                inputData: vmState.Memory.Load(in dataOffset, dataLength),
+                codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            ),
             executionType,
             isTopLevel: false,
             snapshot,
@@ -1910,21 +1907,20 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
 
-        ExecutionEnvironment callEnv = new
-        (
-            txExecutionContext: in env.TxExecutionContext,
-            callDepth: env.CallDepth + 1,
-            caller: env.ExecutingAccount,
-            executingAccount: contractAddress,
-            codeSource: null,
-            codeInfo: codeInfo,
-            inputData: default,
-            transferValue: value,
-            value: value
-        );
         EvmState callState = new(
             callGas,
-            callEnv,
+            env: new
+            (
+                txExecutionContext: in env.TxExecutionContext,
+                callDepth: env.CallDepth + 1,
+                caller: env.ExecutingAccount,
+                executingAccount: contractAddress,
+                codeSource: null,
+                codeInfo: codeInfo,
+                inputData: default,
+                transferValue: value,
+                value: value
+            ),
             instruction == Instruction.CREATE2 ? ExecutionType.CREATE2 : ExecutionType.CREATE,
             false,
             snapshot,
