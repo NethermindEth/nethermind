@@ -83,11 +83,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                 )
             ),
-            null,
-            null,
-            null,
-            null,
-            _consensusRequestsProcessor);
+            consensusRequestsProcessor: _consensusRequestsProcessor);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(

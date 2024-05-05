@@ -148,7 +148,6 @@ namespace Nethermind.Consensus.Producers
                 NullWitnessCollector.Instance,
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
-                null,
                 _consensusRequestsProcessor);
 
     }

@@ -144,7 +144,6 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 NullWitnessCollector.Instance,
                 LogManager,
                 WithdrawalProcessor,
-                null,
                 ConsensusRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

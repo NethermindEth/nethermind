@@ -72,7 +72,7 @@ public partial class EngineModuleTests
 
     protected async Task<MergeTestBlockchain> CreateBlockchain(ISpecProvider specProvider,
         ILogManager? logManager = null)
-        => await CreateBaseBlockchain(null, null, logManager).Build(specProvider);
+        => await CreateBaseBlockchain(logManager: logManager).Build(specProvider);
 
     private IEngineRpcModule CreateEngineModule(MergeTestBlockchain chain, ISyncConfig? syncConfig = null, TimeSpan? newPayloadTimeout = null, int newPayloadCacheSize = 50)
     {
@@ -253,7 +253,6 @@ public partial class EngineModuleTests
                 NullWitnessCollector.Instance,
                 LogManager,
                 WithdrawalProcessor,
-                null,
                 ConsensusRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);

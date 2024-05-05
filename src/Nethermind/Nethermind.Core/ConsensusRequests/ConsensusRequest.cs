@@ -35,3 +35,26 @@ public class ConsensusRequest
     [JsonIgnore]
     public ulong? IndexField { get; protected set; }
 }
+
+public static class ConsensusRequestExtensions
+{
+    public static (int depositCount, int withdrawalRequestCount) GetTypeCounts(this ConsensusRequest[]? requests)
+    {
+        int depositCount = 0;
+        int withdrawalRequestCount = 0;
+        int length = requests?.Length ?? 0;
+        for (int i = 0; i < length; i++)
+        {
+            if (requests![i].Type == ConsensusRequestsType.Deposit)
+            {
+                depositCount++;
+            }
+            else
+            {
+                withdrawalRequestCount++;
+            }
+        }
+
+        return (depositCount, withdrawalRequestCount);
+    }
+}

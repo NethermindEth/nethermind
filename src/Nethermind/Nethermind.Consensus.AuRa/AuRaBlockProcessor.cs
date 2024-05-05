@@ -55,7 +55,6 @@ namespace Nethermind.Consensus.AuRa
                 NullWitnessCollector.Instance,
                 logManager,
                 withdrawalProcessor,
-                null,
                 consensusRequestsProcessor)
         {
             _specProvider = specProvider;

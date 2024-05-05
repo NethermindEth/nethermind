@@ -19,28 +19,22 @@ public interface IExecutionPayloadParams
 
 public enum ValidationResult : byte { Success, Fail, Invalid };
 
-public class ExecutionPayloadParams<TVersionedExecutionPayload> : IExecutionPayloadParams
-    where TVersionedExecutionPayload : ExecutionPayload
+public class ExecutionPayloadParams<TVersionedExecutionPayload>(
+    TVersionedExecutionPayload executionPayload,
+    byte[]?[] blobVersionedHashes,
+    Hash256? parentBeaconBlockRoot)
+    : IExecutionPayloadParams where TVersionedExecutionPayload : ExecutionPayload
 {
-    private readonly TVersionedExecutionPayload _executionPayload;
-    private readonly byte[]?[] _blobVersionedHashes;
-    private readonly Hash256? _parentBeaconBlockRoot;
+    public TVersionedExecutionPayload ExecutionPayload => executionPayload;
 
-    public ExecutionPayloadParams(TVersionedExecutionPayload executionPayload, byte[]?[] blobVersionedHashes, Hash256? parentBeaconBlockRoot)
-    {
-        _executionPayload = executionPayload;
-        _blobVersionedHashes = blobVersionedHashes;
-        _parentBeaconBlockRoot = parentBeaconBlockRoot;
-    }
-
-    public ExecutionPayload ExecutionPayload => _executionPayload;
+    ExecutionPayload IExecutionPayloadParams.ExecutionPayload => ExecutionPayload;
 
     public ValidationResult ValidateParams(IReleaseSpec spec, int version, out string? error)
     {
-        Transaction[]? transactions = null;
+        Transaction[]? transactions;
         try
         {
-            transactions = _executionPayload.GetTransactions();
+            transactions = executionPayload.GetTransactions();
         }
         catch (RlpException rlpException)
         {
@@ -53,19 +47,19 @@ public class ExecutionPayloadParams<TVersionedExecutionPayload> : IExecutionPayl
                 .Where(t => t.BlobVersionedHashes is not null)
                 .SelectMany(t => t.BlobVersionedHashes!);
 
-        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(_blobVersionedHashes, Bytes.NullableEqualityComparer))
+        if (!FlattenHashesFromTransactions(transactions).SequenceEqual(blobVersionedHashes, Bytes.NullableEqualityComparer))
         {
             error = "Blob versioned hashes do not match";
             return ValidationResult.Invalid;
         }
 
-        if (_parentBeaconBlockRoot is null)
+        if (parentBeaconBlockRoot is null)
         {
             error = "Parent beacon block root must be set";
             return ValidationResult.Fail;
         }
 
-        _executionPayload.ParentBeaconBlockRoot = new Hash256(_parentBeaconBlockRoot);
+        executionPayload.ParentBeaconBlockRoot = new Hash256(parentBeaconBlockRoot);
 
         error = null;
         return ValidationResult.Success;

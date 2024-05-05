@@ -10,5 +10,5 @@ namespace Nethermind.Consensus.Requests;
 
 public interface IDepositsProcessor
 {
-    List<Deposit>? ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
+    IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec);
 }

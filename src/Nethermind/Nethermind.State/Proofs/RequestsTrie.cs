@@ -18,7 +18,6 @@ public class RequestsTrie : PatriciaTrie<ConsensusRequest>
     public RequestsTrie(ConsensusRequest[]? requests, bool canBuildProof = false, ICappedArrayPool? bufferPool = null)
         : base(requests, canBuildProof, bufferPool)
     {
-        ArgumentNullException.ThrowIfNull(requests);
     }
 
     protected override void Initialize(ConsensusRequest[] requests)

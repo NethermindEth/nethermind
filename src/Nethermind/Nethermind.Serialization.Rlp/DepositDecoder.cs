@@ -7,6 +7,8 @@ namespace Nethermind.Serialization.Rlp;
 
 public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Deposit>
 {
+    public static DepositDecoder Instance { get; } = new();
+
     public Deposit? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         if (rlpStream.IsNextItemNull())

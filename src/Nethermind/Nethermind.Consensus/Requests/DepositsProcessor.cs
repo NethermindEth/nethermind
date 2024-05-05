@@ -11,28 +11,30 @@ namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
-    public List<Deposit>? ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
+    public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
-        if (!spec.DepositsEnabled)
-            return null;
-
-        List<Deposit> depositList = [];
-
-        for (int i = 0; i < block.Transactions.Length; i++)
+        if (spec.DepositsEnabled)
         {
-            LogEntry[]? logEntries = receipts[i].Logs;
-            if (logEntries != null)
-                foreach (LogEntry? log in logEntries)
+            DepositDecoder depositDecoder = DepositDecoder.Instance;
+            for (int i = 0; i < receipts.Length; i++)
+            {
+                LogEntry[]? logEntries = receipts[i].Logs;
+                if (logEntries is not null)
                 {
-                    if (log != null && log.LoggersAddress == spec.DepositContractAddress)
+                    for (int index = 0; index < logEntries.Length; index++)
                     {
-                        var depositDecoder = new DepositDecoder();
-                        Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                        depositList.Add(deposit);
+                        LogEntry log = logEntries[index];
+                        if (log.LoggersAddress == spec.DepositContractAddress)
+                        {
+                            Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
+                            if (deposit is not null)
+                            {
+                                yield return deposit;
+                            }
+                        }
                     }
                 }
+            }
         }
-
-        return depositList;
     }
 }

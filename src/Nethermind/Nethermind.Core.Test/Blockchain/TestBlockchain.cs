@@ -360,9 +360,7 @@ public class TestBlockchain : IDisposable
             ReceiptStorage,
             NullWitnessCollector.Instance,
             LogManager,
-            null,
-            null,
-            ConsensusRequestsProcessor);
+            consensusRequestsProcessor: ConsensusRequestsProcessor);
 
     public async Task WaitForNewHead()
     {

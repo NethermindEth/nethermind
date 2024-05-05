@@ -54,7 +54,7 @@ public class BoostBlockImprovementContext : IBlockImprovementContext
             CurrentBestBlock = block;
             BlockFees = _feesTracer.Fees;
             _stateReader.TryGetAccount(parentHeader.StateRoot!, payloadAttributes.SuggestedFeeRecipient, out account);
-            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = new ExecutionPayload(block), Profit = account.Balance - balanceBefore }, cancellationToken);
+            await _boostRelay.SendPayload(new BoostExecutionPayloadV1 { Block = ExecutionPayload.Create(block), Profit = account.Balance - balanceBefore }, cancellationToken);
         }
 
         return CurrentBestBlock;
