@@ -2233,11 +2233,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
         Signature signature = new(sigData, yParity);
 
-        Address recovered = null; 
+        Address recovered = null;
         if (signature.V == 27 || signature.V == 28)
         {
             //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
-            recovered = TryRecoverSigner(signature, vmState.Env.ExecutingAccount, authority, commit); 
+            recovered = TryRecoverSigner(signature, vmState.Env.ExecutingAccount, authority, commit);
         }
 
         if (recovered == authority)
@@ -2272,7 +2272,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             if (i < 12)
                 msg[offset + 64] = 0;
-            else if(i - 12 < invokerAddress.Length)
+            else if (i - 12 < invokerAddress.Length)
                 msg[offset + 64] = invokerAddress[i - 12];
 
             if (i < commit.Length)
@@ -2388,7 +2388,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 //AUTHCALL forwards all, if gas param is zero
                 if (gasLimit == 0)
                     gasLimit = sixtyFourthDeducted;
-                else if(sixtyFourthDeducted < gasLimit)
+                else if (sixtyFourthDeducted < gasLimit)
                     return EvmExceptionType.OutOfGas;
             }
             gasLimit = UInt256.Min(sixtyFourthDeducted, gasLimit);
