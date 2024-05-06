@@ -2,6 +2,7 @@ using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
+using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
@@ -13,26 +14,40 @@ internal class IlInfo
 {
     public enum ILMode
     {
-        PatternMatching = 0,
-        SubsegmentsCompiling = 1
+        NoIlvm = 0,
+        PatternMatching = 1,
+        SubsegmentsCompiling = 2
     }
 
     /// <summary>
     /// Represents an information about IL-EVM being not able to optimize the given <see cref="CodeInfo"/>.
     /// </summary>
-    public static readonly IlInfo NoIlEVM = new();
+    public static IlInfo Empty => new();
 
     /// <summary>
     /// Represents what mode of IL-EVM is used. 0 is the default. [0 = Pattern matching, 1 = subsegments compiling]
     /// </summary>
     public static readonly ILMode Mode = ILMode.PatternMatching;
-
+    public bool IsEmpty => Chunks.IsNullOrEmpty() && Segments.IsNullOrEmpty();
     /// <summary>
     /// No overrides.
     /// </summary>
     private IlInfo()
     {
         Chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
+        Segments = FrozenDictionary<ushort, Func<long, ProjectedEvmState>>.Empty;
+    }
+
+    public IlInfo WithChunks(FrozenDictionary<ushort, InstructionChunk> chunks)
+    {
+        Chunks = chunks;
+        return this;
+    }
+
+    public IlInfo WithSegments(FrozenDictionary<ushort, Func<long, ProjectedEvmState>> segments)
+    {
+        Segments = segments;
+        return this;
     }
 
     public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, Func<long, ProjectedEvmState>> segments)
@@ -42,8 +57,8 @@ internal class IlInfo
     }
 
     // assumes small number of ILed
-    public FrozenDictionary<ushort, InstructionChunk> Chunks { get; init; }
-    public FrozenDictionary<ushort, Func<long, ProjectedEvmState>> Segments { get; init; }
+    public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
+    public FrozenDictionary<ushort, Func<long, ProjectedEvmState>> Segments { get; set; }
 
     public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing

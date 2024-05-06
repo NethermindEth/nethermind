@@ -43,30 +43,28 @@ internal static class IlAnalyzer
         }
         return Patterns;
     }
-    public static InstructionChunk GetPatternHandler(byte[] pattern)
+    public static T GetPatternHandler<T> (byte[] pattern) where T : InstructionChunk
     {
-        return Patterns[pattern];
+        return (T) Patterns[pattern];
     }
 
 
     /// <summary>
     /// Starts the analyzing in a background task and outputs the value in the <paramref name="codeInfo"/>.
-    /// </summary>
+    /// </summary> thou
     /// <param name="codeInfo">The destination output.</param>
-    public static Task StartAnalysis(CodeInfo codeInfo)
+    public static Task StartAnalysis(CodeInfo codeInfo, IlInfo.ILMode mode)
     {
-        return Task.Run(() =>
-        {
-            IlInfo info = Analysis(codeInfo.MachineCode);
-            codeInfo.SetIlInfo(info);
-        });
+        return Task.Run(() => Analysis(codeInfo, mode));
     }
 
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
-    private static IlInfo Analysis(ReadOnlyMemory<byte> machineCode)
+    private static void Analysis(CodeInfo codeInfo, IlInfo.ILMode mode)
     {
+        ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
+
         OpcodeInfo[] StripByteCode(ReadOnlySpan<byte> machineCode)
         {
             OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
@@ -114,9 +112,9 @@ internal static class IlAnalyzer
             return opcodeInfos.ToFrozenDictionary();
         }
 
-        FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode, out OpcodeInfo[] strippedBytecode)
+        FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode)
         {
-            strippedBytecode = StripByteCode(machineCode.Span);
+            var strippedBytecode = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
             foreach (var (pattern, mapping) in Patterns)
             {
@@ -138,12 +136,20 @@ internal static class IlAnalyzer
             return patternFound.ToFrozenDictionary();
         }
 
-        return new IlInfo(CheckPatterns(machineCode, out OpcodeInfo[] strippedBytecode), SegmentCode(strippedBytecode));
+        switch(mode)
+        {
+            case IlInfo.ILMode.PatternMatching:
+                codeInfo.IlInfo.WithChunks(CheckPatterns(machineCode));
+                break;
+            case IlInfo.ILMode.SubsegmentsCompiling:
+                codeInfo.IlInfo.WithSegments(SegmentCode(StripByteCode(machineCode.Span)));
+                break;
+        }
     }
 
     /// <summary>
     /// How many execution a <see cref="CodeInfo"/> should perform before trying to get its opcodes optimized.
     /// </summary>
-    public const int IlAnalyzerThreshold = 23;
+    public const int CompoundOpThreshold = 23;
     public const int IlCompilerThreshold = 57;
 }

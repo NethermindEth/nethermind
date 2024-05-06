@@ -829,9 +829,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             // try execute as many as possible
             while ((ilInfo?.TryExecute(vmState, spec, ref programCounter, ref gasAvailable, ref stack))
-                   .GetValueOrDefault(false))
-            {
-            }
+                   .GetValueOrDefault(false));
 
             Instruction instruction = (Instruction)code[programCounter];
 

@@ -66,7 +66,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
 
             CodeInfo codeInfo = new CodeInfo(bytecode);
 
-            await IlAnalyzer.StartAnalysis(codeInfo);
+            await IlAnalyzer.StartAnalysis(codeInfo, IlInfo.ILMode.PatternMatching);
 
             codeInfo.IlInfo.Chunks.Count.Should().Be(2);
         }
@@ -74,7 +74,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test]
         public void Execution_Swap_Happens_When_Pattern_Occurs()
         {
-            P01P01ADD pattern = (P01P01ADD)IlAnalyzer.GetPatternHandler(P01P01ADD.Pattern);
+            P01P01ADD pattern = IlAnalyzer.GetPatternHandler<P01P01ADD>(P01P01ADD.Pattern);
 
             byte[] bytecode =
                 Prepare.EvmCode
@@ -109,7 +109,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     var address = receipts.TxReceipts[0].ContractAddress;
             */
 
-            for(int i = 0; i < IlAnalyzer.IlAnalyzerThreshold * 2; i++) {
+            for(int i = 0; i < IlAnalyzer.CompoundOpThreshold * 2; i++) {
                 ExecuteBlock(new NullBlockTracer(), bytecode);
             }
 

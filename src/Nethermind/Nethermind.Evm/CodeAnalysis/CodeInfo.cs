@@ -16,20 +16,19 @@ namespace Nethermind.Evm.CodeAnalysis
 
 
         // IL-EVM
-        private volatile IlInfo? _il;
         private int _callCount;
 
-        public void NoticeExecution()
+        public async void NoticeExecution()
         {
             // IL-EVM info already created
-            if (_il != null)
+            if (_callCount > IlAnalyzer.IlCompilerThreshold)
                 return;
 
             // use Interlocked just in case of concurrent execution to run it only once
-            if (Interlocked.Increment(ref _callCount) == IlAnalyzer.IlAnalyzerThreshold)
-            {
-                IlAnalyzer.StartAnalysis(this);
-            }
+            IlInfo.ILMode mode = Interlocked.Increment(ref _callCount) == IlAnalyzer.CompoundOpThreshold
+                ? IlInfo.ILMode.PatternMatching
+                : _callCount == IlAnalyzer.IlCompilerThreshold ? IlInfo.ILMode.SubsegmentsCompiling : IlInfo.ILMode.NoIlvm;
+            await IlAnalyzer.StartAnalysis(this, mode);
         }
         private readonly JumpDestinationAnalyzer _analyzer;
         private static readonly JumpDestinationAnalyzer _emptyAnalyzer = new(Array.Empty<byte>());
@@ -52,14 +51,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Gets information whether this code info has IL-EVM optimizations ready.
         /// </summary>
-        internal IlInfo? IlInfo
-        {
-            get
-            {
-                IlInfo? il = _il;
-                return il != null && !ReferenceEquals(il, IlInfo.NoIlEVM) ? il : null;
-            }
-        }
+        internal IlInfo? IlInfo { get; set; } = IlInfo.Empty;
 
         public CodeInfo(IPrecompile precompile)
         {
@@ -77,7 +69,5 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             _analyzer.Execute();
         }
-
-        internal void SetIlInfo(IlInfo info) => _il = info;
     }
 }
