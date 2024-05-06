@@ -772,18 +772,42 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
-        int programCounter = vmState.ProgramCounter;
-        ReadOnlySpan<byte> code = vmState.Env.CodeInfo.MachineCode.Span;
-        EvmExceptionType exceptionType = EvmExceptionType.None;
         bool isRevert = false;
+        EvmExceptionType exceptionType = EvmExceptionType.None;
+        object returnData;
+
+        ReadOnlySpan<byte> code = vmState.Env.CodeInfo.MachineCode.Span;
+        var codeLength = code.Length;
+        ref byte codeStart = ref MemoryMarshal.GetReference(code);
+
 #if DEBUG
         DebugTracer? debugger = _txTracer.GetTracer<DebugTracer>();
 #endif
-        object returnData;
-        while ((uint)programCounter < (uint)code.Length)
+        nint currentOffset = -1;
+        ulong codeSegment = 0;
+        int programCounter = vmState.ProgramCounter;
+        while ((uint)programCounter < (uint)codeLength)
         {
-            Instruction instruction =
-                (Instruction)Add(ref MemoryMarshal.GetReference(code), (uint)programCounter);
+            Instruction instruction;
+            if (programCounter <= codeLength - sizeof(ulong))
+            {
+                // `programCounter >> 3` is equivalent to `programCounter / 8`
+                nint offset = programCounter >> 3;
+                if (currentOffset != offset)
+                {
+                    // Read code in 8 byte chunks from memory
+                    codeSegment = ReadUnaligned<ulong>(ref Add(ref codeStart, (nuint)offset * 8));
+                    currentOffset = offset;
+                }
+                // extract instruction from ulong
+                // `(byte)programCounter << 3` is equivalent to `programCounter % 8 * 8`
+                instruction = (Instruction)(byte)(codeSegment >> (((int)(byte)programCounter) << 3));
+            }
+            else
+            {
+                // Read 1 byte of code from memory
+                instruction = (Instruction)Add(ref codeStart, (uint)programCounter);
+            }
 #if DEBUG
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
@@ -912,9 +936,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     InstructionEnvUInt256<OpGasPrice, TTracingInstructions>(vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.EXTCODESIZE:
-                    if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length)
+                    if (typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < codeLength)
                     {
-                        exceptionType = InstructionExtCodeSizeOptimized(vmState, ref stack, spec, ref gasAvailable, ref programCounter, code);
+                        exceptionType = InstructionExtCodeSizeOptimized(vmState, ref stack, spec, ref gasAvailable, ref programCounter, (Instruction)Add(ref codeStart, (uint)programCounter));
                     }
                     else
                     {
@@ -1024,13 +1048,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     break;
                 case Instruction.PUSH1:
                     gasAvailable -= GasCostOf.VeryLow;
-                    if ((uint)programCounter >= (uint)code.Length)
+                    if ((uint)programCounter >= (uint)codeLength)
                     {
                         stack.PushZero();
                     }
                     else
                     {
-                        stack.PushByte(code[programCounter]);
+                        stack.PushByte(Add(ref codeStart, (uint)programCounter));
                     }
 
                     programCounter++;
@@ -1139,8 +1163,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.REVERT:
                     exceptionType = InstructionRevert(vmState, ref stack, ref gasAvailable, spec, out returnData);
                     if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    isRevert = true;
-                    goto DataReturn;
+                    goto DataRevert;
                 case Instruction.INVALID:
                     gasAvailable -= GasCostOf.High;
                     goto InvalidInstruction;
@@ -1166,7 +1189,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         goto EmptyReturnNoTrace;
-
     // Common exit errors, goto labels to reduce in loop code duplication and to keep loop body smaller
     EmptyReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
@@ -1178,6 +1200,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
         return CallResult.Empty;
+    DataRevert:
+        isRevert = true;
     DataReturn:
         if (typeof(TTracingInstructions) == typeof(IsTracing)) EndInstructionTrace(gasAvailable, vmState.Memory.Size);
         DataReturnNoTrace:
@@ -1396,11 +1420,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private EvmExceptionType InstructionExtCodeSizeOptimized<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec, ref long gasAvailable, ref int programCounter, ReadOnlySpan<byte> code)
+    private EvmExceptionType InstructionExtCodeSizeOptimized<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec, ref long gasAvailable, ref int programCounter, Instruction nextInstruction)
         where TTracingInstructions : struct, IIsTracing
     {
-        Debug.Assert(typeof(TTracingInstructions) != typeof(IsTracing) && programCounter < code.Length);
-
         gasAvailable -= spec.GetExtCodeCost();
 
         Address address = stack.PopAddress();
@@ -1409,7 +1431,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, address, spec)) return EvmExceptionType.OutOfGas;
 
         bool optimizeAccess = false;
-        Instruction nextInstruction = (Instruction)code[programCounter];
         // code.length is zero
         if (nextInstruction == Instruction.ISZERO)
         {
