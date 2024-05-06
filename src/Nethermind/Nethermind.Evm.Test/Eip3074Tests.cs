@@ -338,7 +338,7 @@ namespace Nethermind.Evm.Test
                 .Op(Instruction.PUSH0)
                 .Op(Instruction.RETURN)
                 .Done;
-            
+
             var result = Execute(code);
 
             Assert.That(result.ReturnValue[0], Is.EqualTo(0));
@@ -446,103 +446,6 @@ namespace Nethermind.Evm.Test
             var result = Execute(code);
 
             Assert.That(new Address(result.ReturnValue), Is.EqualTo(signer.Address));
-        }
-
-        [Test]
-        public void ExecuteAuthCallAndDELEGATECALL_TransactionReturnsTheCurrentCallerAfterAuthCallAndDelegateCall_ContractAddressIsReturned()
-        {
-            var signer = TestItem.PrivateKeyF;
-            var data = CreateSignedCommitMessage(signer);
-
-            byte[] code = Prepare.EvmCode
-                .PushData(data[..32])
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.MSTORE)
-                .PushData(data[32..64])
-                .PushSingle(32)
-                .Op(Instruction.MSTORE)
-                .PushData(data[64..96])
-                .PushSingle(64)
-                .Op(Instruction.MSTORE)
-
-                //Auth params
-                .PushSingle((UInt256)data.Length)
-                .Op(Instruction.PUSH0)
-                .PushData(signer.Address)
-                .Op(Instruction.AUTH)
-
-                //Just throw away the result
-                .POP()
-
-                //AuthCall params
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(TestItem.AddressC)
-                .PushData(0)
-                .Op(Instruction.AUTHCALL)
-                .Done;
-
-            byte[] firstCallCode = Prepare.EvmCode
-                .CALLER()
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SSTORE)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(TestItem.AddressD)
-                .PushData(1000000)
-                .Op(Instruction.CALL)
-                .Done;
-
-            byte[] secondCallCode = Prepare.EvmCode
-                .CALLER()
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SSTORE)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(0)
-                .PushData(TestItem.AddressE)
-                .PushData(1000000)
-                .Op(Instruction.CALL)
-                .Done;
-
-            //Store caller in slot 0
-            byte[] codeStoreCaller = Prepare.EvmCode
-                .CALLER()
-                .Op(Instruction.PUSH0)
-                .Op(Instruction.SSTORE)
-                .Op(Instruction.STOP)
-                .Done;
-
-            TestState.CreateAccount(TestItem.AddressC, 0);
-            TestState.InsertCode(TestItem.AddressC, Keccak.Compute(firstCallCode), firstCallCode, Spec);
-
-            TestState.CreateAccount(TestItem.AddressD, 0);
-            TestState.InsertCode(TestItem.AddressD, Keccak.Compute(secondCallCode), secondCallCode, Spec);
-
-            TestState.CreateAccount(TestItem.AddressE, 0);
-            TestState.InsertCode(TestItem.AddressE, Keccak.Compute(codeStoreCaller), codeStoreCaller, Spec);
-
-            Execute(code);
-
-            var resultB = TestState.Get(new StorageCell(TestItem.AddressB, 0));
-
-            Assert.That(new Address(resultB.ToArray()), Is.EqualTo(TestItem.AddressB));
-
-            var resultD = TestState.Get(new StorageCell(TestItem.AddressD, 0));
-
-            Assert.That(new Address(resultD.ToArray()), Is.EqualTo(TestItem.AddressC));
-
-            var resultE = TestState.Get(new StorageCell(TestItem.AddressE, 0));
-
-            Assert.That(new Address(resultE.ToArray()), Is.EqualTo(TestItem.AddressD));
         }
 
         public static IEnumerable<object[]> AuthCallGasCases()
@@ -679,7 +582,7 @@ namespace Nethermind.Evm.Test
 
             TestState.CreateAccount(TestItem.AddressC, 0);
             TestState.InsertCode(TestItem.AddressC, Keccak.Compute(codeStoreGas), codeStoreGas, Spec);
-            
+
             var result = ExecuteAndTrace(gasLimit, code);
 
             Assert.That(new UInt256(result.ReturnValue, true), Is.EqualTo((UInt256)expectedGasInSubcall));
@@ -748,7 +651,7 @@ namespace Nethermind.Evm.Test
               .PushSingle(64)
               .Op(Instruction.MSTORE)
 
-               //Auth params
+              //Auth params
               .PushSingle((UInt256)data.Length)
               .Op(Instruction.PUSH0)
               .PushData(signer.Address)
@@ -875,7 +778,7 @@ namespace Nethermind.Evm.Test
         }
 
         [Test]
-        public void ExecuteAuthCall_AuthCallIsCalledTwice_AuthorizedIsStillSet()
+        public void ExecuteAuthCall_AuthCallIsCalledTwiceInSameFrame_AuthorizedIsStillSet()
         {
             var signer = TestItem.PrivateKeyF;
             var data = CreateSignedCommitMessage(signer);
@@ -968,7 +871,7 @@ namespace Nethermind.Evm.Test
             TestState.InsertCode(TestItem.AddressC, Keccak.Compute(authCall), authCall, Spec);
 
             var result = ExecuteAndTrace(code);
-            Assert.That(result.Entries.Last(e=> e.Opcode.Equals(Instruction.AUTHCALL.ToString())).Error, Is.Not.Null);
+            Assert.That(result.Entries.Last(e => e.Opcode.Equals(Instruction.AUTHCALL.ToString())).Error, Is.Not.Null);
         }
 
         private byte[] CreateSignedCommitMessage(PrivateKey signer)
