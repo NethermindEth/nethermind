@@ -149,7 +149,7 @@ namespace Nethermind.Consensus.Producers
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 logManager,
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)),
-                _consensusRequestsProcessor);
+                consensusRequestsProcessor: _consensusRequestsProcessor);
 
     }
 }
