@@ -329,8 +329,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         if (!block.IsGenesis && block.Transactions.Length != 0 && ExecutionTracer.IsTracingAccessWitness)
         {
-            var verkleWorldState = worldState as VerkleWorldState;
-            var gasWitness = new VerkleExecWitness(NullLogManager.Instance, verkleWorldState!);
+            var gasWitness = new VerkleExecWitness(NullLogManager.Instance, worldState as VerkleWorldState);
             gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!);
             ExecutionTracer.ReportAccessWitness(gasWitness);
         }
