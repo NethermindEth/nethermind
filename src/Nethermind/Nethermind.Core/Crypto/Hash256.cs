@@ -68,8 +68,12 @@ namespace Nethermind.Core.Crypto
 
         public override int GetHashCode()
         {
-            uint hash = s_instanceRandom;
-            hash = BitOperations.Crc32C(hash, Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)));
+            return GetChainedHashCode(s_instanceRandom);
+        }
+
+        public int GetChainedHashCode(uint previousHash)
+        {
+            uint hash = BitOperations.Crc32C(previousHash, Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)));
             hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 1));
             hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 2));
             hash = BitOperations.Crc32C(hash, Unsafe.Add(ref Unsafe.As<Vector256<byte>, ulong>(ref Unsafe.AsRef(in _bytes)), 3));
@@ -135,7 +139,7 @@ namespace Nethermind.Core.Crypto
 
     [JsonConverter(typeof(Hash256Converter))]
     [DebuggerStepThrough]
-    public class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
+    public sealed class Hash256 : IEquatable<Hash256>, IComparable<Hash256>
     {
         public const int Size = 32;
 
