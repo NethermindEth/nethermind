@@ -11,7 +11,7 @@ namespace Nethermind.Consensus.AuRa.Validators
     {
         static PendingValidators()
         {
-            Rlp.Decoders[typeof(PendingValidators)] = new PendingValidatorsDecoder();
+            Rlp.RegisterDecoder(typeof(PendingValidators), new PendingValidatorsDecoder());
         }
 
         public PendingValidators(long blockNumber, Hash256 blockHash, Address[] addresses)

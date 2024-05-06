@@ -104,7 +104,6 @@ public class P2PProtocolHandler(
         {
             case P2PMessageCode.Hello:
                 {
-                    Metrics.HellosReceived++;
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
@@ -328,7 +327,6 @@ public class P2PProtocolHandler(
 
         _sentHello = true;
         Send(helloMessage);
-        Metrics.HellosSent++;
     }
 
     private void HandlePing()
