@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Trie.Pruning;
 
-public class ScopedTrieStore : IScopedTrieStore
+public sealed class ScopedTrieStore : IScopedTrieStore
 {
     private ITrieStore _trieStoreImplementation;
     private readonly Hash256? _address;
