@@ -39,6 +39,7 @@ using Nethermind.Synchronization.Peers;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
+using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 
 namespace Nethermind.Synchronization.Test

@@ -16,6 +16,7 @@ using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -31,7 +32,8 @@ namespace Nethermind.Consensus.AuRa
         private readonly ITxFilter _txFilter;
         private readonly ILogger _logger;
 
-        public AuRaBlockProcessor(ISpecProvider specProvider,
+        public AuRaBlockProcessor(
+            ISpecProvider specProvider,
             IBlockValidator blockValidator,
             IRewardCalculator rewardCalculator,
             IBlockProcessor.IBlockTransactionsExecutor blockTransactionsExecutor,
@@ -40,6 +42,7 @@ namespace Nethermind.Consensus.AuRa
             ILogManager logManager,
             IBlockTree blockTree,
             IWithdrawalProcessor withdrawalProcessor,
+            ITransactionProcessor transactionProcessor,
             IAuRaValidator? auRaValidator,
             ITxFilter? txFilter = null,
             AuRaContractGasLimitOverride? gasLimitOverride = null,
@@ -53,9 +56,10 @@ namespace Nethermind.Consensus.AuRa
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                transactionProcessor,
                 logManager,
                 withdrawalProcessor,
-                consensusRequestsProcessor)
+                consensusRequestsProcessor: consensusRequestsProcessor)
         {
             _specProvider = specProvider;
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));

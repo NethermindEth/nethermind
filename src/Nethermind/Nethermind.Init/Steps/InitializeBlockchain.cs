@@ -228,6 +228,7 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 _api.WitnessCollector,
+                _api.TransactionProcessor,
                 _api.LogManager);
         }
 

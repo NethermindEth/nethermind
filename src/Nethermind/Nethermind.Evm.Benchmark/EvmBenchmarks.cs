@@ -56,7 +56,8 @@ namespace Nethermind.Evm.Benchmark
                 value: 0,
                 transferValue: 0,
                 txExecutionContext: new TxExecutionContext(_header, Address.Zero, 0, null),
-                inputData: default
+                inputData: default,
+                isSystemExecutionEnv: false
             );
 
             _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);

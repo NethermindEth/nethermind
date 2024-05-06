@@ -4,7 +4,6 @@
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -12,7 +11,6 @@ using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.Merge.AuRa.Withdrawals;
@@ -83,6 +81,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     logManager
                 )
             ),
+            readOnlyTxProcessingEnv.TransactionProcessor,
             consensusRequestsProcessor: _consensusRequestsProcessor);
     }
 

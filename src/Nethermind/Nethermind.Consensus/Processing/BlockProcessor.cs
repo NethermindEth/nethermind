@@ -7,24 +7,23 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
-using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core;
-using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.State.Proofs;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Processing;
@@ -52,17 +51,20 @@ public partial class BlockProcessor : IBlockProcessor
     /// </summary>
     protected BlockReceiptsTracer ReceiptsTracer { get; set; }
 
-    public BlockProcessor(ISpecProvider? specProvider,
+    public BlockProcessor(
+        ISpecProvider? specProvider,
         IBlockValidator? blockValidator,
         IRewardCalculator? rewardCalculator,
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IConsensusRequestsProcessor? consensusRequestsProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IBeaconBlockRootHandler? beaconBlockRootHandler = null,
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        IConsensusRequestsProcessor? consensusRequestsProcessor = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -74,8 +76,8 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
         _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
-        _beaconBlockRootHandler = new BeaconBlockRootHandler();
 
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -121,6 +123,7 @@ public partial class BlockProcessor : IBlockProcessor
 
                 // be cautious here as AuRa depends on processing
                 PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+
                 if (notReadOnly)
                 {
                     _witnessCollector.Persist(processedBlock.Hash!);
@@ -240,8 +243,7 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.SetOtherTracer(blockTracer);
         ReceiptsTracer.StartNewBlockTrace(block);
 
-        _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
-        _stateProvider.Commit(spec);
+        _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 

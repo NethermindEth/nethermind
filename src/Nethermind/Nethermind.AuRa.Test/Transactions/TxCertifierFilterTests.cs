@@ -155,8 +155,8 @@ public class TxCertifierFilterTests
                 LimboLogs.Instance,
                 BlockTree,
                 NullWithdrawalProcessor.Instance,
-                null
-                );
+                TxProcessor,
+                null);
         }
 
         protected override Task AddBlocksOnStart() => Task.CompletedTask;

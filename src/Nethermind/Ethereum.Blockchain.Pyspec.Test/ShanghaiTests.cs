@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using Ethereum.Test.Base;
 using NUnit.Framework;
@@ -17,7 +18,7 @@ public class ShanghaiTests : BlockchainTestBase
 
     private static IEnumerable<BlockchainTest> LoadTests()
     {
-        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), "fixtures/shanghai");
-        return (IEnumerable<BlockchainTest>)loader.LoadTests();
+        TestsSourceLoader loader = new(new LoadPyspecTestsStrategy(), "fixtures/blockchain_tests/shanghai");
+        return loader.LoadTests().Cast<BlockchainTest>();
     }
 }
