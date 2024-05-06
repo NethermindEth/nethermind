@@ -33,7 +33,7 @@ namespace Nethermind.Core
         bool KeyExists(ReadOnlySpan<byte> key)
         {
             Span<byte> span = GetSpan(key);
-            bool result = span.IsNull();
+            bool result = !span.IsNullOrEmpty();
             DangerousReleaseMemory(span);
             return result;
         }
