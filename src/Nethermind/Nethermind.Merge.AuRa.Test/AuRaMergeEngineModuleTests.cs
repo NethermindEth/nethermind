@@ -145,7 +145,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxProcessor,
                 LogManager,
                 WithdrawalProcessor,
-                ConsensusRequestsProcessor);
+                consensusRequestsProcessor: ConsensusRequestsProcessor);
 
             return new TestBlockProcessorInterceptor(processor, _blockProcessingThrottle);
         }
