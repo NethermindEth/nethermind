@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -38,6 +37,7 @@ using System.Linq;
 using System.Threading;
 
 using Int256;
+using Nethermind.Crypto;
 
 public class VirtualMachine : IVirtualMachine
 {
@@ -140,6 +140,8 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
+        public static CallResult AuthorizedNotSet => new(EvmExceptionType.AuthorizedNotSet);
+
         public static CallResult Empty => new(Array.Empty<byte>(), null);
 
         public CallResult(EvmState stateToExecute)
@@ -197,6 +199,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private ReadOnlyMemory<byte> _returnDataBuffer = Array.Empty<byte>();
     private ITxTracer _txTracer = NullTxTracer.Instance;
 
+    private EthereumEcdsa _ecdsa;
+
     public VirtualMachine(
         IBlockhashProvider? blockhashProvider,
         ISpecProvider? specProvider,
@@ -206,6 +210,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _blockhashProvider = blockhashProvider ?? throw new ArgumentNullException(nameof(blockhashProvider));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
         _chainId = ((UInt256)specProvider.ChainId).ToBigEndian();
+        _ecdsa = new EthereumEcdsa(specProvider.ChainId, LimboLogs.Instance);
     }
 
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer)
@@ -1692,7 +1697,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                     }
                 case Instruction.GAS:
                     {
-                        gasAvailable -= GasCostOf.Base;
+                        gasAvailable -= GasCostOf.Gas;
                         // Ensure gas is positive before pushing to stack
                         if (gasAvailable < 0) goto OutOfGas;
 
@@ -1854,6 +1859,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.CALLCODE:
                 case Instruction.DELEGATECALL:
                 case Instruction.STATICCALL:
+                case Instruction.AUTHCALL:
                     {
                         exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, spec, instruction, out returnData);
                         if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
@@ -2095,6 +2101,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             break;
                         }
                     }
+                case Instruction.AUTH:
+                    {
+                        exceptionType = InstructionAuth(vmState, ref stack, ref gasAvailable, spec);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+
+                        break;
+                    }
                 default:
                     {
                         goto InvalidInstruction;
@@ -2169,6 +2182,107 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
+    private EvmExceptionType InstructionAuth<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
+    {
+        if (!spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
+        Address authority = stack.PopAddress();
+
+        if (authority is null) return EvmExceptionType.StackUnderflow;
+
+        if (!stack.PopUInt256(out UInt256 offset)) return EvmExceptionType.StackUnderflow;
+        if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
+
+        if (_state.IsContract(authority))
+        {
+            vmState.Authorized = null;
+            stack.PushUInt256(0);
+            return EvmExceptionType.None;
+        }
+
+        gasAvailable -= GasCostOf.Auth;
+
+        if (!UpdateMemoryCost(vmState, ref gasAvailable, offset, length))
+            return EvmExceptionType.OutOfGas;
+
+        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
+            return EvmExceptionType.OutOfGas;
+
+        ReadOnlySpan<byte> memData = vmState.Memory.Load(in offset, length).Span;
+
+        byte yParity = 0;
+        Span<byte> sigData = stackalloc byte[64];
+        Span<byte> commit = stackalloc byte[32];
+        //SkipLocalsInit flag is active so we have to iterate all data
+        for (int i = 0; i < 97; i++)
+        {
+            byte data = 0;
+            if (i < length)
+                data = memData[i];
+            switch (i)
+            {
+                case 0:
+                    yParity = data;
+                    break;
+                case >= 1 and <= 64:
+                    sigData[i - 1] = data;
+                    break;
+                default:
+                    commit[i - 65] = data;
+                    break;
+            }
+        }
+        Signature signature = new(sigData, yParity);
+
+        Address recovered = null;
+        if (signature.V == 27 || signature.V == 28)
+        {
+            //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
+            recovered = TryRecoverSigner(signature, vmState.Env.ExecutingAccount, authority, commit);
+        }
+
+        if (recovered == authority)
+        {
+            stack.PushUInt256(1);
+            vmState.Authorized = authority;
+        }
+        else
+        {
+            stack.PushUInt256(0);
+            vmState.Authorized = null;
+        }
+        return EvmExceptionType.None;
+    }
+
+    private Address? TryRecoverSigner(
+        Signature signature,
+        Address invoker,
+        Address authority,
+        ReadOnlySpan<byte> commit)
+    {
+        byte[] chainId = _chainId.PadLeft(32);
+        UInt256 nonce = _state.GetNonce(authority);
+        byte[] invokerAddress = invoker.Bytes;
+        Span<byte> msg = stackalloc byte[1 + 32 * 4];
+        msg[0] = Eip3074Constants.AuthMagic;
+        for (int i = 0; i < 32; i++)
+        {
+            int offset = i + 1;
+            msg[offset] = chainId[i];
+            msg[32 + 32 - i] = (byte)(nonce[i / 8] >> (8 * (i % 8)));
+
+            if (i < 12)
+                msg[offset + 64] = 0;
+            else if (i - 12 < invokerAddress.Length)
+                msg[offset + 64] = invokerAddress[i - 12];
+
+            if (i < commit.Length)
+                msg[offset + 96] = commit[i];
+        }
+
+        return _ecdsa.RecoverAddress(signature, Keccak.Compute(msg));
+    }
+
+    [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
     private void InstructionExtCodeSize<TTracingInstructions>(Address address, ref EvmStack<TTracingInstructions> stack, IReleaseSpec spec) where TTracingInstructions : struct, IIsTracing
     {
@@ -2189,7 +2303,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Metrics.Calls++;
 
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
-            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
+            instruction == Instruction.STATICCALL && !spec.StaticCallEnabled ||
+            instruction == Instruction.AUTHCALL && !spec.AuthCallsEnabled) return EvmExceptionType.BadInstruction;
+
+        if (instruction == Instruction.AUTHCALL && vmState.Authorized is null)
+        {
+            return EvmExceptionType.AuthorizedNotSet;
+        }
 
         if (!stack.PopUInt256(out UInt256 gasLimit)) return EvmExceptionType.StackUnderflow;
         Address codeSource = stack.PopAddress();
@@ -2219,8 +2339,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (vmState.IsStatic && !transferValue.IsZero && instruction != Instruction.CALLCODE) return EvmExceptionType.StaticCallViolation;
 
-        Address caller = instruction == Instruction.DELEGATECALL ? env.Caller : env.ExecutingAccount;
-        Address target = instruction == Instruction.CALL || instruction == Instruction.STATICCALL
+        Address caller = instruction switch
+        {
+            Instruction.DELEGATECALL => env.Caller,
+            Instruction.AUTHCALL => vmState.Authorized,
+            _ => env.ExecutingAccount
+        };
+
+        Address target = instruction is Instruction.CALL or Instruction.STATICCALL or Instruction.AUTHCALL
             ? codeSource
             : env.ExecutingAccount;
 
@@ -2237,7 +2363,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!transferValue.IsZero)
         {
-            gasExtra += GasCostOf.CallValue;
+            gasExtra += instruction == Instruction.AUTHCALL ? GasCostOf.AuthCallValue : GasCostOf.CallValue;
         }
 
         if (!spec.ClearEmptyAccountWhenTouched && !_state.AccountExists(target))
@@ -2256,7 +2382,16 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (spec.Use63Over64Rule)
         {
-            gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
+            UInt256 sixtyFourthDeducted = (UInt256)(gasAvailable - gasAvailable / 64);
+            if (instruction == Instruction.AUTHCALL)
+            {
+                //AUTHCALL forwards all, if gas param is zero
+                if (gasLimit == 0)
+                    gasLimit = sixtyFourthDeducted;
+                else if (sixtyFourthDeducted < gasLimit)
+                    return EvmExceptionType.OutOfGas;
+            }
+            gasLimit = UInt256.Min(sixtyFourthDeducted, gasLimit);
         }
 
         if (gasLimit >= long.MaxValue) return EvmExceptionType.OutOfGas;
@@ -2264,14 +2399,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         long gasLimitUl = (long)gasLimit;
         if (!UpdateGas(gasLimitUl, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
-        if (!transferValue.IsZero)
+        if (!transferValue.IsZero && instruction != Instruction.AUTHCALL)
         {
             if (typeof(TTracingRefunds) == typeof(IsTracing)) _txTracer.ReportExtraGasPressure(GasCostOf.CallStipend);
             gasLimitUl += GasCostOf.CallStipend;
         }
 
-        if (env.CallDepth >= MaxCallDepth ||
-            !transferValue.IsZero && _state.GetBalance(env.ExecutingAccount) < transferValue)
+        Address accountToDebit = instruction == Instruction.AUTHCALL ? vmState.Authorized! : env.ExecutingAccount;
+        if (env.CallDepth >= MaxCallDepth || !transferValue.IsZero && _state.GetBalance(accountToDebit) < transferValue)
         {
             _returnDataBuffer = Array.Empty<byte>();
             stack.PushZero();
@@ -2780,6 +2915,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             EvmExceptionType.StackUnderflow => CallResult.StackUnderflowException,
             EvmExceptionType.InvalidJumpDestination => CallResult.InvalidJumpDestination,
             EvmExceptionType.AccessViolation => CallResult.AccessViolationException,
+            EvmExceptionType.AuthorizedNotSet => CallResult.AuthorizedNotSet,
             _ => throw new ArgumentOutOfRangeException(nameof(exceptionType), exceptionType, "")
         };
     }
@@ -2857,30 +2993,14 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         _txTracer.ReportOperationError(evmExceptionType);
     }
 
-    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false)
-    {
-        ExecutionType executionType;
-        if (instruction == Instruction.CALL)
+    private static ExecutionType GetCallExecutionType(Instruction instruction, bool isPostMerge = false) =>
+        instruction switch
         {
-            executionType = ExecutionType.CALL;
-        }
-        else if (instruction == Instruction.DELEGATECALL)
-        {
-            executionType = ExecutionType.DELEGATECALL;
-        }
-        else if (instruction == Instruction.STATICCALL)
-        {
-            executionType = ExecutionType.STATICCALL;
-        }
-        else if (instruction == Instruction.CALLCODE)
-        {
-            executionType = ExecutionType.CALLCODE;
-        }
-        else
-        {
-            throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}");
-        }
-
-        return executionType;
-    }
+            Instruction.CALL => ExecutionType.CALL,
+            Instruction.DELEGATECALL => ExecutionType.DELEGATECALL,
+            Instruction.STATICCALL => ExecutionType.STATICCALL,
+            Instruction.CALLCODE => ExecutionType.CALLCODE,
+            Instruction.AUTHCALL => ExecutionType.AUTHCALL,
+            _ => throw new NotSupportedException($"Execution type is undefined for {instruction.GetName(isPostMerge)}")
+        };
 }
