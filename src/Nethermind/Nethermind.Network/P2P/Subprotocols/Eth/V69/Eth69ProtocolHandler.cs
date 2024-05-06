@@ -41,6 +41,10 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     {
         switch (message.PacketType)
         {
+            case Eth62MessageCode.NewBlockHashes:
+                break;
+            case Eth62MessageCode.NewBlock:
+                break;
             default:
                 base.HandleMessage(message);
                 break;
