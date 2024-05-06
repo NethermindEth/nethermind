@@ -52,6 +52,11 @@ public class VerkleWorldState : IWorldState
     // // False positives would be problematic as the code _must_ be persisted
     private readonly LruKeyCache<Hash256> _codeInsertFilter = new(2048, "Code Insert Filter");
 
+    public byte[]? GetValue(Hash256 key)
+    {
+        return _tree.Get(key);
+    }
+
     public VerkleWorldState(VerkleStateTree verkleTree, IKeyValueStore? codeDb, ILogManager? logManager)
     {
         _logger = logManager?.GetClassLogger<WorldState>() ?? throw new ArgumentNullException(nameof(logManager));

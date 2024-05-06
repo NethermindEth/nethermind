@@ -136,7 +136,8 @@ namespace Nethermind.Evm.TransactionProcessing
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
             // declare the execution witness to collect witness and also charge gas
-            IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager) : new NoExecWitness();
+            var verkleWorldState = WorldState as VerkleWorldState;
+            IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager, verkleWorldState!) : new NoExecWitness();
             executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero);
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, executionWitness, effectiveGasPrice);
 
