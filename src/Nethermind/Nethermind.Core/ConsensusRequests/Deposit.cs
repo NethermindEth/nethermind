@@ -45,13 +45,12 @@ public class Deposit : ConsensusRequest
     }
     public override string ToString() => ToString(string.Empty);
 
-    public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(Deposit)} {{")
-        .Append($"{nameof(Index)}: {Index}, ")
-        .Append($"{nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, ")
-        .Append($"{nameof(Amount)}: {Amount}, ")
-        .Append($"{nameof(Signature)}: {Signature?.ToHexString()}, ")
-        .Append($"{nameof(PubKey)}: {PubKey?.ToHexString()}}}")
-        .ToString();
+    public string ToString(string indentation) => @$"{indentation}{nameof(Deposit)} 
+            {{{nameof(Index)}: {Index}, 
+            {nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, 
+            {nameof(Amount)}: {Amount}, 
+            {nameof(Signature)}: {Signature?.ToHexString()}, 
+            {nameof(PubKey)}: {PubKey?.ToHexString()}}}";
 
 
 }
