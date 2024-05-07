@@ -162,17 +162,20 @@ public class TestCaseGenerator
             ForkchoiceStateV1 forkchoiceState = new(block.Hash, Keccak.Zero, Keccak.Zero);
             WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", _serializer.Serialize(forkchoiceState));
 
-            _taskCompletionSource = new TaskCompletionSource<bool>();
-            chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
-            chain.BlockTree.SuggestBlock(block);
-
-            if (!WaitForProcessingBlock.IsCompleted)
+            if (block.Number < _numberOfBlocksToProduce)
             {
-                await WaitForProcessingBlock;
-                chain.BlockProcessingQueue.ProcessingQueueEmpty -= OnEmptyProcessingQueue;
-            }
+                _taskCompletionSource = new TaskCompletionSource<bool>();
+                chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
+                chain.BlockTree.SuggestBlock(block);
 
-            previousBlock = block;
+                if (!WaitForProcessingBlock.IsCompleted)
+                {
+                    await WaitForProcessingBlock;
+                    chain.BlockProcessingQueue.ProcessingQueueEmpty -= OnEmptyProcessingQueue;
+                }
+
+                previousBlock = block;
+            }
         }
 
         if (!Directory.Exists(_outputPath))
