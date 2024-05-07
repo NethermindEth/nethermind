@@ -128,7 +128,7 @@ public ref struct EvmStack
     }
 
     private static ReadOnlySpan<byte> ZeroStackItem() => Bytes.ZeroByte.Span;
-    
+
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public void PushZero()
     {

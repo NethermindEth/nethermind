@@ -356,7 +356,7 @@ public class VirtualMachine : IVirtualMachine
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
         lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
 
-        
+
         lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;
         lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
         lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash;
@@ -878,7 +878,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         else
         {
             return _txTracer.IsTracingOpLevelStorage ?
-                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable):
+                ExecuteCode<TTracingInstructions, IsTracing, IsTracing>(vmState, ref stack, gasAvailable) :
                 ExecuteCode<TTracingInstructions, IsTracing, NotTracing>(vmState, ref stack, gasAvailable);
         }
     Empty:
@@ -1517,7 +1517,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ref readonly ExecutionEnvironment env = ref vmState.Env;
 
         Metrics.Calls++;
-        
+
         IReleaseSpec spec = vmState.Spec;
         if (instruction == Instruction.DELEGATECALL && !spec.DelegateCallEnabled ||
             instruction == Instruction.STATICCALL && !spec.StaticCallEnabled) return EvmExceptionType.BadInstruction;
@@ -1722,7 +1722,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private (EvmExceptionType exceptionType, EvmState? callState) InstructionCreate(EvmState vmState, ref EvmStack stack, ref long gasAvailable, Instruction instruction)
     {
         Metrics.Creates++;
-        
+
         IReleaseSpec spec = vmState.Spec;
         if (!spec.Create2OpcodeEnabled && instruction == Instruction.CREATE2) return (EvmExceptionType.BadInstruction, null);
 

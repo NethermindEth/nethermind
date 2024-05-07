@@ -56,7 +56,7 @@ internal sealed partial class EvmInstructions
 
         return EvmExceptionType.None;
     }
-    
+
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionMLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable)

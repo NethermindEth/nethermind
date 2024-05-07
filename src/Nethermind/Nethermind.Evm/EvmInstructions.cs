@@ -49,7 +49,7 @@ internal sealed partial class EvmInstructions
     public static EvmExceptionType InstructionRevert(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
     {
         SkipInit(out returnData);
-        
+
         IReleaseSpec spec = vmState.Spec;
         if (!spec.RevertOpcodeEnabled) return EvmExceptionType.BadInstruction;
 
