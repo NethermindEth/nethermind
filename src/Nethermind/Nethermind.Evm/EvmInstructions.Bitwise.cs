@@ -18,7 +18,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBitwise<TOpBitwise>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
+    public static EvmExceptionType InstructionBitwise<TOpBitwise>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
         where TOpBitwise : struct, IOpBitwise
     {
         gasAvailable -= TOpBitwise.GasCost;

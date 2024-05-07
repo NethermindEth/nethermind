@@ -84,34 +84,36 @@ public class VirtualMachine : IVirtualMachine
             _evm = new VirtualMachine<IsTracing>(blockhashProvider, specProvider, logger);
         }
 
-        WarmUp(specProvider);
+        WarmUpInstructions(specProvider);
     }
 
-    private unsafe static void WarmUp(ISpecProvider? specProvider)
+    private unsafe static void WarmUpInstructions(ISpecProvider? specProvider)
     {
         IReleaseSpec spec = specProvider.GetFinalSpec();
         var bytes = new byte[1024];
         EvmStack stack = new(bytes, 0, NullTxTracer.Instance);
         long gasAvailable = long.MaxValue;
 
-        var ops = AddToMulMod;
+        var ops = CalliJmpTable;
         var opNull = ops[0];
+
+        var vmState = new EvmState(gasAvailable, new ExecutionEnvironment{ }, ExecutionType.CALL, isTopLevel: true, snapshot: default, isContinuation: false, NullTxTracer.Instance, worldState: null, spec);
 
         for (var i = 0; i < 40; i++)
         {
-            for (var j = 0; j < ops.Length; j++)
+            for (var j = 0; j <= (int)Instruction.SAR; j++)
             {
                 if ((void*)ops[j] == (void*)opNull)
                 {
                     continue;
                 }
                 AddStack(ref stack);
-                ops[j](ref stack, ref gasAvailable, spec);
+                ops[j](vmState, ref stack, ref gasAvailable);
             }
         }
 
         Thread.Sleep(1000);
-        AddToMulMod = CreateInstructLookup();
+        CalliJmpTable = CreateInstructLookup();
 
         static void AddStack(ref EvmStack stack)
         {
@@ -280,17 +282,16 @@ public class VirtualMachine : IVirtualMachine
         }
     }
 
-    private static unsafe delegate*<ref EvmStack, ref long, IReleaseSpec, EvmExceptionType>[] CreateInstructLookup()
+    internal static unsafe delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[] CalliJmpTable = CreateInstructLookup();
+    private static unsafe delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[] CreateInstructLookup()
     {
-        var lookup = new delegate*<ref EvmStack, ref long, IReleaseSpec, EvmExceptionType>[256];
-        delegate*<ref EvmStack, ref long, IReleaseSpec, EvmExceptionType> opNull = &InstructionBadInstruction;
+        var lookup = new delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[256];
         for (int i = 0; i < lookup.Length; i++)
         {
-            lookup[i] = opNull;
+            lookup[i] = &InstructionBadInstruction;
         }
 
         lookup[(int)Instruction.ADD] = &InstructionMath2Param<OpAdd>;
-
         lookup[(int)Instruction.MUL] = &InstructionMath2Param<OpMul>;
         lookup[(int)Instruction.SUB] = &InstructionMath2Param<OpSub>;
         lookup[(int)Instruction.DIV] = &InstructionMath2Param<OpDiv>;
@@ -315,20 +316,6 @@ public class VirtualMachine : IVirtualMachine
         lookup[(int)Instruction.SHL] = &InstructionShift<OpShl>;
         lookup[(int)Instruction.SHR] = &InstructionShift<OpShr>;
         lookup[(int)Instruction.SAR] = &InstructionSar;
-
-        return lookup;
-    }
-
-    internal static unsafe delegate*<ref EvmStack, ref long, IReleaseSpec, EvmExceptionType>[] AddToMulMod = CreateInstructLookup();
-
-    internal static unsafe delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[] StateFull = CreateInstructLookup2();
-    private static unsafe delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[] CreateInstructLookup2()
-    {
-        var lookup = new delegate*<EvmState, ref EvmStack, ref long, EvmExceptionType>[256];
-        for (int i = 0; i < lookup.Length; i++)
-        {
-            lookup[i] = &InstructionBadInstruction;
-        }
 
         lookup[(int)Instruction.KECCAK256] = &InstructionKeccak256;
         lookup[(int)Instruction.ADDRESS] = &InstructionEnvBytes<OpAddress>;
@@ -355,7 +342,6 @@ public class VirtualMachine : IVirtualMachine
         lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt256<OpNumber>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
         lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
-
 
         lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;
         lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
@@ -944,54 +930,17 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
             programCounter++;
             exceptionType = EvmExceptionType.None;
-            switch (instruction)
+            if (instruction == Instruction.STOP)
             {
-                case Instruction.STOP:
-                    goto EmptyReturn;
-                case Instruction.ADD:
-                case Instruction.MUL:
-                case Instruction.SUB:
-                case Instruction.DIV:
-                case Instruction.SDIV:
-                case Instruction.MOD:
-                case Instruction.SMOD:
-                case Instruction.ADDMOD:
-                case Instruction.MULMOD:
-                case Instruction.EXP:
-                case Instruction.SIGNEXTEND:
-                // Gap: 0xc to 0xf
-                case Instruction.LT:
-                case Instruction.GT:
-                case Instruction.SLT:
-                case Instruction.SGT:
-                case Instruction.EQ:
-                case Instruction.ISZERO:
-                case Instruction.AND:
-                case Instruction.OR:
-                case Instruction.XOR:
-                case Instruction.NOT:
-                case Instruction.BYTE:
-                case Instruction.SHL:
-                case Instruction.SHR:
-                case Instruction.SAR:
-                    exceptionType = AddToMulMod[(int)instruction](ref stack, ref gasAvailable, vmState.Spec);
-                    break;
-                // Gap: 0x1e to 0x1f
-                case Instruction.KECCAK256:
-                // Gap: 0x21 to 0x2f
-                case Instruction.ADDRESS:
-                case Instruction.BALANCE:
-                case Instruction.ORIGIN:
-                case Instruction.CALLER:
-                case Instruction.CALLVALUE:
-                case Instruction.CALLDATALOAD:
-                case Instruction.CALLDATASIZE:
-                case Instruction.CALLDATACOPY:
-                case Instruction.CODESIZE:
-                case Instruction.CODECOPY:
-                case Instruction.GASPRICE:
-                    exceptionType = StateFull[(int)instruction](vmState, ref stack, ref gasAvailable);
-                    break;
+                goto EmptyReturn;
+            }
+            if (instruction <= Instruction.GASPRICE)
+            {
+                exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
+                goto Next;
+            }
+            else switch (instruction)
+            {
                 case Instruction.EXTCODESIZE:
                     if (!TTracingInstructions.Tracing && programCounter < codeLength)
                     {
@@ -1022,7 +971,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.NUMBER:
                 case Instruction.PREVRANDAO:
                 case Instruction.GASLIMIT:
-                    exceptionType = StateFull[(int)instruction](vmState, ref stack, ref gasAvailable);
+                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.CHAINID:
                     if (!vmState.Spec.ChainIdOpcodeEnabled) goto InvalidInstruction;
@@ -1033,7 +982,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.BASEFEE:
                 case Instruction.BLOBHASH:
                 case Instruction.BLOBBASEFEE:
-                    exceptionType = StateFull[(int)instruction](vmState, ref stack, ref gasAvailable);
+                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
                     break;
                 // Gap: 0x4b to 0x4f
                 case Instruction.POP:
@@ -1043,7 +992,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 case Instruction.MLOAD:
                 case Instruction.MSTORE:
                 case Instruction.MSTORE8:
-                    exceptionType = StateFull[(int)instruction](vmState, ref stack, ref gasAvailable);
+                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
                     break;
                 case Instruction.SLOAD:
                     exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
@@ -1212,6 +1161,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 default:
                     goto InvalidInstruction;
             }
+        Next:
 
             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
 

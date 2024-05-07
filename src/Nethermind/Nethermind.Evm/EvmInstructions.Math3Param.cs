@@ -18,7 +18,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMath3Param<TOpMath>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
+    public static EvmExceptionType InstructionMath3Param<TOpMath>(EvmState _, ref EvmStack stack, ref long gasAvailable)
         where TOpMath : struct, IOpMath3Param
     {
         gasAvailable -= TOpMath.GasCost;

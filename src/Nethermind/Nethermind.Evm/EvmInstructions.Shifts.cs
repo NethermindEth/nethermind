@@ -18,10 +18,10 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TOpShift>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    public static EvmExceptionType InstructionShift<TOpShift>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
         where TOpShift : struct, IOpShift
     {
-        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
+        if (!vmState.Spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= TOpShift.GasCost;
 
@@ -42,9 +42,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    public static EvmExceptionType InstructionSar(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
-        if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
+        if (!vmState.Spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= GasCostOf.VeryLow;
 

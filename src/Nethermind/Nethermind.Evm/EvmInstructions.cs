@@ -85,13 +85,11 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    public static EvmExceptionType InstructionBadInstruction(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
-        => EvmExceptionType.BadInstruction;
     public static EvmExceptionType InstructionBadInstruction(EvmState _, ref EvmStack stack, ref long gasAvailable)
         => EvmExceptionType.BadInstruction;
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+    public static EvmExceptionType InstructionExp(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.Exp;
 
@@ -108,7 +106,7 @@ internal sealed partial class EvmInstructions
         else
         {
             int expSize = 32 - leadingZeros;
-            gasAvailable -= spec.GetExpByteCost() * expSize;
+            gasAvailable -= vmState.Spec.GetExpByteCost() * expSize;
 
             if (a.IsZero)
             {
@@ -129,7 +127,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
+    public static EvmExceptionType InstructionByte(EvmState _, ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -157,7 +155,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(ref EvmStack stack, ref long gasAvailable, IReceiptSpec _)
+    public static EvmExceptionType InstructionSignExtend(EvmState _, ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.Low;
 
