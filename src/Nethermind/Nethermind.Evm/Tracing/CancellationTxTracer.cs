@@ -29,6 +29,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
     private readonly bool _isTracingOpLevelLogs;
+    private readonly bool _isTracingEvmActionLogs;
 
     public ITxTracer InnerTracer => _innerTracer;
     private ILogsTxTracer? _logsTxTracer;
@@ -52,6 +53,12 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
     {
         get => _isTracingActions || _innerTracer.IsTracingActions;
         init => _isTracingActions = value;
+    }
+
+    public bool IsTracingEvmActionLogs
+    {
+        get => _isTracingEvmActionLogs || (_logsTxTracer != null && _logsTxTracer!.IsTracingEvmActionLogs);
+        init => _isTracingEvmActionLogs = value;
     }
 
     public bool IsTracingOpLevelStorage
@@ -119,11 +126,13 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
         get => _isTracingFees || _innerTracer.IsTracingFees;
         init => _isTracingFees = value;
     }
+
     public bool IsTracingLogs
     {
         get => _isTracingOpLevelLogs || _innerTracer.IsTracingLogs;
         init => _isTracingOpLevelLogs = value;
     }
+
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -462,7 +471,6 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
     {
         _innerTracer.Dispose();
     }
-
 
     public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)

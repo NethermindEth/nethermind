@@ -67,7 +67,7 @@ public class VirtualMachineTestsBase
         ITrieStore trieStore = new TrieStore(_stateDb, logManager);
         TestState = new WorldState(trieStore, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
-        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(_specProvider);
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         CodeInfoRepository = new CodeInfoRepository();
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, CodeInfoRepository, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, CodeInfoRepository, logManager);

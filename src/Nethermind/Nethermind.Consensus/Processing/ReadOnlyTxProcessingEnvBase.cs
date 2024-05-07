@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
@@ -21,12 +22,16 @@ public class ReadOnlyTxProcessingEnvBase
     protected ReadOnlyTxProcessingEnvBase(
         IWorldStateManager worldStateManager,
         IBlockTree readOnlyBlockTree,
+        ISpecProvider? specProvider,
         ILogManager? logManager
     )
     {
+        ArgumentNullException.ThrowIfNull(specProvider);
+        ArgumentNullException.ThrowIfNull(worldStateManager);
+
         StateReader = worldStateManager.GlobalStateReader;
         StateProvider = worldStateManager.CreateResettableWorldState();
         BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-        BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+        BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
     }
 }

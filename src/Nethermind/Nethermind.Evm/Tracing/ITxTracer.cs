@@ -441,7 +441,7 @@ public interface ITxTracer : IWorldStateTracer, IDisposable
 
 public interface ILogsTxTracer
 {
-    bool IsTracingLogs { get; }
+    bool IsTracingEvmActionLogs { get; }
 
     /// <summary>
     ///
@@ -454,6 +454,6 @@ public interface ILogsTxTracer
     /// <param name="callType"></param>
     /// <param name="isPrecompileCall"></param>
     /// <returns>Created logs to be added, only when <see cref="isPrecompileCall"/> is true</returns>
-    /// <remarks>Depends on <see cref="IsTracingLogs"/></remarks>
+    /// <remarks>Depends on <see cref="IsTracingEvmActionLogs"/></remarks>
     IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false);
 }

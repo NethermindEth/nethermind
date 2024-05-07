@@ -9,7 +9,6 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
@@ -23,8 +22,10 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _txIndex;
     private static readonly Hash256 transferSignature = new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
-    private readonly bool _isTracingTransfers;
     private static Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
+
+    public bool IsTracingEvmActionLogs { get; }
+
     public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong txIndex)
     {
@@ -33,9 +34,13 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
         _currentBlockHash = currentBlockHash;
         _txIndex = txIndex;
         IsTracingReceipt = true;
-
-        _isTracingTransfers = isTracingTransfers;
+        IsTracingEvmActionLogs = isTracingTransfers;
+        if (isTracingTransfers)
+        {
+            IsTracingActions = true;
+        }
     }
+
 
     public SimulateCallResult? TraceResult { get; set; }
 
@@ -57,7 +62,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
                 BlockHash = _currentBlockHash,
                 BlockNumber = _currentBlockNumber
 
-            })
+            }).ToList()
         };
     }
 
@@ -75,8 +80,6 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
             Status = StatusCode.Failure
         };
     }
-
-    public bool IsTracingLogs => _isTracingTransfers;
 
     private Hash256 AddressToHash256(Address input)
     {

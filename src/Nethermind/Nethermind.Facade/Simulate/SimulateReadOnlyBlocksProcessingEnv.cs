@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
@@ -40,7 +41,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         ISpecProvider specProvider,
         ILogManager? logManager = null,
         bool doValidation = false)
-        : base(worldStateManager, blockTree, logManager)
+        : base(worldStateManager, blockTree, specProvider, logManager)
     {
         ReadOnlyBlockTree = baseBlockTree;
         DbProvider = readOnlyDbProvider;
@@ -49,7 +50,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         SpecProvider = specProvider;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, logManager), BlockTree);
+        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
         StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
@@ -87,6 +88,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             StateProvider,
             NullReceiptStorage.Instance,
             NullWitnessCollector.Instance,
+            new BlockhashStore(BlockTree, SpecProvider, StateProvider),
             _logManager);
     }
 

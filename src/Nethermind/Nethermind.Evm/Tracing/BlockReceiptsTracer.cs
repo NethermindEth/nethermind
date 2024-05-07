@@ -28,8 +28,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
     public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
-
-    public bool IsTracingLogs => _logsTxTracer != null && _logsTxTracer!.IsTracingLogs;
+    public bool IsTracingEvmActionLogs => (_logsTxTracer != null && _logsTxTracer!.IsTracingEvmActionLogs);
 
     private ILogsTxTracer? _logsTxTracer;
     private IBlockTracer _otherTracer = NullBlockTracer.Instance;

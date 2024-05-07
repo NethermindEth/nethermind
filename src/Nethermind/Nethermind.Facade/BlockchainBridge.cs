@@ -26,12 +26,8 @@ using Nethermind.State;
 using Nethermind.Core.Extensions;
 using Nethermind.Config;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using System.Transactions;
-using Microsoft.CSharp.RuntimeBinder;
 using Nethermind.Facade.Simulate;
 using Transaction = Nethermind.Core.Transaction;
-using Nethermind.Specs;
-using MathNet.Numerics.RootFinding;
 
 namespace Nethermind.Facade
 {
@@ -156,12 +152,12 @@ namespace Nethermind.Facade
         public SimulateOutput Simulate(BlockHeader header, SimulatePayload<TransactionWithSourceDetails> payload, CancellationToken cancellationToken)
         {
             SimulateBlockTracer simulateOutputTracer = new(payload.TraceTransfers);
-            BlockReceiptsTracer tracer = new BlockReceiptsTracer();
+            BlockReceiptsTracer tracer = new();
             tracer.SetOtherTracer(simulateOutputTracer);
             SimulateOutput result = new();
             try
             {
-                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, tracer.WithCancellation(cancellationToken));
+                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, new CancellationBlockTracer(tracer, cancellationToken));
                 if (!success)
                 {
                     result.Error = error;
