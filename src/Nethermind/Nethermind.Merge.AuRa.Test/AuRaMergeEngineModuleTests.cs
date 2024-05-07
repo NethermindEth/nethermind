@@ -62,7 +62,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         "0xeb7146faceb5d2974ae7198a55335071b88083972d5f16a031b53b0928d8475b",
         "0xb3bafa4c9efb2f6f95345381f591d2b6f611b0911ca568fb499594cbec66e5d4",
         "0xffadd136040966576fb63852506bba89c765cabe2884fa27797fd67aea5769dc",
-        "0x3c6a8926870bdeff")]
+        "0x7f9dace0b66620a2")]
     public override Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash, string stateRoot, string payloadId)
         => base.Should_process_block_as_expected_V4(latestValidHash, blockHash, stateRoot, payloadId);
 
