@@ -127,7 +127,7 @@ public class TestCaseGenerator
             };
 
             // quick hack
-            if (i < 2)
+            if (i < 2 || _testCase == TestCase.Transfers || _testCase == TestCase.Warmup)
             {
                 SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
             }
