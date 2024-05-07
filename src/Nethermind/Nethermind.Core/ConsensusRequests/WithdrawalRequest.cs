@@ -34,11 +34,10 @@ public class WithdrawalRequest : ConsensusRequest
     }
     public override string ToString() => ToString(string.Empty);
 
-    public string ToString(string indentation) => new StringBuilder($"{indentation}{nameof(WithdrawalRequest)} {{")
-        .Append($"{nameof(SourceAddress)}: {SourceAddress}, ")
-        .Append($"{nameof(ValidatorPubkey)}: {ValidatorPubkey?.ToHexString()}, ")
-        .Append($"{nameof(Amount)}: {Amount}}}")
-        .ToString();
+    public string ToString(string indentation) => @$"{indentation}{nameof(WithdrawalRequest)} 
+            {{{nameof(SourceAddress)}: {SourceAddress}, 
+            {nameof(ValidatorPubkey)}: {ValidatorPubkey?.ToHexString()}, 
+            {nameof(Amount)}: {Amount}}}";
 
 
 }
