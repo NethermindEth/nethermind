@@ -33,17 +33,20 @@ public class TestCaseGenerator
     private ChainSpec _chainSpec;
     private ChainSpecBasedSpecProvider _chainSpecBasedSpecProvider;
     private TestCase _testCase;
+    private readonly string _outputPath;
     private TaskCompletionSource<bool>? _taskCompletionSource;
     private Task WaitForProcessingBlock => _taskCompletionSource?.Task ?? Task.CompletedTask;
 
     public TestCaseGenerator(
         string chainSpecPath,
-        TestCase testCase)
+        TestCase testCase,
+        string outputPath)
     {
         _maxNumberOfWithdrawalsPerBlock = 16;
         _numberOfWithdrawals = 1600;
         _chainSpecPath = chainSpecPath;
         _testCase = testCase;
+        _outputPath = outputPath;
 
         _numberOfBlocksToProduce = _testCase switch
         {
@@ -70,14 +73,14 @@ public class TestCaseGenerator
 
     private async Task GenerateTestCases()
     {
-        foreach (int blockGasConsumptionTarget in BlockGasVariants.GetValuesAsUnderlyingType<BlockGasVariants>())
+        foreach (long blockGasConsumptionTarget in BlockGasVariants.Variants)
         {
             await GenerateTestCase(blockGasConsumptionTarget);
             Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
         }
     }
 
-    private async Task GenerateTestCase(int blockGasConsumptionTarget)
+    private async Task GenerateTestCase(long blockGasConsumptionTarget)
     {
         // _txsPerBlock = blockGasConsumptionTarget / 854_000;
         // _txsPerBlock = blockGasConsumptionTarget / 970_000;
@@ -85,7 +88,7 @@ public class TestCaseGenerator
 
         _txsPerBlock = _testCase switch
         {
-            TestCase.Transfers => blockGasConsumptionTarget / (int)GasCostOf.Transaction,
+            TestCase.Transfers => (int)blockGasConsumptionTarget / (int)GasCostOf.Transaction,
             _ => 1
         };
 
@@ -187,10 +190,9 @@ public class TestCaseGenerator
             previousBlock = block;
         }
 
-        string folder = "testcases";
-        if (!Directory.Exists(folder))
-            Directory.CreateDirectory(folder);
-        await File.WriteAllTextAsync($"{folder}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
+        if (!Directory.Exists(_outputPath))
+            Directory.CreateDirectory(_outputPath);
+        await File.WriteAllTextAsync($"{_outputPath}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
     private void OnEmptyProcessingQueue(object? sender, EventArgs e)
@@ -201,7 +203,7 @@ public class TestCaseGenerator
         // }
     }
 
-    private void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, int blockGasConsumptionTarget)
+    private void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, long blockGasConsumptionTarget)
     {
         int txsPerAddress = _txsPerBlock / _maxNumberOfWithdrawalsPerBlock;
         int txsLeft = _txsPerBlock % _maxNumberOfWithdrawalsPerBlock;
@@ -219,7 +221,7 @@ public class TestCaseGenerator
         }
     }
 
-    private Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, int blockGasConsumptionTarget)
+    private Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, long blockGasConsumptionTarget)
     {
         switch (testCase)
         {
@@ -233,7 +235,7 @@ public class TestCaseGenerator
                     .WithTo(TestItem.AddressB)
                     .WithChainId(BlockchainIds.Holesky)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.TxDataZero:
                 long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;
                 byte[] data = new byte[numberOfBytes];
@@ -247,7 +249,7 @@ public class TestCaseGenerator
                     .WithData(data)
                     .WithGasLimit(_chainSpec.Genesis.GasLimit)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From1Byte:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -259,7 +261,7 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(1))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From8Bytes:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -271,7 +273,7 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(8))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
             case TestCase.Keccak256From32Bytes:
                 return Build.A.Transaction
                     .WithNonce((UInt256)nonce)
@@ -283,7 +285,19 @@ public class TestCaseGenerator
                     .WithData(PrepareKeccak256Code(32))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;;
+                    .TestObject;
+            case TestCase.SHA2From32Bytes:
+                return Build.A.Transaction
+                    .WithNonce((UInt256)nonce)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(null)
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(PrepareKeccak256Code(32))
+                    .WithGasLimit(blockGasConsumptionTarget)
+                    .SignedAndResolved(privateKey)
+                    .TestObject;
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

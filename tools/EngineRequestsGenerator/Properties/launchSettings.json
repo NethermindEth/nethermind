@@ -3,7 +3,11 @@
   "profiles": {
     "EngineRequestsGenerator": {
       "commandName": "Project",
-      "commandLineArgs": "-c benchmarks_chainspec.json -t Keccak256From32Bytes"
+      "commandLineArgs": "-c benchmarks_chainspec.json -t Keccak256From32Bytes -o testcases"
+    },
+    "MetadataGenerator": {
+      "commandName": "Project",
+      "commandLineArgs": "-m true -o testcases"
     }
   }
 }
