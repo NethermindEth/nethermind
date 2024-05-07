@@ -274,6 +274,13 @@ namespace Nethermind.Core.Specs
         Address Eip4788ContractAddress { get; }
 
         /// <summary>
+        /// Save historical block hashes in state
+        /// </summary>
+        bool IsEip2935Enabled { get; }
+        Address Eip2935ContractAddress { get; }
+        public ulong Eip2935TransitionTimestamp { get; }
+
+        /// <summary>
         /// SELFDESTRUCT only in same transaction
         /// </summary>
         bool IsEip6780Enabled { get; }
@@ -288,7 +295,7 @@ namespace Nethermind.Core.Specs
 
         public ulong Eip4844TransitionTimestamp { get; }
 
-        // STATE related 
+        // STATE related
         public bool ClearEmptyAccountWhenTouched => IsEip158Enabled;
 
         // VM
@@ -359,6 +366,7 @@ namespace Nethermind.Core.Specs
         public bool SelfdestructOnlyOnSameTransaction => IsEip6780Enabled;
 
         public bool IsBeaconBlockRootAvailable => IsEip4788Enabled;
+        public bool IsBlockHashInStateAvailable => IsEip2935Enabled;
         public bool MCopyIncluded => IsEip5656Enabled;
         public bool BlobBaseFeeEnabled => IsEip4844Enabled;
     }
