@@ -408,7 +408,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : Nethermind.Evm.VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
 
             codeInfo.AnalyseInBackgroundIfRequired();
 
@@ -465,7 +465,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
-                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false, tracer, WorldState, spec))
                 {
                     if (spec.UseTxAccessLists)
                     {
@@ -579,7 +579,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                CodeInfo codeInfo = Nethermind.Evm.VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

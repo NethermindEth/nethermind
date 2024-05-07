@@ -12,9 +12,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJump<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionJump(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Mid;
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;
@@ -25,8 +23,7 @@ internal sealed partial class EvmInstructions
 
     [SkipLocalsInit]
     [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionJumpIf<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionJumpIf(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.High;
         if (!stack.PopUInt256(out UInt256 result)) return EvmExceptionType.StackUnderflow;

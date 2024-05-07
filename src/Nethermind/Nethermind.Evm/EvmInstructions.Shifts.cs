@@ -18,10 +18,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionShift<TOpShift, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
+    public static EvmExceptionType InstructionShift<TOpShift>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
         where TOpShift : struct, IOpShift
-        where TTracingInstructions : struct, IIsTracing
     {
         if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 
@@ -44,9 +42,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionSar<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionSar(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
     {
         if (!spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 

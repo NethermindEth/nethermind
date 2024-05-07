@@ -12,8 +12,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionGas<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionGas(ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.Base;
 
@@ -26,10 +25,9 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionBlobHash<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionBlobHash(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
+        IReleaseSpec spec = vmState.Spec;
         if (!spec.IsEip4844Enabled) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= GasCostOf.BlobHash;
@@ -51,12 +49,10 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionBlobBaseFee<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionBlobBaseFee(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
         ref readonly BlockExecutionContext blockContext = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
-
+        IReleaseSpec spec = vmState.Spec;
         if (!spec.BlobBaseFeeEnabled || !blockContext.BlobBaseFee.HasValue) return EvmExceptionType.BadInstruction;
 
         gasAvailable -= GasCostOf.Base;

@@ -1,9 +1,10 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core.Specs;
+
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
-using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
 
 namespace Nethermind.Evm;
@@ -17,10 +18,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionBitwise<TOpBitwise, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionBitwise<TOpBitwise>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
         where TOpBitwise : struct, IOpBitwise
-        where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= TOpBitwise.GasCost;
 

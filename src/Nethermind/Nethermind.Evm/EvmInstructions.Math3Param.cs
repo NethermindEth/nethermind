@@ -7,6 +7,8 @@ using static Nethermind.Evm.VirtualMachine;
 namespace Nethermind.Evm;
 using Int256;
 
+using Nethermind.Core.Specs;
+
 internal sealed partial class EvmInstructions
 {
     public interface IOpMath3Param
@@ -16,10 +18,8 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionMath3Param<TOpMath, TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionMath3Param<TOpMath>(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
         where TOpMath : struct, IOpMath3Param
-        where TTracingInstructions : struct, IIsTracing
     {
         gasAvailable -= TOpMath.GasCost;
 

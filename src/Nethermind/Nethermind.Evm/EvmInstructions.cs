@@ -16,9 +16,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void InstructionPushN<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, ref int programCounter, Instruction instruction, ReadOnlySpan<byte> code)
-        where TTracingInstructions : struct, IIsTracing
+    public static void InstructionPushN(ref EvmStack stack, ref long gasAvailable, ref int programCounter, Instruction instruction, ReadOnlySpan<byte> code)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -30,9 +28,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static void InstructionPrevRandao<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionPrevRandao(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.Base;
         BlockHeader header = vmState.Env.TxExecutionContext.BlockExecutionContext.Header;
@@ -45,15 +41,16 @@ internal sealed partial class EvmInstructions
             UInt256 result = header.Difficulty;
             stack.PushUInt256(in result);
         }
+
+        return EvmExceptionType.None;
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionRevert<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec, out object returnData)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionRevert(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
     {
         SkipInit(out returnData);
-
+        
+        IReleaseSpec spec = vmState.Spec;
         if (!spec.RevertOpcodeEnabled) return EvmExceptionType.BadInstruction;
 
         if (!stack.PopUInt256(out UInt256 position) ||
@@ -70,9 +67,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionReturn<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, out object returnData)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionReturn(EvmState vmState, ref EvmStack stack, ref long gasAvailable, out object returnData)
     {
         SkipInit(out returnData);
 
@@ -90,10 +85,13 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
+    public static EvmExceptionType InstructionBadInstruction(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
+        => EvmExceptionType.BadInstruction;
+    public static EvmExceptionType InstructionBadInstruction(EvmState _, ref EvmStack stack, ref long gasAvailable)
+        => EvmExceptionType.BadInstruction;
+
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionExp<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionExp(ref EvmStack stack, ref long gasAvailable, IReleaseSpec spec)
     {
         gasAvailable -= GasCostOf.Exp;
 
@@ -131,9 +129,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionByte<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable, IReleaseSpec spec)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionByte(ref EvmStack stack, ref long gasAvailable, IReleaseSpec _)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -161,9 +157,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionSignExtend<TTracingInstructions>(ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionSignExtend(ref EvmStack stack, ref long gasAvailable, IReceiptSpec _)
     {
         gasAvailable -= GasCostOf.Low;
 
@@ -193,9 +187,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionKeccak256<TTracingInstructions>(EvmState vmState, ref EvmStack<TTracingInstructions> stack, ref long gasAvailable)
-        where TTracingInstructions : struct, IIsTracing
+    public static EvmExceptionType InstructionKeccak256(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
@@ -210,9 +202,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    [MethodImpl(MethodImplOptions.NoInlining)]
-    public static EvmExceptionType InstructionCallDataLoad<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable)
-        where TTracing : struct, IIsTracing
+    public static EvmExceptionType InstructionCallDataLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
