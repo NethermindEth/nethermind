@@ -9,8 +9,10 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
+using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
@@ -20,7 +22,7 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
     private readonly ulong _currentBlockNumber;
     private readonly Hash256 _currentBlockHash;
     private readonly ulong _txIndex;
-    private static readonly Hash256[] _topics = [Keccak.Zero];
+    private static readonly Hash256 transferSignature = new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
     private readonly bool _isTracingTransfers;
     private static Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
     public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
@@ -76,11 +78,18 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 
     public bool IsTracingLogs => _isTracingTransfers;
 
+    private Hash256 AddressToHash256(Address input)
+    {
+        byte[] addressBytes = new byte[32];
+        Array.Copy(input.Bytes, 0, addressBytes, 32 - Address.Size, Address.Size);
+        return new Hash256(addressBytes);
+    }
+
     public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         byte[] data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
-            new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256), from, to, value);
-        yield return new LogEntry(Erc20Sender, data, _topics);
+            new AbiSignature("", AbiType.UInt256), value);
+        yield return new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]);
     }
 }

@@ -249,11 +249,7 @@ namespace Nethermind.Facade
 
             if (transaction.Nonce == 0)
             {
-                try
-                {
-                    transaction.Nonce = _processingEnv.StateReader.GetNonce(stateRoot, transaction.SenderAddress);
-                }
-                catch (TrieException) { }
+                transaction.Nonce = GetNonce(stateRoot, transaction.SenderAddress);
             }
 
             BlockHeader callHeader = treatBlockHeaderAsParentBlock

@@ -119,6 +119,11 @@ public class SimulateBridgeHelper(
                     }
                 }
 
+                if (!payload.Validation)
+                {
+                    callHeader.BaseFeePerGas = 0;
+                }
+
                 Transaction[] transactions = callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, env, nonceCache, payload.Validation)).ToArray()
                                                         ?? Array.Empty<Transaction>();
 

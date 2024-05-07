@@ -118,10 +118,7 @@ public class TestBlockchain : IDisposable
 
     public static TransactionBuilder<Transaction> BuildSimpleTransaction => Builders.Build.A.Transaction.SignedAndResolved(TestItem.PrivateKeyA).To(AccountB);
 
-    protected virtual async Task<TestBlockchain> Build(
-        ISpecProvider? specProvider = null,
-        UInt256? initialValues = null,
-        bool addBlockOnStart = true)
+    protected virtual async Task<TestBlockchain> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null, bool addBlockOnStart = true)
     {
         Timestamper = new ManualTimestamper(new DateTime(2020, 2, 15, 12, 50, 30, DateTimeKind.Utc));
         JsonSerializer = new EthereumJsonSerializer();

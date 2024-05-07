@@ -24,17 +24,39 @@ namespace Nethermind.JsonRpc.Modules.Eth
         // Single call executor
         private abstract class TxExecutor<TResult> : ExecutorBase<TResult, TransactionForRpc, Transaction>
         {
+            protected bool NoBaseFee { get; set; }
             protected TxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig)
                 : base(blockchainBridge, blockFinder, rpcConfig) { }
 
             protected override Transaction Prepare(TransactionForRpc call) => call.ToTransaction(_blockchainBridge.GetChainId());
 
-            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token) => ExecuteTx(header, tx, token);
+            protected override ResultWrapper<TResult> Execute(BlockHeader header, Transaction tx, CancellationToken token)
+            {
+                BlockHeader clonedHeader = header.Clone();
+                if (NoBaseFee)
+                {
+                    clonedHeader.BaseFeePerGas = 0;
+                }
+                if (tx.IsContractCreation && tx.DataLength == 0)
+                {
+                    return ResultWrapper<TResult>.Fail("Contract creation without any data provided.",
+                        ErrorCodes.InvalidInput);
+                }
+                return ExecuteTx(clonedHeader, tx, token);
+            }
+
+            private static bool ShouldSetBaseFee(TransactionForRpc t)
+            {
+                return (t.GasPrice.HasValue && t.GasPrice.Value > 0) ||
+                       (t.MaxFeePerGas.HasValue && t.MaxFeePerGas.Value > 0) ||
+                       (t.MaxPriorityFeePerGas.HasValue && t.MaxPriorityFeePerGas.Value > 0);
+            }
 
             public override ResultWrapper<TResult> Execute(
                 TransactionForRpc transactionCall,
                 BlockParameter? blockParameter)
             {
+                NoBaseFee = !ShouldSetBaseFee(transactionCall);
                 transactionCall.EnsureDefaults(_rpcConfig.GasCap);
                 return base.Execute(transactionCall, blockParameter);
             }

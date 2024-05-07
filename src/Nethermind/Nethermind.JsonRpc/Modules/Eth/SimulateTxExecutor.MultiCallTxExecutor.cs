@@ -12,16 +12,19 @@ using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.JsonRpc.Data;
 using Newtonsoft.Json.Linq;
+using Nethermind.Config;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
 public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>, SimulatePayload<TransactionWithSourceDetails>>
 {
+    private readonly ulong _interBlocksTimings;
     private long gasCapBudget;
     private long blocksLimit;
     public SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig) :
         base(blockchainBridge, blockFinder, rpcConfig)
     {
+        _interBlocksTimings = new BlocksConfig().SecondsPerSlot;
         gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
         blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     }
@@ -142,7 +145,7 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
                 blockToSimulate.BlockOverrides!.Number = givenNumber;
 
 
-                var givenTime = blockToSimulate.BlockOverrides?.Time ?? (lastBlockTime == 0 ? header.Timestamp + 1 : lastBlockTime + 1);
+                var givenTime = blockToSimulate.BlockOverrides?.Time ?? (lastBlockTime == 0 ? header.Timestamp + _interBlocksTimings : lastBlockTime + _interBlocksTimings);
 
                 if (givenTime > lastBlockTime)
                 {
