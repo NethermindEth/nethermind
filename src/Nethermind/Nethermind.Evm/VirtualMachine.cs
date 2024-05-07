@@ -935,7 +935,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 goto EmptyReturn;
             }
-            if (instruction <= Instruction.GASPRICE || (instruction >= Instruction.COINBASE && instruction < Instruction.POP))
+            if (instruction <= Instruction.GASPRICE || (instruction >= Instruction.COINBASE && instruction <= Instruction.MSTORE8))
             {
                 exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
                 goto Next;
