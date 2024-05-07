@@ -30,8 +30,9 @@ internal class ILCompiler
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
         using Local uint256C = method.DeclareLocal(typeof(UInt256));
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
-        using Local returnState = method.DeclareLocal(typeof(EvmState));
-        using Local gasAvailable = method.DeclareLocal(typeof(long));
+        using Local returnState = method.DeclareLocal(typeof(ILEvmState));
+        using Local gasAvailable = method.DeclareLocal(typeof(int));
+
 
         using Local stack = method.DeclareLocal(typeof(Word*));
         using Local currentSP = method.DeclareLocal(typeof(Word*));
@@ -52,6 +53,7 @@ internal class ILCompiler
 
         // gas
         method.LoadArgument(0);
+        method.Convert<int>();
         method.StoreLocal(gasAvailable);
         Label outOfGas = method.DefineLabel("OutOfGas");
 
@@ -64,7 +66,7 @@ internal class ILCompiler
 
         // Idea(Ayman) : implement every opcode as a method, and then inline the IL of the method in the main method
 
-        Dictionary<int, long> gasCost = BuildCostLookup(code);
+        Dictionary<int, int> gasCost = BuildCostLookup(code);
         for (int pc = 0; pc < code.Length; pc++)
         {
             OpcodeInfo op = code[pc];
@@ -77,8 +79,10 @@ internal class ILCompiler
             method.Subtract();
             method.Duplicate();
             method.LoadConstant(0);
-            method.BranchIfLess(outOfGas);
             method.StoreLocal(gasAvailable);
+            method.Convert<uint>();
+            method.BranchIfLess(outOfGas);
+
 
             switch (op.Operation)
             {
@@ -286,7 +290,6 @@ internal class ILCompiler
         }
 
         // prepare ILEvmState
-        method.MarkLabel(ret);
 
         method.LoadLocal(currentSP);
         method.LoadLocal(stack);
@@ -295,9 +298,10 @@ internal class ILCompiler
         method.Divide();
         method.StoreLocal(uint256R);
 
+        // set stack
+        method.LoadLocal(returnState);
         method.LoadLocal(uint256R);
         method.NewArray<Word>();
-        // pop the stack to the array
         method.ForBranch(uint256R, (il, i) =>
         {
             il.Duplicate();
@@ -309,9 +313,24 @@ internal class ILCompiler
 
             il.StackPop(currentSP);
         });
+        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.Stack)));
+
+        // set gas available
+        method.LoadLocal(returnState);
+        method.LoadLocal(gasAvailable);
+        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.GasAvailable)));
+
+        // set program counter
+        method.LoadLocal(returnState);
+        method.LoadConstant(0);
+        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.ProgramCounter)));
 
 
+        method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.None);
+        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.EvmException)));
+
+
         method.Branch(ret);
 
         method.MarkLabel(jumpTable);
@@ -372,10 +391,9 @@ internal class ILCompiler
         method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
         method.Branch(ret);
 
-        // pop items from 
-
 
         // return
+        method.MarkLabel(ret);
         method.Return();
 
         Func<long, ProjectedEvmState> del = method.CreateDelegate();
@@ -415,7 +433,7 @@ internal class ILCompiler
         il.StackLoadPrevious(currentSP, 2);
         il.Call(Word.GetUInt256);
 
-        customHandling.Invoke(il, label);
+        customHandling?.Invoke(il, label);
 
         il.Call(operation);
         il.StoreLocal(uint256R);
@@ -428,11 +446,11 @@ internal class ILCompiler
         il.StackPush(currentSP);
     }
 
-    private static Dictionary<int, long> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
+    private static Dictionary<int, int> BuildCostLookup(ReadOnlySpan<OpcodeInfo> code)
     {
-        Dictionary<int, long> costs = new();
+        Dictionary<int, int> costs = new();
         int costStart = 0;
-        long costcurrentSP = 0;
+        int costcurrentSP = 0;
 
         for (int pc = 0; pc < code.Length; pc++)
         {

@@ -129,17 +129,34 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             foreach (var instruction in instructions)
             {
                 string name = $"ILEVM_TEST_{instruction}";
-                OpcodeInfo opcode = new OpcodeInfo(0, instruction, null, null);
+                OpcodeInfo opcode = new OpcodeInfo(0, instruction, null);
                 try
                 {
                     ILCompiler.CompileSegment(name, [opcode]);
-                } catch (NotSupportedException)
+                } catch (Exception)
                 {
                     notYetImplemented.Add(instruction);
                 }
             }
 
             Assert.That(notYetImplemented.Count, Is.EqualTo(0));
+        }
+
+
+        [Test]
+        public void Ensure_Evm_ILvm_Compatibility()
+        {
+            byte[] bytecode =
+                Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .ADD()
+                    .Done;
+
+
+            var function = ILCompiler.CompileSegment("ILEVM_TEST", IlAnalyzer.StripByteCode(bytecode));
+            var result = function(100);
+            Assert.IsNotNull(result);
         }
 
     }

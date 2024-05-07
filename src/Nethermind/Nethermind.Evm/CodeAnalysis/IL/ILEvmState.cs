@@ -14,9 +14,16 @@ internal class ILEvmState
 {
     public byte[] bytes;
     public UInt256[] Stack;
+
+    // in case of exceptions
     public EvmException EvmException;
+
+    // in case of jumps crossing section boundaries
     public int ProgramCounter;
     public int GasAvailable;
+
+    // in case STOP is executed
+    public bool StopExecution;
 
     public static FieldInfo GetFieldInfo(string name)
     {

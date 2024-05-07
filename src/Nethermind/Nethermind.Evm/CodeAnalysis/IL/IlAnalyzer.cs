@@ -58,6 +58,26 @@ internal static class IlAnalyzer
         return Task.Run(() => Analysis(codeInfo, mode));
     }
 
+    public static OpcodeInfo[] StripByteCode(ReadOnlySpan<byte> machineCode)
+    {
+        OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
+        int j = 0;
+        for (ushort i = 0; i < machineCode.Length; i++, j++)
+        {
+            Instruction opcode = (Instruction)machineCode[i];
+            byte[] args = null;
+            ushort pc = i;
+            if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
+            {
+                ushort immediatesCount = opcode - Instruction.PUSH0;
+                args = machineCode.Slice(i + 1, immediatesCount).ToArray();
+                i += immediatesCount;
+            }
+            opcodes[j] = new OpcodeInfo(pc, opcode, args.AsMemory());
+        }
+        return opcodes[..j];
+    }
+
     /// <summary>
     /// For now, return null always to default to EVM.
     /// </summary>
@@ -65,25 +85,7 @@ internal static class IlAnalyzer
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        OpcodeInfo[] StripByteCode(ReadOnlySpan<byte> machineCode)
-        {
-            OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
-            int j = 0;
-            for (ushort i = 0; i < machineCode.Length; i++, j++)
-            {
-                Instruction opcode = (Instruction)machineCode[i];
-                byte[] args = null;
-                ushort pc = i;
-                if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
-                {
-                    ushort immediatesCount = opcode - Instruction.PUSH0;
-                    args = machineCode.Slice(i + 1, immediatesCount).ToArray();
-                    i += immediatesCount;
-                }
-                opcodes[j] = new OpcodeInfo(pc, opcode, args.AsMemory(), OpcodeMetadata.Operations.GetValueOrDefault(opcode));
-            }
-            return opcodes[..j];
-        }
+        
 
         FrozenDictionary<ushort, Func<long, (EvmExceptionType, ILEvmState)>> SegmentCode(OpcodeInfo[] codeData)
         {
