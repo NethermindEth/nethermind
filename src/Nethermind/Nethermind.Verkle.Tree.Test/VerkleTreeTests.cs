@@ -293,6 +293,34 @@ public class VerkleTreeTests
 
     [TestCase(DbMode.MemDb)]
     [TestCase(DbMode.PersistantDb)]
+    public void TestInsertContainsKey(DbMode dbMode)
+    {
+        VerkleTree tree = VerkleTestUtils.GetVerkleTreeForTest<VerkleSyncCache>(dbMode);
+
+        tree.ContainsKey(VerkleTestUtils.KeyVersion).Should().Be(false);
+        tree.ContainsKey(VerkleTestUtils.KeyBalance).Should().Be(false);
+        tree.ContainsKey(VerkleTestUtils.KeyNonce).Should().Be(false);
+        tree.ContainsKey(VerkleTestUtils.KeyCodeCommitment).Should().Be(false);
+        tree.ContainsKey(VerkleTestUtils.KeyCodeSize).Should().Be(false);
+
+        tree.Insert(VerkleTestUtils.KeyVersion, VerkleTestUtils.EmptyArray);
+        tree.Insert(VerkleTestUtils.KeyBalance, VerkleTestUtils.EmptyArray);
+        tree.Insert(VerkleTestUtils.KeyNonce, VerkleTestUtils.EmptyArray);
+        tree.Insert(VerkleTestUtils.KeyCodeCommitment, VerkleTestUtils.ValueEmptyCodeHashValue);
+        tree.Insert(VerkleTestUtils.KeyCodeSize, VerkleTestUtils.EmptyArray);
+
+        tree.Commit();
+        tree.CommitTree(0);
+
+        tree.ContainsKey(VerkleTestUtils.KeyVersion).Should().Be(true);
+        tree.ContainsKey(VerkleTestUtils.KeyBalance).Should().Be(true);
+        tree.ContainsKey(VerkleTestUtils.KeyNonce).Should().Be(true);
+        tree.ContainsKey(VerkleTestUtils.KeyCodeCommitment).Should().Be(true);
+        tree.ContainsKey(VerkleTestUtils.KeyCodeSize).Should().Be(true);
+    }
+
+    [TestCase(DbMode.MemDb)]
+    [TestCase(DbMode.PersistantDb)]
     public void TestBeverlyHillGenesis(DbMode dbMode)
     {
         VerkleTree tree = VerkleTestUtils.GetVerkleTreeForTest<VerkleSyncCache>(dbMode);
