@@ -221,7 +221,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
             return true;
         }
 
-        private void Handle(StatusMessage status)
+        protected virtual void Handle(StatusMessage status)
         {
             if (_statusReceived)
             {
@@ -241,12 +241,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Protocol = status.Protocol,
                 ProtocolVersion = status.ProtocolVersion,
                 ForkId = status.ForkId,
-                TotalDifficulty = status.TotalDifficulty
+                TotalDifficulty = status.TotalDifficulty.Value
             };
 
             Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
-            TotalDifficulty = status.TotalDifficulty;
+            TotalDifficulty = status.TotalDifficulty.Value;
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 

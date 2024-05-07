@@ -26,7 +26,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.StartSequence(contentLength);
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
-            rlpStream.Encode(message.TotalDifficulty);
+
+            if (message.TotalDifficulty.HasValue)
+            {
+                rlpStream.Encode(message.TotalDifficulty.Value);
+            }
+
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);
             if (message.ForkId is not null)

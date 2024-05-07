@@ -5,6 +5,8 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
@@ -49,5 +51,17 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
                 base.HandleMessage(message);
                 break;
         }
+    }
+
+    protected override void EnrichStatusMessage(StatusMessage statusMessage)
+    {
+        base.EnrichStatusMessage(statusMessage);
+        statusMessage.TotalDifficulty = null;
+    }
+
+    protected override void Handle(StatusMessage status)
+    {
+        status.TotalDifficulty = 0; // TODO handle properly for eth/69
+        base.Handle(status);
     }
 }
