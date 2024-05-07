@@ -893,6 +893,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         where TTracingRefunds : struct, IIsTracing
         where TTracingStorage : struct, IIsTracing
     {
+        bool isCancelable = _txTracer.IsCancelable;
         bool isRevert = false;
         EvmExceptionType exceptionType = EvmExceptionType.None;
         object returnData;
@@ -909,6 +910,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         int programCounter = vmState.ProgramCounter;
         while ((uint)programCounter < (uint)codeLength)
         {
+            if (isCancelable && _txTracer.IsCancelled)
+            {
+                ThrowOperationCanceledException();
+            }
+
             Instruction instruction;
             if (programCounter <= codeLength - sizeof(ulong))
             {
@@ -1258,6 +1264,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+
+        [DoesNotReturn]
+        static void ThrowOperationCanceledException() =>
+            throw new OperationCanceledException("Cancellation Requested");
     }
 
     [SkipLocalsInit]
