@@ -6,6 +6,7 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -132,6 +133,12 @@ public class TestBlockchain : IDisposable
             State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
         }
 
+        // Eip2935
+        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+        {
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+        }
+
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
@@ -168,7 +175,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
@@ -359,6 +366,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
+            new BlockhashStore(BlockTree, SpecProvider, State),
             LogManager,
             consensusRequestsProcessor: ConsensusRequestsProcessor);
 

@@ -1,4 +1,4 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading;
@@ -16,6 +16,9 @@ public class Prague : Cancun
         Name = "Prague";
         IsEip6110Enabled = true;
         IsEip7002Enabled = true;
+        IsEip2537Enabled = true;
+        IsEip2935Enabled = true;
+        Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
