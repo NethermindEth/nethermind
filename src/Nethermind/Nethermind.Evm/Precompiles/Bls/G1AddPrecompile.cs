@@ -39,9 +39,6 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[2 * BlsParams.LenFp];

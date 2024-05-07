@@ -39,9 +39,6 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[2 * BlsParams.LenFp];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];

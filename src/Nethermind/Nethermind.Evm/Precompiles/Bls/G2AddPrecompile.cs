@@ -39,9 +39,6 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
             return (Array.Empty<byte>(), false);
         }
 
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
-
         (byte[], bool) result;
 
         Span<byte> output = stackalloc byte[4 * BlsParams.LenFp];
