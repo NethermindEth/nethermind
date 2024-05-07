@@ -176,6 +176,7 @@ namespace Nethermind.Synchronization.Reporting
                 if (_reportId % PeerCountFrequency == 0)
                 {
                     _logger.Info(_syncPeersReport.MakeSummaryReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | with best block: {_syncPeerPool.InitializedPeersCount} | all: {_syncPeerPool.PeerCount}"));
+                    _logger.Info(_syncPeersReport.MakeDiversityReportForPeers(_syncPeerPool.InitializedPeers, $"Peers | node diversity : "));
                 }
             }
 
