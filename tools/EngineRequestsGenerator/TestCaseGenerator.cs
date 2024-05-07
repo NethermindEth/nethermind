@@ -40,12 +40,18 @@ public class TestCaseGenerator
         string chainSpecPath,
         TestCase testCase)
     {
-        _numberOfBlocksToProduce = 2;
-
         _maxNumberOfWithdrawalsPerBlock = 16;
         _numberOfWithdrawals = 1600;
         _chainSpecPath = chainSpecPath;
         _testCase = testCase;
+
+        _numberOfBlocksToProduce = _testCase switch
+        {
+            TestCase.Warmup => 1000,
+            TestCase.Transfers => 2,
+            TestCase.TxDataZero => 2,
+            _ => 3
+        };
     }
     public async Task Generate()
     {
@@ -117,7 +123,40 @@ public class TestCaseGenerator
                 Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray()
             };
 
-            SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+            // quick hack
+            if (i < 2)
+            {
+                SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+            }
+            else
+            {
+                List<byte> byteCode = new();
+
+                byteCode.Add((byte)(Instruction.PUSH0));
+                byteCode.Add((byte)(Instruction.PUSH0));
+                byteCode.Add((byte)(Instruction.PUSH0));
+                byteCode.Add((byte)(Instruction.PUSH0));
+                byteCode.Add((byte)(Instruction.PUSH0));
+                byteCode.Add((byte)(Instruction.PUSH1 + 19));
+                byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
+                byteCode.Add((byte)(Instruction.PUSH1 + 4));
+                byteCode.AddRange(Bytes.FromHexString("ffffffffff"));
+
+                byteCode.Add((byte)Instruction.CALLCODE);
+
+                Transaction tx = Build.A.Transaction
+                    .WithNonce(UInt256.Zero)
+                    .WithType(TxType.EIP1559)
+                    .WithMaxFeePerGas(1.GWei())
+                    .WithMaxPriorityFeePerGas(1.GWei())
+                    .WithTo(new Address("0x7dd5df5a938ecb3acafaa0e026b235d100f71bbf"))
+                    .WithChainId(BlockchainIds.Holesky)
+                    .WithData(byteCode.ToArray())
+                    .WithGasLimit(blockGasConsumptionTarget)
+                    .SignedAndResolved(privateKeys[5])
+                    .TestObject;;
+                chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+            }
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
@@ -176,18 +215,6 @@ public class TestCaseGenerator
             {
                 Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i, testCase, blockGasConsumptionTarget);
                 txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-
-                // tx = Build.A.Transaction
-                //     .WithNonce((UInt256)i)
-                //     .WithType(TxType.EIP1559)
-                //     .WithMaxFeePerGas(1.GWei())
-                //     .WithMaxPriorityFeePerGas(1.GWei())
-                //     .WithTo(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1].Address)
-                //     .WithChainId(BlockchainIds.Holesky)
-                //     .WithGasLimit(blockGasConsumptionTarget)
-                //     .SignedAndResolved(privateKeys[previousBlockWithdrawal.ValidatorIndex - 2])
-                //     .TestObject;;
-                // txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
             }
         }
     }
@@ -229,7 +256,7 @@ public class TestCaseGenerator
                     .WithMaxPriorityFeePerGas(1.GWei())
                     .WithTo(null)
                     .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 1))
+                    .WithData(PrepareKeccak256Code(1))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
@@ -241,7 +268,7 @@ public class TestCaseGenerator
                     .WithMaxPriorityFeePerGas(1.GWei())
                     .WithTo(null)
                     .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 8))
+                    .WithData(PrepareKeccak256Code(8))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
@@ -253,7 +280,7 @@ public class TestCaseGenerator
                     .WithMaxPriorityFeePerGas(1.GWei())
                     .WithTo(null)
                     .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(blockGasConsumptionTarget, 32))
+                    .WithData(PrepareKeccak256Code(32))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
                     .TestObject;;
@@ -262,215 +289,111 @@ public class TestCaseGenerator
         }
     }
 
-    // private static byte[] PrepareKeccak256CodeInIntVersion(int blockGasConsumptionTarget)
-    // {
-    //     List<byte> byteCode = new();
-    //
-    //     // int example = 1;
-    //     // byte[] byteExample = example.ToByteArray();
-    //     // UInt256 length = (UInt256)byteExample.Length;
-    //
-    //     long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
-    //     // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-    //     // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
-    //
-    //     int i = 0;
-    //     long dataCost = 0;
-    //     // while(gasLeft > 0)
-    //     for (int j = 0; j < 3500; j++)
-    //     {
-    //         List<byte> iterationCode = new();
-    //         var data = i++.ToByteArray();
-    //         // int zeroData = data.AsSpan().CountZeros();
-    //         UInt256 length = (UInt256)data.Length;
-    //
-    //         long gasCost = 0;
-    //         // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //         // push value as source to compute hash
-    //         iterationCode.Add((byte)(Instruction.PUSH1 + (byte)data.Length - 1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(data);
-    //
-    //         // gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //         // push memory position - 0
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { Byte.MinValue });
-    //         // gasCost += GasCostOf.TxDataZero;
-    //         // save in memory
-    //         iterationCode.Add((byte)Instruction.MSTORE);
-    //         gasCost += GasCostOf.Memory;
-    //
-    //         // push byte size to read from memory - 4
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { (byte)4 });
-    //         // gasCost += GasCostOf.TxDataNonZeroEip2028;
-    //         // push byte offset in memory - 0
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { Byte.MinValue });
-    //         // gasCost += GasCostOf.TxDataZero;
-    //         // compute keccak
-    //         iterationCode.Add((byte)Instruction.KECCAK256);
-    //         gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-    //
-    //         //remove from stack
-    //         iterationCode.Add((byte)(Instruction.POP));
-    //         gasCost += GasCostOf.Base;
-    //
-    //         byteCode.AddRange(iterationCode);
-    //
-    //         int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
-    //
-    //         gasCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //
-    //         dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //
-    //         gasLeft -= gasCost;
-    //
-    //         // now keccak of given data is in memory
-    //     }
-    //
-    //     return byteCode.ToArray();
-    // }
-    //
-    // private static byte[] PrepareKeccak256CodeInByteVersion(int blockGasConsumptionTarget)
-    // {
-    //     List<byte> byteCode = new();
-    //
-    //     // int example = 1;
-    //     // byte[] byteExample = example.ToByteArray();
-    //     // UInt256 length = (UInt256)byteExample.Length;
-    //
-    //     long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
-    //     // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-    //     // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
-    //
-    //     byte i = 0;
-    //     long dataCost = 0;
-    //     for (int j = 0; j < 4455; j++)
-    //     {
-    //         List<byte> iterationCode = new();
-    //         var data = i++;
-    //         // int zeroData = data.AsSpan().CountZeros();
-    //
-    //         long gasCost = 0;
-    //         // GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length) + zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //         // push value as source to compute hash
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.Add(data);
-    //
-    //         // gasCost += zeroData * GasCostOf.TxDataZero + (data.Length - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //         // push memory position - 0
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { Byte.MinValue });
-    //         // gasCost += GasCostOf.TxDataZero;
-    //         // save in memory
-    //         iterationCode.Add((byte)Instruction.MSTORE);
-    //         gasCost += GasCostOf.Memory;
-    //
-    //         // push byte size to read from memory - 1
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { (byte)1 });
-    //         // gasCost += GasCostOf.TxDataNonZeroEip2028;
-    //         // push byte offset in memory - 0
-    //         iterationCode.Add((byte)(Instruction.PUSH1));
-    //         gasCost += GasCostOf.VeryLow;
-    //         iterationCode.AddRange(new[] { Byte.MinValue });
-    //         // gasCost += GasCostOf.TxDataZero;
-    //         // compute keccak
-    //         iterationCode.Add((byte)Instruction.KECCAK256);
-    //         gasCost += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(1);
-    //
-    //         //remove from stack
-    //         iterationCode.Add((byte)(Instruction.POP));
-    //         gasCost += GasCostOf.Base;
-    //
-    //         byteCode.AddRange(iterationCode);
-    //
-    //         int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
-    //
-    //         gasCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //
-    //         dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-    //
-    //         gasLeft -= gasCost;
-    //
-    //         // now keccak of given data is in memory
-    //     }
-    //
-    //     return byteCode.ToArray();
-    // }
-
-    private byte[] PrepareKeccak256Code(int blockGasConsumptionTarget, int bytesToComputeKeccak)
+    private byte[] PrepareKeccak256Code(int bytesToComputeKeccak)
     {
         List<byte> byteCode = new();
 
-        long gasLeft = blockGasConsumptionTarget - GasCostOf.Transaction;
-        // long gasCost = GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(in length);
-        // long iterations = (blockGasConsumptionTarget - GasCostOf.Transaction) / gasCost;
+        // 1 iteration (push0, memory, push32, push0, keccak) with cost (2+3+3+2+36=46)
+        byte[] oneIteration = Bytes.FromHexString("5F5260205F20");
 
-        long gasCost = 0;
-        long dataCost = 0;
+        List<byte> codeToDeploy = new();
 
-        List<byte> preIterationCode = new();
+        codeToDeploy.Add(0x5f);     // first, preitaration item - 0
 
-        preIterationCode.Add((byte)(Instruction.PUSH1));
-        preIterationCode.Add(0x00);
-        gasCost += GasCostOf.VeryLow;
-
-        List<byte> iterationCode = new();
-        long gasCostPerIteration = 0;
-
-        // push memory position - 0
-        iterationCode.Add((byte)(Instruction.PUSH1));
-        gasCostPerIteration += GasCostOf.VeryLow;
-        iterationCode.AddRange(new[] { Byte.MinValue });
-        // save in memory
-        iterationCode.Add((byte)Instruction.MSTORE);
-        gasCostPerIteration += GasCostOf.Memory;
-
-        // push byte size to read from memory - bytesToComputeKeccak
-        iterationCode.Add((byte)(Instruction.PUSH1));
-        gasCostPerIteration += GasCostOf.VeryLow;
-        iterationCode.AddRange(new[] { (byte)bytesToComputeKeccak });
-        // push byte offset in memory - 0
-        iterationCode.Add((byte)(Instruction.PUSH1));
-        gasCostPerIteration += GasCostOf.VeryLow;
-        iterationCode.AddRange(new[] { Byte.MinValue });
-        // compute keccak
-        iterationCode.Add((byte)Instruction.KECCAK256);
-        gasCostPerIteration += GasCostOf.Sha3 + GasCostOf.Sha3Word * EvmPooledMemory.Div32Ceiling(1);
-
-        // now keccak of given data is on top of stack
-
-
-        // int zeroData = iterationCode.ToArray().AsSpan().CountZeros();
-        //
-        // dataCost += zeroData * GasCostOf.TxDataZero + (iterationCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
-        // gasCost += dataCost;
-
-
-        gasLeft -= gasCost;
-
-        long iterations = (_chainSpecBasedSpecProvider.GenesisSpec.MaxInitCodeSize - preIterationCode.Count) / iterationCode.Count;
-
-        byteCode.AddRange(preIterationCode);
-
-        for (int i = 0; i < iterations; i++)
+        for (int i = 0; i < 4095; i++)
         {
-            byteCode.AddRange(iterationCode);
-            gasCost += gasCostPerIteration;
+            codeToDeploy.AddRange(oneIteration);
+
         }
 
-        int zeroData = byteCode.ToArray().AsSpan().CountZeros();
-        dataCost += zeroData * GasCostOf.TxDataZero + (byteCode.Count - zeroData) * GasCostOf.TxDataNonZeroEip2028;
+        List<byte> initCode = new();
 
-        gasCost += dataCost;
+        {
+            for (int i = 0; i < codeToDeploy.Count; i += 32)
+            {
+                List<byte> currentWord = codeToDeploy.Slice(i == 0 ? 0 : i - 32 + codeToDeploy.Count % 32, i == 0 ? codeToDeploy.Count % 32 : 32);
+
+                initCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
+                initCode.AddRange(currentWord);
+
+                // push memory offset - i
+                byte[] memoryOffset = i.ToByteArray().WithoutLeadingZeros().ToArray();
+                if (memoryOffset is [0])
+                {
+                    initCode.Add((byte)Instruction.PUSH0);
+                }
+                else
+                {
+                    initCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
+                    initCode.AddRange(memoryOffset);
+                }
+
+                // save in memory
+                initCode.Add((byte)Instruction.MSTORE);
+            }
+
+            // push size of memory read
+            byte[] sizeOfCodeToDeploy = codeToDeploy.Count.ToByteArray().WithoutLeadingZeros().ToArray();
+            initCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfCodeToDeploy.Length - 1));
+            initCode.AddRange(sizeOfCodeToDeploy);
+
+            // initCode.Add((byte)(Instruction.PUSH1));
+            // initCode.AddRange(new[] { (byte)codeToDeploy.Count });
+
+            // push memory offset
+            initCode.Add((byte)(Instruction.PUSH1));
+            initCode.AddRange(new[] { (byte)(32 - (codeToDeploy.Count % 32)) });
+
+            // add return opcode
+            initCode.Add((byte)(Instruction.RETURN));
+        }
+
+        for (int i = 0; i < initCode.Count; i += 32)
+        {
+            List<byte> currentWord = initCode.Slice(i == 0 ? 0 : i - 32 + initCode.Count % 32, i == 0 ? initCode.Count % 32 : 32);
+
+            byteCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
+            byteCode.AddRange(currentWord);
+
+            // push memory offset - i
+            byte[] memoryOffset = i.ToByteArray().WithoutLeadingZeros().ToArray();
+            if (memoryOffset is [0])
+            {
+                byteCode.Add((byte)Instruction.PUSH0);
+            }
+            else
+            {
+                byteCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
+                byteCode.AddRange(memoryOffset);
+            }
+
+            // save in memory
+            byteCode.Add((byte)Instruction.MSTORE);
+
+            if (byteCode.Count > 32810)
+            {
+                Console.WriteLine("sadfsadf");
+            }
+        }
+
+        // push size of init code to read from memory
+        byte[] sizeOfInitCode = initCode.Count.ToByteArray().WithoutLeadingZeros().ToArray();
+        byteCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfInitCode.Length - 1));
+        byteCode.AddRange(sizeOfInitCode);
+
+        // byteCode.Add((byte)(Instruction.PUSH1));
+        // byteCode.AddRange(new[] { (byte)initCode.Count });
+
+        // offset in memory
+        byteCode.Add((byte)(Instruction.PUSH1));
+        byteCode.AddRange(new[] { (byte)(32 - (initCode.Count % 32)) });
+
+        // 0 wei to send
+        byteCode.Add((byte)Instruction.PUSH0);
+
+        byteCode.Add((byte)Instruction.CREATE);
+
+        Console.WriteLine($"size of prepared code: {byteCode.Count}");
 
         return byteCode.ToArray();
     }
