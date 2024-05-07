@@ -19,11 +19,11 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x14);
+    public static Address Address { get; } = Address.FromNumber(0x13);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 110000;
+        return 75000;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -38,9 +38,6 @@ public class MapToG2Precompile : IPrecompile<MapToG2Precompile>
         {
             return (Array.Empty<byte>(), false);
         }
-
-        // Span<byte> inputDataSpan = stackalloc byte[2 * BlsParams.LenFp];
-        // inputData.PrepareEthInput(inputDataSpan);
 
         (byte[], bool) result;
 
