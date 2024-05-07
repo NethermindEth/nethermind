@@ -58,7 +58,7 @@ public class TestCaseGenerator
     }
     public async Task Generate()
     {
-        bool generateSingleFile = false;
+        bool generateSingleFile = true;
         if (generateSingleFile)
         {
             await GenerateTestCase(blockGasConsumptionTarget);
@@ -126,39 +126,32 @@ public class TestCaseGenerator
                 Withdrawals = GetBlockWithdrawals(i, privateKeys).ToArray()
             };
 
-            // quick hack
-            if (i < 2 || _testCase == TestCase.Transfers || _testCase == TestCase.Warmup)
+            switch (_testCase)
             {
-                SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
-            }
-            else
-            {
-                List<byte> byteCode = new();
-
-                byteCode.Add((byte)(Instruction.PUSH0));
-                byteCode.Add((byte)(Instruction.PUSH0));
-                byteCode.Add((byte)(Instruction.PUSH0));
-                byteCode.Add((byte)(Instruction.PUSH0));
-                byteCode.Add((byte)(Instruction.PUSH0));
-                byteCode.Add((byte)(Instruction.PUSH1 + 19));
-                byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
-                byteCode.Add((byte)(Instruction.PUSH1 + 4));
-                byteCode.AddRange(Bytes.FromHexString("ffffffffff"));
-
-                byteCode.Add((byte)Instruction.CALLCODE);
-
-                Transaction tx = Build.A.Transaction
-                    .WithNonce(UInt256.Zero)
-                    .WithType(TxType.EIP1559)
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(new Address("0x7dd5df5a938ecb3acafaa0e026b235d100f71bbf"))
-                    .WithChainId(BlockchainIds.Holesky)
-                    .WithData(byteCode.ToArray())
-                    .WithGasLimit(blockGasConsumptionTarget)
-                    .SignedAndResolved(privateKeys[5])
-                    .TestObject;;
-                chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+                case TestCase.Transfers:
+                case TestCase.Warmup:
+                case TestCase.TxDataZero:
+                case TestCase.SHA2From32Bytes:
+                    SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                    break;
+                // cases with contract deployment
+                case TestCase.Keccak256From1Byte:
+                case TestCase.Keccak256From8Bytes:
+                case TestCase.Keccak256From32Bytes:
+                    if (i < 2)
+                    {
+                        // in iteration 0 there is only withdrawal,
+                        // in iteration 1 there is only contract deployment
+                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                    }
+                    else
+                    {
+                        // starting from in iteration 2, there are contract calls
+                        // CallKeccak256(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1]);
+                        CallKeccak256(chain, privateKeys[5]);
+                    }
+                    break;
+                default: break;
             }
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
@@ -193,6 +186,36 @@ public class TestCaseGenerator
         if (!Directory.Exists(_outputPath))
             Directory.CreateDirectory(_outputPath);
         await File.WriteAllTextAsync($"{_outputPath}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
+    }
+
+    private void CallKeccak256(EngineModuleTests.MergeTestBlockchain chain, PrivateKey privateKey)
+    {
+        List<byte> byteCode = new();
+
+        byteCode.Add((byte)(Instruction.PUSH0));
+        byteCode.Add((byte)(Instruction.PUSH0));
+        byteCode.Add((byte)(Instruction.PUSH0));
+        byteCode.Add((byte)(Instruction.PUSH0));
+        byteCode.Add((byte)(Instruction.PUSH0));
+        byteCode.Add((byte)(Instruction.PUSH1 + 19));
+        byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
+        byteCode.Add((byte)(Instruction.PUSH1 + 4));
+        byteCode.AddRange(Bytes.FromHexString("ffffffffff"));
+
+        byteCode.Add((byte)Instruction.CALLCODE);
+
+        Transaction tx = Build.A.Transaction
+            .WithNonce(UInt256.Zero)
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithTo(new Address("0x7dd5df5a938ecb3acafaa0e026b235d100f71bbf"))
+            .WithChainId(BlockchainIds.Holesky)
+            .WithData(byteCode.ToArray())
+            .WithGasLimit(blockGasConsumptionTarget)
+            .SignedAndResolved(privateKey)
+            .TestObject;;
+        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
     }
 
     private void OnEmptyProcessingQueue(object? sender, EventArgs e)
