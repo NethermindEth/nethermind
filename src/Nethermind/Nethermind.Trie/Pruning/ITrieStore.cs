@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading;
-using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 
@@ -14,7 +13,7 @@ namespace Nethermind.Trie.Pruning
     /// </summary>
     public interface ITrieStore : IDisposable
     {
-        void CommitNode(long blockNumber, Hash256? address, NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
+        void CommitNode(long blockNumber, Hash256? address, in NodeCommitInfo nodeCommitInfo, WriteFlags writeFlags = WriteFlags.None);
 
         void FinishBlockCommit(TrieType trieType, long blockNumber, Hash256? address, TrieNode? root, WriteFlags writeFlags = WriteFlags.None);
 

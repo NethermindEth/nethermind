@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Diagnostics;
 using System.IO;
 using System.IO.Pipelines;
@@ -50,15 +51,15 @@ public class JsonRpcSocketsClient<TStream> : SocketClient<TStream>, IJsonRpcDupl
         Closed?.Invoke(this, EventArgs.Empty);
     }
 
-    private static readonly byte[] _jsonOpeningBracket = { Convert.ToByte('[') };
-    private static readonly byte[] _jsonComma = { Convert.ToByte(',') };
-    private static readonly byte[] _jsonClosingBracket = { Convert.ToByte(']') };
+    private static readonly byte[] _jsonOpeningBracket = [Convert.ToByte('[')];
+    private static readonly byte[] _jsonComma = [Convert.ToByte(',')];
+    private static readonly byte[] _jsonClosingBracket = [Convert.ToByte(']')];
 
     public override async Task ProcessAsync(ArraySegment<byte> data)
     {
         Stopwatch stopwatch = Stopwatch.StartNew();
         IncrementBytesReceivedMetric(data.Count);
-        PipeReader request = PipeReader.Create(new MemoryStream(data.Array!, data.Offset, data.Count));
+        PipeReader request = PipeReader.Create(new ReadOnlySequence<byte>(data.Array!, data.Offset, data.Count));
         int allResponsesSize = 0;
 
         await foreach (JsonRpcResult result in _jsonRpcProcessor.ProcessAsync(request, _jsonRpcContext))

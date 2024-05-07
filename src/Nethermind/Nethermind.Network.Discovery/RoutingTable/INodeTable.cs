@@ -3,6 +3,7 @@
 
 using Nethermind.Core.Crypto;
 using Nethermind.Stats.Model;
+using static Nethermind.Network.Discovery.RoutingTable.NodeTable;
 
 namespace Nethermind.Network.Discovery.RoutingTable;
 
@@ -18,10 +19,11 @@ public interface INodeTable
     /// <summary>
     /// GetClosestNodes to MasterNode
     /// </summary>
-    IEnumerable<Node> GetClosestNodes();
+    ClosestNodesEnumerator GetClosestNodes();
 
     /// <summary>
     /// GetClosestNodes to provided Node
     /// </summary>
-    IEnumerable<Node> GetClosestNodes(byte[] nodeId);
+    ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId);
+    ClosestNodesFromNodeEnumerator GetClosestNodes(byte[] nodeId, int bucketSize);
 }
