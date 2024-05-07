@@ -37,6 +37,8 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper
         _token = token;
     }
 
+    public bool IsCancelled => _token.IsCancellationRequested;
+
     public bool IsTracingReceipt
     {
         get => _isTracingReceipt || _innerTracer.IsTracingReceipt;

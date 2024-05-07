@@ -12,6 +12,7 @@ namespace Nethermind.Evm.Tracing;
 
 public interface ITxTracer : IWorldStateTracer, IDisposable
 {
+    bool IsCancelled => false;
     /// <summary>
     /// Defines whether MarkAsSuccess or MarkAsFailed will be called
     /// </summary>

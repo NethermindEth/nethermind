@@ -13,10 +13,10 @@ public static class TracerExtensions
             ? new(txTracer, cancellationToken)
             : new(txTracer, cancellationToken)
             {
-                IsTracingActions = true,
-                IsTracingOpLevelStorage = true,
-                IsTracingInstructions = true, // a little bit costly but almost all are simple calls
-                IsTracingRefunds = true
+                IsTracingActions = txTracer.IsTracingActions,
+                IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage,
+                IsTracingInstructions = txTracer.IsTracingInstructions, // a little bit costly but almost all are simple calls
+                IsTracingRefunds = txTracer.IsTracingRefunds
             };
     }
 

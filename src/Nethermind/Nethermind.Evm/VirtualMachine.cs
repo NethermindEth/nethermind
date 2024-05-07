@@ -818,6 +818,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
             Instruction instruction = (Instruction)code[programCounter];
 
+            if (_txTracer.IsCancelled)
+            {
+                ThrowOperationCanceledException();
+            }
+
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
                 StartInstructionTrace(instruction, vmState, gasAvailable, programCounter, in stack);
@@ -2166,6 +2171,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+
+        [DoesNotReturn]
+        static void ThrowOperationCanceledException() =>
+            throw new OperationCanceledException("Cancellation Requested");
     }
 
     [SkipLocalsInit]
