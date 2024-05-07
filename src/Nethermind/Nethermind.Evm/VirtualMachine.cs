@@ -810,6 +810,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         SkipInit(out StorageCell storageCell);
         object returnData;
         ZeroPaddedSpan slice;
+        bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
@@ -818,7 +819,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
             Instruction instruction = (Instruction)code[programCounter];
 
-            if (_txTracer.IsCancelled)
+            if (isCancelable && _txTracer.IsCancelled)
             {
                 ThrowOperationCanceledException();
             }
