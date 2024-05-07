@@ -59,7 +59,7 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         => base.forkchoiceUpdatedV2_should_validate_withdrawals(input);
 
     [TestCase(
-        "0xe97d919a17fa5011ff3a08ffb07657ed9e1aaf5ff649888e5d7f605006caf598",
+        "0xeb7146faceb5d2974ae7198a55335071b88083972d5f16a031b53b0928d8475b",
         "0xb3bafa4c9efb2f6f95345381f591d2b6f611b0911ca568fb499594cbec66e5d4",
         "0xffadd136040966576fb63852506bba89c765cabe2884fa27797fd67aea5769dc",
         "0x3c6a8926870bdeff")]
