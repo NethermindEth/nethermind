@@ -7,17 +7,9 @@ namespace Nethermind.Evm.Tracing;
 
 public static class TracerExtensions
 {
-    public static CancellationTxTracer WithCancellation(this ITxTracer txTracer, CancellationToken cancellationToken, bool setDefaultCancellations = true)
+    public static CancellationTxTracer WithCancellation(this ITxTracer txTracer, CancellationToken cancellationToken)
     {
-        return !setDefaultCancellations
-            ? new(txTracer, cancellationToken)
-            : new(txTracer, cancellationToken)
-            {
-                IsTracingActions = txTracer.IsTracingActions,
-                IsTracingOpLevelStorage = txTracer.IsTracingOpLevelStorage,
-                IsTracingInstructions = txTracer.IsTracingInstructions, // a little bit costly but almost all are simple calls
-                IsTracingRefunds = txTracer.IsTracingRefunds
-            };
+        return new(txTracer, cancellationToken);
     }
 
     public static CancellationBlockTracer WithCancellation(this IBlockTracer blockTracer, CancellationToken cancellationToken) =>
