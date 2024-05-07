@@ -14,6 +14,27 @@ using Nethermind.Evm.Precompiles;
 
 internal sealed partial class EvmInstructions
 {
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionPop(EvmState _, ref EvmStack stack, ref long gasAvailable)
+    {
+        gasAvailable -= GasCostOf.Base;
+        stack.PopLimbo();
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionChainId(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    {
+        IReleaseSpec spec = vmState.Spec;
+
+        if (!spec.ChainIdOpcodeEnabled) return EvmExceptionType.BadInstruction;
+
+        gasAvailable -= GasCostOf.Base;
+        stack.PushUInt256((UInt256)vmState.Spec.ChainId);
+
+        return EvmExceptionType.None;
+    }
 
     [SkipLocalsInit]
     public static EvmExceptionType InstructionBalance(EvmState vmState, ref EvmStack stack, ref long gasAvailable)

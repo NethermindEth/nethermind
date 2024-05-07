@@ -97,7 +97,7 @@ public class VirtualMachine : IVirtualMachine
         var ops = CalliJmpTable;
         var opNull = ops[0];
 
-        var vmState = new EvmState(gasAvailable, new ExecutionEnvironment{ }, ExecutionType.CALL, isTopLevel: true, snapshot: default, isContinuation: false, NullTxTracer.Instance, worldState: null, spec);
+        var vmState = new EvmState(gasAvailable, new ExecutionEnvironment { }, ExecutionType.CALL, isTopLevel: true, snapshot: default, isContinuation: false, NullTxTracer.Instance, worldState: null, spec);
 
         for (var i = 0; i < 40; i++)
         {
@@ -330,24 +330,25 @@ public class VirtualMachine : IVirtualMachine
         lookup[(int)Instruction.CODECOPY] = &InstructionCodeCopy<OpCallCopy>;
         lookup[(int)Instruction.CODESIZE] = &InstructionEnvUInt256<OpCodeSize>;
         lookup[(int)Instruction.GASPRICE] = &InstructionEnvUInt256<OpGasPrice>;
-        /*
+
         lookup[(int)Instruction.EXTCODECOPY] = &InstructionExtCodeCopy;
-        lookup[(int)Instruction.RETURNDATASIZE] = &InstructionReturnDataSize;
-        lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy;
+        //lookup[(int)Instruction.RETURNDATASIZE] = &InstructionReturnDataSize;
+        //lookup[(int)Instruction.RETURNDATACOPY] = &InstructionReturnDataCopy;
         lookup[(int)Instruction.EXTCODEHASH] = &InstructionExtCodeHash;
-        lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
-        */
+        //lookup[(int)Instruction.BLOCKHASH] = &InstructionBlockHash;
+
         lookup[(int)Instruction.COINBASE] = &InstructionEnvBytes<OpCoinbase>;
         lookup[(int)Instruction.TIMESTAMP] = &InstructionEnvUInt256<OpTimestamp>;
         lookup[(int)Instruction.NUMBER] = &InstructionEnvUInt256<OpNumber>;
         lookup[(int)Instruction.PREVRANDAO] = &InstructionPrevRandao;
         lookup[(int)Instruction.GASLIMIT] = &InstructionEnvUInt256<OpGasLimit>;
-
+        lookup[(int)Instruction.CHAINID] = &InstructionChainId;
         lookup[(int)Instruction.SELFBALANCE] = &InstructionSelfBalance;
         lookup[(int)Instruction.BASEFEE] = &InstructionEnvUInt256<OpBaseFee>;
         lookup[(int)Instruction.BLOBHASH] = &InstructionBlobHash;
         lookup[(int)Instruction.BLOBBASEFEE] = &InstructionBlobBaseFee;
-
+        // Gap: 0x4b to 0x4f
+        lookup[(int)Instruction.POP] = &InstructionPop;
         lookup[(int)Instruction.MLOAD] = &InstructionMLoad;
         lookup[(int)Instruction.MSTORE] = &InstructionMStore;
         lookup[(int)Instruction.MSTORE8] = &InstructionMStore8;
@@ -934,233 +935,215 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             {
                 goto EmptyReturn;
             }
-            if (instruction <= Instruction.GASPRICE)
+            if (instruction <= Instruction.GASPRICE || (instruction >= Instruction.COINBASE && instruction < Instruction.POP))
             {
                 exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
                 goto Next;
             }
-            else switch (instruction)
+            else
             {
-                case Instruction.EXTCODESIZE:
-                    if (!TTracingInstructions.Tracing && programCounter < codeLength)
-                    {
-                        exceptionType = InstructionExtCodeSizeOptimized(vmState, ref stack, ref gasAvailable, ref programCounter, (Instruction)Add(ref codeStart, (uint)programCounter));
-                    }
-                    else
-                    {
-                        exceptionType = InstructionExtCodeSizeTracing(vmState, ref stack, ref gasAvailable);
-                    }
-                    break;
-                case Instruction.EXTCODECOPY:
-                    exceptionType = InstructionExtCodeCopy(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.RETURNDATASIZE:
-                    exceptionType = InstructionReturnDataSize(ref stack, ref gasAvailable, vmState.Spec);
-                    break;
-                case Instruction.RETURNDATACOPY:
-                    exceptionType = InstructionReturnDataCopy(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.EXTCODEHASH:
-                    exceptionType = InstructionExtCodeHash(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.BLOCKHASH:
-                    exceptionType = InstructionBlockHash(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.COINBASE:
-                case Instruction.TIMESTAMP:
-                case Instruction.NUMBER:
-                case Instruction.PREVRANDAO:
-                case Instruction.GASLIMIT:
-                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.CHAINID:
-                    if (!vmState.Spec.ChainIdOpcodeEnabled) goto InvalidInstruction;
-                    gasAvailable -= GasCostOf.Base;
-                    stack.PushBytes(_chainId);
-                    break;
-                case Instruction.SELFBALANCE:
-                case Instruction.BASEFEE:
-                case Instruction.BLOBHASH:
-                case Instruction.BLOBBASEFEE:
-                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
-                    break;
-                // Gap: 0x4b to 0x4f
-                case Instruction.POP:
-                    gasAvailable -= GasCostOf.Base;
-                    stack.PopLimbo();
-                    break;
-                case Instruction.MLOAD:
-                case Instruction.MSTORE:
-                case Instruction.MSTORE8:
-                    exceptionType = CalliJmpTable[(int)instruction](vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.SLOAD:
-                    exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.SSTORE:
-                    exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.JUMP:
-                    exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.JUMPI:
-                    exceptionType = InstructionJumpIf(vmState, ref stack, ref gasAvailable, ref programCounter);
-                    break;
-                case Instruction.PC:
-                    gasAvailable -= GasCostOf.Base;
-                    stack.PushUInt32(programCounter - 1);
-                    break;
-                case Instruction.MSIZE:
-                    InstructionEnvUInt256<OpMSize>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.GAS:
-                    exceptionType = InstructionGas(ref stack, ref gasAvailable);
-                    break;
-                case Instruction.JUMPDEST:
-                    gasAvailable -= GasCostOf.JumpDest;
-                    break;
-                case Instruction.TLOAD:
-                    exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.TSTORE:
-                    exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.MCOPY:
-                    exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable);
-                    break;
-                case Instruction.PUSH0:
-                    if (!vmState.Spec.IncludePush0Instruction) goto InvalidInstruction;
-                    gasAvailable -= GasCostOf.Base;
-                    stack.PushZero();
-                    break;
-                case Instruction.PUSH1:
-                    gasAvailable -= GasCostOf.VeryLow;
-                    if ((uint)programCounter >= (uint)codeLength)
-                    {
-                        stack.PushZero();
-                    }
-                    else
-                    {
-                        stack.PushByte(Add(ref codeStart, (uint)programCounter));
-                    }
-
-                    programCounter++;
-                    break;
-                case Instruction.PUSH2:
-                case Instruction.PUSH3:
-                case Instruction.PUSH4:
-                case Instruction.PUSH5:
-                case Instruction.PUSH6:
-                case Instruction.PUSH7:
-                case Instruction.PUSH8:
-                case Instruction.PUSH9:
-                case Instruction.PUSH10:
-                case Instruction.PUSH11:
-                case Instruction.PUSH12:
-                case Instruction.PUSH13:
-                case Instruction.PUSH14:
-                case Instruction.PUSH15:
-                case Instruction.PUSH16:
-                case Instruction.PUSH17:
-                case Instruction.PUSH18:
-                case Instruction.PUSH19:
-                case Instruction.PUSH20:
-                case Instruction.PUSH21:
-                case Instruction.PUSH22:
-                case Instruction.PUSH23:
-                case Instruction.PUSH24:
-                case Instruction.PUSH25:
-                case Instruction.PUSH26:
-                case Instruction.PUSH27:
-                case Instruction.PUSH28:
-                case Instruction.PUSH29:
-                case Instruction.PUSH30:
-                case Instruction.PUSH31:
-                case Instruction.PUSH32:
-                    InstructionPushN(ref stack, ref gasAvailable, ref programCounter, instruction, code);
-                    break;
-                case Instruction.DUP1:
-                case Instruction.DUP2:
-                case Instruction.DUP3:
-                case Instruction.DUP4:
-                case Instruction.DUP5:
-                case Instruction.DUP6:
-                case Instruction.DUP7:
-                case Instruction.DUP8:
-                case Instruction.DUP9:
-                case Instruction.DUP10:
-                case Instruction.DUP11:
-                case Instruction.DUP12:
-                case Instruction.DUP13:
-                case Instruction.DUP14:
-                case Instruction.DUP15:
-                case Instruction.DUP16:
-                    gasAvailable -= GasCostOf.VeryLow;
-                    if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
-                    break;
-                case Instruction.SWAP1:
-                case Instruction.SWAP2:
-                case Instruction.SWAP3:
-                case Instruction.SWAP4:
-                case Instruction.SWAP5:
-                case Instruction.SWAP6:
-                case Instruction.SWAP7:
-                case Instruction.SWAP8:
-                case Instruction.SWAP9:
-                case Instruction.SWAP10:
-                case Instruction.SWAP11:
-                case Instruction.SWAP12:
-                case Instruction.SWAP13:
-                case Instruction.SWAP14:
-                case Instruction.SWAP15:
-                case Instruction.SWAP16:
-                    gasAvailable -= GasCostOf.VeryLow;
-                    if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
-                    break;
-                case Instruction.LOG0:
-                case Instruction.LOG1:
-                case Instruction.LOG2:
-                case Instruction.LOG3:
-                case Instruction.LOG4:
-                    exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
-                    break;
-                // Gap: 0xa5 to 0xef
-                case Instruction.CREATE:
-                case Instruction.CREATE2:
-                    (exceptionType, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, instruction);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    if (returnData is not null) goto DataReturnNoTrace;
-                    break;
-                case Instruction.RETURN:
-                    exceptionType = InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    goto DataReturn;
-                case Instruction.CALL:
-                case Instruction.CALLCODE:
-                case Instruction.DELEGATECALL:
-                case Instruction.STATICCALL:
-                    exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, instruction, out returnData);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    if (returnData is null)
-                    {
+                switch (instruction)
+                {
+                    // Instruction.STOP
+                    // ...
+                    // Instruction.GASPRICE
+                    case Instruction.EXTCODESIZE:
+                        if (!TTracingInstructions.Tracing && programCounter < codeLength)
+                        {
+                            exceptionType = InstructionExtCodeSizeOptimized(vmState, ref stack, ref gasAvailable, ref programCounter, (Instruction)Add(ref codeStart, (uint)programCounter));
+                        }
+                        else
+                        {
+                            exceptionType = InstructionExtCodeSizeTracing(vmState, ref stack, ref gasAvailable);
+                        }
                         break;
-                    }
-                    goto DataReturn;
-                // Gap: 0xfc
-                case Instruction.REVERT:
-                    exceptionType = InstructionRevert(vmState, ref stack, ref gasAvailable, out returnData);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    goto DataRevert;
-                case Instruction.INVALID:
-                    gasAvailable -= GasCostOf.High;
-                    goto InvalidInstruction;
-                case Instruction.SELFDESTRUCT:
-                    exceptionType = InstructionSelfDestruct(vmState, ref stack, ref gasAvailable);
-                    if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
-                    goto EmptyReturn;
-                default:
-                    goto InvalidInstruction;
+                    case Instruction.EXTCODECOPY:
+                        exceptionType = InstructionExtCodeCopy(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.RETURNDATASIZE:
+                        exceptionType = InstructionReturnDataSize(ref stack, ref gasAvailable, vmState.Spec);
+                        break;
+                    case Instruction.RETURNDATACOPY:
+                        exceptionType = InstructionReturnDataCopy(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.EXTCODEHASH:
+                        exceptionType = InstructionExtCodeHash(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.BLOCKHASH:
+                        exceptionType = InstructionBlockHash(vmState, ref stack, ref gasAvailable);
+                        break;
+                    // Instruction.COINBASE
+                    // ...
+                    // Instruction.MSTORE8
+                    case Instruction.SLOAD:
+                        exceptionType = InstructionSLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.SSTORE:
+                        exceptionType = InstructionSStore<TTracingInstructions, TTracingRefunds, TTracingStorage>(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.JUMP:
+                        exceptionType = InstructionJump(vmState, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.JUMPI:
+                        exceptionType = InstructionJumpIf(vmState, ref stack, ref gasAvailable, ref programCounter);
+                        break;
+                    case Instruction.PC:
+                        gasAvailable -= GasCostOf.Base;
+                        stack.PushUInt32(programCounter - 1);
+                        break;
+                    case Instruction.MSIZE:
+                        InstructionEnvUInt256<OpMSize>(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.GAS:
+                        exceptionType = InstructionGas(ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.JUMPDEST:
+                        gasAvailable -= GasCostOf.JumpDest;
+                        break;
+                    case Instruction.TLOAD:
+                        exceptionType = InstructionTLoad<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.TSTORE:
+                        exceptionType = InstructionTStore<TTracingInstructions, TTracingStorage>(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.MCOPY:
+                        exceptionType = InstructionMCopy(vmState, ref stack, ref gasAvailable);
+                        break;
+                    case Instruction.PUSH0:
+                        if (!vmState.Spec.IncludePush0Instruction) goto InvalidInstruction;
+                        gasAvailable -= GasCostOf.Base;
+                        stack.PushZero();
+                        break;
+                    case Instruction.PUSH1:
+                        gasAvailable -= GasCostOf.VeryLow;
+                        if ((uint)programCounter >= (uint)codeLength)
+                        {
+                            stack.PushZero();
+                        }
+                        else
+                        {
+                            stack.PushByte(Add(ref codeStart, (uint)programCounter));
+                        }
+
+                        programCounter++;
+                        break;
+                    case Instruction.PUSH2:
+                    case Instruction.PUSH3:
+                    case Instruction.PUSH4:
+                    case Instruction.PUSH5:
+                    case Instruction.PUSH6:
+                    case Instruction.PUSH7:
+                    case Instruction.PUSH8:
+                    case Instruction.PUSH9:
+                    case Instruction.PUSH10:
+                    case Instruction.PUSH11:
+                    case Instruction.PUSH12:
+                    case Instruction.PUSH13:
+                    case Instruction.PUSH14:
+                    case Instruction.PUSH15:
+                    case Instruction.PUSH16:
+                    case Instruction.PUSH17:
+                    case Instruction.PUSH18:
+                    case Instruction.PUSH19:
+                    case Instruction.PUSH20:
+                    case Instruction.PUSH21:
+                    case Instruction.PUSH22:
+                    case Instruction.PUSH23:
+                    case Instruction.PUSH24:
+                    case Instruction.PUSH25:
+                    case Instruction.PUSH26:
+                    case Instruction.PUSH27:
+                    case Instruction.PUSH28:
+                    case Instruction.PUSH29:
+                    case Instruction.PUSH30:
+                    case Instruction.PUSH31:
+                    case Instruction.PUSH32:
+                        InstructionPushN(ref stack, ref gasAvailable, ref programCounter, instruction, code);
+                        break;
+                    case Instruction.DUP1:
+                    case Instruction.DUP2:
+                    case Instruction.DUP3:
+                    case Instruction.DUP4:
+                    case Instruction.DUP5:
+                    case Instruction.DUP6:
+                    case Instruction.DUP7:
+                    case Instruction.DUP8:
+                    case Instruction.DUP9:
+                    case Instruction.DUP10:
+                    case Instruction.DUP11:
+                    case Instruction.DUP12:
+                    case Instruction.DUP13:
+                    case Instruction.DUP14:
+                    case Instruction.DUP15:
+                    case Instruction.DUP16:
+                        gasAvailable -= GasCostOf.VeryLow;
+                        if (!stack.Dup(instruction - Instruction.DUP1 + 1)) goto StackUnderflow;
+                        break;
+                    case Instruction.SWAP1:
+                    case Instruction.SWAP2:
+                    case Instruction.SWAP3:
+                    case Instruction.SWAP4:
+                    case Instruction.SWAP5:
+                    case Instruction.SWAP6:
+                    case Instruction.SWAP7:
+                    case Instruction.SWAP8:
+                    case Instruction.SWAP9:
+                    case Instruction.SWAP10:
+                    case Instruction.SWAP11:
+                    case Instruction.SWAP12:
+                    case Instruction.SWAP13:
+                    case Instruction.SWAP14:
+                    case Instruction.SWAP15:
+                    case Instruction.SWAP16:
+                        gasAvailable -= GasCostOf.VeryLow;
+                        if (!stack.Swap(instruction - Instruction.SWAP1 + 2)) goto StackUnderflow;
+                        break;
+                    case Instruction.LOG0:
+                    case Instruction.LOG1:
+                    case Instruction.LOG2:
+                    case Instruction.LOG3:
+                    case Instruction.LOG4:
+                        exceptionType = InstructionLog(vmState, ref stack, ref gasAvailable, instruction);
+                        break;
+                    // Gap: 0xa5 to 0xef
+                    case Instruction.CREATE:
+                    case Instruction.CREATE2:
+                        (exceptionType, returnData) = InstructionCreate(vmState, ref stack, ref gasAvailable, instruction);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        if (returnData is not null) goto DataReturnNoTrace;
+                        break;
+                    case Instruction.RETURN:
+                        exceptionType = InstructionReturn(vmState, ref stack, ref gasAvailable, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        goto DataReturn;
+                    case Instruction.CALL:
+                    case Instruction.CALLCODE:
+                    case Instruction.DELEGATECALL:
+                    case Instruction.STATICCALL:
+                        exceptionType = InstructionCall<TTracingInstructions, TTracingRefunds>(vmState, ref stack, ref gasAvailable, instruction, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        if (returnData is null)
+                        {
+                            break;
+                        }
+                        goto DataReturn;
+                    // Gap: 0xfc
+                    case Instruction.REVERT:
+                        exceptionType = InstructionRevert(vmState, ref stack, ref gasAvailable, out returnData);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        goto DataRevert;
+                    case Instruction.INVALID:
+                        gasAvailable -= GasCostOf.High;
+                        goto InvalidInstruction;
+                    case Instruction.SELFDESTRUCT:
+                        exceptionType = InstructionSelfDestruct(vmState, ref stack, ref gasAvailable);
+                        if (exceptionType != EvmExceptionType.None) goto ReturnFailure;
+                        goto EmptyReturn;
+                    default:
+                        goto InvalidInstruction;
+                }
             }
+
         Next:
 
             if (exceptionType != EvmExceptionType.None) goto ReturnFailure;

@@ -40,6 +40,7 @@ namespace Nethermind.Specs.Test
         public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
+        public ulong ChainId => _spec.ChainId;
 
         public bool IsTimeAdjustmentPostOlympic => _spec.IsTimeAdjustmentPostOlympic;
 

@@ -22,6 +22,10 @@ namespace Nethermind.Core.Specs
         long DifficultyBoundDivisor { get; }
         long? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
+        /// </summary>
+        ulong ChainId { get; }
 
         /// <summary>
         /// ---
