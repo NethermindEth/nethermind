@@ -139,11 +139,11 @@ public class TestCaseGenerator
                     else
                     {
                         // starting from in iteration 2, there are contract calls
-                        // CallKeccak256(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1]);
-                        CallKeccak256(chain, privateKeys[5], blockGasConsumptionTarget);
+                        CallContract(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1], blockGasConsumptionTarget);
                     }
                     break;
-                default: break;
+                default:
+                    throw new ArgumentOutOfRangeException(nameof(_testCase), _testCase, null);
             }
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
@@ -180,46 +180,9 @@ public class TestCaseGenerator
         await File.WriteAllTextAsync($"{_outputPath}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
-    private void CallKeccak256(EngineModuleTests.MergeTestBlockchain chain, PrivateKey privateKey, long blockGasConsumptionTarget)
-    {
-        List<byte> byteCode = new();
-
-        int numberOfContractCalls = 1;
-        for (int i = 0; i < numberOfContractCalls; i++)
-        {
-            byteCode.Add((byte)(Instruction.PUSH0));
-            byteCode.Add((byte)(Instruction.PUSH0));
-            byteCode.Add((byte)(Instruction.PUSH0));
-            byteCode.Add((byte)(Instruction.PUSH0));
-            byteCode.Add((byte)(Instruction.PUSH0));
-            byteCode.Add((byte)(Instruction.PUSH1 + 19));
-            byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
-            byte[] blockGasConsumptionTargetInBytes = blockGasConsumptionTarget.ToBigEndianByteArrayWithoutLeadingZeros();
-            byteCode.Add((byte)(Instruction.PUSH1 + (byte)blockGasConsumptionTargetInBytes.Length - 1));
-            byteCode.AddRange(blockGasConsumptionTargetInBytes);
-            byteCode.Add((byte)Instruction.CALLCODE);
-        }
-
-        Transaction tx = Build.A.Transaction
-            .WithNonce(UInt256.Zero)
-            .WithType(TxType.EIP1559)
-            .WithMaxFeePerGas(1.GWei())
-            .WithMaxPriorityFeePerGas(1.GWei())
-            .WithTo(new Address("0x7dd5df5a938ecb3acafaa0e026b235d100f71bbf"))
-            .WithChainId(BlockchainIds.Holesky)
-            .WithData(byteCode.ToArray())
-            .WithGasLimit(blockGasConsumptionTarget)
-            .SignedAndResolved(privateKey)
-            .TestObject;;
-        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
-    }
-
     private void OnEmptyProcessingQueue(object? sender, EventArgs e)
     {
-        // if (!WaitForProcessingBlock.IsCompleted)
-        // {
-            _taskCompletionSource?.SetResult(true);
-        // }
+        _taskCompletionSource?.SetResult(true);
     }
 
     private void SubmitTxs(ITxPool txPool, PrivateKey[] privateKeys, Withdrawal[] previousBlockWithdrawals, TestCase testCase, long blockGasConsumptionTarget)
@@ -305,36 +268,74 @@ public class TestCaseGenerator
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
                     .TestObject;
-            case TestCase.SHA2From32Bytes:
-                return Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
-                    .WithType(TxType.EIP1559)
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(null)
-                    .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(32))
-                    .WithGasLimit(blockGasConsumptionTarget)
-                    .SignedAndResolved(privateKey)
-                    .TestObject;
+            // case TestCase.SHA2From32Bytes:
+            //     return Build.A.Transaction
+            //         .WithNonce((UInt256)nonce)
+            //         .WithType(TxType.EIP1559)
+            //         .WithMaxFeePerGas(1.GWei())
+            //         .WithMaxPriorityFeePerGas(1.GWei())
+            //         .WithTo(null)
+            //         .WithChainId(BlockchainIds.Holesky)
+            //         .WithData(PrepareKeccak256Code(32))
+            //         .WithGasLimit(blockGasConsumptionTarget)
+            //         .SignedAndResolved(privateKey)
+            //         .TestObject;
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
     }
 
+    private void CallContract(EngineModuleTests.MergeTestBlockchain chain, PrivateKey privateKey, long blockGasConsumptionTarget)
+    {
+        Transaction tx = Build.A.Transaction
+            .WithNonce(UInt256.Zero)
+            .WithType(TxType.EIP1559)
+            .WithMaxFeePerGas(1.GWei())
+            .WithMaxPriorityFeePerGas(1.GWei())
+            .WithTo(new Address("0x7dd5df5a938ecb3acafaa0e026b235d100f71bbf"))
+            .WithChainId(BlockchainIds.Holesky)
+            .WithGasLimit(blockGasConsumptionTarget)
+            .SignedAndResolved(privateKey)
+            .TestObject;;
+        chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+    }
+
     private byte[] PrepareKeccak256Code(int bytesToComputeKeccak)
     {
-        // 1 iteration (push0, memory, push32, push0, keccak) with cost (2+3+3+2+36=46)
-        byte[] oneIteration = Bytes.FromHexString("5F5260205F20");
+        List<byte> oneIteration = new();
+        // long costOfOneIteration = 0;
+
+        oneIteration.Add((byte)Instruction.PUSH0);
+        // costOfOneIteration += GasCostOf.Base;
+        oneIteration.Add((byte)Instruction.MSTORE);
+        // costOfOneIteration += GasCostOf.Memory;
+        oneIteration.Add((byte)Instruction.PUSH1);
+        oneIteration.Add((byte)bytesToComputeKeccak);
+        // costOfOneIteration += GasCostOf.VeryLow;
+        oneIteration.Add((byte)Instruction.PUSH0);
+        // costOfOneIteration += GasCostOf.Base;
+        oneIteration.Add((byte)Instruction.KECCAK256);
+        // costOfOneIteration += GasCostOf.Call;
 
         List<byte> codeToDeploy = new();
+        // long cost = 0;
 
-        codeToDeploy.Add(0x5f);     // first, preitaration item - 0
+        codeToDeploy.Add((byte)Instruction.CALLER);     // first, preitaration item - put on stack callers address
+        // cost += GasCostOf.Base;
+        codeToDeploy.Add((byte)Instruction.JUMPDEST);   // second item - jump destination (on offset 1)
+        // cost += GasCostOf.JumpDest;
 
         for (int i = 0; i < 4095; i++)
         {
             codeToDeploy.AddRange(oneIteration);
+            // cost += costOfOneIteration;
         }
+
+        codeToDeploy.Add((byte)Instruction.PUSH1);
+        codeToDeploy.Add((byte)1);
+        // cost += GasCostOf.VeryLow;
+        codeToDeploy.Add((byte)Instruction.JUMP);
+        // cost += GasCostOf.Mid;
 
         List<byte> initCode = GenerateInitCode(codeToDeploy);
         List<byte> byteCode = GenerateCodeToDeployContract(initCode);
@@ -367,11 +368,6 @@ public class TestCaseGenerator
 
             // save in memory
             byteCode.Add((byte)Instruction.MSTORE);
-
-            if (byteCode.Count > 32810)
-            {
-                Console.WriteLine("sadfsadf");
-            }
         }
 
         // push size of init code to read from memory
