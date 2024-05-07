@@ -1,21 +1,4 @@
-﻿using System.Text;
-using FluentAssertions;
-using Nethermind.Blockchain;
-using Nethermind.Consensus.Producers;
-using Nethermind.Core;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
-using Nethermind.Core.Test.Builders;
-using Nethermind.Crypto;
-using Nethermind.Evm;
-using Nethermind.Int256;
-using Nethermind.Logging;
-using Nethermind.Merge.Plugin.Data;
-using Nethermind.Merge.Plugin.Test;
-using Nethermind.Serialization.Json;
-using Nethermind.Specs.ChainSpecStyle;
-using Nethermind.TxPool;
-using CommandLine;
+﻿using CommandLine;
 
 namespace EngineRequestsGenerator;
 

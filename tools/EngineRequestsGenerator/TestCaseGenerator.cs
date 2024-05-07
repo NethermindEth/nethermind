@@ -27,11 +27,12 @@ public class TestCaseGenerator
     private int _maxNumberOfWithdrawalsPerBlock;
     private int _numberOfWithdrawals;
     private int _txsPerBlock;
-    private const int blockGasConsumptionTarget = 30_000_000;
+    private const int _blockGasConsumptionTarget = 30_000_000;
 
     private string _chainSpecPath;
     private ChainSpec _chainSpec;
     private ChainSpecBasedSpecProvider _chainSpecBasedSpecProvider;
+    private EthereumJsonSerializer _serializer = new();
     private TestCase _testCase;
     private readonly string _outputPath;
     private TaskCompletionSource<bool>? _taskCompletionSource;
@@ -58,11 +59,11 @@ public class TestCaseGenerator
     }
     public async Task Generate()
     {
-        bool generateSingleFile = true;
+        bool generateSingleFile = false;
         if (generateSingleFile)
         {
-            await GenerateTestCase(blockGasConsumptionTarget);
-            Console.WriteLine($"generated testcase {blockGasConsumptionTarget}");
+            await GenerateTestCase(_blockGasConsumptionTarget);
+            Console.WriteLine($"generated testcase {_blockGasConsumptionTarget}");
         }
         else
         {
@@ -82,10 +83,6 @@ public class TestCaseGenerator
 
     private async Task GenerateTestCase(long blockGasConsumptionTarget)
     {
-        // _txsPerBlock = blockGasConsumptionTarget / 854_000;
-        // _txsPerBlock = blockGasConsumptionTarget / 970_000;
-        // _txsPerBlock = blockGasConsumptionTarget / 987_000;
-
         _txsPerBlock = _testCase switch
         {
             TestCase.Transfers => (int)blockGasConsumptionTarget / (int)GasCostOf.Transaction,
@@ -94,12 +91,9 @@ public class TestCaseGenerator
 
         // chain initialization
         StringBuilder stringBuilder = new();
-        EthereumJsonSerializer serializer = new();
-
-        ChainSpecLoader chainSpecLoader = new(serializer);
+        ChainSpecLoader chainSpecLoader = new(_serializer);
         _chainSpec = chainSpecLoader.LoadEmbeddedOrFromFile(_chainSpecPath, LimboLogs.Instance.GetClassLogger());
         _chainSpecBasedSpecProvider = new(_chainSpec);
-
         EngineModuleTests.MergeTestBlockchain chain = await new EngineModuleTests.MergeTestBlockchain().Build(true, _chainSpecBasedSpecProvider);
 
         GenesisLoader genesisLoader = new(_chainSpec, _chainSpecBasedSpecProvider, chain.State, chain.TxProcessor);
@@ -107,11 +101,9 @@ public class TestCaseGenerator
 
         chain.BlockTree.SuggestBlock(genesisBlock);
 
-
         // prepare private keys - up to 16_777_216 (2^24)
         int numberOfKeysToGenerate = _maxNumberOfWithdrawalsPerBlock * _numberOfBlocksToProduce;
         PrivateKey[] privateKeys = PreparePrivateKeys(numberOfKeysToGenerate).ToArray();
-
 
         // producing blocks and printing engine requests
         Block previousBlock = genesisBlock;
@@ -134,7 +126,7 @@ public class TestCaseGenerator
                 case TestCase.SHA2From32Bytes:
                     SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
                     break;
-                // cases with contract deployment
+                // cases with contract deployment:
                 case TestCase.Keccak256From1Byte:
                 case TestCase.Keccak256From8Bytes:
                 case TestCase.Keccak256From32Bytes:
@@ -148,7 +140,7 @@ public class TestCaseGenerator
                     {
                         // starting from in iteration 2, there are contract calls
                         // CallKeccak256(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1]);
-                        CallKeccak256(chain, privateKeys[5]);
+                        CallKeccak256(chain, privateKeys[5], blockGasConsumptionTarget);
                     }
                     break;
                 default: break;
@@ -161,14 +153,14 @@ public class TestCaseGenerator
 
 
             ExecutionPayloadV3 executionPayload = new(block);
-            string executionPayloadString = serializer.Serialize(executionPayload);
-            string blobsString = serializer.Serialize(Array.Empty<byte[]>());
-            string parentBeaconBlockRootString = serializer.Serialize(previousBlock.Hash);
+            string executionPayloadString = _serializer.Serialize(executionPayload);
+            string blobsString = _serializer.Serialize(Array.Empty<byte[]>());
+            string parentBeaconBlockRootString = _serializer.Serialize(previousBlock.Hash);
 
             WriteJsonRpcRequest(stringBuilder, "engine_newPayloadV3", executionPayloadString, blobsString, parentBeaconBlockRootString);
 
             ForkchoiceStateV1 forkchoiceState = new(block.Hash, Keccak.Zero, Keccak.Zero);
-            WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", serializer.Serialize(forkchoiceState));
+            WriteJsonRpcRequest(stringBuilder, "engine_forkchoiceUpdatedV3", _serializer.Serialize(forkchoiceState));
 
             _taskCompletionSource = new TaskCompletionSource<bool>();
             chain.BlockProcessingQueue.ProcessingQueueEmpty += OnEmptyProcessingQueue;
@@ -188,21 +180,25 @@ public class TestCaseGenerator
         await File.WriteAllTextAsync($"{_outputPath}/{_testCase}_{blockGasConsumptionTarget/1_000_000}M.txt", stringBuilder.ToString());
     }
 
-    private void CallKeccak256(EngineModuleTests.MergeTestBlockchain chain, PrivateKey privateKey)
+    private void CallKeccak256(EngineModuleTests.MergeTestBlockchain chain, PrivateKey privateKey, long blockGasConsumptionTarget)
     {
         List<byte> byteCode = new();
 
-        byteCode.Add((byte)(Instruction.PUSH0));
-        byteCode.Add((byte)(Instruction.PUSH0));
-        byteCode.Add((byte)(Instruction.PUSH0));
-        byteCode.Add((byte)(Instruction.PUSH0));
-        byteCode.Add((byte)(Instruction.PUSH0));
-        byteCode.Add((byte)(Instruction.PUSH1 + 19));
-        byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
-        byteCode.Add((byte)(Instruction.PUSH1 + 4));
-        byteCode.AddRange(Bytes.FromHexString("ffffffffff"));
-
-        byteCode.Add((byte)Instruction.CALLCODE);
+        int numberOfContractCalls = 1;
+        for (int i = 0; i < numberOfContractCalls; i++)
+        {
+            byteCode.Add((byte)(Instruction.PUSH0));
+            byteCode.Add((byte)(Instruction.PUSH0));
+            byteCode.Add((byte)(Instruction.PUSH0));
+            byteCode.Add((byte)(Instruction.PUSH0));
+            byteCode.Add((byte)(Instruction.PUSH0));
+            byteCode.Add((byte)(Instruction.PUSH1 + 19));
+            byteCode.AddRange(Bytes.FromHexString("7dd5df5a938ecb3acafaa0e026b235d100f71bbf"));
+            byte[] blockGasConsumptionTargetInBytes = blockGasConsumptionTarget.ToBigEndianByteArrayWithoutLeadingZeros();
+            byteCode.Add((byte)(Instruction.PUSH1 + (byte)blockGasConsumptionTargetInBytes.Length - 1));
+            byteCode.AddRange(blockGasConsumptionTargetInBytes);
+            byteCode.Add((byte)Instruction.CALLCODE);
+        }
 
         Transaction tx = Build.A.Transaction
             .WithNonce(UInt256.Zero)
@@ -328,8 +324,6 @@ public class TestCaseGenerator
 
     private byte[] PrepareKeccak256Code(int bytesToComputeKeccak)
     {
-        List<byte> byteCode = new();
-
         // 1 iteration (push0, memory, push32, push0, keccak) with cost (2+3+3+2+36=46)
         byte[] oneIteration = Bytes.FromHexString("5F5260205F20");
 
@@ -340,60 +334,27 @@ public class TestCaseGenerator
         for (int i = 0; i < 4095; i++)
         {
             codeToDeploy.AddRange(oneIteration);
-
         }
 
-        List<byte> initCode = new();
+        List<byte> initCode = GenerateInitCode(codeToDeploy);
+        List<byte> byteCode = GenerateCodeToDeployContract(initCode);
+        return byteCode.ToArray();
+    }
 
+    private List<byte> GenerateCodeToDeployContract(List<byte> initCode)
+    {
+        List<byte> byteCode = new();
+
+        for (long i = 0; i < initCode.Count; i += 32)
         {
-            for (int i = 0; i < codeToDeploy.Count; i += 32)
-            {
-                List<byte> currentWord = codeToDeploy.Slice(i == 0 ? 0 : i - 32 + codeToDeploy.Count % 32, i == 0 ? codeToDeploy.Count % 32 : 32);
-
-                initCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
-                initCode.AddRange(currentWord);
-
-                // push memory offset - i
-                byte[] memoryOffset = i.ToByteArray().WithoutLeadingZeros().ToArray();
-                if (memoryOffset is [0])
-                {
-                    initCode.Add((byte)Instruction.PUSH0);
-                }
-                else
-                {
-                    initCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
-                    initCode.AddRange(memoryOffset);
-                }
-
-                // save in memory
-                initCode.Add((byte)Instruction.MSTORE);
-            }
-
-            // push size of memory read
-            byte[] sizeOfCodeToDeploy = codeToDeploy.Count.ToByteArray().WithoutLeadingZeros().ToArray();
-            initCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfCodeToDeploy.Length - 1));
-            initCode.AddRange(sizeOfCodeToDeploy);
-
-            // initCode.Add((byte)(Instruction.PUSH1));
-            // initCode.AddRange(new[] { (byte)codeToDeploy.Count });
-
-            // push memory offset
-            initCode.Add((byte)(Instruction.PUSH1));
-            initCode.AddRange(new[] { (byte)(32 - (codeToDeploy.Count % 32)) });
-
-            // add return opcode
-            initCode.Add((byte)(Instruction.RETURN));
-        }
-
-        for (int i = 0; i < initCode.Count; i += 32)
-        {
-            List<byte> currentWord = initCode.Slice(i == 0 ? 0 : i - 32 + initCode.Count % 32, i == 0 ? initCode.Count % 32 : 32);
-
+            List<byte> currentWord = i == 0
+                ? initCode.Slice(0, initCode.Count % 32)
+                : initCode.Slice((int)i - 32 + initCode.Count % 32, 32);
             byteCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
             byteCode.AddRange(currentWord);
 
             // push memory offset - i
-            byte[] memoryOffset = i.ToByteArray().WithoutLeadingZeros().ToArray();
+            byte[] memoryOffset = i.ToBigEndianByteArrayWithoutLeadingZeros();
             if (memoryOffset is [0])
             {
                 byteCode.Add((byte)Instruction.PUSH0);
@@ -418,9 +379,6 @@ public class TestCaseGenerator
         byteCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfInitCode.Length - 1));
         byteCode.AddRange(sizeOfInitCode);
 
-        // byteCode.Add((byte)(Instruction.PUSH1));
-        // byteCode.AddRange(new[] { (byte)initCode.Count });
-
         // offset in memory
         byteCode.Add((byte)(Instruction.PUSH1));
         byteCode.AddRange(new[] { (byte)(32 - (initCode.Count % 32)) });
@@ -432,7 +390,51 @@ public class TestCaseGenerator
 
         Console.WriteLine($"size of prepared code: {byteCode.Count}");
 
-        return byteCode.ToArray();
+        return byteCode;
+    }
+
+    private List<byte> GenerateInitCode(List<byte> codeToDeploy)
+    {
+        List<byte> initCode = new();
+
+        for (long i = 0; i < codeToDeploy.Count; i += 32)
+        {
+            List<byte> currentWord = i == 0
+                ? codeToDeploy.Slice(0, codeToDeploy.Count % 32)
+                : codeToDeploy.Slice((int)i - 32 + codeToDeploy.Count % 32, 32);
+
+            initCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
+            initCode.AddRange(currentWord);
+
+            // push memory offset - i
+            byte[] memoryOffset = i.ToBigEndianByteArrayWithoutLeadingZeros();
+            if (memoryOffset is [0])
+            {
+                initCode.Add((byte)Instruction.PUSH0);
+            }
+            else
+            {
+                initCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
+                initCode.AddRange(memoryOffset);
+            }
+
+            // save in memory
+            initCode.Add((byte)Instruction.MSTORE);
+        }
+
+        // push size of memory read
+        byte[] sizeOfCodeToDeploy = codeToDeploy.Count.ToByteArray().WithoutLeadingZeros().ToArray();
+        initCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfCodeToDeploy.Length - 1));
+        initCode.AddRange(sizeOfCodeToDeploy);
+
+        // push memory offset
+        initCode.Add((byte)(Instruction.PUSH1));
+        initCode.AddRange(new[] { (byte)(32 - (codeToDeploy.Count % 32)) });
+
+        // add return opcode
+        initCode.Add((byte)(Instruction.RETURN));
+
+        return initCode;
     }
 
     private IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
