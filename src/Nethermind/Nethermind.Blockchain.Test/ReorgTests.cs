@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using FluentAssertions;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -56,7 +57,7 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         CodeInfoRepository codeInfoRepository = new();
         VirtualMachine virtualMachine = new(
             blockhashProvider,
@@ -78,6 +79,7 @@ public class ReorgTests
             stateProvider,
             NullReceiptStorage.Instance,
             new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
+            new BlockhashStore(_blockTree, MainnetSpecProvider.Instance, stateProvider),
             LimboLogs.Instance);
         _blockchainProcessor = new BlockchainProcessor(
             _blockTree,

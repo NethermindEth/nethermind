@@ -28,7 +28,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
     private readonly bool _isTracingBlockHash;
     private readonly bool _isTracingBlockAccess;
     private readonly bool _isTracingFees;
-    private readonly bool _isTracingLogs;
+    private readonly bool _isTracingOpLevelLogs;
 
     public ITxTracer InnerTracer => _innerTracer;
     private ILogsTxTracer? _logsTxTracer;
@@ -38,6 +38,9 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
         _logsTxTracer = InnerTracer as ILogsTxTracer;
         _token = token;
     }
+
+    public bool IsCancelable => true;
+    public bool IsCancelled => _token.IsCancellationRequested;
 
     public bool IsTracingReceipt
     {
@@ -118,10 +121,9 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
     }
     public bool IsTracingLogs
     {
-        get => _isTracingLogs || (_logsTxTracer != null && _logsTxTracer!.IsTracingLogs);
-        init => _isTracingLogs = value;
+        get => _isTracingOpLevelLogs || _innerTracer.IsTracingLogs;
+        init => _isTracingOpLevelLogs = value;
     }
-
 
     public void ReportBalanceChange(Address address, UInt256? before, UInt256? after)
     {
@@ -219,6 +221,15 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
         if (_innerTracer.IsTracingInstructions)
         {
             _innerTracer.ReportOperationRemainingGas(gas);
+        }
+    }
+
+    public void ReportLog(LogEntry log)
+    {
+        _token.ThrowIfCancellationRequested();
+        if (_innerTracer.IsTracingLogs)
+        {
+            _innerTracer.ReportLog(log);
         }
     }
 
@@ -366,7 +377,7 @@ public class CancellationTxTracer : ITxTracer, ITxTracerWrapper, ILogsTxTracer
         }
     }
 
-    public void ReportActionRevert(long gasLeft, byte[] output)
+    public void ReportActionRevert(long gasLeft, ReadOnlyMemory<byte> output)
     {
         _token.ThrowIfCancellationRequested();
         if (_innerTracer.IsTracingActions)

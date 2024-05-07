@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
@@ -273,7 +274,7 @@ namespace Nethermind.Synchronization.Test
                 new TxValidator(specProvider.ChainId),
                 logManager,
                 transactionComparerProvider.GetDefaultComparer());
-            BlockhashProvider blockhashProvider = new(tree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(tree, specProvider, stateProvider, LimboLogs.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, codeInfoRepository, logManager);
 
@@ -300,6 +301,7 @@ namespace Nethermind.Synchronization.Test
                 stateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new BlockhashStore(tree, specProvider, stateProvider),
                 logManager);
 
             RecoverSignatures step = new(ecdsa, txPool, specProvider, logManager);
@@ -322,6 +324,7 @@ namespace Nethermind.Synchronization.Test
                 devState,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new BlockhashStore(tree, specProvider, devState),
                 logManager);
 
             BlockchainProcessor devChainProcessor = new(tree, devBlockProcessor, step, stateReader, logManager,

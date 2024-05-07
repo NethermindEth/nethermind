@@ -134,6 +134,12 @@ public class TestBlockchain : IDisposable
             State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress, 1);
         }
 
+        // Eip2935
+        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+        {
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+        }
+
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
@@ -176,7 +182,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
         CodeInfoRepository codeInfoRepository = new();
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, codeInfoRepository, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, codeInfoRepository, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, codeInfoRepository, LogManager);
 
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
@@ -362,6 +368,7 @@ public class TestBlockchain : IDisposable
             State,
             ReceiptStorage,
             NullWitnessCollector.Instance,
+            new BlockhashStore(BlockTree, SpecProvider, State),
             LogManager);
 
     public async Task WaitForNewHead()

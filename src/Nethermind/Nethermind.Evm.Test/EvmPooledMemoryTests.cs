@@ -160,7 +160,7 @@ namespace Nethermind.Evm.Test
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
             CodeInfoRepository codeInfoRepository = new();
             VirtualMachine virtualMachine = new(
-                    Nethermind.Evm.Test.TestBlockhashProvider.Instance,
+                new TestBlockhashProvider(specProvider),
                     specProvider,
                     codeInfoRepository,
                     LimboLogs.Instance);
@@ -220,7 +220,19 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracingLogs => false;
+        public bool IsTracing => IsTracingReceipt
+                                 || IsTracingActions
+                                 || IsTracingOpLevelStorage
+                                 || IsTracingMemory
+                                 || IsTracingInstructions
+                                 || IsTracingRefunds
+                                 || IsTracingCode
+                                 || IsTracingStack
+                                 || IsTracingBlockHash
+                                 || IsTracingAccess
+                                 || IsTracingFees
+                                 || IsTracingLogs;
 
         public string lastmemline;
 
@@ -241,6 +253,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportOperationRemainingGas(long gas)
+        {
+        }
+
+        public void ReportLog(LogEntry log)
         {
         }
 
@@ -319,6 +335,11 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
         {
             throw new NotSupportedException();
         }

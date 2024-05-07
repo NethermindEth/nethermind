@@ -19,6 +19,8 @@ using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Collections;
 using Nethermind.TxPool.Filters;
+using static Nethermind.TxPool.Collections.TxDistinctSortedPool;
+
 using ITimer = Nethermind.Core.Timers.ITimer;
 
 [assembly: InternalsVisibleTo("Nethermind.Blockchain.Test")]
@@ -52,7 +54,8 @@ namespace Nethermind.TxPool
 
         private readonly Channel<BlockReplacementEventArgs> _headBlocksChannel = Channel.CreateUnbounded<BlockReplacementEventArgs>(new UnboundedChannelOptions() { SingleReader = true, SingleWriter = true });
 
-        private readonly Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> _updateBucket;
+        private readonly UpdateGroupDelegate _updateBucket;
+        private readonly UpdateGroupDelegate _updateBucketAdded;
 
         /// <summary>
         /// Indexes transactions
@@ -102,6 +105,7 @@ namespace Nethermind.TxPool
 
             // Capture closures once rather than per invocation
             _updateBucket = UpdateBucket;
+            _updateBucketAdded = UpdateBucketWithAddedTransaction;
 
             _broadcaster = new TxBroadcaster(comparer, TimerFactory.Default, txPoolConfig, chainHeadInfoProvider, logManager, transactionsGossipPolicy);
 
@@ -379,7 +383,7 @@ namespace Nethermind.TxPool
 
             TxFilteringState state = new(tx, _accounts);
 
-            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, state);
+            AcceptTxResult accepted = FilterTransactions(tx, handlingOptions, ref state);
 
             if (!accepted)
             {
@@ -387,7 +391,7 @@ namespace Nethermind.TxPool
             }
             else
             {
-                accepted = AddCore(tx, state, startBroadcast);
+                accepted = AddCore(tx, ref state, startBroadcast);
                 if (accepted)
                 {
                     // Clear proper snapshot
@@ -401,12 +405,12 @@ namespace Nethermind.TxPool
             return accepted;
         }
 
-        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, TxFilteringState state)
+        private AcceptTxResult FilterTransactions(Transaction tx, TxHandlingOptions handlingOptions, ref TxFilteringState state)
         {
             IIncomingTxFilter[] filters = _preHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted)
                 {
@@ -418,7 +422,7 @@ namespace Nethermind.TxPool
             filters = _postHashFilters;
             for (int i = 0; i < filters.Length; i++)
             {
-                AcceptTxResult accepted = filters[i].Accept(tx, state, handlingOptions);
+                AcceptTxResult accepted = filters[i].Accept(tx, ref state, handlingOptions);
 
                 if (!accepted) return accepted;
             }
@@ -426,7 +430,7 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private AcceptTxResult AddCore(Transaction tx, TxFilteringState state, bool isPersistentBroadcast)
+        private AcceptTxResult AddCore(Transaction tx, ref TxFilteringState state, bool isPersistentBroadcast)
         {
             bool eip1559Enabled = _specProvider.GetCurrentHeadSpec().IsEip1559Enabled;
             UInt256 effectiveGasPrice = tx.CalculateEffectiveGasPrice(eip1559Enabled, _headInfo.CurrentBaseFee);
@@ -460,7 +464,7 @@ namespace Nethermind.TxPool
                 return AcceptTxResult.FeeTooLowToCompete;
             }
 
-            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, UpdateBucketWithAddedTransaction);
+            relevantPool.UpdateGroup(tx.SenderAddress!, state.SenderAccount, _updateBucketAdded);
             Metrics.PendingTransactionsAdded++;
             if (tx.Supports1559) { Metrics.Pending1559TransactionsAdded++; }
             if (tx.SupportsBlobs) { Metrics.PendingBlobTransactionsAdded++; }
@@ -484,23 +488,19 @@ namespace Nethermind.TxPool
             return AcceptTxResult.Accepted;
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucketWithAddedTransaction(
-            Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
+        private void UpdateBucketWithAddedTransaction(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {
                 UInt256 balance = account.Balance;
                 long currentNonce = (long)(account.Nonce);
 
-                foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-                {
-                    yield return changedTx;
-                }
+                UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
             }
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateGasBottleneck(
-            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance)
+        private void UpdateGasBottleneck(
+            EnhancedSortedSet<Transaction> transactions, long currentNonce, UInt256 balance, Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             UInt256? previousTxBottleneck = null;
             int i = 0;
@@ -513,7 +513,7 @@ namespace Nethermind.TxPool
                 if (tx.Nonce < currentNonce)
                 {
                     _broadcaster.StopBroadcast(tx.Hash!);
-                    yield return (tx, null);
+                    updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                 }
                 else
                 {
@@ -535,14 +535,14 @@ namespace Nethermind.TxPool
                         {
                             // balance too low, remove tx from the pool
                             _broadcaster.StopBroadcast(tx.Hash!);
-                            yield return (tx, null);
+                            updateTx(transactions, tx, changedGasBottleneck: null, lastElement);
                         }
                         gasBottleneck = UInt256.Min(effectiveGasPrice, previousTxBottleneck ?? 0);
                     }
 
                     if (tx.GasBottleneck != gasBottleneck)
                     {
-                        yield return (tx, gasBottleneck);
+                        updateTx(transactions, tx, gasBottleneck, lastElement);
                     }
 
                     previousTxBottleneck = gasBottleneck;
@@ -557,7 +557,7 @@ namespace Nethermind.TxPool
             _blobTransactions.UpdatePool(_accounts, _updateBucket);
         }
 
-        private IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)> UpdateBucket(Address address, AccountStruct account, EnhancedSortedSet<Transaction> transactions)
+        private void UpdateBucket(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx)
         {
             if (transactions.Count != 0)
             {
@@ -597,15 +597,13 @@ namespace Nethermind.TxPool
                         // transaction removed from TxPool because of insufficient balance should have opportunity
                         // to come back in the future, so it is removed from long term cache as well.
                         _hashCache.DeleteFromLongTerm(transaction.Hash!);
-                        yield return (transaction, null);
+
+                        updateTx(transactions, transaction, changedGasBottleneck: null, lastElement);
                     }
                 }
                 else
                 {
-                    foreach (var changedTx in UpdateGasBottleneck(transactions, currentNonce, balance))
-                    {
-                        yield return changedTx;
-                    }
+                    UpdateGasBottleneck(transactions, currentNonce, balance, lastElement, updateTx);
                 }
             }
         }

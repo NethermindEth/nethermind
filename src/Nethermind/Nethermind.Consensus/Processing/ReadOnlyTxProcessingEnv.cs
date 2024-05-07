@@ -35,11 +35,8 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager
-            ) : base(worldStateManager, readOnlyBlockTree, logManager)
+            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager)
         {
-            ArgumentNullException.ThrowIfNull(specProvider);
-            ArgumentNullException.ThrowIfNull(worldStateManager);
-
             CodeInfoRepository = new CodeInfoRepository();
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, CodeInfoRepository, logManager);

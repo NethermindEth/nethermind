@@ -7,6 +7,8 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
+
 using Nethermind.Core.Collections;
 using Nethermind.Core.Threading;
 using Nethermind.Logging;
@@ -90,11 +92,43 @@ namespace Nethermind.TxPool.Collections
         /// </summary>
         public TValue[] GetSnapshot()
         {
-            using var lockRelease = Lock.Acquire();
+            TValue[]? snapshot = Volatile.Read(ref _snapshot);
+            if (snapshot is not null)
+            {
+                return snapshot;
+            }
+
+            return GetSnapShotLocked();
+        }
+
+        private TValue[] GetSnapShotLocked()
+        {
+            using var handle = Lock.Acquire();
 
             TValue[]? snapshot = _snapshot;
-            snapshot ??= _snapshot = _buckets.SelectMany(b => b.Value).ToArray();
+            if (snapshot is not null)
+            {
+                return snapshot;
+            }
 
+            var count = 0;
+            foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
+            {
+                count += bucket.Value.Count;
+            }
+
+            snapshot = new TValue[count];
+            var index = 0;
+            foreach (KeyValuePair<TGroupKey, EnhancedSortedSet<TValue>> bucket in _buckets)
+            {
+                foreach (TValue value in bucket.Value)
+                {
+                    snapshot[index] = value;
+                    index++;
+                }
+            }
+
+            _snapshot = snapshot;
             return snapshot;
         }
 

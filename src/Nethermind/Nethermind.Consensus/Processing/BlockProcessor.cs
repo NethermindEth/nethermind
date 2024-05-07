@@ -8,6 +8,8 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.BeaconBlockRoot;
 using Nethermind.Consensus.Rewards;
@@ -40,7 +42,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-
+    private readonly IBlockhashStore _blockhashStore;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -57,6 +59,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockhashStore? blockHashStore,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
         IReceiptsRootCalculator? receiptsRootCalculator = null)
@@ -71,8 +74,8 @@ public partial class BlockProcessor : IBlockProcessor
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
-
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -243,6 +246,8 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
+        _blockhashStore.ApplyHistoryBlockHashes(block.Header);
+
         _stateProvider.Commit(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);

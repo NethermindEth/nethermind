@@ -281,14 +281,9 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable)
-            {
-                return null;
-            }
-            else
-            {
-                return Type.Missing;
-            }
+            return providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable
+                ? null
+                : Type.Missing;
         }
 
         object? executionParam;
@@ -309,14 +304,9 @@ public class JsonRpcService : IJsonRpcService
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                if (converter.GetType().FullName.StartsWith("System."))
-                {
-                    executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
-                }
-                else
-                {
-                    executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                }
+                executionParam = converter.GetType().FullName.StartsWith("System.")
+                    ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {

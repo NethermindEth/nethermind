@@ -147,6 +147,19 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        private ulong? _overridenEip2935TransitionTimeStamp;
+        public ulong Eip2935TransitionTimestamp
+        {
+            get
+            {
+                return _overridenEip2935TransitionTimeStamp ?? _spec.Eip2935TransitionTimestamp;
+            }
+            set
+            {
+                _overridenEip2935TransitionTimeStamp = value;
+            }
+        }
+
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;
         public bool IsEip3855Enabled => _spec.IsEip3855Enabled;
@@ -157,6 +170,8 @@ namespace Nethermind.Specs.Test
         public bool IsEip6780Enabled => _spec.IsEip6780Enabled;
         public bool IsEip4788Enabled => _spec.IsEip4788Enabled;
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
+        public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
+        public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;

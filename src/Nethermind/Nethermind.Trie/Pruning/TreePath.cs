@@ -12,6 +12,7 @@ using System.Runtime.Intrinsics;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using System.Numerics;
 
 namespace Nethermind.Trie;
 
@@ -255,7 +256,7 @@ public struct TreePath
 
     public readonly bool Equals(in TreePath other)
     {
-        return Path.Equals(other.Path) && Length == other.Length;
+        return Length == other.Length && Path.Equals(in other.Path);
     }
 
     public readonly override bool Equals(object? obj)
@@ -265,7 +266,7 @@ public struct TreePath
 
     public readonly override int GetHashCode()
     {
-        return HashCode.Combine(Path, Length);
+        return (int)BitOperations.Crc32C((uint)Path.GetHashCode(), (uint)Length);
     }
 
     /// <summary>
