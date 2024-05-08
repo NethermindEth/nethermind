@@ -34,6 +34,7 @@ namespace Nethermind.Evm;
 
 using System.Collections.Frozen;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 using Int256;
@@ -690,7 +691,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output.ToArray(), success, !success);
+            byte[] result = (MemoryMarshal.TryGetArray(output, out ArraySegment<byte> outputArray) &&
+                outputArray.Offset == 0 && outputArray.Count == output.Length) ?
+                outputArray.Array :
+                // Wasn't array backed or Memory wasn't the whole array
+                output.ToArray();
+
+            CallResult callResult = new(result, success, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
