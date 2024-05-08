@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Linq;
@@ -12,7 +12,7 @@ namespace Nethermind.Consensus.Test;
 
 public class DepositProcessorTests
 {
-    private AbiSignature depositEventABI = new AbiSignature("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes ,AbiType.DynamicBytes);
+    private AbiSignature depositEventABI = new AbiSignature("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
 
     // ToDo this test is not finished and needs to be rewritten
     [Test]

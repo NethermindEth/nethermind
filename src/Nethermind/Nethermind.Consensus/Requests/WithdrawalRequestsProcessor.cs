@@ -58,7 +58,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
             request.ValidatorPubkey = span.Slice(20, 48).ToArray();
-            request.Amount = BitConverter.ToUInt64(span.Slice( 68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
+            request.Amount = BitConverter.ToUInt64(span.Slice(68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
 
             yield return request;
         }

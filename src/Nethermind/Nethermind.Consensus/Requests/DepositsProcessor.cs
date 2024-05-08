@@ -13,8 +13,8 @@ namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
-    private AbiSignature depositEventABI = new AbiSignature("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes ,AbiType.DynamicBytes);
-    AbiEncoder abiEncoder = new AbiEncoder();
+    private AbiSignature depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
+    AbiEncoder abiEncoder = new();
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
