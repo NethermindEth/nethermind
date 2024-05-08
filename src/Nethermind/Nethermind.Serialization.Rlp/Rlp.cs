@@ -124,10 +124,8 @@ namespace Nethermind.Serialization.Rlp
                             continue;
                         }
 
-                        RlpDecoderKey key = new(
-                                implementedInterface.GenericTypeArguments[0],
-                                (type.GetCustomAttribute(typeof(RlpDecoderAttribute)) as RlpDecoderAttribute)?.Key ?? RlpDecoderKey.Default
-                            );
+                        string rlpDecoderAttributeKey = (type.GetCustomAttribute(typeof(RlpDecoderAttribute)) as RlpDecoderAttribute)?.Key;
+                        RlpDecoderKey key = new(implementedInterface.GenericTypeArguments[0], rlpDecoderAttributeKey ?? RlpDecoderKey.Default);
 
 
                         if (!_decoderBuilder.ContainsKey(key) || canOverrideExistingDecoders)

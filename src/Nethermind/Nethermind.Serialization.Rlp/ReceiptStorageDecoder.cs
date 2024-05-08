@@ -5,27 +5,26 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using static Nethermind.Serialization.Rlp.Rlp;
 
 #pragma warning disable 618
 
 namespace Nethermind.Serialization.Rlp
 {
-    [RlpDecoder(RlpDecoderKey.LegacyStorage)]
+    [Rlp.RlpDecoder(RlpDecoderKey.LegacyStorage)]
     public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
+        private readonly bool _supportTxHash;
+        private const byte MarkTxHashByte = 255;
+
         public ReceiptStorageDecoder(bool supportTxHash = true)
         {
             _supportTxHash = supportTxHash;
         }
 
         // Used by Rlp decoders discovery
-        public ReceiptStorageDecoder()
+        public ReceiptStorageDecoder(): this(true)
         {
         }
-
-        private readonly bool _supportTxHash;
-        private const byte MarkTxHashByte = 255;
 
         public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
         {
