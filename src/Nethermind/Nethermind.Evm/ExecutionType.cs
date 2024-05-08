@@ -36,7 +36,8 @@ namespace Nethermind.Evm
         CALLCODE,
         DELEGATECALL,
         CREATE,
-        CREATE2
+        CREATE2,
+        AUTHCALL
     }
     // ReSharper restore IdentifierTypo InconsistentNaming
 }

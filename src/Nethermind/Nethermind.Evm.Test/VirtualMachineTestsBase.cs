@@ -90,6 +90,14 @@ public class VirtualMachineTestsBase
         return tracer.BuildResult();
     }
 
+    protected GethLikeTxTrace ExecuteAndTrace(long gasLimit, params byte[] code)
+    {
+        GethLikeTxMemoryTracer tracer = new(GethTraceOptions.Default);
+        (Block block, Transaction transaction) = PrepareTx(Activation, gasLimit, code);
+        _processor.Execute(transaction, block.Header, tracer);
+        return tracer.BuildResult();
+    }
+
     protected GethLikeTxTrace ExecuteAndTraceToFile(Action<GethTxFileTraceEntry> dumpCallback, byte[] code, GethTraceOptions options)
     {
         GethLikeTxFileTracer tracer = new(dumpCallback, options);
