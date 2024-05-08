@@ -22,7 +22,7 @@ namespace Nethermind.Serialization.Rlp
         }
 
         // Used by Rlp decoders discovery
-        public ReceiptStorageDecoder(): this(true)
+        public ReceiptStorageDecoder() : this(true)
         {
         }
 
