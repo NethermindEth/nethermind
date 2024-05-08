@@ -2234,7 +2234,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Signature signature = new(sigData, yParity);
 
         Address recovered = null;
-        if (signature.V == 27 || signature.V == 28)
+        if (signature.V == Signature.VOffset || signature.V == Signature.VOffset + 1)
         {
             //TODO is ExecutingAccount correct when DELEGATECALL and CALLCODE?
             recovered = TryRecoverSigner(signature, vmState.Env.ExecutingAccount, authority, commit);
@@ -2259,7 +2259,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Address authority,
         ReadOnlySpan<byte> commit)
     {
-        byte[] chainId = _chainId.PadLeft(32);
         UInt256 nonce = _state.GetNonce(authority);
         byte[] invokerAddress = invoker.Bytes;
         Span<byte> msg = stackalloc byte[1 + 32 * 4];
@@ -2267,7 +2266,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         for (int i = 0; i < 32; i++)
         {
             int offset = i + 1;
-            msg[offset] = chainId[i];
+            msg[offset] = _chainId[i];
             msg[32 + 32 - i] = (byte)(nonce[i / 8] >> (8 * (i % 8)));
 
             if (i < 12)
