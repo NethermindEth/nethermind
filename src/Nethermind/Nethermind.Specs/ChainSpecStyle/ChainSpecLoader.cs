@@ -421,6 +421,7 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
             genesisHeader.WithdrawalsRoot = Keccak.EmptyTreeHash;
 
         var requestsEnabled = depositsEnabled || withdrawalRequestsEnabled;
+
         if (requestsEnabled)
             genesisHeader.RequestsRoot = Keccak.EmptyTreeHash; ;
 
@@ -435,11 +436,6 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
         if (isEip4788Enabled)
         {
             genesisHeader.ParentBeaconBlockRoot = Keccak.Zero;
-        }
-
-        if (requestsEnabled)
-        {
-            genesisHeader.ReceiptsRoot = Keccak.EmptyTreeHash;
         }
 
         genesisHeader.AuRaStep = step;
