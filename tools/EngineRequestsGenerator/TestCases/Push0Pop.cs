@@ -12,7 +12,7 @@ namespace EngineRequestsGenerator.TestCases;
 
 public class Push0Pop
 {
-    public static Transaction[] GetTxs(PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
+    public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {
         return
         [
@@ -23,14 +23,14 @@ public class Push0Pop
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithTo(null)
             .WithChainId(BlockchainIds.Holesky)
-            .WithData(PreparePush0PopCode())
+            .WithData(PrepareCode(instruction))
             .WithGasLimit(blockGasConsumptionTarget)
             .SignedAndResolved(privateKey)
             .TestObject
         ];
     }
 
-    private static byte[] PreparePush0PopCode()
+    private static byte[] PrepareCode(Instruction instruction)
     {
         List<byte> codeToDeploy = new();
 
@@ -38,7 +38,7 @@ public class Push0Pop
 
         for (int i = 0; i < 12000; i++)
         {
-            codeToDeploy.Add((byte)Instruction.PUSH0);
+            codeToDeploy.Add((byte)instruction);
             codeToDeploy.Add((byte)Instruction.POP);
         }
 

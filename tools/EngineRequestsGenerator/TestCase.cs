@@ -29,12 +29,15 @@ public enum TestCase
     [TestCaseMetadata("Push0Pop", "pushing zeros to stack, then popping it")]
     Push0Pop,
 
+    [TestCaseMetadata("Caller", "pushing caller address to stack")]
+    Caller,
+
     [TestCaseMetadata("CallerPop", "pushing caller address to stack, then popping it")]
     CallerPop,
 
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
     // BalanceNonExisting,
 
-    [TestCaseMetadata("SHA2From32Bytes", "SHA-2 calculations")]
+    [TestCaseMetadata("SHA256From32Bytes", "SHA-2 calculations")]
     SHA2From32Bytes
 }

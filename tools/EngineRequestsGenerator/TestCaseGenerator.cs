@@ -109,7 +109,6 @@ public class TestCaseGenerator
                 case TestCase.Transfers:
                 case TestCase.Warmup:
                 case TestCase.TxDataZero:
-                case TestCase.SHA2From32Bytes:
                     SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
                     break;
                 // cases with contract deployment:
@@ -211,15 +210,17 @@ public class TestCaseGenerator
             case TestCase.Keccak256From32Bytes:
                 return Keccak256.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0:
-                return Push0.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+                return Push0.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0Pop:
-                return Push0Pop.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+                return Push0Pop.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Caller:
+                return Push0.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CallerPop:
-                return CallerPop.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+                return Push0Pop.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.BalanceNonExisting:
             //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
-            // case TestCase.SHA2From32Bytes:
-            //     return Sha2.GetTx(privateKey, nonce, testCase, blockGasConsumptionTarget);
+            case TestCase.SHA2From32Bytes:
+                return Sha2.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }

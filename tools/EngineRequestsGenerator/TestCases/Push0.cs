@@ -12,7 +12,7 @@ namespace EngineRequestsGenerator.TestCases;
 
 public class Push0
 {
-    public static Transaction[] GetTxs(PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
+    public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {
         Transaction[] txs = new Transaction[2];
 
@@ -37,7 +37,7 @@ public class Push0
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithTo(null)
             .WithChainId(BlockchainIds.Holesky)
-            .WithData(PreparePush0Code())
+            .WithData(PreparePush0Code(instruction))
             .WithGasLimit(blockGasConsumptionTarget)
             .SignedAndResolved(privateKey)
             .TestObject;
@@ -76,13 +76,13 @@ public class Push0
         return byteCode.ToArray();
     }
 
-    private static byte[] PreparePush0Code()
+    private static byte[] PreparePush0Code(Instruction instruction)
     {
         List<byte> codeToDeploy = new();
 
         for (int i = 0; i < 1023; i++)
         {
-            codeToDeploy.Add((byte)Instruction.PUSH0);
+            codeToDeploy.Add((byte)instruction);
         }
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
