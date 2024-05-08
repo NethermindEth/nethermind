@@ -2,20 +2,24 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
+using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
-using Nethermind.Serialization.Rlp;
+using System.Linq;
+using Nethermind.Core.Extensions;
 
 namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
+    private AbiSignature depositEventABI = new AbiSignature("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes ,AbiType.DynamicBytes);
+    AbiEncoder abiEncoder = new AbiEncoder();
+
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (spec.DepositsEnabled)
         {
-            DepositDecoder depositDecoder = DepositDecoder.Instance;
             for (int i = 0; i < receipts.Length; i++)
             {
                 LogEntry[]? logEntries = receipts[i].Logs;
@@ -26,11 +30,18 @@ public class DepositsProcessor : IDepositsProcessor
                         LogEntry log = logEntries[index];
                         if (log.LoggersAddress == spec.DepositContractAddress)
                         {
-                            Deposit? deposit = depositDecoder.Decode(new RlpStream(log.Data));
-                            if (deposit is not null)
+                            var result = abiEncoder.Decode(AbiEncodingStyle.None, depositEventABI, log.Data);
+
+                            var newDeposit = new Deposit()
                             {
-                                yield return deposit;
-                            }
+                                PubKey = (byte[])result[0],
+                                WithdrawalCredentials = (byte[])result[1],
+                                Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                                Signature = (byte[])result[3],
+                                Index = ((byte[])result[4]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                            };
+
+                            yield return newDeposit;
                         }
                     }
                 }
