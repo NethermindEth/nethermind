@@ -38,6 +38,15 @@ public enum TestCase
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
     // BalanceNonExisting,
 
-    [TestCaseMetadata("SHA256From32Bytes", "SHA-2 calculations")]
-    SHA2From32Bytes
+    [TestCaseMetadata("SHA256From1Byte", "SHA-2 calculations from 1 byte")]
+    SHA2From1Byte,
+
+    [TestCaseMetadata("SHA256From8Bytes", "SHA-2 calculations from 8 bytes")]
+    SHA2From8Bytes,
+
+    [TestCaseMetadata("SHA256From32Bytes", "SHA-2 calculations from 32 bytes")]
+    SHA2From32Bytes,
+
+    [TestCaseMetadata("SHA256From128Bytes", "SHA-2 calculations from 128 bytes")]
+    SHA2From128Bytes
 }

@@ -219,8 +219,11 @@ public class TestCaseGenerator
                 return Push0Pop.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.BalanceNonExisting:
             //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.SHA2From1Byte:
+            case TestCase.SHA2From8Bytes:
             case TestCase.SHA2From32Bytes:
-                return Sha2.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.SHA2From128Bytes:
+                return Sha2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
