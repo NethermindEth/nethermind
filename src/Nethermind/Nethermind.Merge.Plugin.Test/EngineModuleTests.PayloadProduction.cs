@@ -63,8 +63,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = TimeSpan.FromMilliseconds(10);
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain => new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(1)),
-            timePerSlot,
-            mergeConfig);
+            timePerSlot, mergeConfig);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 startingHead = chain.BlockTree.HeadHash;
@@ -269,9 +268,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = 10 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain => new StoringBlockImprovementContextFactory(new MockBlockImprovementContextFactory()),
-            timePerSlot,
-            mergeConfig,
-            delay);
+            timePerSlot, mergeConfig, delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -391,8 +388,9 @@ public partial class EngineModuleTests
         TimeSpan delay = TimeSpan.FromMilliseconds(10);
         TimeSpan timePerSlot = 50 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new StoringBlockImprovementContextFactory(new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
-            timePerSlot, null, delay);
+            chain => new StoringBlockImprovementContextFactory(new DelayBlockImprovementContextFactory(
+                chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
+            timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -514,10 +512,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = 4 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             (chain) => new StoringBlockImprovementContextFactory(new BlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot))),
-            timePerSlot,
-            null,
-            delay
-        );
+            timePerSlot, delay: delay);
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
         Hash256 blockX = chain.BlockTree.HeadHash;
