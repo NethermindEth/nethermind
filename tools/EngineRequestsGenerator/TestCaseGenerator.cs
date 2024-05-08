@@ -3,7 +3,6 @@
 
 using System.Text;
 using EngineRequestsGenerator.TestCases;
-using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
@@ -28,7 +27,6 @@ public class TestCaseGenerator
     private int _maxNumberOfWithdrawalsPerBlock;
     private int _numberOfWithdrawals;
     private int _txsPerBlock;
-    private const int _blockGasConsumptionTarget = 30_000_000;
 
     private string _chainSpecPath;
     private ChainSpec _chainSpec;
@@ -58,22 +56,8 @@ public class TestCaseGenerator
             _ => 3
         };
     }
+
     public async Task Generate()
-    {
-        bool generateSingleFile = false;
-        if (generateSingleFile)
-        {
-            await GenerateTestCase(_blockGasConsumptionTarget);
-            Console.WriteLine($"generated testcase {_blockGasConsumptionTarget}");
-        }
-        else
-        {
-            await GenerateTestCases();
-        }
-    }
-
-
-    private async Task GenerateTestCases()
     {
         foreach (long blockGasConsumptionTarget in BlockGasVariants.Variants)
         {
