@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static System.Numerics.BitOperations;
 
@@ -33,7 +33,7 @@ namespace Nethermind.Core.Crypto
         };
 
         private byte[] _remainderBuffer = Array.Empty<byte>();
-        private ulong[] _state = Array.Empty<ulong>();
+        private StateBox? _stateBox = null;
         private byte[]? _hash;
         private int _remainderLength;
         private int _roundSize;
@@ -52,10 +52,10 @@ namespace Nethermind.Core.Crypto
 
         private KeccakHash(KeccakHash original)
         {
-            if (original._state.Length > 0)
+            if (original._stateBox is not null)
             {
-                _state = Pool.RentState();
-                original._state.AsSpan().CopyTo(_state);
+                _stateBox = Pool.RentState();
+                _stateBox.state = original._stateBox.state;
             }
 
             if (original._remainderBuffer.Length > 0)
@@ -87,15 +87,8 @@ namespace Nethermind.Core.Crypto
         public static KeccakHash Create(int size = HASH_SIZE) => new(size);
 
         // update the state with given number of rounds
-        private static void KeccakF(Span<ulong> st)
+        private static void KeccakF(ref KeccakBuffer st)
         {
-            Debug.Assert(st.Length == 25);
-
-            ulong aba, abe, abi, abo, abu;
-            ulong aga, age, agi, ago, agu;
-            ulong aka, ake, aki, ako, aku;
-            ulong ama, ame, ami, amo, amu;
-            ulong asa, ase, asi, aso, asu;
             ulong bCa, bCe, bCi, bCo, bCu;
             ulong da, de, di, @do, du;
             ulong eba, ebe, ebi, ebo, ebu;
@@ -104,45 +97,14 @@ namespace Nethermind.Core.Crypto
             ulong ema, eme, emi, emo, emu;
             ulong esa, ese, esi, eso, esu;
 
-            {
-                // Access last element to perform range check once
-                // and not for every ascending access
-                _ = st[24];
-            }
-            aba = st[0];
-            abe = st[1];
-            abi = st[2];
-            abo = st[3];
-            abu = st[4];
-            aga = st[5];
-            age = st[6];
-            agi = st[7];
-            ago = st[8];
-            agu = st[9];
-            aka = st[10];
-            ake = st[11];
-            aki = st[12];
-            ako = st[13];
-            aku = st[14];
-            ama = st[15];
-            ame = st[16];
-            ami = st[17];
-            amo = st[18];
-            amu = st[19];
-            asa = st[20];
-            ase = st[21];
-            asi = st[22];
-            aso = st[23];
-            asu = st[24];
-
             for (int round = 0; round < ROUNDS; round += 2)
             {
                 //    prepareTheta
-                bCa = aba ^ aga ^ aka ^ ama ^ asa;
-                bCe = abe ^ age ^ ake ^ ame ^ ase;
-                bCi = abi ^ agi ^ aki ^ ami ^ asi;
-                bCo = abo ^ ago ^ ako ^ amo ^ aso;
-                bCu = abu ^ agu ^ aku ^ amu ^ asu;
+                bCa = st.aba() ^ st.aga() ^ st.aka() ^ st.ama() ^ st.asa();
+                bCe = st.abe() ^ st.age() ^ st.ake() ^ st.ame() ^ st.ase();
+                bCi = st.abi() ^ st.agi() ^ st.aki() ^ st.ami() ^ st.asi();
+                bCo = st.abo() ^ st.ago() ^ st.ako() ^ st.amo() ^ st.aso();
+                bCu = st.abu() ^ st.agu() ^ st.aku() ^ st.amu() ^ st.asu();
 
                 //thetaRhoPiChiIotaPrepareTheta(round  , A, E)
                 da = bCu ^ RotateLeft(bCe, 1);
@@ -151,16 +113,16 @@ namespace Nethermind.Core.Crypto
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                aba ^= da;
-                bCa = aba;
-                age ^= de;
-                bCe = RotateLeft(age, 44);
-                aki ^= di;
-                bCi = RotateLeft(aki, 43);
-                amo ^= @do;
-                bCo = RotateLeft(amo, 21);
-                asu ^= du;
-                bCu = RotateLeft(asu, 14);
+                st.aba() ^= da;
+                bCa = st.aba();
+                st.age() ^= de;
+                bCe = RotateLeft(st.age(), 44);
+                st.aki() ^= di;
+                bCi = RotateLeft(st.aki(), 43);
+                st.amo() ^= @do;
+                bCo = RotateLeft(st.amo(), 21);
+                st.asu() ^= du;
+                bCu = RotateLeft(st.asu(), 14);
                 eba = bCa ^ ((~bCe) & bCi);
                 eba ^= RoundConstants[round];
                 ebe = bCe ^ ((~bCi) & bCo);
@@ -168,64 +130,64 @@ namespace Nethermind.Core.Crypto
                 ebo = bCo ^ ((~bCu) & bCa);
                 ebu = bCu ^ ((~bCa) & bCe);
 
-                abo ^= @do;
-                bCa = RotateLeft(abo, 28);
-                agu ^= du;
-                bCe = RotateLeft(agu, 20);
-                aka ^= da;
-                bCi = RotateLeft(aka, 3);
-                ame ^= de;
-                bCo = RotateLeft(ame, 45);
-                asi ^= di;
-                bCu = RotateLeft(asi, 61);
+                st.abo() ^= @do;
+                bCa = RotateLeft(st.abo(), 28);
+                st.agu() ^= du;
+                bCe = RotateLeft(st.agu(), 20);
+                st.aka() ^= da;
+                bCi = RotateLeft(st.aka(), 3);
+                st.ame() ^= de;
+                bCo = RotateLeft(st.ame(), 45);
+                st.asi() ^= di;
+                bCu = RotateLeft(st.asi(), 61);
                 ega = bCa ^ ((~bCe) & bCi);
                 ege = bCe ^ ((~bCi) & bCo);
                 egi = bCi ^ ((~bCo) & bCu);
                 ego = bCo ^ ((~bCu) & bCa);
                 egu = bCu ^ ((~bCa) & bCe);
 
-                abe ^= de;
-                bCa = RotateLeft(abe, 1);
-                agi ^= di;
-                bCe = RotateLeft(agi, 6);
-                ako ^= @do;
-                bCi = RotateLeft(ako, 25);
-                amu ^= du;
-                bCo = RotateLeft(amu, 8);
-                asa ^= da;
-                bCu = RotateLeft(asa, 18);
+                st.abe() ^= de;
+                bCa = RotateLeft(st.abe(), 1);
+                st.agi() ^= di;
+                bCe = RotateLeft(st.agi(), 6);
+                st.ako() ^= @do;
+                bCi = RotateLeft(st.ako(), 25);
+                st.amu() ^= du;
+                bCo = RotateLeft(st.amu(), 8);
+                st.asa() ^= da;
+                bCu = RotateLeft(st.asa(), 18);
                 eka = bCa ^ ((~bCe) & bCi);
                 eke = bCe ^ ((~bCi) & bCo);
                 eki = bCi ^ ((~bCo) & bCu);
                 eko = bCo ^ ((~bCu) & bCa);
                 eku = bCu ^ ((~bCa) & bCe);
 
-                abu ^= du;
-                bCa = RotateLeft(abu, 27);
-                aga ^= da;
-                bCe = RotateLeft(aga, 36);
-                ake ^= de;
-                bCi = RotateLeft(ake, 10);
-                ami ^= di;
-                bCo = RotateLeft(ami, 15);
-                aso ^= @do;
-                bCu = RotateLeft(aso, 56);
+                st.abu() ^= du;
+                bCa = RotateLeft(st.abu(), 27);
+                st.aga() ^= da;
+                bCe = RotateLeft(st.aga(), 36);
+                st.ake() ^= de;
+                bCi = RotateLeft(st.ake(), 10);
+                st.ami() ^= di;
+                bCo = RotateLeft(st.ami(), 15);
+                st.aso() ^= @do;
+                bCu = RotateLeft(st.aso(), 56);
                 ema = bCa ^ ((~bCe) & bCi);
                 eme = bCe ^ ((~bCi) & bCo);
                 emi = bCi ^ ((~bCo) & bCu);
                 emo = bCo ^ ((~bCu) & bCa);
                 emu = bCu ^ ((~bCa) & bCe);
 
-                abi ^= di;
-                bCa = RotateLeft(abi, 62);
-                ago ^= @do;
-                bCe = RotateLeft(ago, 55);
-                aku ^= du;
-                bCi = RotateLeft(aku, 39);
-                ama ^= da;
-                bCo = RotateLeft(ama, 41);
-                ase ^= de;
-                bCu = RotateLeft(ase, 2);
+                st.abi() ^= di;
+                bCa = RotateLeft(st.abi(), 62);
+                st.ago() ^= @do;
+                bCe = RotateLeft(st.ago(), 55);
+                st.aku() ^= du;
+                bCi = RotateLeft(st.aku(), 39);
+                st.ama() ^= da;
+                bCo = RotateLeft(st.ama(), 41);
+                st.ase() ^= de;
+                bCu = RotateLeft(st.ase(), 2);
                 esa = bCa ^ ((~bCe) & bCi);
                 ese = bCe ^ ((~bCi) & bCo);
                 esi = bCi ^ ((~bCo) & bCu);
@@ -256,12 +218,12 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(emo, 21);
                 esu ^= du;
                 bCu = RotateLeft(esu, 14);
-                aba = bCa ^ ((~bCe) & bCi);
-                aba ^= RoundConstants[round + 1];
-                abe = bCe ^ ((~bCi) & bCo);
-                abi = bCi ^ ((~bCo) & bCu);
-                abo = bCo ^ ((~bCu) & bCa);
-                abu = bCu ^ ((~bCa) & bCe);
+                st.aba() = bCa ^ ((~bCe) & bCi);
+                st.aba() ^= RoundConstants[round + 1];
+                st.abe() = bCe ^ ((~bCi) & bCo);
+                st.abi() = bCi ^ ((~bCo) & bCu);
+                st.abo() = bCo ^ ((~bCu) & bCa);
+                st.abu() = bCu ^ ((~bCa) & bCe);
 
                 ebo ^= @do;
                 bCa = RotateLeft(ebo, 28);
@@ -273,11 +235,11 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(eme, 45);
                 esi ^= di;
                 bCu = RotateLeft(esi, 61);
-                aga = bCa ^ ((~bCe) & bCi);
-                age = bCe ^ ((~bCi) & bCo);
-                agi = bCi ^ ((~bCo) & bCu);
-                ago = bCo ^ ((~bCu) & bCa);
-                agu = bCu ^ ((~bCa) & bCe);
+                st.aga() = bCa ^ ((~bCe) & bCi);
+                st.age() = bCe ^ ((~bCi) & bCo);
+                st.agi() = bCi ^ ((~bCo) & bCu);
+                st.ago() = bCo ^ ((~bCu) & bCa);
+                st.agu() = bCu ^ ((~bCa) & bCe);
 
                 ebe ^= de;
                 bCa = RotateLeft(ebe, 1);
@@ -289,11 +251,11 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(emu, 8);
                 esa ^= da;
                 bCu = RotateLeft(esa, 18);
-                aka = bCa ^ ((~bCe) & bCi);
-                ake = bCe ^ ((~bCi) & bCo);
-                aki = bCi ^ ((~bCo) & bCu);
-                ako = bCo ^ ((~bCu) & bCa);
-                aku = bCu ^ ((~bCa) & bCe);
+                st.aka() = bCa ^ ((~bCe) & bCi);
+                st.ake() = bCe ^ ((~bCi) & bCo);
+                st.aki() = bCi ^ ((~bCo) & bCu);
+                st.ako() = bCo ^ ((~bCu) & bCa);
+                st.aku() = bCu ^ ((~bCa) & bCe);
 
                 ebu ^= du;
                 bCa = RotateLeft(ebu, 27);
@@ -305,11 +267,11 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(emi, 15);
                 eso ^= @do;
                 bCu = RotateLeft(eso, 56);
-                ama = bCa ^ ((~bCe) & bCi);
-                ame = bCe ^ ((~bCi) & bCo);
-                ami = bCi ^ ((~bCo) & bCu);
-                amo = bCo ^ ((~bCu) & bCa);
-                amu = bCu ^ ((~bCa) & bCe);
+                st.ama() = bCa ^ ((~bCe) & bCi);
+                st.ame() = bCe ^ ((~bCi) & bCo);
+                st.ami() = bCi ^ ((~bCo) & bCu);
+                st.amo() = bCo ^ ((~bCu) & bCa);
+                st.amu() = bCu ^ ((~bCa) & bCe);
 
                 ebi ^= di;
                 bCa = RotateLeft(ebi, 62);
@@ -321,39 +283,12 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(ema, 41);
                 ese ^= de;
                 bCu = RotateLeft(ese, 2);
-                asa = bCa ^ ((~bCe) & bCi);
-                ase = bCe ^ ((~bCi) & bCo);
-                asi = bCi ^ ((~bCo) & bCu);
-                aso = bCo ^ ((~bCu) & bCa);
-                asu = bCu ^ ((~bCa) & bCe);
+                st.asa() = bCa ^ ((~bCe) & bCi);
+                st.ase() = bCe ^ ((~bCi) & bCo);
+                st.asi() = bCi ^ ((~bCo) & bCu);
+                st.aso() = bCo ^ ((~bCu) & bCa);
+                st.asu() = bCu ^ ((~bCa) & bCe);
             }
-
-            //copyToState(state, A)
-            st[0] = aba;
-            st[1] = abe;
-            st[2] = abi;
-            st[3] = abo;
-            st[4] = abu;
-            st[5] = aga;
-            st[6] = age;
-            st[7] = agi;
-            st[8] = ago;
-            st[9] = agu;
-            st[10] = aka;
-            st[11] = ake;
-            st[12] = aki;
-            st[13] = ako;
-            st[14] = aku;
-            st[15] = ama;
-            st[16] = ame;
-            st[17] = ami;
-            st[18] = amo;
-            st[19] = amu;
-            st[20] = asa;
-            st[21] = ase;
-            st[22] = asi;
-            st[23] = aso;
-            st[24] = asu;
         }
 
         public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
@@ -399,12 +334,12 @@ namespace Nethermind.Core.Crypto
         {
             int size = output.Length;
             int roundSize = GetRoundSize(size);
-            if (output.Length <= 0 || output.Length > STATE_SIZE)
+            if ((uint)output.Length > STATE_SIZE)
             {
                 ThrowBadKeccak();
             }
 
-            Span<ulong> state = stackalloc ulong[STATE_SIZE / sizeof(ulong)];
+            KeccakBuffer state = default;
             Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
 
             int remainingInputLength = input.Length;
@@ -417,7 +352,7 @@ namespace Nethermind.Core.Crypto
                     state[i] ^= input64[i];
                 }
 
-                KeccakF(state);
+                KeccakF(ref state);
             }
 
             // last block and padding
@@ -436,7 +371,7 @@ namespace Nethermind.Core.Crypto
                 state[i] ^= tempU64[i];
             }
 
-            KeccakF(state);
+            KeccakF(ref state);
             MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
         }
 
@@ -454,11 +389,12 @@ namespace Nethermind.Core.Crypto
             }
 
             // If our provided state is empty, initialize a new one
-            ulong[] state = _state;
-            if (state.Length == 0)
+            StateBox? stateBox = _stateBox;
+            if (stateBox is null)
             {
-                _state = state = Pool.RentState();
+                _stateBox = stateBox = Pool.RentState();
             }
+            ref KeccakBuffer state = ref stateBox.state;
 
             // If our remainder is non zero.
             if (_remainderLength != 0)
@@ -488,7 +424,7 @@ namespace Nethermind.Core.Crypto
                     }
 
                     // Perform our KeccakF on our state.
-                    KeccakF(state);
+                    KeccakF(ref state);
 
                     // Clear remainder fields
                     _remainderLength = 0;
@@ -511,7 +447,7 @@ namespace Nethermind.Core.Crypto
                 }
 
                 // Perform our KeccakF on our state.
-                KeccakF(state);
+                KeccakF(ref state);
 
                 // Remove the input data processed this round.
                 input = input[_roundSize..];
@@ -552,7 +488,9 @@ namespace Nethermind.Core.Crypto
             {
                 ThrowHashingComplete();
             }
-
+            
+            StateBox? stateBox = _stateBox;
+            ref KeccakBuffer state = ref stateBox!.state;
             if (_remainderLength > 0)
             {
                 Span<byte> remainder = _remainderBuffer.AsSpan(0, _roundSize);
@@ -567,32 +505,32 @@ namespace Nethermind.Core.Crypto
                 // Loop for each ulong in this round, and xor the state with the input.
                 for (int i = 0; i < temp64.Length; i++)
                 {
-                    _state[i] ^= temp64[i];
+                    state[i] ^= temp64[i];
                 }
 
                 Pool.ReturnRemainder(ref _remainderBuffer);
             }
             else
             {
-                Span<byte> temp = MemoryMarshal.AsBytes<ulong>(_state);
+                Span<byte> temp = MemoryMarshal.AsBytes(MemoryMarshal.CreateSpan(ref state, 1));
                 // Xor 1 byte as first byte.
                 temp[0] ^= 1;
                 // Xor the highest bit on the last byte.
                 temp[_roundSize - 1] ^= 0x80;
             }
 
-            KeccakF(_state);
+            KeccakF(ref state);
 
             // Obtain the state data in the desired (hash) size we want.
-            MemoryMarshal.AsBytes<ulong>(_state)[..HashSize].CopyTo(output);
+            MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(ref state, 1))[..HashSize].CopyTo(output);
 
-            Pool.ReturnState(ref _state);
+            Pool.ReturnState(ref _stateBox);
         }
 
         public void Reset()
         {
             // Clear our hash state information.
-            Pool.ReturnState(ref _state);
+            Pool.ReturnState(ref _stateBox);
             Pool.ReturnRemainder(ref _remainderBuffer);
             _hash = null;
         }
@@ -615,19 +553,19 @@ namespace Nethermind.Core.Crypto
             _roundSize = original._roundSize;
             _remainderLength = original._remainderLength;
 
-            if (original._state.Length == 0)
+            if (original._stateBox is null)
             {
-                Pool.ReturnState(ref _state);
+                Pool.ReturnState(ref _stateBox);
             }
             else
             {
-                if (_state.Length == 0)
+                if (_stateBox is null)
                 {
                     // Original allocated, but not here, so allocated
-                    _state = Pool.RentState();
+                    _stateBox = Pool.RentState();
                 }
                 // Copy from original
-                original._state.AsSpan().CopyTo(_state);
+                _stateBox.state = original._stateBox.state;
             }
 
             HashSize = original.HashSize;
@@ -661,21 +599,62 @@ namespace Nethermind.Core.Crypto
             }
 
             [ThreadStatic]
-            private static Queue<ulong[]>? s_stateCache;
-            public static ulong[] RentState() => s_stateCache?.TryDequeue(out ulong[]? state) ?? false ? state : new ulong[STATE_SIZE / sizeof(ulong)];
-            public static void ReturnState(ref ulong[] state)
+            private static Queue<StateBox>? s_stateCache;
+            public static StateBox RentState() => s_stateCache?.TryDequeue(out StateBox? state) ?? false ? state : new StateBox();
+            public static void ReturnState(ref StateBox? state)
             {
-                if (state.Length == 0) return;
+                if (state is null) return;
 
                 var cache = (s_stateCache ??= new());
                 if (cache.Count <= MaxPooledPerThread)
                 {
-                    state.AsSpan().Clear();
+                    state.state = default;
                     cache.Enqueue(state);
                 }
 
-                state = Array.Empty<ulong>();
+                state = null!;
             }
         }
     }
+
+        public class StateBox
+        {
+            public KeccakBuffer state;
+        }
+
+        [InlineArray(KeccakBufferCount)]
+        public struct KeccakBuffer
+        {
+            public const int KeccakBufferCount = 25;
+            private ulong st;
+        }
+
+        public static class BufferExtensions
+        {
+            public static ref ulong aba(ref this KeccakBuffer buffer) => ref buffer[0];
+            public static ref ulong abe(ref this KeccakBuffer buffer) => ref buffer[1];
+            public static ref ulong abi(ref this KeccakBuffer buffer) => ref buffer[2];
+            public static ref ulong abo(ref this KeccakBuffer buffer) => ref buffer[3];
+            public static ref ulong abu(ref this KeccakBuffer buffer) => ref buffer[4];
+            public static ref ulong aga(ref this KeccakBuffer buffer) => ref buffer[5];
+            public static ref ulong age(ref this KeccakBuffer buffer) => ref buffer[6];
+            public static ref ulong agi(ref this KeccakBuffer buffer) => ref buffer[7];
+            public static ref ulong ago(ref this KeccakBuffer buffer) => ref buffer[8];
+            public static ref ulong agu(ref this KeccakBuffer buffer) => ref buffer[9];
+            public static ref ulong aka(ref this KeccakBuffer buffer) => ref buffer[10];
+            public static ref ulong ake(ref this KeccakBuffer buffer) => ref buffer[11];
+            public static ref ulong aki(ref this KeccakBuffer buffer) => ref buffer[12];
+            public static ref ulong ako(ref this KeccakBuffer buffer) => ref buffer[13];
+            public static ref ulong aku(ref this KeccakBuffer buffer) => ref buffer[14];
+            public static ref ulong ama(ref this KeccakBuffer buffer) => ref buffer[15];
+            public static ref ulong ame(ref this KeccakBuffer buffer) => ref buffer[16];
+            public static ref ulong ami(ref this KeccakBuffer buffer) => ref buffer[17];
+            public static ref ulong amo(ref this KeccakBuffer buffer) => ref buffer[18];
+            public static ref ulong amu(ref this KeccakBuffer buffer) => ref buffer[19];
+            public static ref ulong asa(ref this KeccakBuffer buffer) => ref buffer[20];
+            public static ref ulong ase(ref this KeccakBuffer buffer) => ref buffer[21];
+            public static ref ulong asi(ref this KeccakBuffer buffer) => ref buffer[22];
+            public static ref ulong aso(ref this KeccakBuffer buffer) => ref buffer[23];
+            public static ref ulong asu(ref this KeccakBuffer buffer) => ref buffer[24];
+        }
 }
