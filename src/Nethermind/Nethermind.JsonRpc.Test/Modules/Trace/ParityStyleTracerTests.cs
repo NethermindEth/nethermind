@@ -4,6 +4,7 @@
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
@@ -61,7 +62,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
             WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
             _stateReader = new StateReader(trieStore, codeDb, LimboLogs.Instance);
 
-            BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+            BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
             VirtualMachine virtualMachine = new(blockhashProvider, specProvider, LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new(specProvider, stateProvider, virtualMachine, LimboLogs.Instance);
 
@@ -74,6 +75,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 stateProvider,
                 NullReceiptStorage.Instance,
                 NullWitnessCollector.Instance,
+                new BlockhashStore(_blockTree, specProvider, stateProvider),
                 transactionProcessor,
                 LimboLogs.Instance);
 

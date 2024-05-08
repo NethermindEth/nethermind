@@ -253,6 +253,8 @@ namespace Nethermind.Specs.ChainSpecStyle
             releaseSpec.IsEip4788Enabled = (chainSpec.Parameters.Eip4788TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.Eip4788ContractAddress = chainSpec.Parameters.Eip4788ContractAddress;
             releaseSpec.AuRaSystemCalls = chainSpec.SealEngineType == SealEngineType.AuRa;
+            releaseSpec.IsEip2935Enabled = (chainSpec.Parameters.Eip2935TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
+            releaseSpec.Eip2935ContractAddress = chainSpec.Parameters.Eip2935ContractAddress;
 
             releaseSpec.IsEip6110Enabled = (chainSpec.Parameters.Eip6110TransitionTimestamp ?? ulong.MaxValue) <= releaseStartTimestamp;
             releaseSpec.DepositContractAddress = chainSpec.Parameters.DepositContractAddress;

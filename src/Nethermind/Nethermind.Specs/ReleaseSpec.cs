@@ -103,5 +103,15 @@ namespace Nethermind.Specs
             get => IsEip6110Enabled ? _depositContractAddress : null;
             set => _depositContractAddress = value;
         }
+        public bool IsEip2935Enabled { get; set; }
+
+        private Address _eip2935ContractAddress;
+        public Address Eip2935ContractAddress
+        {
+            get => IsEip2935Enabled ? _eip2935ContractAddress : null;
+            set => _eip2935ContractAddress = value;
+        }
+
+        public ulong Eip2935TransitionTimestamp { get; set; }
     }
 }

@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -48,6 +49,7 @@ namespace Nethermind.Consensus.Processing
                 StateProvider,
                 receiptStorage,
                 NullWitnessCollector.Instance,
+                new BlockhashStore(txEnv.BlockTree, specProvider, StateProvider),
                 _txEnv.TransactionProcessor,
                 logManager);
 

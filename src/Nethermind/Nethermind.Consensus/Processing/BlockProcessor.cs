@@ -8,6 +8,8 @@ using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Requests;
 using Nethermind.Consensus.Rewards;
@@ -43,6 +45,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
 
     private readonly IConsensusRequestsProcessor _consensusRequestsProcessor;
+    private readonly IBlockhashStore _blockhashStore;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -59,6 +62,7 @@ public partial class BlockProcessor : IBlockProcessor
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
         IWitnessCollector? witnessCollector,
+        IBlockhashStore? blockHashStore,
         ITransactionProcessor transactionProcessor,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
@@ -79,6 +83,7 @@ public partial class BlockProcessor : IBlockProcessor
         _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
         _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
 
+        _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
@@ -244,6 +249,9 @@ public partial class BlockProcessor : IBlockProcessor
         ReceiptsTracer.StartNewBlockTrace(block);
 
         _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
+        _blockhashStore.ApplyHistoryBlockHashes(block.Header);
+
+        _stateProvider.Commit(spec);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 

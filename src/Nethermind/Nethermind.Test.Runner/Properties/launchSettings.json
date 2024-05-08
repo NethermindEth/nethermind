@@ -2,11 +2,11 @@
   "profiles": {
     "State Test": {
       "commandName": "Project",
-      "commandLineArgs": "-i statetest1.json"
+      "commandLineArgs": "-i C:\\Users\\marek\\Nethermind\\tests\\fixtures\\state_tests\\prague\\eip2537_bls_12_381_precompiles\\bls12_g1add\\gas.json"
     },
     "Blockchain Test": {
       "commandName": "Project",
-      "commandLineArgs": "-b -i blockchainTest1.json"
+      "commandLineArgs": "-b -i C:\\Users\\marek\\Nethermind\\tests\\fixtures\\blockchain_tests\\prague\\eip7685_general_purpose_el_requests\\deposits_withdrawals\\valid_deposit_withdrawal_requests.json"
     },
     "Regex State Test": {
       "commandName": "Project",

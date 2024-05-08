@@ -57,6 +57,21 @@ namespace Nethermind.Specs.Test
             }
         }
 
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.CancunBlockTimestamp, false)]
+        [TestCase(MainnetSpecProvider.ParisBlockNumber, MainnetSpecProvider.PragueBlockTimestamp, true)]
+        public void Prague_eips(long blockNumber, ulong timestamp, bool isEnabled)
+        {
+            _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).IsEip2935Enabled.Should().Be(isEnabled);
+            if (isEnabled)
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip2935ContractAddress.Should().NotBeNull();
+            }
+            else
+            {
+                _specProvider.GetSpec(new ForkActivation(blockNumber, timestamp)).Eip2935ContractAddress.Should().BeNull();
+            }
+        }
+
         [Test]
         public void Dao_block_number_is_correct()
         {
