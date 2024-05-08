@@ -53,7 +53,7 @@ public class Push0
 
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
 
-        // consuming 1_080_000 gas in loop between jumps ( 2160 * 500 )
+        // consuming 1_058_000 gas in loop between jumps ( 2116 * 500 )
         for (int i = 0; i < 500; i++)
         {
             codeToDeploy.Add((byte)Instruction.PUSH0);
@@ -66,6 +66,7 @@ public class Push0
             codeToDeploy.Add(0xff);
             codeToDeploy.Add(0xff);
             codeToDeploy.Add((byte)Instruction.STATICCALL);
+            codeToDeploy.Add((byte)Instruction.POP);
         }
 
         codeToDeploy.Add((byte)Instruction.PUSH0);
