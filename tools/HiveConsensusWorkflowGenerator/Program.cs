@@ -56,7 +56,7 @@ public static class Program
         .ToList();
 
         string jsonString = JsonSerializer.Serialize(jsonGroups, new JsonSerializerOptions { WriteIndented = true });
-        
+
         File.WriteAllText("matrix.json", jsonString);
     }
 

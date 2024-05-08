@@ -104,7 +104,6 @@ public class P2PProtocolHandler(
         {
             case P2PMessageCode.Hello:
                 {
-                    Metrics.HellosReceived++;
                     using HelloMessage helloMessage = Deserialize<HelloMessage>(msg.Data);
                     HandleHello(helloMessage);
                     ReportIn(helloMessage, size);
@@ -303,9 +302,10 @@ public class P2PProtocolHandler(
         if (Logger.IsTrace)
             Logger.Trace($"Sending disconnect {disconnectReason} ({details}) to {Session.Node:s}");
         DisconnectMessage message = new(disconnectReason.ToEthDisconnectReason());
-        Send(message);
         if (NetworkDiagTracer.IsEnabled)
             NetworkDiagTracer.ReportDisconnect(Session.Node.Address, $"Local {disconnectReason} {details}");
+        Send(message);
+
     }
 
     private void SendHello()
@@ -327,7 +327,6 @@ public class P2PProtocolHandler(
 
         _sentHello = true;
         Send(helloMessage);
-        Metrics.HellosSent++;
     }
 
     private void HandlePing()

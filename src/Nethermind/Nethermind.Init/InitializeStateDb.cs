@@ -17,8 +17,6 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
@@ -55,7 +53,18 @@ public class InitializeStateDb : IStep
         _logger = getApi.LogManager.GetClassLogger();
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
-        IInitConfig initConfig = getApi.Config<IInitConfig>();
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
 
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
@@ -131,7 +140,8 @@ public class InitializeStateDb : IStep
         IInitConfig initConfig,
         INethermindApi api,
         IStateReader stateReader,
-        TrieStore trieStore)
+        INodeStorage mainNodeStorage,
+        IPruningTrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -161,9 +171,19 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                    stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, trieStore, api.LogManager);
+                FullPruner pruner = new(
+                    fullPruningDb,
+                    api.NodeStorageFactory,
+                    mainNodeStorage,
+                    api.PruningTrigger,
+                    pruningConfig,
+                    api.BlockTree!,
+                    stateReader,
+                    api.ProcessExit!,
+                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                    drive,
+                    trieStore,
+                    api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

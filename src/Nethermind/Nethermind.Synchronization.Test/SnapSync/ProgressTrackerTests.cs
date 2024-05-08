@@ -24,7 +24,7 @@ public class ProgressTrackerTests
     public async Task Did_not_have_race_issue()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance);
         progressTracker.EnqueueStorageRange(new StorageRange()
         {
             Accounts = ArrayPoolList<PathWithAccount>.Empty(),
@@ -57,7 +57,7 @@ public class ProgressTrackerTests
     public void Will_create_multiple_get_address_range_request()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
+        using ProgressTracker progressTracker = new(blockTree, new MemDb(), LimboLogs.Instance, 4);
 
         bool finished = progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();
@@ -96,7 +96,7 @@ public class ProgressTrackerTests
     public void Will_deque_code_request_if_high_even_if_storage_queue_is_not_empty()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE - 1; i++)
         {
@@ -121,7 +121,7 @@ public class ProgressTrackerTests
     public void Will_deque_storage_request_if_high()
     {
         BlockTree blockTree = Build.A.BlockTree().WithBlocks(Build.A.Block.TestObject).TestObject;
-        ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
+        using ProgressTracker progressTracker = new ProgressTracker(blockTree, new MemDb(), LimboLogs.Instance);
 
         for (int i = 0; i < ProgressTracker.HIGH_STORAGE_QUEUE_SIZE; i++)
         {
@@ -149,7 +149,7 @@ public class ProgressTrackerTests
             .WithStateRoot(Keccak.EmptyTreeHash)
             .TestObject).TestObject;
         TestMemDb memDb = new();
-        ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
+        using ProgressTracker progressTracker = new(blockTree, memDb, LimboLogs.Instance, 1);
 
         progressTracker.IsFinished(out SnapSyncBatch? request);
         request!.AccountRangeRequest.Should().NotBeNull();

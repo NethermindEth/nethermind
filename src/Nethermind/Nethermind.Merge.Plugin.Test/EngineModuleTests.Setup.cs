@@ -70,7 +70,7 @@ public partial class EngineModuleTests
         IPeerRefresher peerRefresher = Substitute.For<IPeerRefresher>();
         var synchronizationConfig = syncConfig ?? new SyncConfig();
 
-        chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.LogManager);
+        chain.BeaconPivot = new BeaconPivot(synchronizationConfig, new MemDb(), chain.BlockTree, chain.PoSSwitcher, chain.LogManager);
         BlockCacheService blockCacheService = new();
         InvalidChainTracker.InvalidChainTracker invalidChainTracker = new(
             chain.PoSSwitcher,

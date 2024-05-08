@@ -7,14 +7,8 @@ using System.Threading.Tasks;
 
 namespace Nethermind.Network.P2P
 {
-    public class Request<TMsg, TResult>
+    public class Request<TMsg, TResult>(TMsg message)
     {
-        public Request(TMsg message)
-        {
-            CompletionSource = new TaskCompletionSource<TResult>(TaskCreationOptions.RunContinuationsAsynchronously);
-            Message = message;
-        }
-
         public void StartMeasuringTime()
         {
             Stopwatch = Stopwatch.StartNew();
@@ -30,7 +24,7 @@ namespace Nethermind.Network.P2P
 
         public TimeSpan Elapsed => Stopwatch.Elapsed;
         public long ResponseSize { get; set; }
-        public TMsg Message { get; }
-        public TaskCompletionSource<TResult> CompletionSource { get; }
+        public TMsg Message { get; } = message;
+        public TaskCompletionSource<TResult> CompletionSource { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
     }
 }

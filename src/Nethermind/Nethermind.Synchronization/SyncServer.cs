@@ -196,7 +196,7 @@ namespace Nethermind.Synchronization
 
                     // Recalculate total difficulty as we don't trust total difficulty from gossip
                     block.Header.TotalDifficulty = parent.TotalDifficulty + block.Header.Difficulty;
-                    if (!_blockValidator.ValidateSuggestedBlock(block))
+                    if (!_blockValidator.ValidateSuggestedBlock(block, out _))
                     {
                         ThrowOnInvalidBlock(block, nodeWhoSentTheBlock);
                     }
@@ -328,26 +328,12 @@ namespace Nethermind.Synchronization
             if (block.Author is not null)
             {
                 sb.Append(" sealer ");
-                if (KnownAddresses.GoerliValidators.TryGetValue(block.Author, out string value))
-                {
-                    sb.Append(value);
-                }
-                else
-                {
-                    sb.Append(block.Author);
-                }
+                sb.Append(block.Author);
             }
             else if (block.Beneficiary is not null)
             {
                 sb.Append(" miner ");
-                if (KnownAddresses.KnownMiners.TryGetValue(block.Beneficiary, out string value))
-                {
-                    sb.Append(value);
-                }
-                else
-                {
-                    sb.Append(block.Beneficiary);
-                }
+                sb.Append(block.Beneficiary);
             }
 
             sb.Append($", sent by {syncPeer:s}");

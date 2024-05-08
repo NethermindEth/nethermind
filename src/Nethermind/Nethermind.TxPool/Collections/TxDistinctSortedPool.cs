@@ -4,12 +4,11 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Threading;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.TxPool.Comparison;
@@ -18,16 +17,18 @@ namespace Nethermind.TxPool.Collections
 {
     public class TxDistinctSortedPool : DistinctValueSortedPool<ValueHash256, Transaction, AddressAsKey>
     {
+        public delegate void UpdateGroupDelegate(in AccountStruct account, EnhancedSortedSet<Transaction> transactions, ref Transaction? lastElement, UpdateTransactionDelegate updateTx);
+        public delegate void UpdateTransactionDelegate(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement);
+
+        private readonly UpdateTransactionDelegate _updateTx;
         private readonly List<Transaction> _transactionsToRemove = new();
         protected int _poolCapacity;
-        private readonly ILogger _logger;
-
 
         public TxDistinctSortedPool(int capacity, IComparer<Transaction> comparer, ILogManager logManager)
             : base(capacity, comparer, CompetingTransactionEqualityComparer.Instance, logManager)
         {
             _poolCapacity = capacity;
-            _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
+            _updateTx = UpdateTransaction;
         }
 
         protected override IComparer<Transaction> GetUniqueComparer(IComparer<Transaction> comparer) => comparer.GetPoolUniqueTxComparer();
@@ -71,9 +72,9 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public void UpdatePool(IAccountStateProvider accounts, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        public void UpdatePool(IAccountStateProvider accounts, UpdateGroupDelegate updateElements)
         {
-            using var lockRelease = Lock.Acquire();
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             EnsureCapacity();
             foreach ((AddressAsKey address, EnhancedSortedSet<Transaction> bucket) in _buckets)
@@ -81,37 +82,16 @@ namespace Nethermind.TxPool.Collections
                 Debug.Assert(bucket.Count > 0);
 
                 accounts.TryGetAccount(address, out AccountStruct account);
-                UpdateGroupNonLocked(address, account, bucket, changingElements);
+                UpdateGroupNonLocked(account, bucket, updateElements);
             }
         }
 
-        private void UpdateGroupNonLocked(Address groupKey, AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateGroupNonLocked(AccountStruct groupValue, EnhancedSortedSet<Transaction> bucket, UpdateGroupDelegate updateElements)
         {
             _transactionsToRemove.Clear();
             Transaction? lastElement = bucket.Max;
 
-            foreach ((Transaction tx, UInt256? changedGasBottleneck) in changingElements(groupKey, groupValue, bucket))
-            {
-                if (changedGasBottleneck is null)
-                {
-                    _transactionsToRemove.Add(tx);
-                }
-                else if (Equals(lastElement, tx))
-                {
-                    bool reAdd = _worstSortedValues.Remove(tx);
-                    tx.GasBottleneck = changedGasBottleneck;
-                    if (reAdd)
-                    {
-                        _worstSortedValues.Add(tx, tx.Hash!);
-                    }
-
-                    UpdateWorstValue();
-                }
-                else
-                {
-                    tx.GasBottleneck = changedGasBottleneck;
-                }
-            }
+            updateElements(groupValue, bucket, ref lastElement, _updateTx);
 
             ReadOnlySpan<Transaction> txs = CollectionsMarshal.AsSpan(_transactionsToRemove);
             for (int i = 0; i < txs.Length; i++)
@@ -120,16 +100,39 @@ namespace Nethermind.TxPool.Collections
             }
         }
 
-        public void UpdateGroup(Address groupKey, AccountStruct groupValue, Func<Address, AccountStruct, EnhancedSortedSet<Transaction>, IEnumerable<(Transaction Tx, UInt256? changedGasBottleneck)>> changingElements)
+        private void UpdateTransaction(EnhancedSortedSet<Transaction> bucket, Transaction tx, in UInt256? changedGasBottleneck, Transaction? lastElement)
         {
-            using var lockRelease = Lock.Acquire();
+            if (changedGasBottleneck is null)
+            {
+                _transactionsToRemove.Add(tx);
+            }
+            else if (Equals(lastElement, tx))
+            {
+                bool reAdd = _worstSortedValues.Remove(tx);
+                tx.GasBottleneck = changedGasBottleneck;
+                if (reAdd)
+                {
+                    _worstSortedValues.Add(tx, tx.Hash!);
+                }
+
+                UpdateWorstValue();
+            }
+            else
+            {
+                tx.GasBottleneck = changedGasBottleneck;
+            }
+        }
+
+        public void UpdateGroup(Address groupKey, AccountStruct groupValue, UpdateGroupDelegate updateElements)
+        {
+            using McsLock.Disposable lockRelease = Lock.Acquire();
 
             ArgumentNullException.ThrowIfNull(groupKey);
             if (_buckets.TryGetValue(groupKey, out EnhancedSortedSet<Transaction>? bucket))
             {
                 Debug.Assert(bucket.Count > 0);
 
-                UpdateGroupNonLocked(groupKey, groupValue, bucket, changingElements);
+                UpdateGroupNonLocked(groupValue, bucket, updateElements);
             }
         }
 

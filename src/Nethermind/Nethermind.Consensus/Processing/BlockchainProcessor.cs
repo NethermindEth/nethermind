@@ -5,7 +5,6 @@ using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
-using System.Text;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
@@ -135,7 +134,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             catch (Exception e)
             {
                 Interlocked.Decrement(ref _queueCount);
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, ProcessingResult.QueueException, e));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, ProcessingResult.QueueException, e));
                 if (e is not InvalidOperationException || !_recoveryQueue.IsAddingCompleted)
                 {
                     throw;
@@ -210,7 +209,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         void DecrementQueue(Hash256 blockHash, ProcessingResult processingResult, Exception? exception = null)
         {
             Interlocked.Decrement(ref _queueCount);
-            BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockHash, processingResult, exception));
+            BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockHash, processingResult, exception));
             FireProcessingQueueEmpty();
         }
 
@@ -306,7 +305,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             {
                 if (blockRef.IsInDb || blockRef.Block is null)
                 {
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.MissingBlock));
                     throw new InvalidOperationException("Processing loop expects only resolved blocks");
                 }
 
@@ -314,24 +313,23 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
                 if (_logger.IsTrace) _logger.Trace($"Processing block {block.ToString(Block.Format.Short)}).");
                 _stats.Start();
-
-                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer());
+                Block processedBlock = Process(block, blockRef.ProcessingOptions, _compositeBlockTracer.GetTracer(), out string? error);
 
                 if (processedBlock is null)
                 {
                     if (_logger.IsTrace) _logger.Trace($"Failed / skipped processing {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.ProcessingError, error));
                 }
                 else
                 {
                     if (_logger.IsTrace) _logger.Trace($"Processed block {block.ToString(Block.Format.Full)}");
-                    BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Success));
+                    BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Success));
                 }
             }
             catch (Exception exception)
             {
                 if (_logger.IsWarn) _logger.Warn($"Processing loop threw an exception. Block: {blockRef}, Exception: {exception}");
-                BlockRemoved?.Invoke(this, new BlockHashEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
+                BlockRemoved?.Invoke(this, new BlockRemovedEventArgs(blockRef.BlockHash, ProcessingResult.Exception, exception));
             }
             finally
             {
@@ -354,12 +352,17 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     }
 
     public event EventHandler? ProcessingQueueEmpty;
-    public event EventHandler<BlockHashEventArgs>? BlockRemoved;
+    public event EventHandler<BlockRemovedEventArgs>? BlockRemoved;
 
     int IBlockProcessingQueue.Count => _queueCount;
 
     public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer)
     {
+        return Process(suggestedBlock, options, tracer, out _);
+    }
+    public Block? Process(Block suggestedBlock, ProcessingOptions options, IBlockTracer tracer, out string? error)
+    {
+        error = null;
         if (!RunSimpleChecksAheadOfProcessing(suggestedBlock, options))
         {
             return null;
@@ -385,7 +388,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
 
         _stopwatch.Restart();
-        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer);
+        Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);
         if (processedBlocks is null)
         {
             return null;
@@ -470,7 +473,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
         }
     }
 
-    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer)
+    private Block[]? ProcessBranch(in ProcessingBranch processingBranch, ProcessingOptions options, IBlockTracer tracer, out string? error)
     {
         void DeleteInvalidBlocks(in ProcessingBranch processingBranch, Hash256 invalidBlockHash)
         {
@@ -495,10 +498,12 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
                 processingBranch.BlocksToProcess,
                 options,
                 tracer);
+            error = null;
         }
         catch (InvalidBlockException ex)
         {
             invalidBlockHash = ex.InvalidBlock.Hash;
+            error = ex.Message;
             Block? invalidBlock = processingBranch.BlocksToProcess.FirstOrDefault(b => b.Hash == invalidBlockHash);
             if (invalidBlock is not null)
             {

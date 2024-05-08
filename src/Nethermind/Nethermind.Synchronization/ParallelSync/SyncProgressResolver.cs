@@ -83,30 +83,18 @@ namespace Nethermind.Synchronization.ParallelSync
             return _blockTree.FindHeader(blockHash)?.TotalDifficulty == 0 ? null : _blockTree.FindHeader(blockHash)?.TotalDifficulty;
         }
 
-        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || (!_syncConfig.DownloadHeadersInFastSync ||
-                                                                         (_headersSyncFeed?.IsFinished == true));
+        public bool IsFastBlocksHeadersFinished() => !IsFastBlocks() || !_syncConfig.DownloadHeadersInFastSync || _headersSyncFeed?.IsFinished == true;
 
-        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || (!_syncConfig.DownloadBodiesInFastSync ||
-                                                                        (_bodiesSyncFeed?.IsFinished == true));
+        public bool IsFastBlocksBodiesFinished() => !IsFastBlocks() || !_syncConfig.DownloadBodiesInFastSync || _bodiesSyncFeed?.IsFinished == true;
 
-        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || (!_syncConfig.DownloadReceiptsInFastSync ||
-                                                                          (_receiptsSyncFeed?.IsFinished == true));
+        public bool IsFastBlocksReceiptsFinished() => !IsFastBlocks() || !_syncConfig.DownloadReceiptsInFastSync || _receiptsSyncFeed?.IsFinished == true;
 
         public bool IsSnapGetRangesFinished() => _snapSyncFeed?.IsFinished ?? true;
 
         public void RecalculateProgressPointers() => _blockTree.RecalculateTreeLevels();
 
-        private bool IsFastBlocks()
-        {
-            bool isFastBlocks = _syncConfig.FastBlocks;
+        private bool IsFastBlocks() => _syncConfig.FastSync && _syncConfig.PivotNumberParsed != 0L; // if pivot number is 0 then it is equivalent to fast blocks disabled
 
-            // if pivot number is 0 then it is equivalent to fast blocks disabled
-            if (!isFastBlocks || _syncConfig.PivotNumberParsed == 0L)
-            {
-                return false;
-            }
 
-            return true;
-        }
     }
 }

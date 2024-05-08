@@ -24,8 +24,6 @@ namespace Nethermind.Merge.AuRa;
 public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
 {
     private readonly AuRaNethermindApi _auraApi;
-    private readonly IAuraConfig _auraConfig;
-    private readonly DisposableStack _disposeStack;
 
     public AuRaMergeBlockProducerEnvFactory(
         AuRaNethermindApi auraApi,
@@ -56,8 +54,6 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             logManager)
     {
         _auraApi = auraApi;
-        _auraConfig = auraConfig;
-        _disposeStack = disposeStack;
     }
 
     protected override BlockProcessor CreateBlockProcessor(
@@ -85,7 +81,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
                     withdrawalContractFactory.Create(readOnlyTxProcessingEnv.TransactionProcessor),
                     logManager
                     )
-                ));
+                ),
+            null);
     }
 
     protected override TxPoolTxSource CreateTxPoolTxSource(
@@ -95,11 +92,7 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITransactionComparerProvider transactionComparerProvider,
         ILogManager logManager)
     {
-        ReadOnlyTxProcessingEnv constantContractsProcessingEnv = CreateReadonlyTxProcessingEnv(
-            _stateFactory,
-            _blockTree.AsReadOnly());
-
         return new StartBlockProducerAuRa(_auraApi)
-            .CreateTxPoolTxSource(processingEnv, constantContractsProcessingEnv);
+            .CreateTxPoolTxSource(processingEnv);
     }
 }

@@ -15,6 +15,7 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Attributes;
 using Nethermind.Core.Collections;
+using Nethermind.Core.Metric;
 using Nethermind.Monitoring.Config;
 using Prometheus;
 
@@ -252,19 +253,25 @@ namespace Nethermind.Monitoring.Metrics
                     foreach (object key in dict.Keys)
                     {
                         double value = Convert.ToDouble(dict[key]);
-                        if (key is ITuple keyAsTuple)
+                        switch (key)
                         {
-                            string[] labels = new string[keyAsTuple.Length];
-                            for (int i = 0; i < keyAsTuple.Length; i++)
-                            {
-                                labels[i] = keyAsTuple[i].ToString();
-                            }
+                            case IMetricLabels label:
+                                ReplaceValueIfChanged(value, gaugeName, label.Labels);
+                                break;
+                            case ITuple keyAsTuple:
+                                {
+                                    string[] labels = new string[keyAsTuple.Length];
+                                    for (int i = 0; i < keyAsTuple.Length; i++)
+                                    {
+                                        labels[i] = keyAsTuple[i].ToString();
+                                    }
 
-                            ReplaceValueIfChanged(value, gaugeName, labels);
-                        }
-                        else
-                        {
-                            ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                                    ReplaceValueIfChanged(value, gaugeName, labels);
+                                    break;
+                                }
+                            default:
+                                ReplaceValueIfChanged(value, gaugeName, key.ToString());
+                                break;
                         }
                     }
                 }

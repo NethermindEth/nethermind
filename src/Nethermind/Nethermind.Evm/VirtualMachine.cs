@@ -810,6 +810,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         SkipInit(out StorageCell storageCell);
         object returnData;
         ZeroPaddedSpan slice;
+        bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
@@ -817,6 +818,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
             Instruction instruction = (Instruction)code[programCounter];
+
+            if (isCancelable && _txTracer.IsCancelled)
+            {
+                ThrowOperationCanceledException();
+            }
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -2158,6 +2164,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+
+        [DoesNotReturn]
+        static void ThrowOperationCanceledException() =>
+            throw new OperationCanceledException("Cancellation Requested");
     }
 
     [SkipLocalsInit]
@@ -2309,7 +2319,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             outputOffset = 0;
         }
 
-        ExecutionType executionType = GetCallExecutionType(instruction, env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        ExecutionType executionType = GetCallExecutionType(instruction, env.IsPostMerge());
         returnData = new EvmState(
             gasLimitUl,
             callEnv,
@@ -2552,7 +2562,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     }
 
     [SkipLocalsInit]
-    private static EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
+    private EvmExceptionType InstructionLog<TTracing>(EvmState vmState, ref EvmStack<TTracing> stack, ref long gasAvailable, Instruction instruction)
         where TTracing : struct, IIsTracing
     {
         if (!stack.PopUInt256(out UInt256 position)) return EvmExceptionType.StackUnderflow;
@@ -2575,6 +2585,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             data.ToArray(),
             topics);
         vmState.Logs.Add(logEntry);
+
+        if (_txTracer.IsTracingLogs)
+        {
+            _txTracer.ReportLog(logEntry);
+        }
 
         return EvmExceptionType.None;
     }
@@ -2815,7 +2830,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     private void StartInstructionTrace<TIsTracing>(Instruction instruction, EvmState vmState, long gasAvailable, int programCounter, in EvmStack<TIsTracing> stackValue)
         where TIsTracing : struct, IIsTracing
     {
-        _txTracer.StartOperation(vmState.Env.CallDepth + 1, gasAvailable, instruction, programCounter, vmState.Env.TxExecutionContext.BlockExecutionContext.Header.IsPostMerge);
+        _txTracer.StartOperation(programCounter, instruction, gasAvailable, vmState.Env);
         if (_txTracer.IsTracingMemory)
         {
             _txTracer.SetOperationMemory(vmState.Memory.GetTrace());

@@ -55,7 +55,7 @@ internal static class SetupCli
                 ulong.TryParse(maxFeePerBlobGasOption.Value(), out ulong shortMaxFeePerBlobGas);
                 maxFeePerBlobGas = shortMaxFeePerBlobGas;
             }
-            else if(maxFeePerDataGasOptionObsolete.HasValue())
+            else if (maxFeePerDataGasOptionObsolete.HasValue())
             {
                 ulong.TryParse(maxFeePerDataGasOptionObsolete.Value(), out ulong shortMaxFeePerBlobGas);
                 maxFeePerBlobGas = shortMaxFeePerBlobGas;
@@ -249,7 +249,8 @@ internal static class SetupCli
                     ulong.TryParse(feeMultiplierOption.Value(), out feeMultiplier);
 
                 UInt256? maxPriorityFeeGas = null;
-                if (maxPriorityFeeGasOption.HasValue() && UInt256.TryParse(maxPriorityFeeGasOption.Value(), out UInt256 maxPriorityFeeGasParsed)){
+                if (maxPriorityFeeGasOption.HasValue() && UInt256.TryParse(maxPriorityFeeGasOption.Value(), out UInt256 maxPriorityFeeGasParsed))
+                {
                     maxPriorityFeeGas = maxPriorityFeeGasParsed;
                 }
 

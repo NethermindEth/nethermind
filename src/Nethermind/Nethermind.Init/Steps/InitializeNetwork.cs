@@ -146,6 +146,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -203,19 +204,11 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync)
+        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
-            if (!_syncConfig.SnapServingEnabled)
-            {
-                // TODO: Should we keep snap capability even after finishing sync?
-                SnapCapabilitySwitcher snapCapabilitySwitcher =
-                    new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
-                snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
-            }
-            else
-            {
-                _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-            }
+            SnapCapabilitySwitcher snapCapabilitySwitcher =
+                new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
+            snapCapabilitySwitcher.EnableSnapCapabilityUntilSynced();
         }
 
         else if (_logger.IsDebug) _logger.Debug("Skipped enabling snap capability");
@@ -513,7 +506,7 @@ public class InitializeNetwork : IStep
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
 
         ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
             // TODO: Add a proper config for the state persistence depth.
             snapServer = new SnapServer(
@@ -540,6 +533,11 @@ public class InitializeNetwork : IStep
             snapServer,
             _api.LogManager,
             _api.TxGossipPolicy);
+
+        if (_syncConfig.SnapServingEnabled == true)
+        {
+            _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
+        }
 
         if (_syncConfig.WitnessProtocolEnabled)
         {

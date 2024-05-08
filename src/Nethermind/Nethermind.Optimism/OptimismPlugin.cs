@@ -132,7 +132,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         _peerRefresher = new PeerRefresher(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
         _api.DisposeStack.Push((PeerRefresher)_peerRefresher);
 
-        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+        _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
         _beaconSync = new BeaconSync(_beaconPivot, _api.BlockTree, _syncConfig, _blockCacheService, _api.PoSSwitcher, _api.LogManager);
         _api.BetterPeerStrategy = new MergeBetterPeerStrategy(null!, _api.PoSSwitcher, _beaconPivot, _api.LogManager);
         _api.Pivot = _beaconPivot;
@@ -150,6 +150,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
         _api.Synchronizer = new MergeSynchronizer(
             _api.DbProvider,
+            _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
             _api.SpecProvider!,
             _api.BlockTree!,
             _api.ReceiptStorage!,

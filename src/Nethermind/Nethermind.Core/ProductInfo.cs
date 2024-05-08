@@ -29,12 +29,15 @@ public static class ProductInfo
         Runtime = RuntimeInformation.FrameworkDescription;
         Version = infoAttr?.InformationalVersion ?? string.Empty;
 
+        ClientCode = "NM";
         ClientId = $"{Name}/v{Version}/{OS.ToLowerInvariant()}-{OSArchitecture}/dotnet{Runtime[5..]}";
     }
 
     public static DateTimeOffset BuildTimestamp { get; }
 
     public static string ClientId { get; }
+
+    public static string ClientCode { get; }
 
     public static string Commit { get; }
 

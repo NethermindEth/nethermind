@@ -52,10 +52,10 @@ namespace Nethermind.Trie.Test
         private static readonly byte[] _longLeaf3
             = Bytes.FromHexString("0000000000000000000000000000000000000000000000000000000000000000000000000000000003");
 
-        private static readonly byte[] _keyA = Bytes.FromHexString("000000000000000aa");
-        private static readonly byte[] _keyB = Bytes.FromHexString("000000000000000bb");
-        private static readonly byte[] _keyC = Bytes.FromHexString("000000000000001aa");
-        private static readonly byte[] _keyD = Bytes.FromHexString("000000000000001bb");
+        private static readonly byte[] _keyA = Bytes.FromHexString("00000000000aa");
+        private static readonly byte[] _keyB = Bytes.FromHexString("00000000000bb");
+        private static readonly byte[] _keyC = Bytes.FromHexString("00000000001aa");
+        private static readonly byte[] _keyD = Bytes.FromHexString("00000000001bb");
 
         [Test]
         public void Single_leaf()
@@ -274,7 +274,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using TrieStore trieStore = new(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -299,7 +299,7 @@ namespace Nethermind.Trie.Test
         {
             MemDb memDb = new();
             using TrieStore trieStore = new(memDb, new MemoryLimit(128.MB()), Persist.EveryBlock, _logManager);
-            PatriciaTree patriciaTree = new(trieStore, Keccak.EmptyTreeHash, true, true, _logManager);
+            PatriciaTree patriciaTree = new(trieStore.GetTrieStore(null), Keccak.EmptyTreeHash, true, true, _logManager);
 
             for (int j = 0; j < i; j++)
             {
@@ -499,7 +499,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.Commit(0);
 
             // leaf (root)
-            memDb.Keys.Should().HaveCount(5);
+            memDb.Keys.Should().HaveCount(8);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).ToArray().Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyB).ToArray().Should().BeEquivalentTo(_longLeaf1);
@@ -711,7 +711,7 @@ namespace Nethermind.Trie.Test
             patriciaTree.UpdateRootHash();
             patriciaTree.Commit(1);
 
-            memDb.Keys.Should().HaveCount(5);
+            memDb.Keys.Should().HaveCount(8);
             PatriciaTree checkTree = CreateCheckTree(memDb, patriciaTree);
             checkTree.Get(_keyA).ToArray().Should().BeEquivalentTo(_longLeaf1);
             checkTree.Get(_keyB).ToArray().Should().BeEquivalentTo(_longLeaf1);
@@ -1089,7 +1089,11 @@ namespace Nethermind.Trie.Test
                 stateProvider.Commit(MuirGlacier.Instance);
 
                 stateProvider.CommitTree(blockNumber);
-                rootQueue.Enqueue(stateProvider.StateRoot);
+
+                if (blockNumber > blocksCount - Reorganization.MaxDepth)
+                {
+                    rootQueue.Enqueue(stateProvider.StateRoot);
+                }
             }
 
             streamWriter.Flush();

@@ -58,6 +58,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
     protected virtual bool MergeEnabled => _mergeConfig.Enabled &&
                                            _api.ChainSpec.SealEngineType is SealEngineType.BeaconChain or SealEngineType.Clique or SealEngineType.Ethash;
+    public int Priority => PluginPriorities.Merge;
 
     // Don't remove default constructor. It is used by reflection when we're loading plugins
     public MergePlugin() { }
@@ -73,6 +74,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         MigrateSecondsPerSlot(_blocksConfig, _mergeConfig);
 
         _logger = _api.LogManager.GetClassLogger();
+
+        EnsureNotConflictingSettings();
 
         if (MergeEnabled)
         {
@@ -121,6 +124,16 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
         }
 
         return Task.CompletedTask;
+    }
+
+    private void EnsureNotConflictingSettings()
+    {
+        if (!_mergeConfig.Enabled && _mergeConfig.TerminalTotalDifficulty is not null)
+        {
+            throw new InvalidConfigurationException(
+                $"{nameof(MergeConfig)}.{nameof(MergeConfig.TerminalTotalDifficulty)} cannot be set when {nameof(MergeConfig)}.{nameof(MergeConfig.Enabled)} is false.",
+                ExitCodes.ConflictingConfigurations);
+        }
     }
 
     internal static void MigrateSecondsPerSlot(IBlocksConfig blocksConfig, IMergeConfig mergeConfig)
@@ -385,7 +398,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             PeerRefresher peerRefresher = new(_api.PeerDifficultyRefreshPool, _api.TimerFactory, _api.LogManager);
             _peerRefresher = peerRefresher;
             _api.DisposeStack.Push(peerRefresher);
-            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.LogManager);
+            _beaconPivot = new BeaconPivot(_syncConfig, _api.DbProvider.MetadataDb, _api.BlockTree, _api.PoSSwitcher, _api.LogManager);
 
             MergeHeaderValidator headerValidator = new(
                     _poSSwitcher,
@@ -429,6 +442,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

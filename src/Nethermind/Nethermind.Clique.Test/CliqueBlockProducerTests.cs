@@ -30,8 +30,6 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.State.Repositories;
-using Nethermind.Db.Blooms;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;

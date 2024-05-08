@@ -26,5 +26,6 @@ namespace Nethermind.Synchronization.SnapSync
 
         bool IsSnapGetRangesFinished();
         void UpdatePivot();
+        void Dispose();
     }
 }

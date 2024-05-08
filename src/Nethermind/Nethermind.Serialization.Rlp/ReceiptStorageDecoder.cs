@@ -226,9 +226,10 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                for (int i = 0; i < item.Logs.Length; i++)
+                LogEntry[] logs = item.Logs;
+                for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(item.Logs[i]);
+                    rlpStream.Encode(logs[i]);
                 }
 
                 if (_supportTxHash)
@@ -246,9 +247,10 @@ namespace Nethermind.Serialization.Rlp
 
                 rlpStream.StartSequence(logsLength);
 
-                for (int i = 0; i < item.Logs.Length; i++)
+                LogEntry[] logs = item.Logs;
+                for (int i = 0; i < logs.Length; i++)
                 {
-                    rlpStream.Encode(item.Logs[i]);
+                    rlpStream.Encode(logs[i]);
                 }
 
                 rlpStream.Encode(item.Error);

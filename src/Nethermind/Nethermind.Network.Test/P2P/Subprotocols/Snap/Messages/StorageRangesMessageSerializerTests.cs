@@ -20,10 +20,10 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_NoSlotsNoProofs()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = ArrayPoolList<PathWithStorageSlot[]>.Empty(),
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
                 Proofs = ArrayPoolList<byte[]>.Empty()
             };
             StorageRangesMessageSerializer serializer = new();
@@ -34,17 +34,17 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneProof()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = ArrayPoolList<PathWithStorageSlot[]>.Empty(),
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
                 Proofs = new ArrayPoolList<byte[]>(2) { TestItem.RandomDataA }
             };
 
             StorageRangesMessageSerializer serializer = new();
 
             var serialized = serializer.Serialize(msg);
-            var deserialized = serializer.Deserialize(serialized);
+            using var deserialized = serializer.Deserialize(serialized);
 
             SerializerTester.TestZero(serializer, msg);
         }
@@ -52,10 +52,16 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_OneSlot()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new ArrayPoolList<PathWithStorageSlot[]>(1) { new PathWithStorageSlot[] { new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), TestItem.RandomDataA) } },
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(1)
+                {
+                    new ArrayPoolList<PathWithStorageSlot> (1)
+                    {
+                        new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), TestItem.RandomDataA)
+                    }
+                },
                 Proofs = ArrayPoolList<byte[]>.Empty()
             };
 
@@ -67,15 +73,15 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Snap.Messages
         [Test]
         public void Roundtrip_Many()
         {
-            StorageRangeMessage msg = new()
+            using StorageRangeMessage msg = new()
             {
                 RequestId = MessageConstants.Random.NextLong(),
-                Slots = new ArrayPoolList<PathWithStorageSlot[]>(2) {
-                    new PathWithStorageSlot[] {
+                Slots = new ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>(2) {
+                    new ArrayPoolList<PathWithStorageSlot>(2) {
                         new PathWithStorageSlot(new Hash256("0x10d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataA).Bytes) ,
                         new PathWithStorageSlot(new Hash256("0x12d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes)
                     },
-                    new PathWithStorageSlot[] {
+                    new ArrayPoolList<PathWithStorageSlot>(2) {
                         new PathWithStorageSlot(new Hash256("0x21d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataB).Bytes) ,
                         new PathWithStorageSlot(new Hash256("0x22d2460186f7233c927e7db2dcc703c0e500b653ca82273b7bfad8045d85a470"), Rlp.Encode(TestItem.RandomDataC).Bytes)
                     }

@@ -67,7 +67,7 @@ namespace Nethermind.Synchronization.FastBlocks
             _syncReport = syncReport ?? throw new ArgumentNullException(nameof(syncReport));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
-            if (!_syncConfig.FastBlocks)
+            if (!_syncConfig.FastSync)
             {
                 throw new InvalidOperationException("Entered fast blocks mode without fast blocks enabled in configuration.");
             }
@@ -230,7 +230,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     bool isValid = !hasBreachedProtocol && TryPrepareReceipts(blockInfo, receipts, out prepared);
                     if (isValid)
                     {
-                        Block block = _blockTree.FindBlock(blockInfo.BlockHash);
+                        Block? block = _blockTree.FindBlock(blockInfo.BlockHash);
                         if (block is null)
                         {
                             if (blockInfo.BlockNumber >= _barrier)

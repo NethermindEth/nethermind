@@ -12,11 +12,13 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Tracing.GethStyle;
-using Nethermind.Evm.Tracing.GethStyle.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
+using Nethermind.Evm.Tracing.GethStyle.Custom.Native;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State;
@@ -119,8 +121,15 @@ public class GethStyleTracer : IGethStyleTracer
 
         block = block.WithReplacedBodyCloned(BlockBody.WithOneTransactionOnly(tx));
         IBlockTracer<GethLikeTxTrace> blockTracer = CreateOptionsTracer(block.Header, options with { TxHash = tx.Hash });
-        _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
-        return blockTracer.BuildResult().SingleOrDefault();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
+            return blockTracer.BuildResult().SingleOrDefault();
+        }
+        finally
+        {
+            blockTracer.TryDispose();
+        }
     }
 
     public IReadOnlyCollection<GethLikeTxTrace> TraceBlock(BlockParameter blockParameter, GethTraceOptions options, CancellationToken cancellationToken)
@@ -163,15 +172,24 @@ public class GethStyleTracer : IGethStyleTracer
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options with { TxHash = txHash });
 
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-
-        return tracer.BuildResult().SingleOrDefault();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult().SingleOrDefault();
+        }
+        finally
+        {
+            tracer.TryDispose();
+        }
     }
 
     private IBlockTracer<GethLikeTxTrace> CreateOptionsTracer(BlockHeader block, GethTraceOptions options) =>
-        !string.IsNullOrEmpty(options.Tracer)
-            ? new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options)
-            : new GethLikeBlockMemoryTracer(options);
+        options switch
+        {
+            { Tracer: var t } when GethLikeNativeTracerFactory.IsNativeTracer(t) => new GethLikeBlockNativeTracer(options.TxHash, (b, tx) => GethLikeNativeTracerFactory.CreateTracer(options, b, tx, _worldState)),
+            { Tracer.Length: > 0 } => new GethLikeBlockJavaScriptTracer(_worldState, _specProvider.GetSpec(block), options),
+            _ => new GethLikeBlockMemoryTracer(options),
+        };
 
     private IReadOnlyCollection<GethLikeTxTrace> TraceBlock(Block? block, GethTraceOptions options, CancellationToken cancellationToken)
     {
@@ -189,8 +207,15 @@ public class GethStyleTracer : IGethStyleTracer
         }
 
         IBlockTracer<GethLikeTxTrace> tracer = CreateOptionsTracer(block.Header, options);
-        _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
-        return tracer.BuildResult();
+        try
+        {
+            _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
+            return tracer.BuildResult();
+        }
+        finally
+        {
+            tracer.TryDispose();
+        }
     }
 
     private static Block GetBlockToTrace(Rlp blockRlp)

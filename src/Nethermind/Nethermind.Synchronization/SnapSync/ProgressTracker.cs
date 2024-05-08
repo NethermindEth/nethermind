@@ -18,7 +18,7 @@ using Nethermind.State.Snap;
 
 namespace Nethermind.Synchronization.SnapSync
 {
-    public class ProgressTracker
+    public class ProgressTracker : IDisposable
     {
         private const string NO_REQUEST = "Skipped Request";
 
@@ -452,6 +452,14 @@ namespace Nethermind.Synchronization.SnapSync
             public ValueHash256 AccountPathStart { get; set; } = ValueKeccak.Zero; // Not really needed, but useful
             public ValueHash256 AccountPathLimit { get; set; } = ValueKeccak.MaxValue;
             public bool MoreAccountsToRight { get; set; } = true;
+        }
+
+        public void Dispose()
+        {
+            while (NextSlotRange.TryDequeue(out StorageRange? range))
+            {
+                range?.Dispose();
+            }
         }
     }
 }

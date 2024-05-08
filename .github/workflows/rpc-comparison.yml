@@ -8,9 +8,20 @@ on:
         description: "A comma-separated list of ips allowed to connect to the node"
         default: ''
         required: false
+      network:
+        description: "Network on which test should be started"
+        default: "mainnet"
+        type: choice
+        options:
+          - mainnet
+          - gnosis
+          - sepolia
+          - goerli
+          - chiado
+          - holesky
       branch_to_compare:
         type: string
-        description: "A space-separated list of branches. If empty, then selected branch will be used. If multiple specified, those will be compared to themselves."
+        description: "A branch to compare with. Example: \"release/1.25.1\""
         default: ""
         required: false
       compare_with:
@@ -18,35 +29,92 @@ on:
         description: "A space-separated list of additional comparers. If empty, then nothing else will be added to comparision. Possible options: 'INFURA_ENDPOINT', 'NETHERMIND_ARCHIVE_ENDPOINT'"
         default: ""
         required: false
+      is_performance_check:
+        type: boolean
+        description: "When checked, attempts to check RPC performance (because of Linode limitations it would work on single VM). When not checked equality mode will be started."
+        default: false
+        required: false
+      convert_to_paprika:
+        type: boolean
+        description: "When checked, attempts to convert synced node to paprika"
+        default: false
+        required: false
+      timeout:
+       type: string
+       description: "How long should node be kept alive"
+       default: "24"
+       required: false
 
 jobs:
+  verify_correctness_of_setup:
+    name: Verify if inputs are correct
+    runs-on: ubuntu-latest
+    steps:
+      - name: Verify if inputs are correctly applied
+        run: |
+          if [ "$IS_PERFORMANCE_CHECK" == "true" ] && [ ! -z "$COMPARE_WITH" ]; then
+            echo "Error: 'compare_with' should not be provided when 'is_performance_check' is true."
+            exit 1
+          fi
+          
+          if [ "$IS_PERFORMANCE_CHECK" == "false" ] && [ -z "$BRANCH_TO_COMPARE" ] && [ -z "$COMPARE_WITH" ]; then
+            echo "Error: 'branch_to_compare' must be provided when 'is_performance_check' is set to false."
+            exit 1
+          fi
+        env:
+          IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
+          BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
+          COMPARE_WITH: ${{ inputs.compare_with }}
+
   create_main_node:
     name: Create node from current branch
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
+    needs: [verify_correctness_of_setup]
     secrets: inherit
     with:
-      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
+      additional_options: >-
+        {
+          "timeout": "${{ inputs.timeout }}",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "",
+          "allowed_ips": "${{ inputs.allowed_ips }}",
+          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+        }
+      non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
+      network: "${{ inputs.network || 'mainnet' }}"
+      convert_to_paprika: "${{ inputs.convert_to_paprika }}"
   
   create_compare_node:
     name: Create node from branch to compare
     uses: ./.github/workflows/run-a-single-node-from-branch.yml
     if: inputs.branch_to_compare != ''
     secrets: inherit
+    needs: [verify_correctness_of_setup]
     with:
-      additional_options: '{"timeout":"12", "default_dockerfile":"Dockerfile", "default_dockerfile_build_type":"release", "ssh_keys":"", "allowed_ips":"${{ inputs.allowed_ips }}"}' 
-      non_validator_mode: false
+      additional_options: >-
+        {
+          "timeout": "${{ inputs.timeout }}",
+          "default_dockerfile": "Dockerfile",
+          "default_dockerfile_build_type": "release",
+          "ssh_keys": "",
+          "allowed_ips": "${{ inputs.allowed_ips }}",
+          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+        }
+      non_validator_mode: true
       additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin]
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
+      network: "${{ inputs.network || 'mainnet' }}"
   
   aggregate_rpcs:
     name: Collect all RPC Urls and pass it further
     runs-on: ubuntu-latest
     needs: [create_main_node, create_compare_node]
+    if: always() && needs.create_main_node.result == 'success' && (needs.create_compare_node.result == 'skipped' || needs.create_compare_node.result == 'success')
     outputs:
       rpc_urls: ${{ steps.process_artifacts.outputs.rpc_urls }}
     steps:
@@ -62,19 +130,19 @@ jobs:
         id: prepare_compare_ref
         if: inputs.branch_to_compare != ''
         run: |
-          REF_NAME=${{ inputs.nethermind_repo_ref }}
+          REF_NAME=${{ inputs.branch_to_compare }}
           CLEAN_REF=$(echo "${REF_NAME/refs\/heads\//}" | sed 's/[^a-zA-Z0-9._-]/-/g')
           echo "CLEAN_COMPARE_REF=$CLEAN_REF" >> $GITHUB_ENV
       
       - name: Download RPC Artifact for current branch
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: rpc-url___${{ env.CLEAN_MAIN_REF }}___${{ github.run_id }}
           path: artifacts
       
       - name: Download RPC Artifact for branch to compare 
         if: inputs.branch_to_compare != ''
-        uses: actions/download-artifact@v3
+        uses: actions/download-artifact@v4
         with:
           name: rpc-url___${{ env.CLEAN_COMPARE_REF }}___${{ github.run_id }}
           path: artifacts
@@ -84,53 +152,37 @@ jobs:
         run: |
           rpc_urls=""
           main_branch_file="rpc_url%${{ env.CLEAN_MAIN_REF }}%${{ github.run_id }}.txt"
-          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}"
+          compare_branch_file="rpc_url%${{ env.CLEAN_COMPARE_REF }}%${{ github.run_id }}.txt"
   
-          ls artifacts
           # Check and add the main branch file
           if [ -f "artifacts/$main_branch_file" ]; then
             url_content=$(cat "artifacts/$main_branch_file")
-            echo $url_content
             rpc_urls+="${{ env.CLEAN_MAIN_REF }}::$url_content,"
           fi
   
           # Check and add the compare branch file
           if [ -f "artifacts/$compare_branch_file" ]; then
             url_content=$(cat "artifacts/$compare_branch_file")
-            echo $url_content
             rpc_urls+="${{ env.CLEAN_COMPARE_REF }}::$url_content,"
           fi
   
           rpc_urls=${rpc_urls%,}
           echo $rpc_urls
           echo "rpc_urls=$rpc_urls" >> $GITHUB_OUTPUT
-            
+
   wait_for_node_to_sync:
     name: Wait for the nodes to sync
-    runs-on: ubuntu-latest
+    runs-on: [vpn]
     needs: [aggregate_rpcs]
-    timeout-minutes: 600
+    if: always() && needs.aggregate_rpcs.result == 'success'
+    timeout-minutes: 1440
     steps:
       - uses: actions/checkout@v3
-      - name: Install WireGuard
-        run: |
-          sudo apt update
-          sudo apt install -y wireguard resolvconf
-          sudo mkdir -p /etc/wireguard
-          envsubst < scripts/wireguard.conf.template > wg0.conf
-          sudo wg-quick up ./wg0.conf
-        env:
-          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
       
       - name: Wait for the nodes to sync
-        timeout-minutes: 600
+        timeout-minutes: 1440
+        env:
+          ETHERSCAN_API_KEY: ${{ secrets.ETHERSCAN_API_KEY }}
         run: |          
           # Assuming rpc_urls_str is a comma-separated string of URLs
           rpc_urls_str="${{ needs.aggregate_rpcs.outputs.rpc_urls }}"
@@ -141,55 +193,126 @@ jobs:
           for url_entry in "${rpc_urls_array[@]}"; do
             processed_url="${url_entry#*::}"  # Remove everything up to and including "::"
             processed_rpc_urls+=("$processed_url")
-          done
+          done          
           
-          sync_complete_flag=0
-          
-          check_sync() {
+          check_eth_syncing() {
             rpc_url=$1
-            while curl -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url" | jq -e '.result'; do
-              echo "Still waiting for node to be synced at RPC: $rpc_url."
-              sleep 60
+            # Loop until the "eth_syncing" response is "false"
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' "$rpc_url")
+              # Check if the response contains "false"
+              if echo "$response" | jq -e '.result == false'; then
+                echo "Node at $rpc_url synced."
+                break
+              else
+                echo "Still waiting for node to be synced at RPC: $rpc_url."
+                sleep 60
+              fi
             done
-            echo "Node at $rpc_url synced."
-            sync_complete_flag=$((sync_complete_flag+1))
+          }
+
+          check_sync_stage() {
+            rpc_url=$1
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"debug_getSyncStage","params":[],"id":0}' "$rpc_url")
+              
+              # Check if the currentStage contains "SnapSync" or "StateNodes"
+              if echo "$response" | jq -e '.result.currentStage | test("SnapSync|StateNodes")'; then
+                echo "SnapSync or StateNodes stage reached at RPC: $rpc_url. Node is syncing."
+                break
+              else
+                current_stage=$(echo "$response" | jq -r '.result.currentStage')
+                echo "Current stage at RPC: $rpc_url is not SnapSync or StateNodes. Current stage: $current_stage"
+                sleep 60
+              fi
+            done
+          }
+
+          check_jsonrpc_responding() {
+            rpc_url=$1
+            echo "Checking if JsonRPC is responding at $rpc_url."
+    
+            # Flag to ensure at least one failure has been logged
+            has_failed_before=false
+    
+            while true; do
+              response=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_syncing","params":[],"id":1}' -m 10 "$rpc_url" || echo "curl_failed")
+        
+              if [[ "$response" == "curl_failed" ]]; then
+                echo "JsonRPC not responding at $rpc_url, node might be stopped for migration."
+                has_failed_before=true
+              else
+                if [ "$has_failed_before" = true ]; then
+                  echo "JsonRPC responded at $rpc_url, node might have restarted."
+                  break
+                else
+                  # Log the successful response but do not break; wait for a possible failure
+                  echo "JsonRPC responded at $rpc_url, but waiting for at least one failure before confirming."
+                fi
+              fi        
+              sleep 60 # Check every 60 seconds
+            done
+          }
+
+          check_chain_head() {
+              rpc_url=$1
+              etherscan_api_key="$ETHERSCAN_API_KEY"
+              etherscan_api_url="https://api.etherscan.io/api"
+
+              while true; do
+                  # Fetch current chain head from node
+                  node_head_hex=$(curl -s -X POST --data '{"jsonrpc":"2.0","method":"eth_blockNumber","params":[],"id":1}' "$rpc_url" | jq -r '.result')
+                  node_head_decimal=$(echo $((16#${node_head_hex#0x})))
+                  echo "Current chain head at $rpc_url: $node_head_decimal"
+
+                  # Fetch current chain head from Etherscan API
+                  etherscan_response=$(curl -s "$etherscan_api_url?module=proxy&action=eth_blockNumber&apikey=$etherscan_api_key")
+                  etherscan_head_hex=$(echo "$etherscan_response" | jq -r '.result')
+                  etherscan_head_decimal=$(echo $((16#${etherscan_head_hex#0x})))
+                  echo "Current chain head at Etherscan: $etherscan_head_decimal"
+
+                  # Compare heads
+                  if [ "$node_head_decimal" -ge "$etherscan_head_decimal" ]; then
+                      echo "Node at $rpc_url has caught up with the chain."
+                      break
+                  else
+                      echo "Node at $rpc_url has not caught up with the chain. Node head: $node_head_decimal, Etherscan head: $etherscan_head_decimal"
+                      echo "Waiting for 30 seconds before rechecking..."
+                      sleep 30
+                  fi
+              done
           }
 
           # Just an RPC warmup - to make sure no faulty info reached a check
           sleep 60
 
-          # Iterate over the processed array of URLs
+          # Check if nodes progressed to SnapSync
           for url in "${processed_rpc_urls[@]}"; do
-            check_sync "$url"
+            check_sync_stage "$url"
           done
-  
+
+          # Check if nodes are synced
+          for url in "${processed_rpc_urls[@]}"; do
+            check_eth_syncing "$url"
+          done            
+
+          if [ "${{ inputs.convert_to_paprika }}" == "true" ]; then
+            # Waiting for Paprika Import
+            url="${processed_rpc_urls[0]}"
+            check_jsonrpc_responding "$url"
+            check_chain_head "$url"
+          fi
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
-    runs-on: ubuntu-latest
+    runs-on: [vpn]
     needs: [wait_for_node_to_sync, aggregate_rpcs]
+    if: always() && needs.aggregate_rpcs.result == 'success' && needs.wait_for_node_to_sync.result == 'success'
     steps:
-      - uses: actions/checkout@v3
+      - uses: actions/checkout@v4
       - name: Install flood
-        run: pip install git+https://github.com/piwonskp/flood.git
-  
-      - name: Install WireGuard
-        run: |
-          sudo apt update
-          sudo apt install -y wireguard resolvconf
-          sudo mkdir -p /etc/wireguard
-          envsubst < scripts/wireguard.conf.template > wg0.conf
-          sudo wg-quick up ./wg0.conf
-        env:
-          WIREGUARD_PRIVKEY: '${{ secrets.WIREGUARD_PRIVKEY }}'
-          WIREGUARD_ADDRESS: '${{ secrets.WIREGUARD_ADDRESS }}'
-          WIREGUARD_DNS: '${{ secrets.WIREGUARD_DNS }}'
-          WIREGUARD_PUBKEY: '${{ secrets.WIREGUARD_PUBKEY }}'
-          WIREGUARD_PRESHAREDKEY: '${{ secrets.WIREGUARD_PRESHAREDKEY }}'
-          WIREGUARD_ALLOWED_IPS: '${{ secrets.WIREGUARD_ALLOWED_IPS }}'
-          WIREGUARD_SERVER_IP: '${{ secrets.WIREGUARD_SERVER_IP }}'
-          WIREGUARD_SERVER_PORT: '${{ secrets.WIREGUARD_SERVER_PORT }}'
-
+        run: pip install git+https://github.com/kamilchodola/flood.git
+        
       - name: Prepare Comparison Flags
         id: prep_comparison
         env:          
@@ -223,9 +346,14 @@ jobs:
           done
 
           # Flag for comparing to other branch
-          if [ ${#nethermind_urls_str[@]} -gt 1 ]; then
+          if [ ${#nethermind_urls_str[@]} -eq 1 ]; then
+            echo "compare_to_other_branch=true" >> $GITHUB_ENV
+            echo "compare_to_other_branch_params=${nethermind_urls_str[0]}" >> $GITHUB_ENV
+
+          elif [ ${#nethermind_urls_str[@]} -eq 2 ]; then
             echo "compare_to_other_branch=true" >> $GITHUB_ENV
             echo "compare_to_other_branch_params=${nethermind_urls_str[0]} ${nethermind_urls_str[1]}" >> $GITHUB_ENV
+
           else
             echo "compare_to_other_branch=false" >> $GITHUB_ENV
           fi
@@ -248,14 +376,68 @@ jobs:
       - name: Compare to Other Branch
         if: env.compare_to_other_branch == 'true'
         run: |
-          flood all ${compare_to_other_branch_params} --equality
+          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+
+            # Install Vegeta
+            wget https://github.com/tsenart/vegeta/releases/download/v12.11.1/vegeta_12.11.1_linux_amd64.tar.gz
+            tar -xzvf vegeta_12.11.1_linux_amd64.tar.gz
+            current_dir=$(pwd)
+            export PATH="$current_dir:$PATH"
+
+            # Prepare test files
+            mapfile -t tests < <(flood ls | sed -n '/Single Load Tests/,/Multi Load Tests/{/Single Load Tests\|Multi Load Tests\|───/d; s/- //p}')
+            
+            for TEST in "${tests[@]}"; do
+                TEST_perf_result="${TEST}_perf_result"
+                echo "flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt""
+                flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
+            done
+          else
+            echo "flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt"
+            flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
+          fi
       
       - name: Compare to INFURA Endpoint
-        if: env.compare_to_infura == 'true'
+        if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
-          flood all ${compare_to_infura_params} --equality
+          echo "flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt"
+          flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
-        if: env.compare_to_archive == 'true'
+        if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
-          flood all ${compare_to_archive_params} --equality
+          echo "flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt"
+          flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt
+
+      - name: Generate report
+        run: |
+          if [ "${{ inputs.is_performance_check }}" == "true" ]; then
+            echo "Processing performance check repositories:"
+            for repo in $(ls -d *_perf_result); do
+              echo "Flood report for $repo"
+              flood report "$repo"
+            done
+          else
+            if [ "$COMPARE_TO_OTHER_BRANCH" == "true" ]; then
+              flood report equality_result_other
+            fi
+            if [ "$COMPARE_TO_INFURA" == "true" ]; then
+              flood report equality_result_infura
+            fi
+            if [ "$COMPARE_TO_ARCHIVE" == "true" ]; then
+              flood report equality_result_archive
+            fi
+          fi
+
+      - name: Upload results as files
+        uses: actions/upload-artifact@v4
+        with:
+          name: flood-results
+          path: |
+            output_other_branch.txt
+            output_infura.txt
+            output_archive.txt
+            *_perf_result
+            *_perf_result.txt
+            equality_result_*
+            

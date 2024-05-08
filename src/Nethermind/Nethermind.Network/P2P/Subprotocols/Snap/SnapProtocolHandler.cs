@@ -51,10 +51,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private const string DisconnectMessage = "Serving snap data in not implemented in this node.";
 
-        private readonly MessageQueue<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
-        private readonly MessageQueue<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
-        private readonly MessageQueue<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
-        private readonly MessageQueue<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
+        private readonly MessageDictionary<GetAccountRangeMessage, AccountRangeMessage> _getAccountRangeRequests;
+        private readonly MessageDictionary<GetStorageRangeMessage, StorageRangeMessage> _getStorageRangeRequests;
+        private readonly MessageDictionary<GetByteCodesMessage, ByteCodesMessage> _getByteCodesRequests;
+        private readonly MessageDictionary<GetTrieNodesMessage, TrieNodesMessage> _getTrieNodesRequests;
         private static readonly byte[] _emptyBytes = [0];
 
         public SnapProtocolHandler(ISession session,
@@ -170,32 +170,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private void Handle(AccountRangeMessage msg, long size)
         {
-            Metrics.SnapAccountRangeReceived++;
-            _getAccountRangeRequests.Handle(msg, size);
+            _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(StorageRangeMessage msg, long size)
         {
-            Metrics.SnapStorageRangesReceived++;
-            _getStorageRangeRequests.Handle(msg, size);
+            _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(ByteCodesMessage msg, long size)
         {
-            Metrics.SnapByteCodesReceived++;
-            _getByteCodesRequests.Handle(msg, size);
+            _getByteCodesRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(TrieNodesMessage msg, long size)
         {
-            Metrics.SnapTrieNodesReceived++;
-            _getTrieNodesRequests.Handle(msg, size);
+            _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
         }
 
         private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             using GetAccountRangeMessage message = getAccountRangeMessage;
-            Metrics.SnapGetAccountRangeReceived++;
             AccountRangeMessage? response = FulfillAccountRangeMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<AccountRangeMessage>(response);
@@ -204,7 +199,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<StorageRangeMessage> Handle(GetStorageRangeMessage getStorageRangesMessage, CancellationToken cancellationToken)
         {
             using GetStorageRangeMessage message = getStorageRangesMessage;
-            Metrics.SnapGetStorageRangesReceived++;
             StorageRangeMessage? response = FulfillStorageRangeMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<StorageRangeMessage>(response);
@@ -213,7 +207,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<ByteCodesMessage> Handle(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             using GetByteCodesMessage message = getByteCodesMessage;
-            Metrics.SnapGetByteCodesReceived++;
             ByteCodesMessage? response = FulfillByteCodesMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<ByteCodesMessage>(response);
@@ -222,7 +215,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<TrieNodesMessage> Handle(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             using GetTrieNodesMessage message = getTrieNodesMessage;
-            Metrics.SnapGetTrieNodesReceived++;
             TrieNodesMessage? response = FulfillTrieNodesMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<TrieNodesMessage>(response);
@@ -259,10 +251,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             if (SyncServer is null) return new StorageRangeMessage()
             {
                 Proofs = ArrayPoolList<byte[]>.Empty(),
-                Slots = ArrayPoolList<PathWithStorageSlot[]>.Empty(),
+                Slots = ArrayPoolList<IOwnedReadOnlyList<PathWithStorageSlot>>.Empty(),
             };
             StorageRange? storageRange = getStorageRangeMessage.StoragetRange;
-            (IOwnedReadOnlyList<PathWithStorageSlot[]>? ranges, IOwnedReadOnlyList<byte[]>? proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
+            (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>>? ranges, IOwnedReadOnlyList<byte[]> proofs) = SyncServer.GetStorageRanges(storageRange.RootHash, storageRange.Accounts,
                 storageRange.StartingHash, storageRange.LimitHash, getStorageRangeMessage.ResponseBytes, cancellationToken);
             StorageRangeMessage? response = new() { Proofs = proofs, Slots = ranges };
             return response;
@@ -284,8 +276,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     ResponseBytes = bytesLimit
                 }, _getAccountRangeRequests, token));
 
-            Metrics.SnapGetAccountRangeSent++;
-
             return new AccountsAndProofs { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
         }
 
@@ -298,8 +288,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     ResponseBytes = bytesLimit
                 }, _getStorageRangeRequests, token));
 
-            Metrics.SnapGetStorageRangesSent++;
-
             return new SlotsAndProofs { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
@@ -311,8 +299,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Hashes = codeHashes.ToPooledList(),
                     Bytes = bytesLimit,
                 }, _getByteCodesRequests, token));
-
-            Metrics.SnapGetByteCodesSent++;
 
             return response.Codes;
         }
@@ -339,12 +325,10 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Bytes = bytesLimit
                 }, _getTrieNodesRequests, token));
 
-            Metrics.SnapGetTrieNodesSent++;
-
             return response.Nodes;
         }
 
-        private static IOwnedReadOnlyList<PathGroup> GetPathGroups(AccountsToRefreshRequest request)
+        public static IOwnedReadOnlyList<PathGroup> GetPathGroups(AccountsToRefreshRequest request)
         {
             ArrayPoolList<PathGroup> groups = new(request.Paths.Count);
 
@@ -357,16 +341,14 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
             return groups;
         }
 
-        private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageQueue<TIn, TOut> requestQueue, CancellationToken token)
+        private async Task<TOut> SendRequest<TIn, TOut>(TIn msg, MessageDictionary<TIn, TOut> messageDictionary, CancellationToken token)
             where TIn : SnapMessageBase
             where TOut : SnapMessageBase
         {
-            return await SendRequestGeneric(
-                requestQueue,
-                msg,
-                TransferSpeedType.SnapRanges,
-                static request => request.ToString(),
-                token);
+            Request<TIn, TOut> request = new(msg);
+            messageDictionary.Send(request);
+
+            return await HandleResponse(request, TransferSpeedType.SnapRanges, static req => req.ToString(), token);
         }
     }
 }

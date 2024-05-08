@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
@@ -10,6 +11,7 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Db;
+using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Init.Steps
 {
@@ -52,16 +54,28 @@ namespace Nethermind.Init.Steps
 
             if (consensusPlugin is not null)
             {
-                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins())
+                IBlockProducerFactory blockProducerFactory = consensusPlugin;
+
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
                 {
-                    return await wrapperPlugin.InitBlockProducer(consensusPlugin);
+                    blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 
-                return await consensusPlugin.InitBlockProducer();
+                return await blockProducerFactory.InitBlockProducer(consensusPlugin.DefaultBlockProductionTrigger);
             }
             else
             {
                 throw new NotSupportedException($"Mining in {_api.ChainSpec.SealEngineType} mode is not supported");
+            }
+        }
+
+        private class ConsensusWrapperToBlockProducerFactoryAdapter(
+            IConsensusWrapperPlugin consensusWrapperPlugin,
+            IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
+        {
+            public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
+            {
+                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, blockProductionTrigger, additionalTxSource);
             }
         }
     }
