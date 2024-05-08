@@ -145,21 +145,7 @@ namespace Nethermind.Specs.Test
                 _overridenEip4844TransitionTimeStamp = value;
             }
         }
-
         public bool AuRaSystemCalls => _spec.AuRaSystemCalls;
-
-        private ulong? _overridenEip2935TransitionTimeStamp;
-        public ulong Eip2935TransitionTimestamp
-        {
-            get
-            {
-                return _overridenEip2935TransitionTimeStamp ?? _spec.Eip2935TransitionTimestamp;
-            }
-            set
-            {
-                _overridenEip2935TransitionTimeStamp = value;
-            }
-        }
 
         public bool IsEip1153Enabled => _spec.IsEip1153Enabled;
         public bool IsEip3651Enabled => _spec.IsEip3651Enabled;

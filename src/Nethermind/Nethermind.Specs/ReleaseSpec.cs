@@ -112,6 +112,5 @@ namespace Nethermind.Specs
             set => _eip2935ContractAddress = value;
         }
 
-        public ulong Eip2935TransitionTimestamp { get; set; }
     }
 }
