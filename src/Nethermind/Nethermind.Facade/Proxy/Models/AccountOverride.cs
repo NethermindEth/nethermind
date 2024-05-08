@@ -16,12 +16,12 @@ public class AccountOverride
     public Address? MovePrecompileToAddress { get; set; }
 
     /// <summary>
-    /// Storage for AccountOverrideState
+    ///     Storage for AccountOverrideState
     /// </summary>
     public Dictionary<UInt256, Hash256>? State { get; set; }
 
     /// <summary>
-    /// Storage difference for AccountOverrideStateDiff
+    ///     Storage difference for AccountOverrideStateDiff
     /// </summary>
     public Dictionary<UInt256, Hash256>? StateDiff { get; set; }
 }

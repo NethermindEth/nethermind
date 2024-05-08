@@ -5,7 +5,6 @@ using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm;
-using Nethermind.Logging;
 
 namespace Nethermind.Facade.Simulate;
 

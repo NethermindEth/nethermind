@@ -216,7 +216,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     var hereIsTracing = typeof(TTracingActions) == typeof(IsTracing);
 
-                    if (hereIsTracing  && !currentState.IsContinuation)
+                    if (hereIsTracing && !currentState.IsContinuation)
                     {
                         if (_txTracer is ILogsTxTracer { IsTracingEvmActionLogs: true } logsTxTracer)
                         {

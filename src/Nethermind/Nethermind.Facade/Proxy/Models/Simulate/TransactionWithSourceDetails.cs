@@ -7,7 +7,7 @@ namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class TransactionWithSourceDetails
 {
-    public bool HadNonceInRequest;
     public bool HadGasLimitInRequest;
+    public bool HadNonceInRequest;
     public Transaction Transaction { get; set; }
 }

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Linq;
 using System.Threading.Tasks;
 using FluentAssertions;
@@ -13,19 +12,13 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.IO;
 using Nethermind.Crypto;
 using Nethermind.Int256;
 using Nethermind.JsonRpc.Data;
-using Nethermind.KeyStore;
-using Nethermind.KeyStore.Config;
 using Nethermind.Logging;
-using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.TxPool;
-using Nethermind.Wallet;
-using Org.BouncyCastle.Asn1.X509;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
@@ -37,7 +30,7 @@ public class EthRpcSimulateTestsBase
         TestSpecProvider testSpecProvider = releaseSpec is not null
             ? new TestSpecProvider(releaseSpec)
             : new TestSpecProvider(London.Instance);
-        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider, null);
+        return TestRpcBlockchain.ForTest(testMevRpcBlockchain).Build(testSpecProvider);
     }
 
     private static string GetEcRecoverContractJsonAbi(string name = "recover")

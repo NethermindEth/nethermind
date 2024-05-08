@@ -9,16 +9,16 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.State;
 
 public class OverlayWorldStateManager(
-        IReadOnlyDbProvider dbProvider,
+    IReadOnlyDbProvider dbProvider,
     OverlayTrieStore overlayTrieStore,
     ILogManager? logManager)
     : IWorldStateManager
 {
     private readonly IDb _codeDb = dbProvider.GetDb<IDb>(DbNames.Code);
 
-    private readonly WorldState _state = new WorldState(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+    private readonly StateReader _reader = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
 
-    private readonly StateReader _reader = new StateReader(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
+    private readonly WorldState _state = new(overlayTrieStore, dbProvider.GetDb<IDb>(DbNames.Code), logManager);
 
     public IWorldState GlobalWorldState => _state;
 
@@ -26,7 +26,10 @@ public class OverlayWorldStateManager(
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 
-    public IWorldState CreateResettableWorldState() => new WorldState(overlayTrieStore, _codeDb, logManager);
+    public IWorldState CreateResettableWorldState()
+    {
+        return new WorldState(overlayTrieStore, _codeDb, logManager);
+    }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
@@ -34,8 +33,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
             Data = Bytes.FromHexString("0xee82ac5e0000000000000000000000000000000000000000000000000000000000000001"),
             To = TestItem.AddressA,
             GasLimit = 3_500_000,
-            GasPrice = 20.GWei(),
-
+            GasPrice = 20.GWei()
         };
 
         TransactionForRpc transactionForRpc = new(systemTransactionForModifiedVm) { Nonce = null };
@@ -168,9 +166,9 @@ public class EthSimulateTestsPrecompilesWithRedirection
                             new AccountOverride
                             {
                                 Code = code,
-                                MovePrecompileToAddress = TestItem.AddressB,
+                                MovePrecompileToAddress = TestItem.AddressB
                             }
-                        },
+                        }
                     },
                     Calls = [transactionForRpc]
                 }

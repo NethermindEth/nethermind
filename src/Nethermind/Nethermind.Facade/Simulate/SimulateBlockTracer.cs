@@ -5,22 +5,18 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
-using Nethermind.Core.Collections;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using Nethermind.Facade.Proxy.Models.Simulate;
-using ResultType = Nethermind.Facade.Proxy.Models.Simulate.ResultType;
 
 namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 {
-    public List<SimulateBlockResult> Results { get; } = new();
-
     private readonly List<SimulateTxTracer> _txTracers = new();
 
     private Block _currentBlock = null!;
+    public List<SimulateBlockResult> Results { get; } = new();
 
     public override void StartNewBlockTrace(Block block)
     {

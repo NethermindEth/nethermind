@@ -4,11 +4,9 @@
 using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Consensus.Processing;
 

@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -12,17 +11,15 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Facade;
-using Nethermind.Facade.Simulate;
 using Nethermind.Facade.Proxy.Models;
 using Nethermind.Facade.Proxy.Models.Simulate;
+using Nethermind.Facade.Simulate;
 using NUnit.Framework;
 
 namespace Nethermind.JsonRpc.Test.Modules.Eth;
 
 public class EthSimulateTestsSimplePrecompiles : EthRpcSimulateTestsBase
 {
-
     /* Compiled contract
     * Call example for TestItem.AddressA
     * recover 0xb6e16d27ac5ab427a7f68900ac5559ce272dc6c37c82b3e052246c82244c50e4 28 0x7b8b1991eb44757bc688016d27940df8fb971d7c87f77a6bc4e938e3202c4403 0x7e9267b0aeaa82fa765361918f2d8abd9cdd86e64aa6f2b81d3c4e0b69a7b055

@@ -17,14 +17,14 @@ namespace Nethermind.Facade.Simulate;
 
 internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 {
-    private readonly Hash256 _txHash;
-    private readonly ulong _currentBlockNumber;
-    private readonly Hash256 _currentBlockHash;
-    private readonly ulong _txIndex;
-    private static readonly Hash256 transferSignature = new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
-    private static Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
+    private static readonly Hash256 transferSignature =
+        new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
 
-    public bool IsTracingEvmActionLogs { get; }
+    private static readonly Address Erc20Sender = new("0xEeeeeEeeeEeEeeEeEeEeeEEEeeeeEeeeeeeeEEeE");
+    private readonly Hash256 _currentBlockHash;
+    private readonly ulong _currentBlockNumber;
+    private readonly Hash256 _txHash;
+    private readonly ulong _txIndex;
 
     public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong txIndex)
@@ -35,18 +35,27 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
         _txIndex = txIndex;
         IsTracingReceipt = true;
         IsTracingEvmActionLogs = isTracingTransfers;
-        if (isTracingTransfers)
-        {
-            IsTracingActions = true;
-        }
+        if (isTracingTransfers) IsTracingActions = true;
     }
 
 
     public SimulateCallResult? TraceResult { get; set; }
 
-    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
+    public bool IsTracingEvmActionLogs { get; }
+
+    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to,
+        ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        TraceResult = new SimulateCallResult()
+        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
+            new AbiSignature("", AbiType.UInt256), value);
+        yield return new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]);
+    }
+
+    public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
+        Hash256? stateRoot = null)
+    {
+        TraceResult = new SimulateCallResult
         {
             GasUsed = (ulong)gasSpent,
             ReturnData = output,
@@ -61,14 +70,14 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
                 TransactionIndex = _txIndex,
                 BlockHash = _currentBlockHash,
                 BlockNumber = _currentBlockNumber
-
             }).ToList()
         };
     }
 
-    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error, Hash256? stateRoot = null)
+    public override void MarkAsFailed(Address recipient, long gasSpent, byte[] output, string error,
+        Hash256? stateRoot = null)
     {
-        TraceResult = new SimulateCallResult()
+        TraceResult = new SimulateCallResult
         {
             GasUsed = (ulong)gasSpent,
             Error = new Error
@@ -83,16 +92,8 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
 
     private Hash256 AddressToHash256(Address input)
     {
-        byte[] addressBytes = new byte[32];
+        var addressBytes = new byte[32];
         Array.Copy(input.Bytes, 0, addressBytes, 32 - Address.Size, Address.Size);
         return new Hash256(addressBytes);
-    }
-
-    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
-    {
-        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        byte[] data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
-            new AbiSignature("", AbiType.UInt256), value);
-        yield return new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]);
     }
 }
