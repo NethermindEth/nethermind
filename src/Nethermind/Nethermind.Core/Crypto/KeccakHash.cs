@@ -116,8 +116,7 @@ namespace Nethermind.Core.Crypto
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                st.aba() ^= da;
-                bCa = st.aba();
+                bCa = st.aba() = da ^ st.aba();
                 st.age() ^= de;
                 bCe = RotateLeft(st.age(), 44);
                 st.aki() ^= di;
