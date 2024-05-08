@@ -11,10 +11,20 @@ using static Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Serialization.Rlp
 {
-    [RlpDecoder(RlpDecoderKey.Storage)]
-    public class ReceiptStorageDecoder(bool supportTxHash = true) : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
+    [RlpDecoder(RlpDecoderKey.LegacyStorage)]
+    public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
-        private readonly bool _supportTxHash = supportTxHash;
+        public ReceiptStorageDecoder(bool supportTxHash = true)
+        {
+            _supportTxHash = supportTxHash;
+        }
+
+        // Used by Rlp decoders discovery
+        public ReceiptStorageDecoder()
+        {
+        }
+
+        private readonly bool _supportTxHash;
         private const byte MarkTxHashByte = 255;
 
         public TxReceipt? Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)

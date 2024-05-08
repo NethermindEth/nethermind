@@ -1883,24 +1883,24 @@ namespace Nethermind.Serialization.Rlp
         }
     }
 
-    public readonly struct RlpDecoderKey(Type key, string name = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
+    [DebuggerDisplay("{Type.Name},{Key}")]
+    public readonly struct RlpDecoderKey(Type type, string key = RlpDecoderKey.Default) : IEquatable<RlpDecoderKey>
     {
         public const string Default = "default";
         public const string Storage = "storage";
         public const string LegacyStorage = "legacy-storage";
 
+        private readonly Type _type = type;
+        private readonly string _key = key;
+        public Type Type => _type;
+        public string Key => _key;
 
-        private readonly Type _key = key;
-        private readonly string _name = name;
-        public Type Value => _key;
-        public string Name => _name;
-
-        public static implicit operator Type(RlpDecoderKey key) => key._key;
+        public static implicit operator Type(RlpDecoderKey key) => key._type;
         public static implicit operator RlpDecoderKey(Type key) => new(key);
 
-        public bool Equals(RlpDecoderKey other) => _key.Equals(other._key) && _name.Equals(other._name);
+        public bool Equals(RlpDecoderKey other) => _type.Equals(other._type) && _key.Equals(other._key);
 
-        public override int GetHashCode() => HashCode.Combine(_key, _name);
+        public override int GetHashCode() => HashCode.Combine(_type, _key);
 
         public override bool Equals(object obj) => obj is RlpDecoderKey key && Equals(key);
 

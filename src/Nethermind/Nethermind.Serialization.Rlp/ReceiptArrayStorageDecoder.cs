@@ -4,20 +4,19 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using static Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Serialization.Rlp;
 
-[SkipGlobalRegistration]
+[Rlp.SkipGlobalRegistration]
 public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
-    private readonly IRlpStreamDecoder<TxReceipt> Decoder = GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
-    private readonly IRlpValueDecoder<TxReceipt> ValueDecoder = GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
 
-    private readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
-    private readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
     private readonly bool _useCompactEncoding = true;
