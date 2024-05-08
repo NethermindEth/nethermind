@@ -498,7 +498,7 @@ namespace Nethermind.Core.Crypto
             {
                 ThrowHashingComplete();
             }
-            
+
             StateBox? stateBox = _stateBox;
             ref KeccakBuffer state = ref stateBox!.state;
             if (_remainderLength > 0)
