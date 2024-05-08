@@ -32,7 +32,7 @@ public class OptimismBlockProcessor : BlockProcessor
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, OptimismReceiptsRootCalculator.Instance)
+            stateProvider, receiptStorage, witnessCollector, logManager, withdrawalProcessor, ReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

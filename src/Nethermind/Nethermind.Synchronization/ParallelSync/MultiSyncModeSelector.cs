@@ -613,7 +613,7 @@ namespace Nethermind.Synchronization.ParallelSync
                     (nameof(notInUpdatingPivot), notInUpdatingPivot),
                     (nameof(hasFastSyncBeenActive), hasFastSyncBeenActive),
                     (nameof(hasAnyPostPivotPeer), hasAnyPostPivotPeer),
-                    (nameof(notInFastSync), notInFastSync),
+                    ($"{nameof(notInFastSync)}||{nameof(stickyStateNodes)}", notInFastSync || stickyStateNodes),
                     (nameof(stateNotDownloadedYet), stateNotDownloadedYet),
                     (nameof(notInAStickyFullSync), notInAStickyFullSync),
                     (nameof(notHasJustStartedFullSync), notHasJustStartedFullSync),

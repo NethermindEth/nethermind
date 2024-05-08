@@ -10,8 +10,6 @@ namespace Nethermind.Optimism;
 
 public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt>, IRlpStreamDecoder<TxReceipt>
 {
-    public static readonly OptimismReceiptMessageDecoder Instance = new();
-
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
@@ -55,7 +53,11 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
         if (txReceipt.TxType == TxType.DepositTx && lastCheck > rlpStream.Position)
         {
             txReceipt.DepositNonce = rlpStream.DecodeUlong();
-            txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+
+            if (lastCheck > rlpStream.Position)
+            {
+                txReceipt.DepositReceiptVersion = rlpStream.DecodeUlong();
+            }
         }
 
         return txReceipt;
@@ -84,10 +86,15 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
                 : Rlp.LengthOf(item.PostTransactionState);
         }
 
-        if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
+        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
+            (item.DepositReceiptVersion is not null || (rlpBehaviors & RlpBehaviors.EncodeForTrie) == RlpBehaviors.None))
         {
-            contentLength += Rlp.LengthOf(item.DepositNonce ?? 0);
-            contentLength += Rlp.LengthOf(item.DepositReceiptVersion.Value);
+            contentLength += Rlp.LengthOf(item.DepositNonce);
+
+            if (item.DepositReceiptVersion is not null)
+            {
+                contentLength += Rlp.LengthOf(item.DepositReceiptVersion.Value);
+            }
         }
 
         return (contentLength, logsLength);
@@ -157,10 +164,15 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
             rlpStream.Encode(item.Logs[i]);
         }
 
-        if (item.TxType == TxType.DepositTx && item.DepositReceiptVersion is not null)
+        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
+            (item.DepositReceiptVersion is not null || (rlpBehaviors & RlpBehaviors.EncodeForTrie) == RlpBehaviors.None))
         {
-            rlpStream.Encode(item.DepositNonce!.Value);
-            rlpStream.Encode(item.DepositReceiptVersion.Value);
+            rlpStream.Encode(item.DepositNonce.Value);
+
+            if (item.DepositReceiptVersion is not null)
+            {
+                rlpStream.Encode(item.DepositReceiptVersion.Value);
+            }
         }
     }
 

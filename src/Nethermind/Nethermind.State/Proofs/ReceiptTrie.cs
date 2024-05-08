@@ -38,7 +38,7 @@ public class ReceiptTrie<TReceipt> : PatriciaTrie<TReceipt>
     private void Initialize(TReceipt[] receipts, IReceiptSpec spec)
     {
         RlpBehaviors behavior = (spec.IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None)
-                                | RlpBehaviors.SkipTypedWrapping;
+                                | RlpBehaviors.SkipTypedWrapping | RlpBehaviors.EncodeForTrie;
         int key = 0;
 
         foreach (TReceipt? receipt in receipts)
