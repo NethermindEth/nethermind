@@ -74,6 +74,6 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         Hash256 parentBlockHash = blockHeader.ParentHash;
         var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.BytesToArray());
+        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
     }
 }
