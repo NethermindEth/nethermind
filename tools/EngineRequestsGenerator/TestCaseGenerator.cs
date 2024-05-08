@@ -214,6 +214,10 @@ public class TestCaseGenerator
                 return Push0.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0Pop:
                 return Push0Pop.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.CallerPop:
+                return CallerPop.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            // case TestCase.BalanceNonExisting:
+            //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.SHA2From32Bytes:
             //     return Sha2.GetTx(privateKey, nonce, testCase, blockGasConsumptionTarget);
             default:
@@ -254,7 +258,7 @@ public class TestCaseGenerator
         }
     }
 
-    private IEnumerable<PrivateKey> PreparePrivateKeys(int numberOfKeysToGenerate)
+    public static IEnumerable<PrivateKey> PreparePrivateKeys(int numberOfKeysToGenerate)
     {
         int numberOfKeys = 0;
         for (byte i = 1; i > 0; i++)
