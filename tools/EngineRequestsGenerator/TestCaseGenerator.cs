@@ -3,6 +3,7 @@
 
 using System.Text;
 using EngineRequestsGenerator.TestCases;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
