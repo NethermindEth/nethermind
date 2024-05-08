@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Text;
+using EngineRequestsGenerator.TestCases;
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus.Producers;
@@ -127,9 +128,7 @@ public class TestCaseGenerator
                     SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
                     break;
                 // cases with contract deployment:
-                case TestCase.Keccak256From1Byte:
-                case TestCase.Keccak256From8Bytes:
-                case TestCase.Keccak256From32Bytes:
+                default:
                     if (i < 2)
                     {
                         // in iteration 0 there is only withdrawal,
@@ -142,8 +141,6 @@ public class TestCaseGenerator
                         CallContract(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1], blockGasConsumptionTarget);
                     }
                     break;
-                default:
-                    throw new ArgumentOutOfRangeException(nameof(_testCase), _testCase, null);
             }
 
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
@@ -176,6 +173,12 @@ public class TestCaseGenerator
 
                 previousBlock = block;
             }
+
+            // fuse to not create broken test cases (without doing actual test in last block)
+            if (block.Number == _numberOfBlocksToProduce && block.Transactions.Length == 0)
+            {
+                throw new TimeoutException($"failed to generate testcase with gas target {blockGasConsumptionTarget} - 0 transactions in last block");
+            }
         }
 
         if (!Directory.Exists(_outputPath))
@@ -200,19 +203,24 @@ public class TestCaseGenerator
                 : 0;
             for (int i = 0; i < txsPerAddress + additionalTx; i++)
             {
-                Transaction tx = GetTx(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i, testCase, blockGasConsumptionTarget);
-                txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+                Transaction[] txs = GetTxs(privateKeys[previousBlockWithdrawal.ValidatorIndex - 1], i, testCase, blockGasConsumptionTarget);
+                foreach (Transaction tx in txs)
+                {
+                    txPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
+                }
             }
         }
     }
 
-    private Transaction GetTx(PrivateKey privateKey, int nonce, TestCase testCase, long blockGasConsumptionTarget)
+    private Transaction[] GetTxs(PrivateKey privateKey, int nonce, TestCase testCase, long blockGasConsumptionTarget)
     {
         switch (testCase)
         {
             case TestCase.Warmup:
             case TestCase.Transfers:
-                return Build.A.Transaction
+                return
+                [
+                    Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
                     .WithMaxFeePerGas(1.GWei())
@@ -220,11 +228,14 @@ public class TestCaseGenerator
                     .WithTo(TestItem.AddressB)
                     .WithChainId(BlockchainIds.Holesky)
                     .SignedAndResolved(privateKey)
-                    .TestObject;
+                    .TestObject
+                ];
             case TestCase.TxDataZero:
                 long numberOfBytes = (blockGasConsumptionTarget - GasCostOf.Transaction) / GasCostOf.TxDataZero;
                 byte[] data = new byte[numberOfBytes];
-                return Build.A.Transaction
+                return
+                [
+                    Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
                     .WithMaxFeePerGas(1.GWei())
@@ -234,55 +245,31 @@ public class TestCaseGenerator
                     .WithData(data)
                     .WithGasLimit(_chainSpec.Genesis.GasLimit)
                     .SignedAndResolved(privateKey)
-                    .TestObject;
+                    .TestObject
+                ];
             case TestCase.Keccak256From1Byte:
-                return Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
-                    .WithType(TxType.EIP1559)
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(null)
-                    .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(1))
-                    .WithGasLimit(blockGasConsumptionTarget)
-                    .SignedAndResolved(privateKey)
-                    .TestObject;
             case TestCase.Keccak256From8Bytes:
-                return Build.A.Transaction
-                    .WithNonce((UInt256)nonce)
-                    .WithType(TxType.EIP1559)
-                    .WithMaxFeePerGas(1.GWei())
-                    .WithMaxPriorityFeePerGas(1.GWei())
-                    .WithTo(null)
-                    .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(8))
-                    .WithGasLimit(blockGasConsumptionTarget)
-                    .SignedAndResolved(privateKey)
-                    .TestObject;
             case TestCase.Keccak256From32Bytes:
-                return Build.A.Transaction
+                return
+                [
+                    Build.A.Transaction
                     .WithNonce((UInt256)nonce)
                     .WithType(TxType.EIP1559)
                     .WithMaxFeePerGas(1.GWei())
                     .WithMaxPriorityFeePerGas(1.GWei())
                     .WithTo(null)
                     .WithChainId(BlockchainIds.Holesky)
-                    .WithData(PrepareKeccak256Code(32))
+                    .WithData(PrepareKeccak256Code(_testCase))
                     .WithGasLimit(blockGasConsumptionTarget)
                     .SignedAndResolved(privateKey)
-                    .TestObject;
+                    .TestObject
+                ];
+            case TestCase.Push0:
+                return Push0.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Push0Pop:
+                return Push0Pop.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.SHA2From32Bytes:
-            //     return Build.A.Transaction
-            //         .WithNonce((UInt256)nonce)
-            //         .WithType(TxType.EIP1559)
-            //         .WithMaxFeePerGas(1.GWei())
-            //         .WithMaxPriorityFeePerGas(1.GWei())
-            //         .WithTo(null)
-            //         .WithChainId(BlockchainIds.Holesky)
-            //         .WithData(PrepareKeccak256Code(32))
-            //         .WithGasLimit(blockGasConsumptionTarget)
-            //         .SignedAndResolved(privateKey)
-            //         .TestObject;
+            //     return Sha2.GetTx(privateKey, nonce, testCase, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
@@ -303,8 +290,16 @@ public class TestCaseGenerator
         chain.TxPool.SubmitTx(tx, TxHandlingOptions.None).Should().Be(AcceptTxResult.Accepted);
     }
 
-    private byte[] PrepareKeccak256Code(int bytesToComputeKeccak)
+    private byte[] PrepareKeccak256Code(TestCase testCase)
     {
+        int bytesToComputeKeccak = testCase switch
+        {
+            TestCase.Keccak256From1Byte => 1,
+            TestCase.Keccak256From8Bytes => 8,
+            TestCase.Keccak256From32Bytes => 32,
+            _ => throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null)
+        };
+
         List<byte> oneIteration = new();
         // long costOfOneIteration = 0;
 
@@ -340,100 +335,8 @@ public class TestCaseGenerator
         codeToDeploy.Add((byte)Instruction.JUMP);
         // cost += GasCostOf.Mid;
 
-        List<byte> initCode = GenerateInitCode(codeToDeploy);
-        List<byte> byteCode = GenerateCodeToDeployContract(initCode);
+        List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);
         return byteCode.ToArray();
-    }
-
-    private List<byte> GenerateCodeToDeployContract(List<byte> initCode)
-    {
-        List<byte> byteCode = new();
-
-        for (long i = 0; i < initCode.Count; i += 32)
-        {
-            List<byte> currentWord = i == 0
-                ? initCode.Slice(0, initCode.Count % 32)
-                : initCode.Slice((int)i - 32 + initCode.Count % 32, 32);
-            byteCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
-            byteCode.AddRange(currentWord);
-
-            // push memory offset - i
-            byte[] memoryOffset = i.ToBigEndianByteArrayWithoutLeadingZeros();
-            if (memoryOffset is [0])
-            {
-                byteCode.Add((byte)Instruction.PUSH0);
-            }
-            else
-            {
-                byteCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
-                byteCode.AddRange(memoryOffset);
-            }
-
-            // save in memory
-            byteCode.Add((byte)Instruction.MSTORE);
-        }
-
-        // push size of init code to read from memory
-        byte[] sizeOfInitCode = initCode.Count.ToByteArray().WithoutLeadingZeros().ToArray();
-        byteCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfInitCode.Length - 1));
-        byteCode.AddRange(sizeOfInitCode);
-
-        // offset in memory
-        byteCode.Add((byte)(Instruction.PUSH1));
-        byteCode.AddRange(new[] { (byte)(32 - (initCode.Count % 32)) });
-
-        // 0 wei to send
-        byteCode.Add((byte)Instruction.PUSH0);
-
-        byteCode.Add((byte)Instruction.CREATE);
-
-        Console.WriteLine($"size of prepared code: {byteCode.Count}");
-
-        return byteCode;
-    }
-
-    private List<byte> GenerateInitCode(List<byte> codeToDeploy)
-    {
-        List<byte> initCode = new();
-
-        for (long i = 0; i < codeToDeploy.Count; i += 32)
-        {
-            List<byte> currentWord = i == 0
-                ? codeToDeploy.Slice(0, codeToDeploy.Count % 32)
-                : codeToDeploy.Slice((int)i - 32 + codeToDeploy.Count % 32, 32);
-
-            initCode.Add((byte)(Instruction.PUSH1 + (byte)currentWord.Count - 1));
-            initCode.AddRange(currentWord);
-
-            // push memory offset - i
-            byte[] memoryOffset = i.ToBigEndianByteArrayWithoutLeadingZeros();
-            if (memoryOffset is [0])
-            {
-                initCode.Add((byte)Instruction.PUSH0);
-            }
-            else
-            {
-                initCode.Add((byte)(Instruction.PUSH1 + (byte)memoryOffset.Length - 1));
-                initCode.AddRange(memoryOffset);
-            }
-
-            // save in memory
-            initCode.Add((byte)Instruction.MSTORE);
-        }
-
-        // push size of memory read
-        byte[] sizeOfCodeToDeploy = codeToDeploy.Count.ToByteArray().WithoutLeadingZeros().ToArray();
-        initCode.Add((byte)(Instruction.PUSH1 + (byte)sizeOfCodeToDeploy.Length - 1));
-        initCode.AddRange(sizeOfCodeToDeploy);
-
-        // push memory offset
-        initCode.Add((byte)(Instruction.PUSH1));
-        initCode.AddRange(new[] { (byte)(32 - (codeToDeploy.Count % 32)) });
-
-        // add return opcode
-        initCode.Add((byte)(Instruction.RETURN));
-
-        return initCode;
     }
 
     private IEnumerable<Withdrawal> GetBlockWithdrawals(int alreadyProducedBlocks, PrivateKey[] privateKeys)
