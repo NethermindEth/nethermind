@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
+using System.Runtime.Intrinsics;
 using static System.Numerics.BitOperations;
+using static Nethermind.Core.Crypto.KeccakHash;
 
 // ReSharper disable InconsistentNaming
 namespace Nethermind.Core.Crypto
@@ -72,9 +75,9 @@ namespace Nethermind.Core.Crypto
         private KeccakHash(int size)
         {
             // Verify the size
-            if (size <= 0 || size > STATE_SIZE)
+            if (size != 32 && size != 64)
             {
-                throw new ArgumentException($"Invalid Keccak hash size. Must be between 0 and {STATE_SIZE}.");
+                WrongSizeKeccak();
             }
 
             _roundSize = STATE_SIZE == size ? HASH_DATA_AREA : checked(STATE_SIZE - (2 * size));
@@ -291,15 +294,13 @@ namespace Nethermind.Core.Crypto
             }
         }
 
-        public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
-        {
-            Span<byte> output = new byte[size];
-            ComputeHash(input, output);
-            return output;
-        }
-
         public static byte[] ComputeHashBytes(ReadOnlySpan<byte> input, int size = HASH_SIZE)
         {
+            if (size != 32 && size != 64)
+            {
+                WrongSizeKeccak();
+            }
+
             byte[] output = new byte[size];
             ComputeHash(input, output);
             return output;
@@ -330,9 +331,11 @@ namespace Nethermind.Core.Crypto
         }
 
         // compute a Keccak hash (md) of given byte length from "in"
+        [SkipLocalsInit]
         public static void ComputeHash(ReadOnlySpan<byte> input, Span<byte> output)
         {
             int size = output.Length;
+            // 136 or 72
             int roundSize = GetRoundSize(size);
             if ((uint)output.Length > STATE_SIZE)
             {
@@ -341,6 +344,7 @@ namespace Nethermind.Core.Crypto
 
             KeccakBuffer state = default;
             Span<byte> temp = stackalloc byte[TEMP_BUFF_SIZE];
+            temp.Clear();
 
             int remainingInputLength = input.Length;
             for (; remainingInputLength >= roundSize; remainingInputLength -= roundSize, input = input[roundSize..])
@@ -372,7 +376,14 @@ namespace Nethermind.Core.Crypto
             }
 
             KeccakF(ref state);
-            MemoryMarshal.AsBytes(state[..(size / sizeof(ulong))]).CopyTo(output);
+            if (size == 32)
+            {
+                Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(output)) = Unsafe.As<KeccakBuffer, Vector256<byte>>(ref state);
+            }
+            else // size 64
+            {
+                Unsafe.As<byte, Vector512<byte>>(ref MemoryMarshal.GetReference(output)) = Unsafe.As<KeccakBuffer, Vector512<byte>>(ref state);
+            }
         }
 
         public void Update(ReadOnlySpan<byte> input)
@@ -615,8 +626,6 @@ namespace Nethermind.Core.Crypto
                 state = null!;
             }
         }
-    }
-
         public class StateBox
         {
             public KeccakBuffer state;
@@ -629,32 +638,40 @@ namespace Nethermind.Core.Crypto
             private ulong st;
         }
 
-        public static class BufferExtensions
+        [DoesNotReturn]
+        [StackTraceHidden]
+        private static void WrongSizeKeccak()
         {
-            public static ref ulong aba(ref this KeccakBuffer buffer) => ref buffer[0];
-            public static ref ulong abe(ref this KeccakBuffer buffer) => ref buffer[1];
-            public static ref ulong abi(ref this KeccakBuffer buffer) => ref buffer[2];
-            public static ref ulong abo(ref this KeccakBuffer buffer) => ref buffer[3];
-            public static ref ulong abu(ref this KeccakBuffer buffer) => ref buffer[4];
-            public static ref ulong aga(ref this KeccakBuffer buffer) => ref buffer[5];
-            public static ref ulong age(ref this KeccakBuffer buffer) => ref buffer[6];
-            public static ref ulong agi(ref this KeccakBuffer buffer) => ref buffer[7];
-            public static ref ulong ago(ref this KeccakBuffer buffer) => ref buffer[8];
-            public static ref ulong agu(ref this KeccakBuffer buffer) => ref buffer[9];
-            public static ref ulong aka(ref this KeccakBuffer buffer) => ref buffer[10];
-            public static ref ulong ake(ref this KeccakBuffer buffer) => ref buffer[11];
-            public static ref ulong aki(ref this KeccakBuffer buffer) => ref buffer[12];
-            public static ref ulong ako(ref this KeccakBuffer buffer) => ref buffer[13];
-            public static ref ulong aku(ref this KeccakBuffer buffer) => ref buffer[14];
-            public static ref ulong ama(ref this KeccakBuffer buffer) => ref buffer[15];
-            public static ref ulong ame(ref this KeccakBuffer buffer) => ref buffer[16];
-            public static ref ulong ami(ref this KeccakBuffer buffer) => ref buffer[17];
-            public static ref ulong amo(ref this KeccakBuffer buffer) => ref buffer[18];
-            public static ref ulong amu(ref this KeccakBuffer buffer) => ref buffer[19];
-            public static ref ulong asa(ref this KeccakBuffer buffer) => ref buffer[20];
-            public static ref ulong ase(ref this KeccakBuffer buffer) => ref buffer[21];
-            public static ref ulong asi(ref this KeccakBuffer buffer) => ref buffer[22];
-            public static ref ulong aso(ref this KeccakBuffer buffer) => ref buffer[23];
-            public static ref ulong asu(ref this KeccakBuffer buffer) => ref buffer[24];
+            throw new ArgumentException($"Invalid Keccak hash size. Must be 32 or 64.");
         }
+    }
+
+    public static class BufferExtensions
+    {
+        public static ref ulong aba(ref this KeccakBuffer buffer) => ref buffer[0];
+        public static ref ulong abe(ref this KeccakBuffer buffer) => ref buffer[1];
+        public static ref ulong abi(ref this KeccakBuffer buffer) => ref buffer[2];
+        public static ref ulong abo(ref this KeccakBuffer buffer) => ref buffer[3];
+        public static ref ulong abu(ref this KeccakBuffer buffer) => ref buffer[4];
+        public static ref ulong aga(ref this KeccakBuffer buffer) => ref buffer[5];
+        public static ref ulong age(ref this KeccakBuffer buffer) => ref buffer[6];
+        public static ref ulong agi(ref this KeccakBuffer buffer) => ref buffer[7];
+        public static ref ulong ago(ref this KeccakBuffer buffer) => ref buffer[8];
+        public static ref ulong agu(ref this KeccakBuffer buffer) => ref buffer[9];
+        public static ref ulong aka(ref this KeccakBuffer buffer) => ref buffer[10];
+        public static ref ulong ake(ref this KeccakBuffer buffer) => ref buffer[11];
+        public static ref ulong aki(ref this KeccakBuffer buffer) => ref buffer[12];
+        public static ref ulong ako(ref this KeccakBuffer buffer) => ref buffer[13];
+        public static ref ulong aku(ref this KeccakBuffer buffer) => ref buffer[14];
+        public static ref ulong ama(ref this KeccakBuffer buffer) => ref buffer[15];
+        public static ref ulong ame(ref this KeccakBuffer buffer) => ref buffer[16];
+        public static ref ulong ami(ref this KeccakBuffer buffer) => ref buffer[17];
+        public static ref ulong amo(ref this KeccakBuffer buffer) => ref buffer[18];
+        public static ref ulong amu(ref this KeccakBuffer buffer) => ref buffer[19];
+        public static ref ulong asa(ref this KeccakBuffer buffer) => ref buffer[20];
+        public static ref ulong ase(ref this KeccakBuffer buffer) => ref buffer[21];
+        public static ref ulong asi(ref this KeccakBuffer buffer) => ref buffer[22];
+        public static ref ulong aso(ref this KeccakBuffer buffer) => ref buffer[23];
+        public static ref ulong asu(ref this KeccakBuffer buffer) => ref buffer[24];
+    }
 }
