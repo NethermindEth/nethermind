@@ -24,8 +24,8 @@ public partial class EngineModuleTests
 {
     [TestCase(
         "0x15d4d1f0b215b52458adeac09119798a7c35cebe4aba7f37f0014c7533e12b8a",
-        "0xb457b256c8bbfc7f0716a0df076b4f72a358594d795be2aab001795fd297acdb",
-        "0x58bb65def521baa8a64c1c9337d42da3885d7fbf85b8ad439cb179d480a64e98",
+        "0xaf99598b64692a1975ce80ae8fcc14a610aef517f77dc32f8cb2692cc08f129a",
+        "0x582281d590f52fdafc956c4ef42193fe1d7a1fd77a7bdc2b8b6a583235a2b087",
         "0xae9416e039eb988f")]
     public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
         string stateRoot, string payloadId)
