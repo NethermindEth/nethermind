@@ -6,7 +6,7 @@
     },
     "Blockchain Test": {
       "commandName": "Project",
-      "commandLineArgs": "-b -i C:\\Users\\marek\\Nethermind\\tests\\fixtures\\blockchain_tests\\prague\\eip7685_general_purpose_el_requests\\deposits_withdrawals\\valid_deposit_withdrawal_requests.json"
+      "commandLineArgs": "-b -i C:\\Users\\marek\\Nethermind\\tests\\fixtures\\blockchain_tests\\prague\\eip2935_historical_block_hashes_from_state\\block_hashes\\block_hashes_history_at_transition.json"
     },
     "Regex State Test": {
       "commandName": "Project",

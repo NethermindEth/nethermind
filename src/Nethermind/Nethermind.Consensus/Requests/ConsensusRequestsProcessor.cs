@@ -8,14 +8,15 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.State;
 using Nethermind.State.Proofs;
 
 namespace Nethermind.Consensus.Requests;
 
-public class ConsensusRequestsProcessor : IConsensusRequestsProcessor
+public class ConsensusRequestsProcessor(ITransactionProcessor transactionProcessor) : IConsensusRequestsProcessor
 {
-    private readonly WithdrawalRequestsProcessor _withdrawalRequestsProcessor = new();
+    private readonly WithdrawalRequestsProcessor _withdrawalRequestsProcessor = new(transactionProcessor);
     private readonly IDepositsProcessor _depositsProcessor = new DepositsProcessor();
 
     public void ProcessRequests(IReleaseSpec spec, IWorldState state, Block block, TxReceipt[] receipts)

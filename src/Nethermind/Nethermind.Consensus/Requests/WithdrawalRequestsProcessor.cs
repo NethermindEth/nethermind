@@ -9,91 +9,58 @@ using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Crypto;
+using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
+using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Requests;
 
 // https://eips.ethereum.org/EIPS/eip-7002#block-processing
-public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
+public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProcessor) : IWithdrawalRequestsProcessor
 {
-    private static readonly UInt256 ExcessWithdrawalRequestsStorageSlot = 0;
-    private static readonly UInt256 WithdrawalRequestCountStorageSlot = 1;
-    private static readonly UInt256 WithdrawalRequestQueueHeadStorageSlot = 2;
-    private static readonly UInt256 WithdrawalRequestQueueTailStorageSlot = 3;
-    private static readonly UInt256 WithdrawalRequestQueueStorageOffset = 4;
-    private static readonly UInt256 MaxWithdrawalRequestsPerBlock = 16;
-    private static readonly UInt256 TargetWithdrawalRequestsPerBlock = 2;
+    private const long GasLimit = 30_000_000L;
 
-    // Will be moved to system transaction
     public IEnumerable<WithdrawalRequest> ReadWithdrawalRequests(IReleaseSpec spec, IWorldState state, Block block)
     {
         if (!spec.IsEip7002Enabled)
             yield break;
 
         Address eip7002Account = spec.Eip7002ContractAddress;
-        if (!state.AccountExists(eip7002Account))
+        if (!state.AccountExists(eip7002Account)) // not needed anymore?
             yield break;
 
-        // Reads validator exit information from the precompile
-        StorageCell queueHeadIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueHeadStorageSlot);
-        StorageCell queueTailIndexCell = new(spec.Eip7002ContractAddress, WithdrawalRequestQueueTailStorageSlot);
+        CallOutputTracer tracer = new();
 
-        UInt256 queueHeadIndex = new(state.Get(queueHeadIndexCell));
-        UInt256 queueTailIndex = new(state.Get(queueTailIndexCell));
-
-        UInt256 numInQueue = queueTailIndex - queueHeadIndex;
-        UInt256 numDequeued = UInt256.Min(numInQueue, MaxWithdrawalRequestsPerBlock);
-
-        for (UInt256 i = 0; i < numDequeued; ++i)
+        Transaction? transaction = new()
         {
-            UInt256 queueStorageSlot = WithdrawalRequestQueueStorageOffset + (queueHeadIndex + i) * 3;
-            StorageCell sourceAddressCell = new(spec.Eip7002ContractAddress, queueStorageSlot);
-            StorageCell validatorAddressFirstCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 1);
-            StorageCell validatorAddressSecondCell = new(spec.Eip7002ContractAddress, queueStorageSlot + 2);
-            Address sourceAddress = new(state.Get(sourceAddressCell)[..20].ToArray());
-            byte[] validatorPubKey = new byte[48];
-            state.Get(validatorAddressFirstCell)[..32].CopyTo(validatorPubKey[..32]);
-            state.Get(validatorAddressSecondCell)[..16].CopyTo(validatorPubKey[32..]);
-            ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
-            yield return new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubKey, Amount = amount };
-        }
+            Value = UInt256.Zero,
+            Data = Array.Empty<byte>(),
+            To = spec.Eip7002ContractAddress,
+            SenderAddress = Address.SystemUser,
+            GasLimit = GasLimit,
+            GasPrice = UInt256.Zero,
+        };
+        transaction.Hash = transaction.CalculateHash();
 
-        UInt256 newQueueHeadIndex = queueHeadIndex + numDequeued;
-        if (newQueueHeadIndex == queueTailIndex)
+        transactionProcessor.Execute(transaction, new BlockExecutionContext(block.Header), tracer);
+        var result = tracer.ReturnValue;
+        if (result == null || result.Length == 0)
+            yield break;
+
+        int sizeOfClass = 20 + 48 + 8;
+        int count = result.Length / sizeOfClass;
+        for (int i = 0; i < count; ++i)
         {
-            state.Set(queueHeadIndexCell, UInt256.Zero.ToBigEndian());
-            state.Set(queueTailIndexCell, UInt256.Zero.ToBigEndian());
+            WithdrawalRequest request = new();
+            Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
+            request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
+            request.ValidatorPubkey = span.Slice(20, 48).ToArray();
+            request.Amount = BitConverter.ToUInt64(span.Slice(68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
+
+            yield return request;
         }
-        else
-        {
-            state.Set(queueHeadIndexCell, newQueueHeadIndex.ToBigEndian());
-        }
-
-        UpdateExcessExits(spec, state);
-        ResetExitCount(spec, state);
-    }
-
-    private void UpdateExcessExits(IReleaseSpec spec, IWorldState state)
-    {
-        StorageCell previousExcessCell = new(spec.Eip7002ContractAddress, ExcessWithdrawalRequestsStorageSlot);
-        StorageCell countCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
-
-        UInt256 previousExcess = new(state.Get(previousExcessCell));
-        UInt256 count = new(state.Get(countCell));
-
-        UInt256 newExcess = 0;
-        if (previousExcess + count > TargetWithdrawalRequestsPerBlock)
-        {
-            newExcess = previousExcess + count - TargetWithdrawalRequestsPerBlock;
-        }
-
-        state.Set(previousExcessCell, newExcess.ToBigEndian());
-    }
-
-    private void ResetExitCount(IReleaseSpec spec, IWorldState state)
-    {
-        StorageCell countCell = new(spec.Eip7002ContractAddress, WithdrawalRequestCountStorageSlot);
-        state.Set(countCell, UInt256.Zero.ToBigEndian());
     }
 }

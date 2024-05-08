@@ -237,7 +237,7 @@ public partial class EngineModuleTests
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),
                 50000); // by default we want to avoid cleanup payload effects in testing
 
-            ConsensusRequestsProcessor ??= new ConsensusRequestsProcessor();
+            ConsensusRequestsProcessor ??= new ConsensusRequestsProcessor(TxProcessor);
             return new MergeBlockProducer(preMergeBlockProducer, postMergeBlockProducer, PoSSwitcher);
         }
 

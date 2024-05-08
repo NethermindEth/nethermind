@@ -81,7 +81,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _beaconBlockRootHandler = beaconBlockRootHandler ?? new BeaconBlockRootHandler(transactionProcessor, logManager);
-        _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor();
+        _consensusRequestsProcessor = consensusRequestsProcessor ?? new ConsensusRequestsProcessor(transactionProcessor);
 
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         ReceiptsTracer = new BlockReceiptsTracer();
