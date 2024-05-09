@@ -49,8 +49,6 @@ public abstract class GethLikeTxTracer : TxTracer
             EvmExceptionType.StackOverflow => "StackOverflow",
             EvmExceptionType.StackUnderflow => "StackUnderflow",
             EvmExceptionType.OutOfGas => "OutOfGas",
-            EvmExceptionType.InvalidSubroutineEntry => "InvalidSubroutineEntry",
-            EvmExceptionType.InvalidSubroutineReturn => "InvalidSubroutineReturn",
             EvmExceptionType.InvalidJumpDestination => "BadJumpDestination",
             EvmExceptionType.AccessViolation => "AccessViolation",
             EvmExceptionType.StaticCallViolation => "StaticCallViolation",

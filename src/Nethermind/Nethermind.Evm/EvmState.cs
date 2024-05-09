@@ -9,6 +9,8 @@ using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Eip2930;
+using Nethermind.Core.Specs;
+using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.State;
 
@@ -122,6 +124,9 @@ namespace Nethermind.Evm
 
         public int ReturnStackHead = 0;
         private bool _canRestore = true;
+        public ITxTracer TxTracer;
+        public IWorldState WorldState;
+        public IReleaseSpec Spec;
 
         public EvmState(
             long gasAvailable,
@@ -129,7 +134,10 @@ namespace Nethermind.Evm
             ExecutionType executionType,
             bool isTopLevel,
             Snapshot snapshot,
-            bool isContinuation)
+            bool isContinuation,
+            ITxTracer txTracer,
+            IWorldState worldState,
+            IReleaseSpec spec)
             : this(gasAvailable,
                 env,
                 executionType,
@@ -140,7 +148,10 @@ namespace Nethermind.Evm
                 false,
                 null,
                 isContinuation,
-                false)
+                false,
+                txTracer,
+                worldState,
+                spec)
         {
             GasAvailable = gasAvailable;
             Env = env;
@@ -157,7 +168,10 @@ namespace Nethermind.Evm
             bool isStatic,
             EvmState? stateForAccessLists,
             bool isContinuation,
-            bool isCreateOnPreExistingAccount)
+            bool isCreateOnPreExistingAccount,
+            ITxTracer txTracer,
+            IWorldState worldState,
+            IReleaseSpec spec)
         {
             if (isTopLevel && isContinuation)
             {
@@ -202,7 +216,9 @@ namespace Nethermind.Evm
             _accessedStorageKeysSnapshot = _accessedStorageCells.TakeSnapshot();
             _destroyListSnapshot = _destroyList.TakeSnapshot();
             _logsSnapshot = _logs.TakeSnapshot();
-
+            TxTracer = txTracer;
+            WorldState = worldState;
+            Spec = spec;
         }
 
         public Address From

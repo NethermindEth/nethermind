@@ -59,7 +59,7 @@ namespace Nethermind.Evm.Benchmark
                 inputData: default
             );
 
-            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false);
+            _evmState = new EvmState(long.MaxValue, _environment, ExecutionType.TRANSACTION, true, _stateProvider.TakeSnapshot(), false, _txTracer, _stateProvider, _spec);
         }
 
         [Benchmark]

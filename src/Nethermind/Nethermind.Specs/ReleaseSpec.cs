@@ -19,6 +19,7 @@ namespace Nethermind.Specs
         public long DifficultyBoundDivisor { get; set; }
         public long? FixedDifficulty { get; set; }
         public int MaximumUncleCount { get; set; }
+        public ulong ChainId { get; set; }
         public bool IsTimeAdjustmentPostOlympic { get; set; }
         public bool IsEip2Enabled { get; set; }
         public bool IsEip7Enabled { get; set; }

@@ -405,14 +405,16 @@ namespace Nethermind.Evm.TransactionProcessing
             Address recipient = tx.GetRecipient(tx.IsContractCreation ? WorldState.GetNonce(tx.SenderAddress) : 0);
             if (recipient is null) ThrowInvalidDataException("Recipient has not been resolved properly before tx execution");
 
-            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
 
             CodeInfo codeInfo = tx.IsContractCreation
                 ? new(tx.Data ?? Memory<byte>.Empty)
-                : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+                : Nethermind.Evm.VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
+
+            codeInfo.AnalyseInBackgroundIfRequired();
 
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
+            TxExecutionContext executionContext = new(in blCtx, tx.SenderAddress, effectiveGasPrice, tx.BlobVersionedHashes);
             return new ExecutionEnvironment
             (
                 txExecutionContext: in executionContext,
@@ -463,7 +465,7 @@ namespace Nethermind.Evm.TransactionProcessing
 
                 ExecutionType executionType = tx.IsContractCreation ? ExecutionType.CREATE : ExecutionType.TRANSACTION;
 
-                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false))
+                using (EvmState state = new(unspentGas, env, executionType, true, snapshot, false, tracer, WorldState, spec))
                 {
                     if (spec.UseTxAccessLists)
                     {
@@ -577,7 +579,7 @@ namespace Nethermind.Evm.TransactionProcessing
         {
             if (WorldState.AccountExists(contractAddress))
             {
-                CodeInfo codeInfo = VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
+                CodeInfo codeInfo = Nethermind.Evm.VirtualMachine.GetCachedCodeInfo(WorldState, contractAddress, spec);
                 bool codeIsNotEmpty = codeInfo.MachineCode.Length != 0;
                 bool accountNonceIsNotZero = WorldState.GetNonce(contractAddress) != 0;
 

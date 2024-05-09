@@ -22,6 +22,10 @@ namespace Nethermind.Core.Specs
         long DifficultyBoundDivisor { get; }
         long? FixedDifficulty { get; }
         int MaximumUncleCount { get; }
+        /// <summary>
+        /// Additional identifier of the chain to mitigate risks described in 155
+        /// </summary>
+        ulong ChainId { get; }
 
         /// <summary>
         /// ---
@@ -177,11 +181,6 @@ namespace Nethermind.Core.Specs
         bool IsEip2200Enabled { get; }
 
         /// <summary>
-        /// Berlin subroutines -> https://github.com/ethereum/EIPs/issues/2315
-        /// </summary>
-        bool IsEip2315Enabled { get; }
-
-        /// <summary>
         /// Berlin BLS crypto precompiles
         /// </summary>
         bool IsEip2537Enabled { get; }
@@ -335,8 +334,6 @@ namespace Nethermind.Core.Specs
         public bool StaticCallEnabled => IsEip214Enabled;
 
         public bool ShiftOpcodesEnabled => IsEip145Enabled;
-
-        public bool SubroutinesEnabled => IsEip2315Enabled;
 
         public bool RevertOpcodeEnabled => IsEip140Enabled;
 

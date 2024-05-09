@@ -7,6 +7,8 @@ using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Evm.Tracing;
+using Nethermind.Specs;
 using Nethermind.State;
 using NUnit.Framework;
 
@@ -236,7 +238,10 @@ namespace Nethermind.Evm.Test
                     ExecutionType.CALL,
                     true,
                     Snapshot.Empty,
-                    isContinuation)
+                    isContinuation,
+                    NullTxTracer.Instance,
+                    worldState: null,
+                    spec: null)
                 : new EvmState(10000,
                     new ExecutionEnvironment(),
                     ExecutionType.CALL,
@@ -247,7 +252,10 @@ namespace Nethermind.Evm.Test
                     false,
                     parentEvmState,
                     isContinuation,
-                    false);
+                    false,
+                    parentEvmState.TxTracer,
+                    parentEvmState.WorldState,
+                    parentEvmState.Spec);
 
         public class Context { }
     }

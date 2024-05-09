@@ -14,8 +14,6 @@ public static class EvmExceptionExtensions
             EvmExceptionType.StackUnderflow => "stack underflow",
             EvmExceptionType.OutOfGas => "out of gas",
             EvmExceptionType.GasUInt64Overflow => "gas uint64 overflow",
-            EvmExceptionType.InvalidSubroutineEntry => "invalid jump destination",
-            EvmExceptionType.InvalidSubroutineReturn => "invalid jump destination",
             EvmExceptionType.InvalidJumpDestination => "invalid jump destination",
             EvmExceptionType.AccessViolation => "return data out of bounds",
             EvmExceptionType.StaticCallViolation => "write protection",

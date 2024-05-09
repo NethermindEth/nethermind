@@ -18,8 +18,6 @@ namespace Nethermind.Evm
         StackUnderflow,
         OutOfGas,
         GasUInt64Overflow,
-        InvalidSubroutineEntry,
-        InvalidSubroutineReturn,
         InvalidJumpDestination,
         AccessViolation,
         StaticCallViolation,

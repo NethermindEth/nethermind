@@ -36,6 +36,7 @@ namespace Nethermind.Specs
         public long? FixedDifficulty => _spec.FixedDifficulty;
 
         public int MaximumUncleCount => _spec.MaximumUncleCount;
+        public ulong ChainId => _spec.ChainId;
 
         public bool IsTimeAdjustmentPostOlympic => _spec.IsTimeAdjustmentPostOlympic;
 
@@ -93,9 +94,7 @@ namespace Nethermind.Specs
 
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
-        public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-
-        public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
+        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
 
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
