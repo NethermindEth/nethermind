@@ -542,12 +542,6 @@ namespace Nethermind.Trie
             Hash256? startRootHash = null,
             bool isNodeRead = false)
         {
-#if DEBUG
-            if (nibblesCount != updatePath.Length)
-            {
-                throw new Exception("Does it ever happen?");
-            }
-#endif
             TraverseContext traverseContext =
                 new(updatePath, ref updatePathTreePath, updateValue, isUpdate, ignoreMissingDelete, isNodeRead: isNodeRead);
 
