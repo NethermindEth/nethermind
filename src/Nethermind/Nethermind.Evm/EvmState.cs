@@ -231,10 +231,10 @@ namespace Nethermind.Evm
         public long Refund { get; set; }
 
         public Address To => Env.CodeSource ?? Env.ExecutingAccount;
+        public Address ExecutingAccount => Env.ExecutingAccount;
         internal bool IsPrecompile => Env.CodeInfo.IsPrecompile;
         public readonly ExecutionEnvironment Env;
-
-        internal ExecutionType ExecutionType { get; } // TODO: move to CallEnv
+        public ExecutionType ExecutionType { get; } // TODO: move to CallEnv
         public bool IsContractDeployment =>
             ExecutionType is ExecutionType.CREATE or ExecutionType.CREATE2;
         public bool IsTopLevel { get; } // TODO: move to CallEnv
