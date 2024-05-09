@@ -442,7 +442,7 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
 
             MergeSynchronizer synchronizer = new MergeSynchronizer(
                 _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
+                null!,
                 _api.SpecProvider!,
                 _api.BlockTree!,
                 _api.ReceiptStorage!,

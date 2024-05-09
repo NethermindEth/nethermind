@@ -146,7 +146,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
-                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
+                null!,
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
