@@ -56,6 +56,7 @@ public interface IRawState : IReadOnlyState
     void SetAccount(ValueHash256 hash, Account? account);
     void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
     void Commit();
+    void Finalize(uint blockNumber);
 }
 
 /// <summary>

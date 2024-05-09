@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.ComponentModel.Design;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -36,7 +37,7 @@ public class PaprikaStateFactory : IStateFactory
 
     public PaprikaStateFactory()
     {
-        _db = PagedDb.NativeMemoryDb(32 * 1024);
+        _db = PagedDb.NativeMemoryDb(64 * 1024);
         var merkle = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
         _blockchain = new Blockchain(_db, merkle);
         _blockchain.Flushed += (_, flushed) =>
@@ -392,6 +393,10 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         public void Commit() => _wrapped.Commit();
+        public void Finalize(uint blockNumber)
+        {
+            _wrapped.Finalize(blockNumber);
+        }
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);
 

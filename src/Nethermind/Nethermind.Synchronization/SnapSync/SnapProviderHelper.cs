@@ -41,10 +41,10 @@ namespace Nethermind.Synchronization.SnapSync
             (AddRangeResult result, List<TrieNode> sortedBoundaryList, bool moreChildrenToRight) =
                 FillBoundaryTree(tree, startingHash, lastHash, limitHash, expectedRootHash, proofs);
 
-            //if (result != AddRangeResult.OK)
-            //{
-            //    return (result, true, null, null);
-            //}
+            if (result != AddRangeResult.OK)
+            {
+                return (result, true, null, null);
+            }
 
             List<PathWithAccount> accountsWithStorage = new();
             List<ValueHash256> codeHashes = new();
@@ -72,32 +72,13 @@ namespace Nethermind.Synchronization.SnapSync
 
             Span<byte> lastPath = stackalloc byte[64];
             Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
-            Span<byte> path = stackalloc byte[64];
-            int pathIndex = 0;
-            foreach (var node in sortedBoundaryList)
+            Span<byte> firstPath = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(startingHash.BytesAsSpan, firstPath);
+
+            if (sortedBoundaryList?.Count > 0)
             {
-                lastPath.Slice(0, pathIndex).CopyTo(path.Slice(0, pathIndex));
-                if (node.IsExtension)
-                {
-                    var childHash = node.GetChildHash(1);
-                    node.Key.CopyTo(path.Slice(pathIndex));
-                    pathIndex += node.Key.Length;
-                }
-                else if (node.IsBranch)
-                {
-                    for (int i = 0; i < 16; i++)
-                    {
-                        path[pathIndex] = (byte)i;
-                        if (BytesCompare(path, lastPath) > 0)
-                        {
-                            if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
-                            {
-                                state.SetAccountHash(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
-                            }
-                        }
-                    }
-                    pathIndex++;
-                }
+                Span<byte> path = stackalloc byte[64];
+                FillInHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0], path, 0);
             }
 
             //tree.UpdateRootHash();
@@ -113,6 +94,45 @@ namespace Nethermind.Synchronization.SnapSync
 
             //return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
             return (AddRangeResult.OK, true, accountsWithStorage, codeHashes);
+        }
+
+        private static bool IsNotInRange(Span<byte> path, int index, Span<byte> firstPath, Span<byte> lastPath)
+        {
+            Span<byte> currPath = path[..index];
+            if (BytesCompare(firstPath[..index], currPath) == 0 ||
+                BytesCompare(lastPath[..index], currPath) == 0)
+                return false;
+            return BytesCompare(path, lastPath) > 0 || BytesCompare(path, firstPath) < 0;
+        }
+
+        private static void FillInHashesOnBoundary(IRawState state, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
+        {
+            if (node.IsExtension)
+            {
+                node.Key.CopyTo(path.Slice(pathIndex));
+                FillInHashesOnBoundary(state, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, 0), path, pathIndex + node.Key.Length);
+            }
+            else if (node.IsBranch)
+            {
+                for (int i = 0; i < 16; i++)
+                {
+                    path[pathIndex] = (byte)i;
+                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
+                    {
+                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                        {
+                            //state.SetAccountHash(Nibbles.ToCompactHexEncoding(path[..(pathIndex + 1)]), pathIndex + 1, new Hash256(childHash));
+                            state.SetAccountHash(Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
+                        }
+                    }
+                    else
+                    {
+                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, i);
+                        if (childNode is not null)
+                            FillInHashesOnBoundary(state, firstPath, lastPath, childNode, path, pathIndex + 1);
+                    }
+                }
+            }
         }
 
         private static int BytesCompare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
