@@ -3,6 +3,26 @@
 
 using Nethermind.DocGen;
 
-ConfigGenerator.Generate();
-JsonRpcGenerator.Generate();
-MetricsGenerator.Generate();
+foreach (var arg in args)
+{
+    switch (arg.ToLower())
+    {
+        case "config":
+            ConfigGenerator.Generate();
+            break;
+        case "jsonrpc":
+            JsonRpcGenerator.Generate();
+            break;
+        case "metrics":
+            MetricsGenerator.Generate();
+            break;
+        case "dbsize":
+            DatabaseSizeGenerator.Generate();
+            break;
+        case "release":
+            ConfigGenerator.Generate();
+            JsonRpcGenerator.Generate();
+            MetricsGenerator.Generate();
+            break;
+    }
+}
