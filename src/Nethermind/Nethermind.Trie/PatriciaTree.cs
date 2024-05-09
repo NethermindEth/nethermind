@@ -530,7 +530,15 @@ namespace Nethermind.Trie
         [DebuggerStepThrough]
         public void Set(ReadOnlySpan<byte> rawKey, Rlp? value)
         {
-            Set(rawKey, value is null ? Array.Empty<byte>() : value.Bytes);
+            if (value is null)
+            {
+                Set(rawKey, in CappedArray<byte>.Empty);
+            }
+            else
+            {
+                CappedArray<byte> valueBytes = new(value.Bytes);
+                Set(rawKey, in valueBytes);
+            }
         }
 
         private ref readonly CappedArray<byte> Run(
