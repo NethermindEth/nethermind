@@ -67,7 +67,7 @@ namespace Nethermind.Blockchain.Synchronization
         public bool? SnapServingEnabled { get; set; } = false;
         public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
-        public bool VerkleSync { get; set; } = false;
+        public bool VerkleSync { get; set; } = true;
         public int VerkleSyncAccountRangePartitionCount { get; set; } = 8;
 
 
