@@ -4,6 +4,7 @@
 using Nethermind.Evm.CodeAnalysis.IL;
 using Sigil;
 using System;
+using System.Linq;
 using System.Reflection;
 using System.Reflection.Emit;
 
@@ -102,7 +103,6 @@ static class EmitExtensions
 
         // declare indexer
         var i = il.DeclareLocal<int>();
-        il.LoadLocal(i);
         il.LoadConstant(0);
         il.StoreLocal(i);
 
@@ -118,8 +118,8 @@ static class EmitExtensions
         il.Add();
         il.StoreLocal(i);
 
-        il.MarkLabel(start);
         il.Branch(start);
+        il.MarkLabel(end);
     }
 
     /// <summary>
@@ -135,9 +135,11 @@ static class EmitExtensions
 
     public static void LoadArray<T>(this Emit<T> il, ReadOnlySpan<byte> value)
     {
-
         il.LoadConstant(value.Length);
         il.NewArray<byte>();
+
+        // get methodInfo of AsSpan from int[] it is a public instance method
+        var ArrToSpanMethod = typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) });
 
         for (int i = 0; i < value.Length; i++)
         {
@@ -147,8 +149,7 @@ static class EmitExtensions
             il.StoreElement<byte>();
         }
 
-        il.Call(typeof(MemoryExtensions).GetMethod(nameof(MemoryExtensions.AsSpan), new[] { typeof(byte[]) }));
-        il.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(Span<byte>) }));
+        il.Call(ArrToSpanMethod);
 
     }
 }

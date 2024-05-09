@@ -87,9 +87,9 @@ internal static class IlAnalyzer
 
         
 
-        FrozenDictionary<ushort, Func<long, (EvmExceptionType, ILEvmState)>> SegmentCode(OpcodeInfo[] codeData)
+        FrozenDictionary<ushort, Func<long, ILEvmState>> SegmentCode(OpcodeInfo[] codeData)
         {
-            Dictionary<ushort, Func<long, (EvmExceptionType, ILEvmState)>> opcodeInfos = [];
+            Dictionary<ushort, Func<long, ILEvmState>> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
             foreach (var opcode in codeData)

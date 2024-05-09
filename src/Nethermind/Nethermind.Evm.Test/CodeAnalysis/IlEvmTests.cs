@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 .ToArray();
 
 
-            List<Instruction> notYetImplemented = [];
+            List<(Instruction, Exception)> notYetImplemented = [];
             foreach (var instruction in instructions)
             {
                 string name = $"ILEVM_TEST_{instruction}";
@@ -133,9 +133,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 try
                 {
                     ILCompiler.CompileSegment(name, [opcode]);
-                } catch (Exception)
+                } catch (Exception e)
                 {
-                    notYetImplemented.Add(instruction);
+                    notYetImplemented.Add((instruction, e));
                 }
             }
 
@@ -143,18 +143,50 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         }
 
 
-        [Test]
-        public void Ensure_Evm_ILvm_Compatibility()
+        public static IEnumerable<byte[]> GetBytecodes()
         {
-            byte[] bytecode =
-                Prepare.EvmCode
+            yield return Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .SUB()
+                    .Done;
+
+            yield return Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .ADD()
                     .Done;
 
+            yield return Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .MUL()
+                    .Done;
 
+            yield return Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .EXP()
+                    .Done;
+
+            yield return Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .MOD()
+                    .Done;
+
+            yield return Prepare.EvmCode
+                    .PushSingle(23)
+                    .PushSingle(7)
+                    .DIV()
+                    .Done;
+        }
+
+        [Test, TestCaseSource(nameof(GetBytecodes))]
+        public void Ensure_Evm_ILvm_Compatibility(byte[] bytecode)
+        {
             var function = ILCompiler.CompileSegment("ILEVM_TEST", IlAnalyzer.StripByteCode(bytecode));
+            var body = function.Method.GetMethodBody();
             var result = function(100);
             Assert.IsNotNull(result);
         }

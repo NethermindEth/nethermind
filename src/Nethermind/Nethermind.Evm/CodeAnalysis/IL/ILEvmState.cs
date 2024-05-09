@@ -16,7 +16,7 @@ internal class ILEvmState
     public UInt256[] Stack;
 
     // in case of exceptions
-    public EvmException EvmException;
+    public EvmExceptionType EvmException;
 
     // in case of jumps crossing section boundaries
     public int ProgramCounter;

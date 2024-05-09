@@ -14,14 +14,13 @@ using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
 using Label = Sigil.Label;
-using ProjectedEvmState = (Nethermind.Evm.EvmExceptionType, Nethermind.Evm.CodeAnalysis.IL.ILEvmState);
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public static Func<long, ProjectedEvmState> CompileSegment(string segmentName, OpcodeInfo[] code)
+    public static Func<long, ILEvmState> CompileSegment(string segmentName, OpcodeInfo[] code)
     {
-        Emit<Func<long, ProjectedEvmState>> method = Emit<Func<long, ProjectedEvmState>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<Func<long, ILEvmState>> method = Emit<Func<long, ILEvmState>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
         using Local address = method.DeclareLocal(typeof(Address));
@@ -30,9 +29,10 @@ internal class ILCompiler
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
         using Local uint256C = method.DeclareLocal(typeof(UInt256));
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
+        using Local localArr = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
         using Local returnState = method.DeclareLocal(typeof(ILEvmState));
         using Local gasAvailable = method.DeclareLocal(typeof(int));
-
+        using Local uint32A = method.DeclareLocal(typeof(uint));
 
         using Local stack = method.DeclareLocal(typeof(Word*));
         using Local currentSP = method.DeclareLocal(typeof(Word*));
@@ -146,21 +146,23 @@ internal class ILCompiler
                     method.LoadLocal(currentSP);
 
                     method.LoadArray(bytes.ToArray());
+                    method.StoreLocal(localArr);
+                    method.LoadLocalAddress(localArr);
                     method.LoadConstant(0);
-                    method.NewObject(typeof(UInt256), typeof(Span<byte>), typeof(bool));
+                    method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
                 case Instruction.ADD:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Add), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
 
                 case Instruction.SUB:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Subtract), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
 
                 case Instruction.MUL:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Multiply), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
 
                 case Instruction.MOD:
@@ -202,7 +204,7 @@ internal class ILCompiler
                     break;
 
                 case Instruction.EXP:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!);
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null);
                     break;
                 case Instruction.LT:
                     EmitComparaisonUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256), typeof(UInt256) }));
@@ -296,39 +298,40 @@ internal class ILCompiler
         method.Subtract();
         method.LoadConstant(Word.Size);
         method.Divide();
-        method.StoreLocal(uint256R);
+        method.Convert<UInt32>();
+        method.StoreLocal(uint32A);
 
         // set stack
         method.LoadLocal(returnState);
-        method.LoadLocal(uint256R);
-        method.NewArray<Word>();
-        method.ForBranch(uint256R, (il, i) =>
+        method.LoadLocal(uint32A);
+        method.NewArray<UInt256>();
+        method.ForBranch(uint32A, (il, i) =>
         {
             il.Duplicate();
 
             il.LoadLocal(i);
             il.StackLoadPrevious(currentSP);
-            il.LoadObject(typeof(Word));
-            il.StoreElement<Word>();
+            il.Call(Word.GetUInt256);
+            il.StoreElement<UInt256>();
 
             il.StackPop(currentSP);
         });
-        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.Stack)));
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.Stack)));
 
         // set gas available
         method.LoadLocal(returnState);
         method.LoadLocal(gasAvailable);
-        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.GasAvailable)));
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.GasAvailable)));
 
         // set program counter
         method.LoadLocal(returnState);
         method.LoadConstant(0);
-        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.ProgramCounter)));
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.ProgramCounter)));
 
 
         method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.None);
-        method.StoreField(typeof(ILEvmState).GetField(nameof(ILEvmState.EvmException)));
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
 
 
         method.Branch(ret);
@@ -340,9 +343,11 @@ internal class ILCompiler
         // if (jumpDest > uint.MaxValue)
         // ULong3 | Ulong2 | Ulong1 | Uint1 | Ushort1
         method.LoadLocal(currentSP);
-        method.LoadConstant(uint.MaxValue);
         method.Call(Word.GetUInt256);
-        method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256), typeof(UInt256) }));
+        method.StoreLocal(uint256A);
+        method.LoadLocalAddress(uint256B);
+        method.LoadConstant(uint.MaxValue);
+        method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
 
         method.BranchIfTrue(invalidAddress);
 
@@ -383,31 +388,52 @@ internal class ILCompiler
 
         // out of gas
         method.MarkLabel(outOfGas);
+        method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.OutOfGas);
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
 
         // invalid address return
         method.MarkLabel(invalidAddress);
+        method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
+        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
-
 
         // return
         method.MarkLabel(ret);
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.Pop();
+        method.LoadLocal(returnState);
         method.Return();
 
-        Func<long, ProjectedEvmState> del = method.CreateDelegate();
+        Func<long, ILEvmState> del = method.CreateDelegate();
         return del;
     }
 
-    private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operatin)
+    private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation)
     {
         il.StackLoadPrevious(currentSP, 1);
         il.Call(Word.GetUInt256);
         il.StackLoadPrevious(currentSP, 2);
         il.Call(Word.GetUInt256);
         // invoke op < on the uint256
-        il.Call(operatin, null);
+        il.Call(operation, null);
         // if true, push 1, else 0
         il.LoadConstant(0);
         il.CompareEqual();
@@ -424,19 +450,24 @@ internal class ILCompiler
         il.StackPush(currentSP);
     }
 
-    private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation, Action<Emit<T>, Label> customHandling = null)
+    private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation, Action<Emit<T>, Label> customHandling, params Local[] locals)
     {
         Label label = il.DefineLabel();
 
         il.StackLoadPrevious(currentSP, 1);
         il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[0]);
         il.StackLoadPrevious(currentSP, 2);
         il.Call(Word.GetUInt256);
+        il.StoreLocal(locals[1]);
 
         customHandling?.Invoke(il, label);
 
+
+        il.LoadLocalAddress(locals[0]);
+        il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(uint256R);
         il.Call(operation);
-        il.StoreLocal(uint256R);
         il.StackPop(currentSP, 2);
 
         il.MarkLabel(label);
@@ -471,10 +502,9 @@ internal class ILCompiler
                     break;
                 default:
                     costcurrentSP += op.Metadata?.GasCost ?? 0;
+                    costs[pc] = costcurrentSP;
                     break;
             }
-
-            pc += op.Metadata?.AdditionalBytes ?? 0;
         }
 
         if (costcurrentSP > 0)

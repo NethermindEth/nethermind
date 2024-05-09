@@ -6,7 +6,6 @@ using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core.Specs;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-using ProjectedEvmState = (EvmExceptionType, Nethermind.Evm.CodeAnalysis.IL.ILEvmState);
 /// <summary>
 /// Represents the IL-EVM information about the contract.
 /// </summary>
@@ -35,7 +34,7 @@ internal class IlInfo
     private IlInfo()
     {
         Chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
-        Segments = FrozenDictionary<ushort, Func<long, ProjectedEvmState>>.Empty;
+        Segments = FrozenDictionary<ushort, Func<long, ILEvmState>>.Empty;
     }
 
     public IlInfo WithChunks(FrozenDictionary<ushort, InstructionChunk> chunks)
@@ -44,13 +43,13 @@ internal class IlInfo
         return this;
     }
 
-    public IlInfo WithSegments(FrozenDictionary<ushort, Func<long, ProjectedEvmState>> segments)
+    public IlInfo WithSegments(FrozenDictionary<ushort, Func<long, ILEvmState>> segments)
     {
         Segments = segments;
         return this;
     }
 
-    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, Func<long, ProjectedEvmState>> segments)
+    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, Func<long, ILEvmState>> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
@@ -58,7 +57,7 @@ internal class IlInfo
 
     // assumes small number of ILed
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
-    public FrozenDictionary<ushort, Func<long, ProjectedEvmState>> Segments { get; set; }
+    public FrozenDictionary<ushort, Func<long, ILEvmState>> Segments { get; set; }
 
     public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
@@ -79,11 +78,11 @@ internal class IlInfo
                 }
             case ILMode.SubsegmentsCompiling:
                 {
-                    if (Segments.TryGetValue((ushort)programCounter, out Func<long, ProjectedEvmState> method) == false)
+                    if (Segments.TryGetValue((ushort)programCounter, out Func<long, ILEvmState> method) == false)
                     {
                         return false;
                     }
-                    var (exception, evmState) = method.Invoke(gasAvailable);
+                    var evmState = method.Invoke(gasAvailable);
                     // ToDo : Tidy up the exception handling
                     // ToDo : Add context switch, migrate stack from IL to EVM and map memory
                     // ToDo : Add context switch, prepare IL stack before executing the segment and map memory
