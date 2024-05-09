@@ -93,6 +93,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
 
     public long AccessForCodeOpCodes(Address caller)
     {
+        // _logger.Info($"AccessForCodeOpCodes: {caller}");
         var gas = AccessVersion(caller);
         gas += AccessCodeSize(caller);
         // _logger.Info($"AccessForCodeOpCodes: {caller.Bytes.ToHexString()} {gas}");
@@ -101,6 +102,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
 
     public long AccessForBalance(Address address, bool isWrite = false)
     {
+        // _logger.Info($"AccessForBalance: {address} {isWrite}");
         return AccessBalance(address, isWrite);
     }
 
@@ -119,7 +121,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     /// <returns></returns>
     public long AccessForStorage(Address address, UInt256 key, bool isWrite)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
+        // if (address.IsPrecompile(Osaka.Instance)) return 0;
         var gas = AccessKey(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), isWrite);
         // _logger.Info($"AccessStorage: {address.Bytes.ToHexString()} {key.ToBigEndian().ToHexString()} {isWrite} {gas}");
         return gas;
@@ -157,7 +159,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     /// <returns></returns>
     public long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
+        // if (address.IsPrecompile(Osaka.Instance)) return 0;
         Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
         // _logger.Info($"AccessCodeChunkKey: {EnumerableExtensions.ToString(key)}");
         var gas = AccessKey(key, isWrite);
@@ -193,6 +195,8 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
 
     public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist)
     {
+        if (inheritor.IsPrecompile(Osaka.Instance)) return 0;
+
         bool contractNotSameAsBeneficiary = contract != inheritor;
         long gas = 0;
         gas += AccessVersion(contract);
@@ -261,7 +265,7 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
 
     private long AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, bool isWrite = false)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
+        // if (address.IsPrecompile(Osaka.Instance)) return 0;
         return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), isWrite);
     }
 
