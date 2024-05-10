@@ -33,8 +33,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Verkle;
 public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
 {
 
-    public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(2000);
-    public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(3000);
+    public static TimeSpan LowerLatencyThreshold = TimeSpan.FromMilliseconds(5000);
+    public static TimeSpan UpperLatencyThreshold = TimeSpan.FromMilliseconds(10000);
 
     private readonly LatencyBasedRequestSizer _requestSizer = new(
         minRequestLimit: 50000,
@@ -154,6 +154,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
 
     public async Task<SubTreesAndProofs> GetSubTreeRange(SubTreeRange range, CancellationToken token)
     {
+        Logger.Info($"VerkleSync GetSubTreeRange: {range.StartingStem} {range.LimitStem} {range.RootHash} {range.BlockNumber}");
         SubTreeRangeMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
             SendRequest(new GetSubTreeRangeMessage()
             {
@@ -232,7 +233,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
         response.PathsWithSubTrees = data.Item1.ToArray();
         response.Proofs = data.Item2.EncodeRlp();
 
-        TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
+        // TestSubTreeRangeMessageEncoding(accountRange.RootHash, accountRange.StartingStem, response);
 
         Metrics.VerkleSubTreeRangeSent++;
         return response;

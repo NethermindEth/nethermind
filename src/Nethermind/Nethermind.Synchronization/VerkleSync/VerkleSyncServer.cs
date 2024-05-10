@@ -42,7 +42,7 @@ public class VerkleSyncServer
 
         VerkleTree tree = new(_store, _logManager);
         VerkleProof vProof = tree.CreateVerkleRangeProof(startingStem.Bytes, nodes[^1].Path.Bytes, out rootPoint, rootHash);
-        TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
+        // TestIsGeneratedProofValid(vProof, rootPoint, startingStem, nodes.ToArray());
         return (nodes, vProof);
     }
 
