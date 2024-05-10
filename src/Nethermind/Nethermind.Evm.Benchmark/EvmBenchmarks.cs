@@ -28,7 +28,7 @@ namespace Nethermind.Evm.Benchmark
         private ExecutionEnvironment _environment;
         private IVirtualMachine _virtualMachine;
         private BlockHeader _header = new BlockHeader(Keccak.Zero, Keccak.Zero, Address.Zero, UInt256.One, MainnetSpecProvider.IstanbulBlockNumber, Int64.MaxValue, 1UL, Bytes.Empty);
-        private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider();
+        private IBlockhashProvider _blockhashProvider = new TestBlockhashProvider(MainnetSpecProvider.Instance);
         private EvmState _evmState;
         private WorldState _stateProvider;
 
