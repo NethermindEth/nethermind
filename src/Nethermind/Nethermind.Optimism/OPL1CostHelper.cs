@@ -60,7 +60,7 @@ public class OPL1CostHelper : IL1CostHelper
             UInt256 l1BlobBaseFeeScalar = new(scalarDataAligned[(offset + 4)..(offset + 8)], true);
 
             return (UInt256)dataGas * (16 * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) /
-                   1_000_000;
+                   16_000_000;
         }
         else
         {
