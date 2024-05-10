@@ -34,6 +34,7 @@ namespace Nethermind.Evm;
 
 using System.Collections.Frozen;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 using Int256;
@@ -139,7 +140,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult Empty => new(Array.Empty<byte>(), null);
+        public static CallResult Empty => new(default, null);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -159,7 +160,7 @@ public class VirtualMachine : IVirtualMachine
             ExceptionType = exceptionType;
         }
 
-        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
             Output = output;
@@ -690,7 +691,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output.ToArray(), success, !success);
+            CallResult callResult = new(output, success, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -701,7 +702,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(Array.Empty<byte>(), false, true);
+            CallResult callResult = new(default, false, true);
             return callResult;
         }
     }
