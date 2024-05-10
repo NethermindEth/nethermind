@@ -121,7 +121,7 @@ namespace Nethermind.Synchronization
             ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
-            _nodeStorage = nodeStorage ?? throw new ArgumentNullException(nameof(nodeStorage));
+            _nodeStorage = nodeStorage!;// ?? throw new ArgumentNullException(nameof(nodeStorage));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
