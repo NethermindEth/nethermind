@@ -109,7 +109,7 @@ public class BlockStore : IBlockStore
     private void SaveToFile(Block block)
     {
         (string directory, string filename, int lockId) = GetBlockDirectoryAndPath(block.Number, _basePath);
-        RecyclableMemoryStream output = RecyclableStream.GetStream(filename);
+        using RecyclableMemoryStream output = RecyclableStream.GetStream(filename);
         using (RecyclableRlpStream newRlp = _blockDecoder.EncodeToNewRecyclableRlpStream(block, filename))
         {
             using SnappyStream compressor = new(output, CompressionMode.Compress, leaveOpen: true);
