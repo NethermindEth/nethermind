@@ -48,14 +48,6 @@ public class TestCaseGenerator
         _chainSpecPath = chainSpecPath;
         _testCase = testCase;
         _outputPath = outputPath;
-
-        _numberOfBlocksToProduce = _testCase switch
-        {
-            TestCase.Warmup => 1000,
-            TestCase.Transfers => 2,
-            TestCase.TxDataZero => 2,
-            _ => 3
-        };
     }
 
     public async Task Generate()
@@ -69,6 +61,16 @@ public class TestCaseGenerator
 
     private async Task GenerateTestCase(long blockGasConsumptionTarget)
     {
+        _numberOfBlocksToProduce = _testCase switch
+        {
+            TestCase.Warmup => 1000,
+            TestCase.Transfers => 2,
+            TestCase.TxDataZero => 2,
+            TestCase.SStoreManyAccountsConsecutiveKeysZeroValue => (int)(blockGasConsumptionTarget / 1_000_000),
+            TestCase.SStoreManyAccountsRandomKeysZeroValue => (int)(blockGasConsumptionTarget / 1_000_000),
+            _ => 3
+        };
+
         _txsPerBlock = _testCase switch
         {
             TestCase.Transfers => (int)blockGasConsumptionTarget / (int)GasCostOf.Transaction,
@@ -112,6 +114,24 @@ public class TestCaseGenerator
                     SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
                     break;
                 // cases with contract deployment:
+                case TestCase.SStoreManyAccountsRandomKeysZeroValue:
+                case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
+                    if (i == 0)
+                    {
+                        // in iteration 0 there is only withdrawal,
+                        SubmitTxs(chain.TxPool, privateKeys, previousBlock.Withdrawals, _testCase, blockGasConsumptionTarget);
+                    }
+                    else if (i == blockGasConsumptionTarget / 1_000_000 - 1)
+                    {
+                        // at last iteration, call contract
+                        CallContract(chain, privateKeys[previousBlock.Withdrawals.FirstOrDefault().ValidatorIndex - 1], blockGasConsumptionTarget);
+                    }
+                    else
+                    {
+                        // starting from in iteration 1, build the state
+                        SStoreWithState.DeployContract(_testCase, chain.TxPool, previousBlock.Number, privateKeys[15], blockGasConsumptionTarget);
+                    }
+                    break;
                 default:
                     if (i < 2)
                     {
@@ -130,7 +150,7 @@ public class TestCaseGenerator
             chain.PayloadPreparationService!.StartPreparingPayload(previousBlock.Header, payloadAttributes);
             Block block = chain.PayloadPreparationService!.GetPayload(payloadAttributes.GetPayloadId(previousBlock.Header)).Result!.CurrentBestBlock!;
 
-            Console.WriteLine($"testcase {blockGasConsumptionTarget} gasUsed: {block.GasUsed}");
+            Console.WriteLine($"block {block.Number} testcase {blockGasConsumptionTarget / 1_000_000}M gasUsed: {block.GasUsed}");
 
 
             ExecutionPayloadV3 executionPayload = new(block);
@@ -224,6 +244,16 @@ public class TestCaseGenerator
             case TestCase.SHA2From32Bytes:
             case TestCase.SHA2From128Bytes:
                 return Sha2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
+            case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
+            case TestCase.SStoreManyAccountsRandomKeysRandomValue:
+            case TestCase.SStoreManyAccountsRandomKeysZeroValue:
+                return SStore.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.SStoreOneAccountOneKeyConstantValue:
+            case TestCase.SStoreOneAccountOneKeyZeroValue:
+            case TestCase.SStoreOneAccountOneKeyRandomValue:
+            case TestCase.SStoreOneAccountOneKeyTwoValues:
+                return SStoreOneKey.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             default:
                 throw new ArgumentOutOfRangeException(nameof(testCase), testCase, null);
         }
