@@ -52,7 +52,8 @@ namespace Nethermind.Evm.CodeAnalysis
                     return bitmap;
                 }
             }
-            else if (previous is ManualResetEventSlim resetEvent)
+
+            if (previous is ManualResetEventSlim resetEvent)
             {
                 Thread thread = Thread.CurrentThread;
                 ThreadPriority priority = thread.Priority;
