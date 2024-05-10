@@ -126,9 +126,10 @@ public class GethStyleTracer : IGethStyleTracer
             _processor.Process(block, ProcessingOptions.Trace, blockTracer.WithCancellation(cancellationToken));
             return blockTracer.BuildResult().SingleOrDefault();
         }
-        finally
+        catch
         {
             blockTracer.TryDispose();
+            throw;
         }
     }
 
@@ -177,9 +178,10 @@ public class GethStyleTracer : IGethStyleTracer
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult().SingleOrDefault();
         }
-        finally
+        catch
         {
             tracer.TryDispose();
+            throw;
         }
     }
 
@@ -212,9 +214,10 @@ public class GethStyleTracer : IGethStyleTracer
             _processor.Process(block, ProcessingOptions.Trace, tracer.WithCancellation(cancellationToken));
             return tracer.BuildResult();
         }
-        finally
+        catch
         {
             tracer.TryDispose();
+            throw;
         }
     }
 

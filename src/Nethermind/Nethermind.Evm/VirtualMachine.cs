@@ -19,7 +19,6 @@ using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
@@ -35,6 +34,7 @@ namespace Nethermind.Evm;
 
 using System.Collections.Frozen;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 
 using Int256;
@@ -140,7 +140,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackOverflowException => new(EvmExceptionType.StackOverflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
-        public static CallResult Empty => new(Array.Empty<byte>(), null);
+        public static CallResult Empty => new(default, null);
 
         public CallResult(EvmState stateToExecute)
         {
@@ -160,7 +160,7 @@ public class VirtualMachine : IVirtualMachine
             ExceptionType = exceptionType;
         }
 
-        public CallResult(byte[] output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
+        public CallResult(ReadOnlyMemory<byte> output, bool? precompileSuccess, bool shouldRevert = false, EvmExceptionType exceptionType = EvmExceptionType.None)
         {
             StateToExecute = null;
             Output = output;
@@ -691,7 +691,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         try
         {
             (ReadOnlyMemory<byte> output, bool success) = precompile.Run(callData, spec);
-            CallResult callResult = new(output.ToArray(), success, !success);
+            CallResult callResult = new(output, success, !success);
             return callResult;
         }
         catch (DllNotFoundException exception)
@@ -702,7 +702,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         catch (Exception exception)
         {
             if (_logger.IsError) _logger.Error($"Precompiled contract ({precompile.GetType()}) execution exception", exception);
-            CallResult callResult = new(Array.Empty<byte>(), false, true);
+            CallResult callResult = new(default, false, true);
             return callResult;
         }
     }
@@ -810,6 +810,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         SkipInit(out StorageCell storageCell);
         object returnData;
         ZeroPaddedSpan slice;
+        bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
         while ((uint)programCounter < codeLength)
         {
@@ -817,6 +818,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             debugger?.TryWait(ref vmState, ref programCounter, ref gasAvailable, ref stack.Head);
 #endif
             Instruction instruction = (Instruction)code[programCounter];
+
+            if (isCancelable && _txTracer.IsCancelled)
+            {
+                ThrowOperationCanceledException();
+            }
 
             // Evaluated to constant at compile time and code elided if not tracing
             if (typeof(TTracingInstructions) == typeof(IsTracing))
@@ -1480,7 +1486,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
-                        Hash256 blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
+                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
@@ -2166,6 +2174,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         exceptionType = EvmExceptionType.AccessViolation;
     ReturnFailure:
         return GetFailureReturn<TTracingInstructions>(gasAvailable, exceptionType);
+
+        [DoesNotReturn]
+        static void ThrowOperationCanceledException() =>
+            throw new OperationCanceledException("Cancellation Requested");
     }
 
     [SkipLocalsInit]
