@@ -5,23 +5,18 @@ using Nethermind.DocGen;
 
 foreach (var arg in args)
 {
-    switch (arg.ToLower())
+    switch (arg)
     {
-        case "config":
+        case "--config":
             ConfigGenerator.Generate();
             break;
-        case "jsonrpc":
+        case "--dbsize":
+            DBSizeGenerator.Generate();
+            break;
+        case "--jsonrpc":
             JsonRpcGenerator.Generate();
             break;
-        case "metrics":
-            MetricsGenerator.Generate();
-            break;
-        case "dbsize":
-            DatabaseSizeGenerator.Generate();
-            break;
-        case "release":
-            ConfigGenerator.Generate();
-            JsonRpcGenerator.Generate();
+        case "--metrics":
             MetricsGenerator.Generate();
             break;
     }
