@@ -65,6 +65,7 @@ namespace Nethermind.Evm.CodeAnalysis
 
                 // Restore the priority of the thread.
                 thread.Priority = priority;
+                return _jumpDestinationBitmap;
             }
 
             // Must be the bitmap, and lost check->create benign data race
