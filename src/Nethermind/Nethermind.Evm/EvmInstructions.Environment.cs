@@ -15,7 +15,7 @@ using Nethermind.Evm.Precompiles;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPop(EvmState _, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionPop(EvmState _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
         stack.PopLimbo();
@@ -24,7 +24,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionChainId(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionChainId(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
 
@@ -37,7 +37,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBalance(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionBalance(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
         gasAvailable -= spec.GetBalanceCost();
@@ -54,7 +54,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeHash(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionExtCodeHash(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
         if (!spec.ExtCodeHashOpcodeEnabled) return EvmExceptionType.BadInstruction;
@@ -80,7 +80,7 @@ internal sealed partial class EvmInstructions
 
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionMLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -95,7 +95,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionMStore(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -110,7 +110,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionMStore8(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionMStore8(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -125,7 +125,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSelfBalance(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionSelfBalance(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
         if (!spec.SelfBalanceOpcodeEnabled) return EvmExceptionType.BadInstruction;
@@ -174,7 +174,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionEnvBytes<TOpEnv>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvBytes
     {
         gasAvailable -= TOpEnv.GasCost;
@@ -187,7 +187,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionEnvUInt256<TOpEnv>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionEnvUInt256<TOpEnv>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpEnv : struct, IOpEnvUInt256
     {
         if (typeof(TOpEnv) == typeof(OpBaseFee) && !vmState.Spec.BaseFeeEnabled) return EvmExceptionType.BadInstruction;

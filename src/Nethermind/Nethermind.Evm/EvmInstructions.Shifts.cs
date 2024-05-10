@@ -18,7 +18,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionShift<TOpShift>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionShift<TOpShift>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpShift : struct, IOpShift
     {
         if (!vmState.Spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
@@ -42,7 +42,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSar(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionSar(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!vmState.Spec.ShiftOpcodesEnabled) return EvmExceptionType.BadInstruction;
 

@@ -20,7 +20,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionCodeCopy<TOpCodeCopy>(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         where TOpCodeCopy : struct, IOpCodeCopy
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
@@ -55,7 +55,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExtCodeCopy(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionExtCodeCopy(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
         Address address = stack.PopAddress();

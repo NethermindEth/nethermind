@@ -12,7 +12,7 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionGas(ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionGas(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
 
@@ -25,7 +25,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlobHash(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionBlobHash(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         IReleaseSpec spec = vmState.Spec;
         if (!spec.IsEip4844Enabled) return EvmExceptionType.BadInstruction;
@@ -49,7 +49,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionBlobBaseFee(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionBlobBaseFee(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         ref readonly BlockExecutionContext blockContext = ref vmState.Env.TxExecutionContext.BlockExecutionContext;
         IReleaseSpec spec = vmState.Spec;

@@ -12,6 +12,23 @@ using Int256;
 internal sealed partial class EvmInstructions
 {
     [SkipLocalsInit]
+    public static EvmExceptionType InstructionProgramCounter(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.Base;
+        stack.PushUInt32(programCounter - 1);
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
+    public static EvmExceptionType InstructionJumpDest(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
+    {
+        gasAvailable -= GasCostOf.JumpDest;
+
+        return EvmExceptionType.None;
+    }
+
+    [SkipLocalsInit]
     public static EvmExceptionType InstructionJump(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Mid;

@@ -28,7 +28,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionPrevRandao(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionPrevRandao(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Base;
         BlockHeader header = vmState.Env.TxExecutionContext.BlockExecutionContext.Header;
@@ -85,11 +85,11 @@ internal sealed partial class EvmInstructions
         return EvmExceptionType.None;
     }
 
-    public static EvmExceptionType InstructionBadInstruction(EvmState _, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionBadInstruction(EvmState _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
         => EvmExceptionType.BadInstruction;
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionExp(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionExp(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Exp;
 
@@ -127,7 +127,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionByte(EvmState _, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionByte(EvmState _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
@@ -155,7 +155,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionSignExtend(EvmState _, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionSignExtend(EvmState _, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.Low;
 
@@ -185,7 +185,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionKeccak256(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionKeccak256(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         if (!stack.PopUInt256(out UInt256 a)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 b)) return EvmExceptionType.StackUnderflow;
@@ -200,7 +200,7 @@ internal sealed partial class EvmInstructions
     }
 
     [SkipLocalsInit]
-    public static EvmExceptionType InstructionCallDataLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable)
+    public static EvmExceptionType InstructionCallDataLoad(EvmState vmState, ref EvmStack stack, ref long gasAvailable, ref int programCounter)
     {
         gasAvailable -= GasCostOf.VeryLow;
 
