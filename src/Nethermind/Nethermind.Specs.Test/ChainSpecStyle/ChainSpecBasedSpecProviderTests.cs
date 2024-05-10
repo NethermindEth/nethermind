@@ -771,7 +771,6 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)20280L, r => { r.IsEip2028Enabled = true; });
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
-        TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
         TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });
