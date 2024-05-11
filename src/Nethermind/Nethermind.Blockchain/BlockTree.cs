@@ -1503,6 +1503,10 @@ namespace Nethermind.Blockchain
             if (_logger.IsTrace) _logger.Trace($"Calculated total difficulty for {header} is {header.TotalDifficulty}");
         }
 
+        public void OnBlocksProcessing(IReadOnlyList<Block> blocks) => BlocksProcessing?.Invoke(this, blocks);
+
+        public event EventHandler<IReadOnlyList<Block>>? BlocksProcessing;
+
         public event EventHandler<BlockReplacementEventArgs>? BlockAddedToMain;
 
         public event EventHandler<OnUpdateMainChainArgs>? OnUpdateMainChain;

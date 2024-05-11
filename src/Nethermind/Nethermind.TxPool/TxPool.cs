@@ -65,6 +65,9 @@ namespace Nethermind.TxPool
         private readonly ITimer? _timer;
         private Transaction[]? _transactionSnapshot;
         private Transaction[]? _blobTransactionSnapshot;
+        private bool _notAcceptingTxs;
+
+        public bool IsAcceptingTxs => !_notAcceptingTxs;
 
         /// <summary>
         /// This class stores all known pending transactions that can be used for block production
@@ -116,6 +119,7 @@ namespace Nethermind.TxPool
             if (_blobTransactions.Count > 0) _blobTransactions.UpdatePool(_accounts, _updateBucket);
 
             _headInfo.HeadChanged += OnHeadChange;
+            _headInfo.HeadProcessing += OnHeadProcessing;
 
             _preHashFilters = new IIncomingTxFilter[]
             {
@@ -178,6 +182,13 @@ namespace Nethermind.TxPool
 
         public int GetPendingBlobTransactionsCount() => _blobTransactions.Count;
 
+        private void OnHeadProcessing(object? sender, IReadOnlyList<Block> e)
+        {
+            _notAcceptingTxs = true;
+            _broadcaster.StopBroadcastingTxs();
+            if (_logger.IsDebug) _logger.Debug("TxPool Not accepting txs");
+        }
+
         private void OnHeadChange(object? sender, BlockReplacementEventArgs e)
         {
             try
@@ -209,6 +220,8 @@ namespace Nethermind.TxPool
                             ReAddReorganisedTransactions(args.PreviousBlock);
                             RemoveProcessedTransactions(args.Block);
                             UpdateBuckets();
+                            _notAcceptingTxs = false;
+                            if (_logger.IsDebug) _logger.Debug("TxPool Accepting txs");
                             _broadcaster.OnNewHead();
                             Metrics.TransactionCount = _transactions.Count;
                             Metrics.BlobTransactionCount = _blobTransactions.Count;
@@ -242,7 +255,7 @@ namespace Nethermind.TxPool
                         continue;
                     }
                     _hashCache.Delete(tx.Hash!);
-                    SubmitTx(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                    SubmitTxInternal(tx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                 }
 
                 if (_blobReorgsSupportEnabled
@@ -254,7 +267,7 @@ namespace Nethermind.TxPool
                         if (_logger.IsTrace) _logger.Trace($"Readded tx {blobTx.Hash} from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
                         _hashCache.Delete(blobTx.Hash!);
                         blobTx.SenderAddress ??= _ecdsa.RecoverAddress(blobTx);
-                        SubmitTx(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
+                        SubmitTxInternal(blobTx, isEip155Enabled ? TxHandlingOptions.None : TxHandlingOptions.PreEip155Signing);
                     }
                     if (_logger.IsDebug) _logger.Debug($"Readded txs from reorged block {previousBlock.Number} (hash {previousBlock.Hash}) to blob pool");
 
@@ -366,7 +379,19 @@ namespace Nethermind.TxPool
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
+            if (_notAcceptingTxs && (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+            {
+                // In block processing mode, we don't accept new transactions unless local
+                Metrics.PendingTransactionsDiscarded++;
+                // Isn't a busy response so we will just say already known
+                return AcceptTxResult.AlreadyKnown;
+            }
 
+            return SubmitTxInternal(tx, handlingOptions);
+        }
+
+        private AcceptTxResult SubmitTxInternal(Transaction tx, TxHandlingOptions handlingOptions)
+        {
             // assign a sequence number to transaction so we can order them by arrival times when
             // gas prices are exactly the same
             tx.PoolIndex = Interlocked.Increment(ref _txIndex);

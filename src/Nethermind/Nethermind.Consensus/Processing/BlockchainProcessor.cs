@@ -386,6 +386,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         ProcessingBranch processingBranch = PrepareProcessingBranch(suggestedBlock, options);
         PrepareBlocksToProcess(suggestedBlock, options, processingBranch);
+        _blockTree.OnBlocksProcessing(processingBranch.Blocks);
 
         _stopwatch.Restart();
         Block[]? processedBlocks = ProcessBranch(processingBranch, options, tracer, out error);

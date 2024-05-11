@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
@@ -34,6 +35,7 @@ namespace Nethermind.Blockchain
             HeadNumber = blockTree.BestKnownNumber;
 
             blockTree.BlockAddedToMain += OnHeadChanged;
+            blockTree.BlocksProcessing += OnHeadProcessing;
         }
 
         public IChainHeadSpecProvider SpecProvider { get; }
@@ -49,6 +51,7 @@ namespace Nethermind.Blockchain
         public UInt256 CurrentPricePerBlobGas { get; internal set; }
 
         public event EventHandler<BlockReplacementEventArgs>? HeadChanged;
+        public event EventHandler<IReadOnlyList<Block>>? HeadProcessing;
 
         private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
         {
@@ -61,5 +64,8 @@ namespace Nethermind.Blockchain
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
         }
+
+        private void OnHeadProcessing(object? sender, IReadOnlyList<Block> blocks)
+            => HeadProcessing?.Invoke(sender, blocks);
     }
 }
