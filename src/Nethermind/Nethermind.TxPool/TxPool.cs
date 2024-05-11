@@ -379,7 +379,9 @@ namespace Nethermind.TxPool
         public AcceptTxResult SubmitTx(Transaction tx, TxHandlingOptions handlingOptions)
         {
             Metrics.PendingTransactionsReceived++;
-            if (_notAcceptingTxs && (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0)
+            if (_notAcceptingTxs &&
+                (handlingOptions & TxHandlingOptions.PersistentBroadcast) == 0 &&
+                !tx.IsSystem())
             {
                 // In block processing mode, we don't accept new transactions unless local
                 Metrics.PendingTransactionsDiscarded++;
