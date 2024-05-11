@@ -79,6 +79,7 @@ public class Metrics
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
     private static long _contractsAnalysed;
+    [Description("Number of contracts' code analysed for jump destinations.")]
     public static long ContractsAnalysed => _contractsAnalysed;
     public static void IncrementContractsAnalysed() => Interlocked.Increment(ref _contractsAnalysed);
 
