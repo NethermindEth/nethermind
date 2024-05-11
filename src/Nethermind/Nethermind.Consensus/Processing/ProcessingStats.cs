@@ -39,6 +39,8 @@ namespace Nethermind.Consensus.Processing
         private long _processingMicroseconds;
         private long _lastTotalCreates;
         private long _lastReportMs;
+        private long _lastContractsAnalysed;
+        private long _lastCachedContractsUsed;
 
         public ProcessingStats(ILogger logger)
         {
@@ -51,7 +53,7 @@ namespace Nethermind.Consensus.Processing
 #endif
         }
 
-        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, int recoveryQueueSize, int blockQueueSize, long blockProcessingTimeInMicros)
+        public void UpdateStats(Block? block, IBlockTree blockTreeCtx, long blockProcessingTimeInMicros)
         {
             const string resetColor = "\u001b[37m";
             const string whiteText = "\u001b[97m";
@@ -85,8 +87,6 @@ namespace Nethermind.Consensus.Processing
             Metrics.LastDifficulty = block.Difficulty;
             Metrics.GasUsed = block.GasUsed;
             Metrics.GasLimit = block.GasLimit;
-            Metrics.RecoveryQueueSize = recoveryQueueSize;
-            Metrics.ProcessingQueueSize = blockQueueSize;
 
             Metrics.BlockchainHeight = block.Header.Number;
             Metrics.BestKnownBlockNumber = blockTreeCtx.BestKnownNumber;
@@ -117,6 +117,8 @@ namespace Nethermind.Consensus.Processing
                     long chunkCreates = Evm.Metrics.Creates - _lastTotalCreates;
                     long chunkSload = Evm.Metrics.SloadOpcode - _lastTotalSLoad;
                     long chunkSstore = Evm.Metrics.SstoreOpcode - _lastTotalSStore;
+                    long contractsAnalysed = Evm.Metrics.ContractsAnalysed - _lastContractsAnalysed;
+                    long cachedContractsUsed = Db.Metrics.CodeDbCache - _lastCachedContractsUsed;
                     double chunkMGas = Metrics.Mgas - _lastTotalMGas;
                     double mgasPerSecond = chunkMicroseconds == 0 ? -1 : chunkMGas / chunkMicroseconds * 1_000_000.0;
                     double totalMgasPerSecond = totalMicroseconds == 0 ? -1 : Metrics.Mgas / totalMicroseconds * 1_000_000.0;
@@ -201,7 +203,7 @@ namespace Nethermind.Consensus.Processing
                         _ => ""
                     };
                     _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}" : "           ")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
-                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,7:F2}{resetColor} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | recv  {recoveryQueueSize,7:N0} | proc   {blockQueueSize,6:N0}");
+                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,7:F2}{resetColor} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | scontracts{resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} analysed {contractsAnalysed,5:N0}");
                     // Only output the total throughput in debug mode
                     if (_logger.IsDebug)
                     {
@@ -223,6 +225,8 @@ namespace Nethermind.Consensus.Processing
 
                 }
 
+                _lastCachedContractsUsed = Db.Metrics.CodeDbCache;
+                _lastContractsAnalysed = Evm.Metrics.ContractsAnalysed;
                 _lastReportMs = reportMs;
                 _lastBlockNumber = Metrics.Blocks;
                 _lastTotalMGas = Metrics.Mgas;

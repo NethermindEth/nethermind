@@ -97,6 +97,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// </summary>
         private long[] CreateJumpDestinationBitmap()
         {
+            Metrics.IncrementContractsAnalysed();
             ReadOnlySpan<byte> code = MachineCode.Span;
             long[] jumpDestinationBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
             int programCounter = 0;
