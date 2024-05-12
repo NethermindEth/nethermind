@@ -1,27 +1,17 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
-using System.Collections.Frozen;
-using System.Collections.Generic;
-using System.Linq;
-using System.Reflection;
-using System.Threading;
-using System.Threading.Tasks;
-using DotNetty.Common.Utilities;
 using FluentAssertions;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Core.Test.Blockchain;
-using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
-using NSubstitute;
 using NUnit.Framework;
-using static Nethermind.Evm.VirtualMachine;
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Test.CodeAnalysis
 {

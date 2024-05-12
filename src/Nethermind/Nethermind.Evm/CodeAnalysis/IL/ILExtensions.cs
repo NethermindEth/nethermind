@@ -81,18 +81,25 @@ static class EmitExtensions
         il.StoreLocal(local);
     }
 
-    public static void WhileBranch<T>(this Emit<T> il, Local local, Action<Emit<T>> action)
+    public static void WhileBranch<T>(this Emit<T> il, Local cond, Action<Emit<T>, Local> action)
     {
         var start = il.DefineLabel();
         var end = il.DefineLabel();
 
+        // start of the loop
         il.MarkLabel(start);
-        il.LoadLocal(local);
+
+        // if cond
+        il.LoadLocal(cond);
         il.BranchIfFalse(end);
 
-        action(il);
+        // emit body of loop
+        action(il, cond);
 
+        // jump to start of the loop
         il.Branch(start);
+
+        // end of the loop
         il.MarkLabel(end);
     }
 
@@ -101,24 +108,34 @@ static class EmitExtensions
         var start = il.DefineLabel();
         var end = il.DefineLabel();
 
-        // declare indexer
+        // declare i
         var i = il.DeclareLocal<int>();
+
+        // we initialize i to 0
         il.LoadConstant(0);
         il.StoreLocal(i);
 
+        // start of the loop
         il.MarkLabel(start);
+
+        // i < count
         il.LoadLocal(i);
         il.LoadLocal(count);
         il.BranchIfGreater(end);
 
+        // emit body of loop 
         action(il, i);
 
+        // i++
         il.LoadLocal(i);
         il.LoadConstant(1);
         il.Add();
         il.StoreLocal(i);
 
+        // jump to start of the loop
         il.Branch(start);
+
+        // end of the loop
         il.MarkLabel(end);
     }
 

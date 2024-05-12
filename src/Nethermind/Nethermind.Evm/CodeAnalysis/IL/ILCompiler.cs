@@ -76,32 +76,45 @@ internal class ILCompiler
 
             // get pc gas cost
             method.LoadConstant(gasCost[pc]);
+
+            // subtract the gas cost
             method.Subtract();
+
+            // check if gas is available
             method.Duplicate();
             method.LoadConstant(0);
             method.StoreLocal(gasAvailable);
             method.Convert<uint>();
+
+            // if gas is not available, branch to out of gas
             method.BranchIfLess(outOfGas);
 
-
+            // else emit 
             switch (op.Operation)
             {
                 case Instruction.JUMPDEST:
+                    // mark the jump destination
                     jumpDestinations[pc] = method.DefineLabel();
                     method.MarkLabel(jumpDestinations[pc]);
                     break;
                 case Instruction.JUMP:
+                    // we jump into the jump table
                     method.Branch(jumpTable);
                     break;
                 case Instruction.JUMPI:
+                    // consume the jump condition
                     Label noJump = method.DefineLabel();
                     method.StackLoadPrevious(currentSP, 2);
                     method.Call(Word.GetIsZero, null);
+
+                    // if the jump condition is false, we do not jump
                     method.BranchIfTrue(noJump);
 
                     // load the jump address
                     method.LoadConstant(1);
                     method.StoreLocal(consumeJumpCondition);
+
+                    // we jump into the jump table
                     method.Branch(jumpTable);
 
                     method.MarkLabel(noJump);
@@ -139,17 +152,25 @@ internal class ILCompiler
                 case Instruction.PUSH30:
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
+                    // we create a span of 32 bytes, and we copy the bytes from the arguments to the span
                     int count = (int)op.Operation - (int)Instruction.PUSH0;
                     ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
+
+                    // we load the currentSP
                     method.LoadLocal(currentSP);
                     method.InitializeObject(typeof(Word));
                     method.LoadLocal(currentSP);
 
+                    // we load the span of bytes
                     method.LoadArray(bytes.ToArray());
                     method.StoreLocal(localArr);
+
+                    // we call UInt256 constructor taking a span of bytes and a bool
                     method.LoadLocalAddress(localArr);
                     method.LoadConstant(0);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
+
+                    // we store the UInt256 in the currentSP
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
@@ -167,11 +188,11 @@ internal class ILCompiler
 
                 case Instruction.MOD:
                     EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel) =>
+                        (il, postInstructionLabel, locals) =>
                         {
                             Label label = il.DefineLabel();
 
-                            il.Duplicate();
+                            il.LoadLocal(locals[1]);
                             il.LoadConstant(0);
                             il.CompareEqual();
 
@@ -186,11 +207,11 @@ internal class ILCompiler
 
                 case Instruction.DIV:
                     EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Divide), BindingFlags.Public | BindingFlags.Static)!,
-                        (il, postInstructionLabel) =>
+                        (il, postInstructionLabel, locals) =>
                         {
                             Label label = il.DefineLabel();
 
-                            il.Duplicate();
+                            il.LoadLocal(locals[1]);
                             il.LoadConstant(0);
                             il.CompareEqual();
 
@@ -216,9 +237,16 @@ internal class ILCompiler
                     EmitComparaisonUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256), typeof(UInt256) }));
                     break;
                 case Instruction.ISZERO:
+                    // we load the currentSP
                     method.StackLoadPrevious(currentSP, 1);
                     method.StackPop(currentSP, 1);
+
+                    // we call the IsZero method on the UInt256
                     method.Call(Word.GetIsZero);
+
+                    // we convert the result to a Uint256 and store it in the currentSP
+                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
+                    method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
                 case Instruction.CODESIZE:
@@ -293,6 +321,7 @@ internal class ILCompiler
 
         // prepare ILEvmState
 
+        // we get stack size
         method.LoadLocal(currentSP);
         method.LoadLocal(stack);
         method.Subtract();
@@ -305,6 +334,8 @@ internal class ILCompiler
         method.LoadLocal(returnState);
         method.LoadLocal(uint32A);
         method.NewArray<UInt256>();
+
+        // we iterate in IL over the stack and store the values
         method.ForBranch(uint32A, (il, i) =>
         {
             il.Duplicate();
@@ -328,28 +359,33 @@ internal class ILCompiler
         method.LoadConstant(0);
         method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.ProgramCounter)));
 
-
+        // set exception
         method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.None);
         method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
 
-
+        // go to return
         method.Branch(ret);
 
+
+        // jump table
         method.MarkLabel(jumpTable);
         method.StackPop(currentSP);
 
         // emit the jump table
-        // if (jumpDest > uint.MaxValue)
-        // ULong3 | Ulong2 | Ulong1 | Uint1 | Ushort1
+
+        // load the jump destination
         method.LoadLocal(currentSP);
         method.Call(Word.GetUInt256);
         method.StoreLocal(uint256A);
+
+        // if (jumpDest > uint.MaxValue)
         method.LoadLocalAddress(uint256B);
         method.LoadConstant(uint.MaxValue);
         method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
-
+        // goto invalid address
         method.BranchIfTrue(invalidAddress);
+        // else
 
         const int jumpFanOutLog = 7; // 128
         const int bitMask = (1 << jumpFanOutLog) - 1;
@@ -359,6 +395,7 @@ internal class ILCompiler
             jumps[i] = method.DefineLabel();
         }
 
+        // we get first 32 bits of the jump destination since it is less than int.MaxValue
         method.Load(currentSP, Word.Int0Field);
         method.Call(typeof(BinaryPrimitives).GetMethod(nameof(BinaryPrimitives.ReverseEndianness), BindingFlags.Public | BindingFlags.Static, new[] { typeof(uint) }), null);
         method.StoreLocal(jmpDestination);
@@ -367,15 +404,15 @@ internal class ILCompiler
         method.LoadConstant(bitMask);
         method.And();
 
+        // switch on the first 7 bits
         method.Switch(jumps);
-        int[] destinations = jumpDestinations.Keys.ToArray();
 
         for (int i = 0; i < jumpFanOutLog; i++)
         {
             method.MarkLabel(jumps[i]);
 
             // for each destination matching the bit mask emit check for the equality
-            foreach (int dest in destinations.Where(dest => (dest & bitMask) == i))
+            foreach (int dest in jumpDestinations.Keys.Where(dest => (dest & bitMask) == i))
             {
                 method.LoadLocal(jmpDestination);
                 method.LoadConstant(dest);
@@ -402,23 +439,6 @@ internal class ILCompiler
 
         // return
         method.MarkLabel(ret);
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
-        method.Pop();
         method.LoadLocal(returnState);
         method.Return();
 
@@ -428,15 +448,14 @@ internal class ILCompiler
 
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation)
     {
+        // we the two uint256 from the stack
         il.StackLoadPrevious(currentSP, 1);
         il.Call(Word.GetUInt256);
         il.StackLoadPrevious(currentSP, 2);
         il.Call(Word.GetUInt256);
-        // invoke op < on the uint256
+
+        // invoke op  on the uint256
         il.Call(operation, null);
-        // if true, push 1, else 0
-        il.LoadConstant(0);
-        il.CompareEqual();
 
         // convert to conv_i
         il.Convert<int>();
@@ -444,16 +463,18 @@ internal class ILCompiler
         il.StoreLocal(uint256R);
         il.StackPop(currentSP, 2);
 
+        // push the result to the stack
         il.LoadLocal(currentSP);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
         il.StackPush(currentSP);
     }
 
-    private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation, Action<Emit<T>, Label> customHandling, params Local[] locals)
+    private static void EmitBinaryUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation, Action<Emit<T>, Label, Local[]> customHandling, params Local[] locals)
     {
         Label label = il.DefineLabel();
 
+        // we the two uint256 from the stack
         il.StackLoadPrevious(currentSP, 1);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[0]);
@@ -461,16 +482,20 @@ internal class ILCompiler
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
 
-        customHandling?.Invoke(il, label);
+        // incase of custom handling, we branch to the label
+        customHandling?.Invoke(il, label, locals);
 
-
+        // invoke op  on the uint256
         il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(locals[1]);
         il.LoadLocalAddress(uint256R);
         il.Call(operation);
         il.StackPop(currentSP, 2);
 
+        // skip the main handling
         il.MarkLabel(label);
+
+        // push the result to the stack
         il.LoadLocal(currentSP);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
