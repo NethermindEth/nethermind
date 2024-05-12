@@ -202,8 +202,22 @@ namespace Nethermind.Consensus.Processing
                         > 75 => whiteText,
                         _ => ""
                     };
+
+                    var recoveryQueue = Metrics.RecoveryQueueSize;
+                    var processingQueue = Metrics.ProcessingQueueSize;
+
+                    string extraStats;
+                    if (recoveryQueue > 0 || processingQueue > 0)
+                    {
+                        extraStats = $"recover {recoveryQueue,5:N0} | process {processingQueue,5:N0}";
+                    }
+                    else
+                    {
+                        extraStats = $"scontracts{resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} analysed {contractsAnalysed,5:N0}";
+                    }
+
                     _logger.Info($"- Block{(chunkBlocks > 1 ? $"s {chunkBlocks,-9:N0}" : "           ")}{(chunkBlocks == 1 ? mgasColor : "")} {chunkMGas,7:F2}{resetColor} MGas   | {chunkTx,6:N0}    txs |  calls {callsColor}{chunkCalls,6:N0}{resetColor} {darkGreyText}({chunkEmptyCalls,3:N0}){resetColor} | sload {chunkSload,7:N0} | sstore {sstoreColor}{chunkSstore,6:N0}{resetColor} | create {createsColor}{chunkCreates,3:N0}{resetColor}{(currentSelfDestructs - _lastSelfDestructs > 0 ? $"{darkGreyText}({-(currentSelfDestructs - _lastSelfDestructs),3:N0}){resetColor}" : "")}");
-                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,7:F2}{resetColor} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | scontracts{resetColor} from cache {cachedContractsUsed,7:N0} |{resetColor} analysed {contractsAnalysed,5:N0}");
+                    _logger.Info($"- Block throughput {mgasPerSecondColor}{mgasPerSecond,7:F2}{resetColor} MGas/s | {txps,9:F2} t/s |       {bps,7:F2} Blk/s | {extraStats}");
                     // Only output the total throughput in debug mode
                     if (_logger.IsDebug)
                     {
