@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Int256;
 using System;
 using System.Buffers.Binary;
@@ -45,6 +46,28 @@ internal struct Word
     public ulong Ulong3;
 
     public bool IsZero => (Ulong0 | Ulong1 | Ulong2 | Ulong3) == 0;
+
+    public unsafe Address Address
+    {
+        get
+        {
+            byte[] buffer = new byte[20];
+            for (int i = 0; i < 20; i++)
+            {
+                buffer[i] = _buffer[i];
+            }
+
+            return new Address(buffer);
+        }
+        set
+        {
+            byte[] buffer = value.Bytes;
+            for (int i = 0; i < 20; i++)
+            {
+                _buffer[i] = buffer[i];
+            }
+        }
+    }
 
     public UInt256 UInt256
     {
@@ -100,4 +123,7 @@ internal struct Word
 
     public static readonly MethodInfo GetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.GetMethod;
     public static readonly MethodInfo SetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.SetMethod;
+
+    public static readonly MethodInfo GetAddress = typeof(Word).GetProperty(nameof(Address))!.GetMethod;
+    public static readonly MethodInfo SetAddress = typeof(Word).GetProperty(nameof(Address))!.SetMethod;
 }

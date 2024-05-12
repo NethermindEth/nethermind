@@ -15,6 +15,10 @@ namespace Nethermind.Evm.IL;
 /// </summary>
 static class EmitExtensions
 {
+    public static FieldInfo GetFieldInfo<T>(string name)
+    {
+        return typeof(T).GetField(name);
+    }
     public static void Load<T>(this Emit<T> il, Local local, FieldInfo wordField)
     {
         if (local.LocalType != typeof(Word*))

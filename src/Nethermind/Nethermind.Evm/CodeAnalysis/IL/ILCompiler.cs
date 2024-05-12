@@ -14,25 +14,29 @@ using System.Reflection.Emit;
 using System.Text;
 using System.Threading.Tasks;
 using Label = Sigil.Label;
+using static Nethermind.Evm.IL.EmitExtensions;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public static Func<long, ILEvmState> CompileSegment(string segmentName, OpcodeInfo[] code)
+    public static Func<ILEvmState, ILEvmState> CompileSegment(string segmentName, OpcodeInfo[] code)
     {
-        Emit<Func<long, ILEvmState>> method = Emit<Func<long, ILEvmState>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
+        Emit<Func<ILEvmState, ILEvmState>> method = Emit<Func<ILEvmState, ILEvmState>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
-        using Local address = method.DeclareLocal(typeof(Address));
         using Local consumeJumpCondition = method.DeclareLocal(typeof(int));
+
+        using Local address = method.DeclareLocal(typeof(Address));
         using Local uint256A = method.DeclareLocal(typeof(UInt256));
         using Local uint256B = method.DeclareLocal(typeof(UInt256));
         using Local uint256C = method.DeclareLocal(typeof(UInt256));
         using Local uint256R = method.DeclareLocal(typeof(UInt256));
         using Local localArr = method.DeclareLocal(typeof(ReadOnlySpan<byte>));
-        using Local returnState = method.DeclareLocal(typeof(ILEvmState));
-        using Local gasAvailable = method.DeclareLocal(typeof(int));
         using Local uint32A = method.DeclareLocal(typeof(uint));
+
+        using Local gasAvailable = method.DeclareLocal(typeof(int));
+        using Local programCounter = method.DeclareLocal(typeof(ushort));
+        using Local returnState = method.DeclareLocal(typeof(ILEvmState));
 
         using Local stack = method.DeclareLocal(typeof(Word*));
         using Local currentSP = method.DeclareLocal(typeof(Word*));
@@ -51,11 +55,17 @@ internal class ILCompiler
         method.LoadLocal(stack);
         method.StoreLocal(currentSP); // copy to the currentSP
 
-        // gas
+        // set gas to local
         method.LoadArgument(0);
+        method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.GasAvailable)));
         method.Convert<int>();
         method.StoreLocal(gasAvailable);
         Label outOfGas = method.DefineLabel("OutOfGas");
+
+        // set pc to local
+        method.LoadArgument(0);
+        method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.ProgramCounter)));
+        method.StoreLocal(programCounter);
 
         Label ret = method.DefineLabel("Return"); // the label just before return
         Label invalidAddress = method.DefineLabel("InvalidAddress"); // invalid jump address
@@ -70,6 +80,10 @@ internal class ILCompiler
         for (int pc = 0; pc < code.Length; pc++)
         {
             OpcodeInfo op = code[pc];
+
+            // set pc
+            method.LoadConstant(op.ProgramCounter);
+            method.StoreLocal(programCounter);
 
             // load gasAvailable
             method.LoadLocal(gasAvailable);
@@ -249,12 +263,6 @@ internal class ILCompiler
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
-                case Instruction.CODESIZE:
-                    method.LoadConstant(code.Length);
-                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
-                    method.Call(Word.SetUInt256);
-                    method.StackPush(currentSP);
-                    break;
                 case Instruction.POP:
                     method.StackPop(currentSP);
                     break;
@@ -314,6 +322,72 @@ internal class ILCompiler
                     method.LoadObject(typeof(Word));
                     method.StoreObject(typeof(Word));
                     break;
+
+                // Note(Ayman): following opcode need double checking
+                // is pushing to stack happening correctly
+                case Instruction.CODESIZE:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadConstant(code.Length);
+                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.PC:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadLocal(programCounter);
+                    method.StoreField(GetFieldInfo<Word>(nameof(Word.UInt0)));
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.COINBASE:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
+                    method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary)));
+                    method.LoadObject(typeof(Address));
+                    method.StoreLocal(address);
+                    method.LoadLocal(address);
+                    method.Call(Word.SetAddress);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.TIMESTAMP:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
+                    method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.Timestamp)));
+                    method.LoadObject(typeof(UInt256));
+                    method.StoreLocal(uint256A);
+                    method.LoadLocal(uint256A);
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.NUMBER:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
+                    method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.Number)));
+                    method.LoadObject(typeof(UInt256));
+                    method.StoreLocal(uint256A);
+                    method.LoadLocal(uint256A);
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.GASLIMIT:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
+                    method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.GasLimit)));
+                    method.LoadObject(typeof(UInt256));
+                    method.StoreLocal(uint256A);
+                    method.LoadLocal(uint256A);
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
                 default:
                     throw new NotSupportedException();
             }
@@ -347,22 +421,28 @@ internal class ILCompiler
 
             il.StackPop(currentSP);
         });
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.Stack)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Stack)));
+
+        // set header
+        method.LoadLocal(returnState);
+        method.LoadArgument(0);
+        method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
 
         // set gas available
         method.LoadLocal(returnState);
         method.LoadLocal(gasAvailable);
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.GasAvailable)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.GasAvailable)));
 
         // set program counter
         method.LoadLocal(returnState);
-        method.LoadConstant(0);
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.ProgramCounter)));
+        method.LoadLocal(programCounter);
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.ProgramCounter)));
 
         // set exception
         method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.None);
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
 
         // go to return
         method.Branch(ret);
@@ -427,14 +507,14 @@ internal class ILCompiler
         method.MarkLabel(outOfGas);
         method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.OutOfGas);
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
 
         // invalid address return
         method.MarkLabel(invalidAddress);
         method.LoadLocal(returnState);
         method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
-        method.StoreField(ILEvmState.GetFieldInfo(nameof(ILEvmState.EvmException)));
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
 
         // return
@@ -442,7 +522,7 @@ internal class ILCompiler
         method.LoadLocal(returnState);
         method.Return();
 
-        Func<long, ILEvmState> del = method.CreateDelegate();
+        Func<ILEvmState, ILEvmState> del = method.CreateDelegate();
         return del;
     }
 
