@@ -543,6 +543,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
 
             cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo.AnalyseInBackgroundIfRequired();
+
             CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
