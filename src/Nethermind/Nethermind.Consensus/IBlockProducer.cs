@@ -29,7 +29,7 @@ public interface IBlockProducerRunner
     event EventHandler<BlockEventArgs> BlockProduced;
 }
 
-public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlockTree blockTree, IBlockProducer blockProducer): IBlockProducerRunner
+public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlockTree blockTree, IBlockProducer blockProducer) : IBlockProducerRunner
 {
     private bool _isRunning;
     private CancellationTokenSource? _producerCancellationToken;

@@ -162,7 +162,7 @@ namespace Nethermind.Consensus.Clique
                 _nethermindApi.Timestamper,
                 _nethermindApi.CryptoRandom,
                 _snapshotManager,
-                (CliqueBlockProducer) _nethermindApi.BlockProducer!,
+                (CliqueBlockProducer)_nethermindApi.BlockProducer!,
                 _cliqueConfig,
                 _nethermindApi.LogManager);
             _nethermindApi.DisposeStack.Push(_blockProducerRunner);
