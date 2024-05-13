@@ -16,7 +16,6 @@ using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Trie;
 using Metrics = Nethermind.Blockchain.Metrics;
 
 namespace Nethermind.Consensus.Producers
@@ -36,7 +35,6 @@ namespace Nethermind.Consensus.Producers
         private IBlockchainProcessor Processor { get; }
         protected IBlockTree BlockTree { get; }
         private ITimestamper Timestamper { get; }
-        public event EventHandler<BlockEventArgs>? BlockProduced;
 
         private ISealer Sealer { get; }
         private IWorldState StateProvider { get; }
@@ -44,13 +42,8 @@ namespace Nethermind.Consensus.Producers
         private readonly IDifficultyCalculator _difficultyCalculator;
         protected readonly ISpecProvider _specProvider;
         private readonly ITxSource _txSource;
-        private readonly IBlockProductionTrigger _trigger;
-        private bool _isRunning;
-        protected readonly SemaphoreSlim _producingBlockLock = new(1);
-        private CancellationTokenSource? _producerCancellationToken;
-
-        private DateTime _lastProducedBlockDateTime;
         protected const int BlockProductionTimeout = 2000;
+        protected readonly SemaphoreSlim _producingBlockLock = new(1);
         protected ILogger Logger { get; }
         protected readonly IBlocksConfig _blocksConfig;
 
@@ -59,7 +52,6 @@ namespace Nethermind.Consensus.Producers
             IBlockchainProcessor? processor,
             ISealer? sealer,
             IBlockTree? blockTree,
-            IBlockProductionTrigger? trigger,
             IWorldState? stateProvider,
             IGasLimitCalculator? gasLimitCalculator,
             ITimestamper? timestamper,
@@ -76,59 +68,20 @@ namespace Nethermind.Consensus.Producers
             _gasLimitCalculator = gasLimitCalculator ?? throw new ArgumentNullException(nameof(gasLimitCalculator));
             Timestamper = timestamper ?? throw new ArgumentNullException(nameof(timestamper));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
             _difficultyCalculator = difficultyCalculator ?? throw new ArgumentNullException(nameof(difficultyCalculator));
             Logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
-        private void OnTriggerBlockProduction(object? sender, BlockProductionEventArgs e)
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? token = null, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
         {
-            BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
-            e.BlockProductionTask = TryProduceAndAnnounceNewBlock(e.CancellationToken, parent, e.BlockTracer, e.PayloadAttributes);
-        }
-
-        public virtual Task Start()
-        {
-            _producerCancellationToken = new CancellationTokenSource();
-            _isRunning = true;
-            _trigger.TriggerBlockProduction += OnTriggerBlockProduction;
-            _lastProducedBlockDateTime = DateTime.UtcNow;
-            return Task.CompletedTask;
-        }
-
-        public virtual Task StopAsync()
-        {
-            _producerCancellationToken?.Cancel();
-            _isRunning = false;
-            _trigger.TriggerBlockProduction -= OnTriggerBlockProduction;
-            _producerCancellationToken?.Dispose();
-            return Task.CompletedTask;
-        }
-
-        protected virtual bool IsRunning() => _isRunning;
-
-        public bool IsProducingBlocks(ulong? maxProducingInterval)
-        {
-            if (Logger.IsTrace) Logger.Trace($"Checking IsProducingBlocks: maxProducingInterval {maxProducingInterval}, _lastProducedBlock {_lastProducedBlockDateTime}, IsRunning() {IsRunning()}");
-            return IsRunning() && (maxProducingInterval is null || _lastProducedBlockDateTime.AddSeconds(maxProducingInterval.Value) > DateTime.UtcNow);
-        }
-
-        private async Task<Block?> TryProduceAndAnnounceNewBlock(CancellationToken token, BlockHeader? parentHeader, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
-        {
-            using CancellationTokenSource tokenSource = CancellationTokenSource.CreateLinkedTokenSource(token, _producerCancellationToken!.Token);
-            token = tokenSource.Token;
-
+            token ??= default;
             Block? block = null;
-            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token))
+            if (await _producingBlockLock.WaitAsync(BlockProductionTimeout, token.Value))
             {
                 try
                 {
-                    block = await TryProduceNewBlock(token, parentHeader, blockTracer, payloadAttributes);
-                    if (block is not null)
-                    {
-                        BlockProduced?.Invoke(this, new BlockEventArgs(block));
-                    }
+                    block = await TryProduceNewBlock(token.Value, parentHeader, blockTracer, payloadAttributes);
                 }
                 catch (Exception e) when (!(e is TaskCanceledException))
                 {
@@ -196,7 +149,6 @@ namespace Nethermind.Consensus.Producers
                                     if (Logger.IsInfo)
                                         Logger.Info($"Produced block {t.Result.ToString(Block.Format.HashNumberDiffAndTx)}");
                                     Metrics.BlocksSealed++;
-                                    _lastProducedBlockDateTime = DateTime.UtcNow;
                                     return t.Result;
                                 }
                                 else

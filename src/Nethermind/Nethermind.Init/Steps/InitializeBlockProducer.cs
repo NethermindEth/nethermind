@@ -29,6 +29,7 @@ namespace Nethermind.Init.Steps
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
+                _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
             }
         }
 
@@ -59,7 +60,7 @@ namespace Nethermind.Init.Steps
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 
-                return await blockProducerFactory.InitBlockProducer(consensusPlugin.DefaultBlockProductionTrigger);
+                return await blockProducerFactory.InitBlockProducer();
             }
             else
             {
@@ -71,9 +72,9 @@ namespace Nethermind.Init.Steps
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
         {
-            public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource = null)
+            public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
             {
-                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, blockProductionTrigger, additionalTxSource);
+                return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, additionalTxSource);
             }
         }
     }

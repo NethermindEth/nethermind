@@ -25,5 +25,7 @@ namespace Nethermind.Api.Extensions
 
         INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+
+        IBlockProducerRunner CreateBlockProducerRunner();
     }
 }

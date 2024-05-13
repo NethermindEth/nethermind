@@ -63,16 +63,24 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)
             {
                 StartBlockProducerAuRa blockProducerStarter = new(_nethermindApi);
                 DefaultBlockProductionTrigger ??= blockProducerStarter.CreateTrigger();
-                return blockProducerStarter.BuildProducer(blockProductionTrigger ?? DefaultBlockProductionTrigger, additionalTxSource);
+                return blockProducerStarter.BuildProducer(additionalTxSource);
             }
 
             return Task.FromResult<IBlockProducer>(null);
+        }
+
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            return new StandardBlockProducerRunner(
+                DefaultBlockProductionTrigger,
+                _nethermindApi.BlockTree,
+                _nethermindApi.BlockProducer!);
         }
 
         public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }

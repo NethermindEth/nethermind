@@ -37,7 +37,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
@@ -98,7 +98,6 @@ namespace Nethermind.Consensus.Ethash
                 producerChainProcessor,
                 producerEnv.StateProvider,
                 getFromApi.BlockTree,
-                blockProductionTrigger ?? DefaultBlockProductionTrigger,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
                 getFromApi.Config<IBlocksConfig>(),
@@ -109,6 +108,13 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
         public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            return new StandardBlockProducerRunner(
+                DefaultBlockProductionTrigger,
+                _nethermindApi.BlockTree,
+                _nethermindApi.BlockProducer!);
+        }
 
         public Task InitNetworkProtocol()
         {

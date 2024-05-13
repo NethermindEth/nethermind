@@ -109,23 +109,21 @@ namespace Nethermind.Mev.Test
                         new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
                 };
 
-                PostMergeBlockProducer CreatePostMergeBlockProducer(IBlockProductionTrigger blockProductionTrigger,
-                    ITxSource? txSource = null)
+                PostMergeBlockProducer CreatePostMergeBlockProducer(ITxSource? txSource = null)
                 {
                     BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create(txSource);
                     return new PostMergeBlockProducerFactory(SpecProvider, SealEngine, Timestamper, blocksConfig,
-                        LogManager).Create(
-                        blockProducerEnv, blockProductionTrigger, txSource);
+                        LogManager).Create(blockProducerEnv, txSource);
                 }
 
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0,
                     ITxSource? additionalTxSource = null)
                 {
                     // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
-                    bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
+                    bool BundleLimitTriggerCondition(BlockHeader parentHeader)
                     {
                         // TODO: why do we need this parent? later we use only the current block number
-                        BlockHeader? parent = BlockTree.GetProducedBlockParent(e.ParentHeader);
+                        BlockHeader? parent = BlockTree.GetProducedBlockParent(parentHeader);
                         if (parent is not null)
                         {
                             // ToDo resolved conflict parent.Timestamp?
@@ -136,15 +134,15 @@ namespace Nethermind.Mev.Test
                         return false;
                     }
 
-                    IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
-                    IBlockProductionTrigger trigger = manualTrigger;
-                    if (bundleLimit != 0)
+                    static bool AlwaysOk(BlockHeader parentHeader)
                     {
-                        trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
+                        return true;
                     }
 
-                    IBlockProducer producer = CreatePostMergeBlockProducer(trigger, additionalTxSource);
-                    return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
+                    Func<BlockHeader, bool> condition = bundleLimit == 0 ? AlwaysOk : BundleLimitTriggerCondition;
+
+                    IBlockProducer producer = CreatePostMergeBlockProducer(additionalTxSource);
+                    return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
                 }
 
                 int megabundleProducerCount = _relayAddresses.Length != 0 ? 1 : 0;
@@ -172,9 +170,15 @@ namespace Nethermind.Mev.Test
                     blockProducers.Add(bundleProducer);
                 }
 
-                MevBlockProducer blockProducer = new MevBlockProducer(BlockProductionTrigger, LogManager, blockProducers.ToArray());
-                blockProducer.BlockProduced += OnBlockProduced;
+                MevBlockProducer blockProducer = new MevBlockProducer(LogManager, blockProducers.ToArray());
                 return blockProducer;
+            }
+
+            protected override IBlockProducerRunner CreateBlockProducerRunner()
+            {
+                IBlockProducerRunner baseRunner = base.CreateBlockProducerRunner();
+                baseRunner.BlockProduced += OnBlockProduced;
+                return baseRunner;
             }
 
             private void OnBlockProduced(object? sender, BlockEventArgs e)

@@ -3,7 +3,6 @@
 
 using System;
 using System.Threading.Tasks;
-using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
@@ -22,7 +21,7 @@ namespace Nethermind.Merge.Plugin
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
 
-        public virtual async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource)
+        public virtual async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
         {
             if (MergeEnabled)
             {
@@ -45,7 +44,7 @@ namespace Nethermind.Merge.Plugin
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
-                    ? await baseBlockProducerFactory.InitBlockProducer(blockProductionTrigger, txSource)
+                    ? await baseBlockProducerFactory.InitBlockProducer(txSource)
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
                 _blockProductionTrigger = new BuildBlocksWhenRequested();
@@ -53,11 +52,7 @@ namespace Nethermind.Merge.Plugin
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
-                _postMergeBlockProducer = CreateBlockProducerFactory().Create(
-                    blockProducerEnv,
-                    _blockProductionTrigger
-                );
-
+                _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 

@@ -2,9 +2,12 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
+using Nethermind.Evm.Tracing;
 
 namespace Nethermind.Merge.Plugin.BlockProduction;
 
@@ -20,45 +23,13 @@ public class MergeBlockProducer : IBlockProducer
         _preMergeProducer = preMergeProducer;
         _eth2BlockProducer = postMergeBlockProducer ?? throw new ArgumentNullException(nameof(postMergeBlockProducer));
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
-        _poSSwitcher.TerminalBlockReached += OnSwitchHappened;
-        if (HasPreMergeProducer)
-            _preMergeProducer!.BlockProduced += OnBlockProduced;
-
-        postMergeBlockProducer.BlockProduced += OnBlockProduced;
     }
 
-    private void OnBlockProduced(object? sender, BlockEventArgs e)
-    {
-        BlockProduced?.Invoke(this, e);
-    }
-
-    private void OnSwitchHappened(object? sender, EventArgs e)
-    {
-        _preMergeProducer?.StopAsync();
-    }
-
-    public async Task Start()
-    {
-        await _eth2BlockProducer.Start();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducer)
-        {
-            await _preMergeProducer!.Start();
-        }
-    }
-
-    public async Task StopAsync()
-    {
-        await _eth2BlockProducer.StopAsync();
-        if (_poSSwitcher.HasEverReachedTerminalBlock() && HasPreMergeProducer)
-            await _preMergeProducer!.StopAsync();
-    }
-
-    public bool IsProducingBlocks(ulong? maxProducingInterval)
+    public Task<Block?> BuildBlock(BlockHeader? parentHeader, CancellationToken? token, IBlockTracer? blockTracer = null,
+        PayloadAttributes? payloadAttributes = null)
     {
         return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
-            ? _eth2BlockProducer.IsProducingBlocks(maxProducingInterval)
-            : _preMergeProducer!.IsProducingBlocks(maxProducingInterval);
+            ? _eth2BlockProducer.BuildBlock(parentHeader, token, blockTracer)
+            : _preMergeProducer!.BuildBlock(parentHeader, token, blockTracer);
     }
-
-    public event EventHandler<BlockEventArgs>? BlockProduced;
 }

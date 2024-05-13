@@ -2,6 +2,7 @@
 
   <PropertyGroup>
     <Nullable>annotations</Nullable>
+    <LangVersion>preview</LangVersion>
   </PropertyGroup>
 
   <ItemGroup>

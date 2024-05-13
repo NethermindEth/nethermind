@@ -10,7 +10,7 @@ namespace Nethermind.Api.Extensions
 {
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
-        Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource);
+        Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
 
         /// <summary>
         /// Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.

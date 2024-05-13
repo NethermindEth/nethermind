@@ -38,6 +38,7 @@ namespace Nethermind.Api
         IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         IBlockProcessor? MainBlockProcessor { get; set; }
         IBlockProducer? BlockProducer { get; set; }
+        IBlockProducerRunner? BlockProducerRunner { get; set; }
         IBlockValidator? BlockValidator { get; set; }
         IEnode? Enode { get; set; }
         IFilterStore? FilterStore { get; set; }
