@@ -14,12 +14,12 @@ public class Prague : Cancun
     protected Prague()
     {
         Name = "Prague";
-        IsEip6110Enabled = true;
-        IsEip7002Enabled = true;
         IsEip2537Enabled = true;
         IsEip2935Enabled = true;
-        Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
         IsEip3074Enabled = true;
+        IsEip6110Enabled = true;
+        IsEip7002Enabled = true;
+        Eip2935ContractAddress = Eip2935Constants.BlockHashHistoryAddress;
     }
 
     public new static IReleaseSpec Instance => LazyInitializer.EnsureInitialized(ref _instance, () => new Prague());
