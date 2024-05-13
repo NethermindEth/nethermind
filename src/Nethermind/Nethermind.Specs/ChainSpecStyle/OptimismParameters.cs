@@ -23,5 +23,7 @@ namespace Nethermind.Specs.ChainSpecStyle
         public Address Create2DeployerAddress { get; set; }
 
         public byte[] Create2DeployerCode { get; set; }
+
+        public string SequencerUrl { get; set; }
     }
 }

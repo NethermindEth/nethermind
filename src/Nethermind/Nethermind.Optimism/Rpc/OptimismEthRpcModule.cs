@@ -1,28 +1,45 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Crypto;
+using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
+using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
+using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
 public class OptimismEthRpcModule : IEthRpcModule
 {
     private readonly IEthRpcModule _ethRpcModule;
+    private readonly IJsonRpcClient _sequencerRpcClient;
+    private readonly IBlockchainBridge _blockchainBridge;
+    private readonly IAccountStateProvider _accountStateProvider;
+    private readonly IEthereumEcdsa _ecdsa;
+    private readonly ITxSealer _sealer;
 
-    public OptimismEthRpcModule(IEthRpcModule ethRpcModule)
+    public OptimismEthRpcModule(IEthRpcModule ethRpcModule, IJsonRpcClient sequencerRpcClient,
+        IBlockchainBridge blockchainBridge, IAccountStateProvider accountStateProvider, IEthereumEcdsa ecdsa, ITxSealer sealer)
     {
         _ethRpcModule = ethRpcModule;
+        _sequencerRpcClient = sequencerRpcClient;
+        _blockchainBridge = blockchainBridge;
+        _accountStateProvider = accountStateProvider;
+        _ecdsa = ecdsa;
+        _sealer = sealer;
     }
 
     public ResultWrapper<ulong> eth_chainId()
@@ -130,16 +147,34 @@ public class OptimismEthRpcModule : IEthRpcModule
         return _ethRpcModule.eth_sign(addressData, message);
     }
 
-    public Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
+    public async Task<ResultWrapper<Hash256>> eth_sendTransaction(TransactionForRpc rpcTx)
     {
-        // TODO: forward
-        return _ethRpcModule.eth_sendTransaction(rpcTx);
+        Transaction tx = rpcTx.ToTransactionWithDefaults(_blockchainBridge.GetChainId());
+        tx.SenderAddress ??= _ecdsa.RecoverAddress(tx);
+
+        if (tx.SenderAddress is null)
+        {
+            return ResultWrapper<Hash256>.Fail("Failed to recover sender");
+        }
+
+        if (rpcTx.Nonce is null)
+        {
+            tx.Nonce = _accountStateProvider.GetNonce(tx.SenderAddress);
+        }
+
+        await _sealer.Seal(tx, TxHandlingOptions.None);
+
+        return await eth_sendRawTransaction(Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes);
     }
 
-    public Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
+    public async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
-        // TODO: forward
-        return _ethRpcModule.eth_sendRawTransaction(transaction);
+        Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
+        if (result is null)
+        {
+            return ResultWrapper<Hash256>.Fail("Failed to forward transaction");
+        }
+        return ResultWrapper<Hash256>.Success(result);
     }
 
     public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
