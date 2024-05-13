@@ -29,7 +29,7 @@ public class MergeBlockProducer : IBlockProducer
         PayloadAttributes? payloadAttributes = null)
     {
         return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
-            ? _eth2BlockProducer.BuildBlock(parentHeader, token, blockTracer)
-            : _preMergeProducer!.BuildBlock(parentHeader, token, blockTracer);
+            ? _eth2BlockProducer.BuildBlock(parentHeader, token, blockTracer, payloadAttributes)
+            : _preMergeProducer!.BuildBlock(parentHeader, token, blockTracer, payloadAttributes);
     }
 }
