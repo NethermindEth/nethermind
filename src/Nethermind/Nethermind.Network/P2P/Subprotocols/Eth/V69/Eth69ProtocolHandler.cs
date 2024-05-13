@@ -1,17 +1,22 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.Rlpx;
 using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
+using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 
@@ -41,11 +46,22 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     public override void HandleMessage(ZeroPacket message)
     {
+        int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
             case Eth62MessageCode.NewBlockHashes:
                 break;
             case Eth62MessageCode.NewBlock:
+                break;
+            case Eth63MessageCode.Receipts:
+                ReceiptsMessage receiptsMessage = Deserialize<ReceiptsMessage>(message.Content);
+                base.ReportIn(receiptsMessage, size);
+                base.Handle(receiptsMessage, size);
+                break;
+            case Eth63MessageCode.GetReceipts:
+                GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
+                ReportIn(getReceiptsMessage, size);
+                BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
                 break;
             default:
                 base.HandleMessage(message);
@@ -63,5 +79,11 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     {
         status.TotalDifficulty = 0; // TODO handle properly for eth/69
         base.Handle(status);
+    }
+
+    private new async Task<ReceiptsMessage> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
+    {
+        V66.Messages.ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
+        return new ReceiptsMessage(message.RequestId, message.EthMessage);
     }
 }

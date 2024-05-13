@@ -445,7 +445,8 @@ public class InitializeNetwork : IStep
         _api.MessageSerializationService.Register(Assembly.GetAssembly(typeof(HelloMessageSerializer))!);
         ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
         _api.MessageSerializationService.Register(receiptsMessageSerializer);
-        _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
+        _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));;
+        _api.MessageSerializationService.Register<Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage>(new Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessageSerializer(_api.SpecProvider));
 
         HandshakeService encryptionHandshakeServiceA = new(
             _api.MessageSerializationService,

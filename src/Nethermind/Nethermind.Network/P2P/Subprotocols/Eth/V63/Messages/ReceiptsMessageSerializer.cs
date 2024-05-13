@@ -11,7 +11,7 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
+    public class ReceiptsMessageSerializer: IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
         private readonly ReceiptMessageDecoder _decoder = new();
@@ -47,11 +47,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         continue;
                     }
 
-                    _decoder.Encode(stream, txReceipt,
-                        _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    _decoder.Encode(stream, txReceipt, GetEncodingBehavior(txReceipt));
                 }
-
-
             }
         }
 
@@ -75,7 +72,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(itemContext =>
-                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? Array.Empty<TxReceipt>(), true);
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext, GetDecodingBehavior())));
             ReceiptsMessage message = new(data);
 
             return message;
@@ -113,11 +110,20 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
                 else
                 {
-                    contentLength += _decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
+                    contentLength += _decoder.GetLength(txReceipt, GetEncodingBehavior(txReceipt));
                 }
             }
 
             return contentLength;
         }
+
+        protected virtual RlpBehaviors GetEncodingBehavior(TxReceipt txReceipt)
+        {
+            return _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled
+                ? RlpBehaviors.Eip658Receipts
+                : RlpBehaviors.None;
+        }
+
+        protected virtual RlpBehaviors GetDecodingBehavior() => RlpBehaviors.None;
     }
 }
