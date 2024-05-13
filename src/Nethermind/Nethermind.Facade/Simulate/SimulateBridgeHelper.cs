@@ -122,6 +122,11 @@ public class SimulateBridgeHelper(
                     callHeader.BaseFeePerGas = 0;
                 }
 
+                if (callInputBlock.BlockOverrides is { BaseFeePerGas: not null })
+                {
+                    callHeader.BaseFeePerGas = callInputBlock.BlockOverrides.BaseFeePerGas.Value;
+                }
+
                 Transaction[] transactions = callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, env, nonceCache, payload.Validation)).ToArray()
                                                         ?? Array.Empty<Transaction>();
 
@@ -141,7 +146,7 @@ public class SimulateBridgeHelper(
                         testedTxs,
                         stateProvider);
 
-                    if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip)
+                    if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
                     {
                         return (false, $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}");
                     }
@@ -171,7 +176,7 @@ public class SimulateBridgeHelper(
                 Block[] currentBlocks;
                 //try
                 {
-                    IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!);
+                    IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!, payload.Validation);
                     currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks.ToList(), processingFlags, tracer);
 
                 }
