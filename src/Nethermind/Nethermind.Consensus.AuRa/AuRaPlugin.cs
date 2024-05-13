@@ -43,16 +43,6 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
-
         public Task InitSynchronization()
         {
             if (_nethermindApi is not null)

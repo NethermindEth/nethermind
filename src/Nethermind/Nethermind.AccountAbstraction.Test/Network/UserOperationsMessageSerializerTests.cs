@@ -16,10 +16,10 @@ namespace Nethermind.AccountAbstraction.Test.Network
     [TestFixture, Parallelizable(ParallelScope.All)]
     public class UserOperationsMessageSerializerTests
     {
-        [SetUp]
+        [OneTimeSetUp]
         public void Setup()
         {
-            Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly);
+            Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly, true);
         }
 
         [Test]
