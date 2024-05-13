@@ -7,11 +7,11 @@ using global::Nethermind.Core.Collections;
 using global::Nethermind.Core.Crypto;
 using global::Nethermind.Core;
 using global::Nethermind.Serialization.Rlp;
+using static Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Optimism;
 
-
-[Rlp.SkipGlobalRegistration]
+[Decoder(RlpDecoderKey.Storage)]
 public class OptimismCompactReceiptStorageDecoder :
     IRlpStreamDecoder<OptimismTxReceipt>, IRlpValueDecoder<OptimismTxReceipt>, IRlpObjectDecoder<OptimismTxReceipt>, IReceiptRefDecoder
 {
@@ -218,8 +218,7 @@ public class OptimismCompactReceiptStorageDecoder :
             CompactLogEntryDecoder.Encode(rlpStream, logs[i]);
         }
 
-        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
-            (item.DepositReceiptVersion is not null || (rlpBehaviors & RlpBehaviors.EncodeForTrie) == RlpBehaviors.None))
+        if (item.TxType == TxType.DepositTx && item.DepositNonce is not null)
         {
             rlpStream.Encode(item.DepositNonce.Value);
 

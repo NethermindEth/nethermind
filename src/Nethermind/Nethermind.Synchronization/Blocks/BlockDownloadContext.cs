@@ -21,7 +21,7 @@ namespace Nethermind.Synchronization.Blocks
         private readonly PeerInfo _syncPeer;
         private bool _downloadReceipts;
         private readonly IReceiptsRecovery _receiptsRecovery;
-        private readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
 
         public BlockDownloadContext(ISpecProvider specProvider, PeerInfo syncPeer, IReadOnlyList<BlockHeader?> headers,
             bool downloadReceipts, IReceiptsRecovery receiptsRecovery)

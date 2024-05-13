@@ -23,12 +23,13 @@ public partial class ReceiptDecoderTests
 
         Assert.That(rlp, Is.EqualTo(encodedRlp.Data.ToArray()));
 
-        RlpStream encodedTrieRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.EncodeForTrie));
+        OptimismReceiptTrieDecoder trieDecoder = new();
+        RlpStream encodedTrieRlp = new(trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
 
-        decoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.EncodeForTrie);
+        trieDecoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
         encodedTrieRlp.Position = 0;
 
-        OptimismTxReceipt decodedTrieReceipt = decoder.Decode(encodedTrieRlp, RlpBehaviors.SkipTypedWrapping | RlpBehaviors.EncodeForTrie);
+        OptimismTxReceipt decodedTrieReceipt = trieDecoder.Decode(encodedTrieRlp, RlpBehaviors.SkipTypedWrapping);
 
         Assert.That(decodedTrieReceipt.DepositNonce, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
         Assert.That(decodedTrieReceipt.DepositReceiptVersion, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);

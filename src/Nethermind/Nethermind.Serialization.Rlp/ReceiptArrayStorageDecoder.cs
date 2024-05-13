@@ -12,11 +12,11 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
-    private readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
-    private readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private static readonly IRlpStreamDecoder<TxReceipt> Decoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
+    private static readonly IRlpValueDecoder<TxReceipt> ValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.LegacyStorage);
 
-    private readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
-    private readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpStreamDecoder<TxReceipt> CompactDecoder = Rlp.GetStreamDecoder<TxReceipt>(RlpDecoderKey.Storage);
+    private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
     private readonly bool _useCompactEncoding = true;

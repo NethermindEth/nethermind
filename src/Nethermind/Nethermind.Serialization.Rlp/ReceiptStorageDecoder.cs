@@ -10,7 +10,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Serialization.Rlp
 {
-    [Rlp.RlpDecoder(RlpDecoderKey.LegacyStorage)]
+    [Rlp.Decoder(RlpDecoderKey.LegacyStorage)]
     public class ReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         private readonly bool _supportTxHash;

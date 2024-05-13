@@ -32,7 +32,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
         private readonly IReceiptFinder _receiptFinder;
         private readonly ISpecProvider _specProvider;
         private readonly HeaderDecoder _headerDecoder = new();
-        private readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private static readonly IRlpStreamDecoder<TxReceipt> _receiptDecoder = Rlp.GetStreamDecoder<TxReceipt>();
 
         public ProofRpcModule(
             ITracer tracer,

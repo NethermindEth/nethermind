@@ -8,8 +8,14 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Optimism;
 
-public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt>, IRlpStreamDecoder<TxReceipt>
+[Rlp.Decoder(RlpDecoderKey.Trie)]
+public class OptimismReceiptTrieDecoder() : OptimismReceiptMessageDecoder(true) { }
+
+[Rlp.Decoder]
+public class OptimismReceiptMessageDecoder(bool isEncodedForTrie = false) : IRlpStreamDecoder<OptimismTxReceipt>, IRlpStreamDecoder<TxReceipt>
 {
+    private readonly bool _isEncodedForTrie = isEncodedForTrie;
+
     public OptimismTxReceipt Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
     {
         OptimismTxReceipt txReceipt = new();
@@ -63,7 +69,7 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
         return txReceipt;
     }
 
-    private static (int Total, int Logs) GetContentLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
+    private (int Total, int Logs) GetContentLength(OptimismTxReceipt item, RlpBehaviors rlpBehaviors)
     {
         if (item is null)
         {
@@ -87,7 +93,7 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
         }
 
         if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
-            (item.DepositReceiptVersion is not null || (rlpBehaviors & RlpBehaviors.EncodeForTrie) == RlpBehaviors.None))
+            (item.DepositReceiptVersion is not null || !_isEncodedForTrie))
         {
             contentLength += Rlp.LengthOf(item.DepositNonce);
 
@@ -165,7 +171,7 @@ public class OptimismReceiptMessageDecoder : IRlpStreamDecoder<OptimismTxReceipt
         }
 
         if (item.TxType == TxType.DepositTx && item.DepositNonce is not null &&
-            (item.DepositReceiptVersion is not null || (rlpBehaviors & RlpBehaviors.EncodeForTrie) == RlpBehaviors.None))
+            (item.DepositReceiptVersion is not null || !_isEncodedForTrie))
         {
             rlpStream.Encode(item.DepositNonce.Value);
 

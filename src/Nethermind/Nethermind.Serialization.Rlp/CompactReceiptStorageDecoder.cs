@@ -12,7 +12,7 @@ using static Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Serialization.Rlp
 {
-    [RlpDecoder(RlpDecoderKey.Storage)]
+    [Decoder(RlpDecoderKey.Storage)]
     public class CompactReceiptStorageDecoder : IRlpStreamDecoder<TxReceipt>, IRlpValueDecoder<TxReceipt>, IRlpObjectDecoder<TxReceipt>, IReceiptRefDecoder
     {
         public static readonly CompactReceiptStorageDecoder Instance = new();
