@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core.Extensions;
+using System;
 using System.Text;
 
 namespace Nethermind.Core.ConsensusRequests;
@@ -27,7 +28,7 @@ public class Deposit : ConsensusRequest
         set { WithdrawalCredentialsField = value; }
     }
 
-    public ulong Amount
+    public UInt64 Amount
     {
         get { return AmountField; }
         set { AmountField = value; }
@@ -38,7 +39,7 @@ public class Deposit : ConsensusRequest
         get { return SignatureField; }
         set { SignatureField = value; }
     }
-    public ulong? Index
+    public UInt64? Index
     {
         get { return IndexField; }
         set { IndexField = value; }

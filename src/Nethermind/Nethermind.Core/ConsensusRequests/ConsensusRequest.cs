@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 
+using System;
 using System.Text.Json.Serialization;
 
 namespace Nethermind.Core.ConsensusRequests;
@@ -18,7 +19,7 @@ public class ConsensusRequest
     public ConsensusRequestsType Type { get; protected set; }
 
     [JsonIgnore]
-    public ulong AmountField { get; protected set; }
+    public UInt64 AmountField { get; protected set; }
 
     [JsonIgnore]
     public Address? SourceAddressField { get; protected set; }
@@ -33,7 +34,7 @@ public class ConsensusRequest
     public byte[]? SignatureField { get; protected set; }
 
     [JsonIgnore]
-    public ulong? IndexField { get; protected set; }
+    public UInt64? IndexField { get; protected set; }
 }
 
 public static class ConsensusRequestExtensions

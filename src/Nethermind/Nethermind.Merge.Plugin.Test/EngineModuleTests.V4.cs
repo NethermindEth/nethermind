@@ -208,8 +208,8 @@ public partial class EngineModuleTests
         for (int i = 0; i < count; i++)
         {
             ExecutionPayloadV4? getPayloadResult = await BuildAndGetPayloadOnBranchV4(
-                rpc, 
-                chain, 
+                rpc,
+                chain,
                 parentHeader,
                 parentBlock.Timestamp + 12,
                 random ?? TestItem.KeccakA,
