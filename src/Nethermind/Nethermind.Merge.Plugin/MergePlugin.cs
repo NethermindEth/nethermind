@@ -284,12 +284,8 @@ public partial class MergePlugin : IConsensusWrapperPlugin, ISynchronizationPlug
             if (_api.StateReader is null) throw new ArgumentNullException(nameof(_api.StateReader));
             if (_beaconPivot is null) throw new ArgumentNullException(nameof(_beaconPivot));
             if (_beaconSync is null) throw new ArgumentNullException(nameof(_beaconSync));
-            if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
             if (_peerRefresher is null) throw new ArgumentNullException(nameof(_peerRefresher));
-
-
             if (_postMergeBlockProducer is null) throw new ArgumentNullException(nameof(_postMergeBlockProducer));
-            if (_blockProductionTrigger is null) throw new ArgumentNullException(nameof(_blockProductionTrigger));
 
             // ToDo: ugly temporary hack to not receive engine API messages before end of processing of all blocks after restart. Then we will wait 5s more to ensure everything is processed
             while (!_api.BlockProcessingQueue.IsEmpty)

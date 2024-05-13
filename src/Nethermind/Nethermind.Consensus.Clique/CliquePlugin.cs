@@ -195,9 +195,6 @@ namespace Nethermind.Consensus.Clique
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
-        [Todo("Redo clique producer to support triggers and MEV")]
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
-
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         private INethermindApi? _nethermindApi;

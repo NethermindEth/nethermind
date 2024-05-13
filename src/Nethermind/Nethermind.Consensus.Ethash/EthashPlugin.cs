@@ -63,11 +63,10 @@ namespace Nethermind.Consensus.Ethash
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
             return new StandardBlockProducerRunner(
-                DefaultBlockProductionTrigger,
+                NeverProduceTrigger.Instance,
                 _nethermindApi.BlockTree,
                 _nethermindApi.BlockProducer!);
         }

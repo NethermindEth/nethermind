@@ -15,7 +15,6 @@ namespace Nethermind.Merge.Plugin
     public partial class MergePlugin
     {
         protected PostMergeBlockProducer _postMergeBlockProducer = null!;
-        protected IManualBlockProductionTrigger? _blockProductionTrigger = null;
         protected ManualTimestamper? _manualTimestamper;
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -47,7 +46,6 @@ namespace Nethermind.Merge.Plugin
                     ? await baseBlockProducerFactory.InitBlockProducer(txSource)
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
-                _blockProductionTrigger = new BuildBlocksWhenRequested();
                 BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);

@@ -134,7 +134,7 @@ public partial class EngineModuleTests
     public async Task<int> getPayloadV1_waits_for_block_production(TimeSpan delay)
     {
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
-            chain => new DelayBlockImprovementContextFactory(chain.BlockProductionTrigger, TimeSpan.FromSeconds(10), delay),
+            chain => new DelayBlockImprovementContextFactory(chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(10), delay),
             TimeSpan.FromSeconds(10));
 
         IEngineRpcModule rpc = CreateEngineModule(chain);
@@ -389,7 +389,7 @@ public partial class EngineModuleTests
         TimeSpan timePerSlot = 50 * delay;
         using MergeTestBlockchain chain = await CreateBlockchainWithImprovementContext(
             chain => new StoringBlockImprovementContextFactory(new DelayBlockImprovementContextFactory(
-                chain.BlockProductionTrigger, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
+                chain.PostMergeBlockProducer!, TimeSpan.FromSeconds(chain.MergeConfig.SecondsPerSlot), 3 * delay)),
             timePerSlot, delay: delay);
         StoringBlockImprovementContextFactory improvementContextFactory = (StoringBlockImprovementContextFactory)chain.BlockImprovementContextFactory;
 
