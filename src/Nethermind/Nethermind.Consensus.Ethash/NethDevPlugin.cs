@@ -106,7 +106,8 @@ namespace Nethermind.Consensus.Ethash
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
             IBlockProductionTrigger trigger = new BuildBlocksRegularly(TimeSpan.FromMilliseconds(200))
-                .IfPoolIsNotEmpty(_nethermindApi.TxPool);
+                .IfPoolIsNotEmpty(_nethermindApi.TxPool)
+                .Or(_nethermindApi.ManualBlockProductionTrigger);
             return new StandardBlockProducerRunner(
                 trigger,
                 _nethermindApi.BlockTree,

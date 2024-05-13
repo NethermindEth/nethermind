@@ -2,23 +2,22 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 
 namespace Nethermind.JsonRpc.Modules.Evm
 {
     public class EvmRpcModule : IEvmRpcModule
     {
-        private readonly IBlockProducer _blockProducer;
+        private readonly IManualBlockProductionTrigger _trigger;
 
-        public EvmRpcModule(IBlockProducer? blockProducer)
+        public EvmRpcModule(IManualBlockProductionTrigger? trigger)
         {
-            _blockProducer = blockProducer ?? throw new ArgumentNullException(nameof(blockProducer));
+            _trigger = trigger ?? throw new ArgumentNullException(nameof(trigger));
         }
 
         public ResultWrapper<bool> evm_mine()
         {
-            _blockProducer.BuildBlock();
+            _trigger.BuildBlock();
             return ResultWrapper<bool>.Success(true);
         }
     }

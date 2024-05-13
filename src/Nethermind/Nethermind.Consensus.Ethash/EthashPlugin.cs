@@ -66,7 +66,7 @@ namespace Nethermind.Consensus.Ethash
         public IBlockProducerRunner CreateBlockProducerRunner()
         {
             return new StandardBlockProducerRunner(
-                NeverProduceTrigger.Instance,
+                _nethermindApi.ManualBlockProductionTrigger,
                 _nethermindApi.BlockTree,
                 _nethermindApi.BlockProducer!);
         }

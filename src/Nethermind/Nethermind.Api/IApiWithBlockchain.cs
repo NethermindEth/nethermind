@@ -45,6 +45,7 @@ namespace Nethermind.Api
         IFilterManager? FilterManager { get; set; }
         IUnclesValidator? UnclesValidator { get; set; }
         IHeaderValidator? HeaderValidator { get; set; }
+        IManualBlockProductionTrigger ManualBlockProductionTrigger { get; }
         IRewardCalculatorSource? RewardCalculatorSource { get; set; }
         /// <summary>
         /// PoS switcher for The Merge

@@ -127,6 +127,10 @@ namespace Nethermind.Api
         public IUnclesValidator? UnclesValidator { get; set; }
         public IGrpcServer? GrpcServer { get; set; }
         public IHeaderValidator? HeaderValidator { get; set; }
+
+        public IManualBlockProductionTrigger ManualBlockProductionTrigger { get; set; } =
+            new BuildBlocksWhenRequested();
+
         public IIPResolver? IpResolver { get; set; }
         public IJsonSerializer EthereumJsonSerializer { get; set; }
         public IKeyStore? KeyStore { get; set; }
