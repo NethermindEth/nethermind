@@ -22,44 +22,21 @@ namespace Nethermind.Merge.Plugin.Test;
 
 public partial class EngineModuleTests
 {
-    [TestCase(
-        "0x15d4d1f0b215b52458adeac09119798a7c35cebe4aba7f37f0014c7533e12b8a",
-        "0xb457b256c8bbfc7f0716a0df076b4f72a358594d795be2aab001795fd297acdb",
-        "0x58bb65def521baa8a64c1c9337d42da3885d7fbf85b8ad439cb179d480a64e98",
-        "0xae9416e039eb988f")]
-    public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
-        string stateRoot, string payloadId)
+    internal async Task Should_forkChoiceUpdate(IEngineRpcModule rpc, MergeTestBlockchain chain, Hash256 blockHeadHash, string latestValidHash, string? payloadId, PayloadAttributes? payloadAttrs)
     {
-        using MergeTestBlockchain chain =
-            await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
-        IEngineRpcModule rpc = CreateEngineModule(chain);
-        Hash256 startingHead = chain.BlockTree.HeadHash;
-        Hash256 prevRandao = Keccak.Zero;
-        Address feeRecipient = TestItem.AddressC;
-        ulong timestamp = Timestamper.UnixTime.Seconds;
         var fcuState = new
         {
-            headBlockHash = startingHead.ToString(),
-            safeBlockHash = startingHead.ToString(),
-            finalizedBlockHash = Keccak.Zero.ToString()
+            headBlockHash = blockHeadHash.ToString(),
+            safeBlockHash = blockHeadHash.ToString(),
+            finalizedBlockHash = chain.BlockTree.HeadHash == blockHeadHash ? Keccak.Zero.ToString() : chain.BlockTree.HeadHash.ToString(),
         };
-        Withdrawal[] withdrawals = new[]
-        {
-            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
-        };
-        var payloadAttrs = new
-        {
-            timestamp = timestamp.ToHexString(true),
-            prevRandao = prevRandao.ToString(),
-            suggestedFeeRecipient = feeRecipient.ToString(),
-            withdrawals,
-            parentBeaconBLockRoot = Keccak.Zero
-        };
+
         string?[] @params = new string?[]
         {
-            chain.JsonSerializer.Serialize(fcuState), chain.JsonSerializer.Serialize(payloadAttrs)
+            chain.JsonSerializer.Serialize(fcuState),
+            payloadAttrs != null ? chain.JsonSerializer.Serialize(payloadAttrs) : null
         };
-        string expectedPayloadId = payloadId;
+        string? expectedPayloadId = payloadId;
 
         string response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
         JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
@@ -79,11 +56,13 @@ public partial class EngineModuleTests
                 }
             }
         }));
+    }
 
-        Hash256 expectedBlockHash = new(blockHash);
+    internal async Task<Block> Should_getPayloadV4_work(IEngineRpcModule rpc, MergeTestBlockchain chain, string payloadId, Withdrawal[]? withdrawals, ulong timestamp, Address feeRecipient, Hash256 prevRandao, Hash256 expectedBlockHash, string stateRoot)
+    {
         Block block = new(
             new(
-                startingHead,
+                chain.BlockTree.HeadHash,
                 Keccak.OfAnEmptySequenceRlp,
                 feeRecipient,
                 UInt256.Zero,
@@ -109,8 +88,8 @@ public partial class EngineModuleTests
             withdrawals);
         GetPayloadV4Result expectedPayload = new(block, UInt256.Zero, new BlobsBundleV1(block));
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", expectedPayloadId);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_getPayloadV4", payloadId);
+        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
@@ -119,9 +98,14 @@ public partial class EngineModuleTests
             Result = expectedPayload
         }));
 
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
+        return block;
+    }
+
+    internal async Task Should_newPayloadV4_work(IEngineRpcModule rpc, MergeTestBlockchain chain, Block block, Hash256 expectedBlockHash)
+    {
+        string response = await RpcTest.TestSerializedRequest(rpc, "engine_newPayloadV4",
             chain.JsonSerializer.Serialize(ExecutionPayloadV4.Create(block)), "[]", Keccak.Zero.ToString(true));
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
+        JsonRpcSuccessResponse? successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
 
         successResponse.Should().NotBeNull();
         response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
@@ -134,33 +118,45 @@ public partial class EngineModuleTests
                 ValidationError = null
             }
         }));
+    }
 
-        fcuState = new
+    [TestCase(
+        "0x15d4d1f0b215b52458adeac09119798a7c35cebe4aba7f37f0014c7533e12b8a",
+        "0xb457b256c8bbfc7f0716a0df076b4f72a358594d795be2aab001795fd297acdb",
+        "0x58bb65def521baa8a64c1c9337d42da3885d7fbf85b8ad439cb179d480a64e98",
+        "0xae9416e039eb988f")]
+    public virtual async Task Should_process_block_as_expected_V4(string latestValidHash, string blockHash,
+        string stateRoot, string payloadId)
+    {
+        using MergeTestBlockchain chain =
+            await CreateBlockchain(Prague.Instance, new MergeConfig { TerminalTotalDifficulty = "0" });
+        IEngineRpcModule rpc = CreateEngineModule(chain);
+        Hash256 startingHead = chain.BlockTree.HeadHash;
+        Hash256 prevRandao = Keccak.Zero;
+        Address feeRecipient = TestItem.AddressC;
+        ulong timestamp = Timestamper.UnixTime.Seconds;
+        Withdrawal[] withdrawals = new[]
         {
-            headBlockHash = expectedBlockHash.ToString(true),
-            safeBlockHash = expectedBlockHash.ToString(true),
-            finalizedBlockHash = startingHead.ToString(true)
+            new Withdrawal { Index = 1, AmountInGwei = 3, Address = TestItem.AddressB, ValidatorIndex = 2 }
         };
-        @params = new[] { chain.JsonSerializer.Serialize(fcuState), null };
-
-        response = await RpcTest.TestSerializedRequest(rpc, "engine_forkchoiceUpdatedV3", @params!);
-        successResponse = chain.JsonSerializer.Deserialize<JsonRpcSuccessResponse>(response);
-
-        successResponse.Should().NotBeNull();
-        response.Should().Be(chain.JsonSerializer.Serialize(new JsonRpcSuccessResponse
+        var payloadAttrs = new PayloadAttributes
         {
-            Id = successResponse.Id,
-            Result = new ForkchoiceUpdatedV1Result
-            {
-                PayloadId = null,
-                PayloadStatus = new PayloadStatusV1
-                {
-                    LatestValidHash = expectedBlockHash,
-                    Status = PayloadStatus.Valid,
-                    ValidationError = null
-                }
-            }
-        }));
+            Timestamp = timestamp,
+            PrevRandao = prevRandao,
+            SuggestedFeeRecipient = feeRecipient,
+            ParentBeaconBlockRoot = Keccak.Zero,
+            Withdrawals = withdrawals
+        };
+
+        await Should_forkChoiceUpdate(rpc, chain, chain.BlockTree.HeadHash, latestValidHash, payloadId, payloadAttrs);
+
+        Hash256 expectedBlockHash = new(blockHash);
+
+        Block block = await Should_getPayloadV4_work(rpc, chain, payloadId, withdrawals, timestamp, feeRecipient, prevRandao, expectedBlockHash, stateRoot);
+
+        await Should_newPayloadV4_work(rpc, chain, block, expectedBlockHash);
+
+        await Should_forkChoiceUpdate(rpc, chain, expectedBlockHash, expectedBlockHash.ToString(), null, null);
     }
 
     [TestCase(30)]
@@ -200,18 +196,30 @@ public partial class EngineModuleTests
         List<ExecutionPayload> blocks = new();
         ExecutionPayload parentBlock = startingParentBlock;
         parentBlock.TryGetBlock(out Block? block);
-        UInt256? startingTotalDifficulty = block!.IsGenesis
-            ? block.Difficulty : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
+
+        UInt256? startingTotalDifficulty = block!.IsGenesis ? block.Difficulty
+                : chain.BlockFinder.FindHeader(block!.Header!.ParentHash!)!.TotalDifficulty;
+
         BlockHeader parentHeader = block!.Header;
-        parentHeader.TotalDifficulty = startingTotalDifficulty +
-                                       parentHeader.Difficulty;
+
+        parentHeader.TotalDifficulty = startingTotalDifficulty + parentHeader.Difficulty;
+
+
         for (int i = 0; i < count; i++)
         {
-            ExecutionPayloadV4? getPayloadResult = await BuildAndGetPayloadOnBranchV4(rpc, chain, parentHeader,
+            ExecutionPayloadV4? getPayloadResult = await BuildAndGetPayloadOnBranchV4(
+                rpc, 
+                chain, 
+                parentHeader,
                 parentBlock.Timestamp + 12,
-                random ?? TestItem.KeccakA, Address.Zero);
+                random ?? TestItem.KeccakA,
+                Address.Zero
+            );
+
             PayloadStatusV1 payloadStatusResponse = (await rpc.engine_newPayloadV4(getPayloadResult, Array.Empty<byte[]>(), Keccak.Zero)).Data;
+
             payloadStatusResponse.Status.Should().Be(PayloadStatus.Valid);
+
             if (setHead)
             {
                 Hash256 newHead = getPayloadResult!.BlockHash;
@@ -221,7 +229,7 @@ public partial class EngineModuleTests
                 setHeadResponse.Data.PayloadId.Should().Be(null);
             }
 
-            blocks.Add((getPayloadResult));
+            blocks.Add(getPayloadResult);
             parentBlock = getPayloadResult;
             parentBlock.TryGetBlock(out block!);
             block.Header.TotalDifficulty = parentHeader.TotalDifficulty + block.Header.Difficulty;
