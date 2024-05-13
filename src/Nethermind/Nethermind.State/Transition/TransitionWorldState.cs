@@ -51,6 +51,8 @@ public class TransitionWorldState(
 {
     private const int NumberOfLeavesToMove = 5000;
     private Hash256 FinalizedMerkleStateRoot { get; } = finalizedStateRoot;
+
+    // TODO: not needed right now
     private readonly IMerkleStateIterator _merkleStateIterator = new MerkleStateIterator(preImageDb);
 
     private ValueHash256 _startAccountHash = Keccak.Zero;
@@ -96,8 +98,10 @@ public class TransitionWorldState(
         _startStorageHash = visitor.CurrentStoragePath.Path;
     }
 
+    // TODO: does not work
     /// <summary>
-    ///
+    /// This uses an iterator on the merkle state to sweep the leaves - this is not implemented yet. Probably after
+    /// Paprika or a flatDb layout.
     /// </summary>
     /// <param name="blockNumber"></param>
     public void SweepLeavesIterator(long blockNumber)
