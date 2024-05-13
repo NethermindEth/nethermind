@@ -6,7 +6,7 @@ using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using NUnit.Framework;
 
-namespace Nethermind.Optimism.Plugin.Test;
+namespace Nethermind.Optimism.Test;
 
 public partial class ReceiptDecoderTests
 {
