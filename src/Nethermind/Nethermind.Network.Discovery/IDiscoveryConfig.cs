@@ -114,4 +114,7 @@ public interface IDiscoveryConfig : IConfig
 
     [ConfigItem(Description = "Limit number of outgoing discovery message per second.", DefaultValue = "100", HiddenFromDocs = true)]
     int MaxOutgoingMessagePerSecond { get; set; }
+
+    [ConfigItem(Description = "Discv5 support.", DefaultValue = "false", HiddenFromDocs = true)]
+    public bool Discv5Enabled { get; set; }
 }

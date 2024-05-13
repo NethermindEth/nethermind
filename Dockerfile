@@ -11,6 +11,7 @@ ARG TARGETARCH
 
 COPY .git .git
 COPY src/Nethermind src/Nethermind
+RUN git submodule update --init src/Lantern.Discv5
 
 RUN arch=$([ "$TARGETARCH" = "amd64" ] && echo "x64" || echo "$TARGETARCH") && \
     dotnet publish src/Nethermind/Nethermind.Runner -c $BUILD_CONFIG -a $arch -o /publish --sc false \

@@ -38,7 +38,6 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -314,6 +313,19 @@ public class InitializeNetwork : IStep
 
         SameKeyGenerator privateKeyProvider = new(_api.NodeKey.Unprotect());
         NodeIdResolver nodeIdResolver = new(_api.EthereumEcdsa);
+
+        if (discoveryConfig.Discv5Enabled)
+        {
+            SimpleFilePublicKeyDb discv5DiscoveryDb = new(
+                "EnrDiscoveryDB",
+                DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
+                _api.LogManager);
+
+            _api.DiscoveryApp = new Discv5DiscoveryApp(privateKeyProvider, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+            _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
+            return;
+        }
+
 
         NodeRecord selfNodeRecord = PrepareNodeRecord(privateKeyProvider);
         IDiscoveryMsgSerializersProvider msgSerializersProvider = new DiscoveryMsgSerializersProvider(
