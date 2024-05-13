@@ -50,7 +50,7 @@ public class RegisterPluginRpcModules : IStep
             await plugin.InitRpcModules();
         }
 
-        EvmRpcModule evmRpcModule = new(_api.ManualBlockProductionTrigger);
+        EvmRpcModule evmRpcModule = new(_api.BlockProducer);
         rpcModuleProvider.RegisterSingle<IEvmRpcModule>(evmRpcModule);
     }
 }

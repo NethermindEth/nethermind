@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.JsonRpc.Modules.Evm;
 using NSubstitute;
@@ -16,11 +17,11 @@ namespace Nethermind.JsonRpc.Test.Modules
         [Test]
         public async Task Evm_mine()
         {
-            IManualBlockProductionTrigger trigger = Substitute.For<IManualBlockProductionTrigger>();
-            EvmRpcModule rpcModule = new(trigger);
+            IBlockProducer blockProducer = Substitute.For<IBlockProducer>();
+            EvmRpcModule rpcModule = new(blockProducer);
             string response = await RpcTest.TestSerializedRequest<IEvmRpcModule>(rpcModule, "evm_mine");
             Assert.That(response, Is.EqualTo("{\"jsonrpc\":\"2.0\",\"result\":true,\"id\":67}"));
-            await trigger.Received().BuildBlock();
+            await blockProducer.Received().BuildBlock();
         }
     }
 }
