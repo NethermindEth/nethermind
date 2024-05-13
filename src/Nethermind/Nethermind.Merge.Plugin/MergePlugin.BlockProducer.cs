@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -55,6 +54,19 @@ namespace Nethermind.Merge.Plugin
             }
 
             return _api.BlockProducer!;
+        }
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner)
+        {
+            if (MergeEnabled)
+            {
+                // The trigger can be different, so need to stop the old block production runner at this point.
+                StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
+                    _api.ManualBlockProductionTrigger, _api.BlockTree!, _api.BlockProducer!);
+                return new MergeBlockProducerRunner(baseRunner, postMergeRunner, _poSSwitcher);
+            }
+
+            return baseRunner;
         }
 
         // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin

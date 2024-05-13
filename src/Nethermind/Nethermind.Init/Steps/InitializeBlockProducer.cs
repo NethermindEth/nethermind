@@ -29,7 +29,13 @@ namespace Nethermind.Init.Steps
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
                 _api.BlockProducer = await BuildProducer();
+
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
+
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                {
+                    _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
+                }
             }
         }
 
