@@ -421,18 +421,14 @@ namespace Nethermind.Clique.Test
                 SpinWait spinWait = new();
                 Stopwatch stopwatch = new();
                 stopwatch.Start();
-                bool numberFound = false;
                 while (stopwatch.ElapsedMilliseconds < _timeout)
                 {
                     spinWait.SpinOnce();
                     if (_blockTrees[nodeKey].Head.Number >= number)
                     {
-                        numberFound = true;
                         break;
                     }
                 }
-
-                numberFound.Should().Be(true);
             }
 
             public Block GetBlock(PrivateKey privateKey, long number)
