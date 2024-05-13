@@ -79,16 +79,9 @@ namespace Nethermind.Serialization.Rlp
         private static FrozenDictionary<RlpDecoderKey, IRlpDecoder>? _decoders;
         public static FrozenDictionary<RlpDecoderKey, IRlpDecoder> Decoders => _decoders ??= _decoderBuilder.ToFrozenDictionary();
 
-        public static void RegisterDecoder(Type type, IRlpDecoder decoder)
+        public static void RegisterDecoder(RlpDecoderKey key, IRlpDecoder decoder)
         {
-            _decoderBuilder[new(type)] = decoder;
-            // Mark FrozenDictionary as null to force re-creation
-            _decoders = null;
-        }
-
-        public static void RegisterDecoder(Type type, string key, IRlpDecoder decoder)
-        {
-            _decoderBuilder[new(type, key)] = decoder;
+            _decoderBuilder[key] = decoder;
             // Mark FrozenDictionary as null to force re-creation
             _decoders = null;
         }
