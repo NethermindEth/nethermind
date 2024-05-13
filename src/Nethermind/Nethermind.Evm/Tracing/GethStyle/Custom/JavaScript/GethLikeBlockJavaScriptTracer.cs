@@ -20,7 +20,7 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     private readonly Context _ctx;
     private readonly Db _db;
     private int _index;
-    private ArrayPoolList<IDisposable>? _engines;
+    private List<IDisposable>? _engines;
     private UInt256 _baseFee;
 
     public GethLikeBlockJavaScriptTracer(IWorldState worldState, IReleaseSpec spec, GethTraceOptions options) : base(options.TxHash)
@@ -33,7 +33,7 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
 
     public override void StartNewBlockTrace(Block block)
     {
-        _engines = new ArrayPoolList<IDisposable>(block.Transactions.Length + 1);
+        _engines = new List<IDisposable>(block.Transactions.Length + 1);
         _ctx.block = block.Number;
         _ctx.BlockHash = block.Hash;
         _baseFee = block.BaseFeePerGas;
@@ -75,11 +75,10 @@ public class GethLikeBlockJavaScriptTracer : BlockTracerBase<GethLikeTxTrace, Ge
     protected override GethLikeTxTrace OnEnd(GethLikeJavaScriptTxTracer txTracer) => txTracer.BuildResult();
     public void Dispose()
     {
-        ArrayPoolList<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
+        List<IDisposable>? list = Interlocked.Exchange(ref _engines, null);
         if (list is not null)
         {
             list.ForEach(e => e.Dispose());
-            list.Dispose();
         }
     }
 }
