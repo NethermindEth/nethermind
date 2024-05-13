@@ -22,7 +22,6 @@ namespace Nethermind.Consensus.Producers
 {
     /// <summary>
     /// I think this class can be significantly simplified if we split the block production into a pipeline:
-    /// * signal block needed
     /// * prepare block frame
     /// * select transactions
     /// * seal
