@@ -28,7 +28,6 @@ using Nethermind.Config;
 using Nethermind.Core.Authentication;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
-using Nethermind.Facade;
 using Nethermind.HealthChecks;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;

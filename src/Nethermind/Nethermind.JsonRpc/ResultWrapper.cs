@@ -4,7 +4,6 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Core;
-using Nethermind.Facade;
 using Nethermind.Facade.Proxy;
 using Nethermind.JsonRpc.Modules;
 

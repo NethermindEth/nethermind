@@ -15,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm;
-using Nethermind.Facade;
 using Nethermind.Int256;
 using NonBlocking;
 

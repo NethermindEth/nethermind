@@ -6,7 +6,6 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using DotNetty.Common.Utilities;
-using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Serialization.Json;
 

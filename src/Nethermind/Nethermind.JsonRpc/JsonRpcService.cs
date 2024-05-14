@@ -11,7 +11,6 @@ using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 
 using Nethermind.Core;
-using Nethermind.Facade;
 using Nethermind.JsonRpc.Exceptions;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
