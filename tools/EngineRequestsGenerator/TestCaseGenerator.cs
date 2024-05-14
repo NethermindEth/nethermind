@@ -230,13 +230,26 @@ public class TestCaseGenerator
             case TestCase.Keccak256From32Bytes:
                 return Keccak256.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0:
-                return Push0.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0Pop:
-                return Push0Pop.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionPop.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.MStoreZero:
+            case TestCase.MStoreRandom:
+                return MStore.GetTxs(Instruction.MSTORE, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Caller:
-                return Push0.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CallerPop:
-                return Push0Pop.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionPop.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Address:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.ADDRESS, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Origin:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.ORIGIN, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.BaseFee:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.BASEFEE, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.BlobBaseFee:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.BLOBBASEFEE, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.BlobHashZero:
+                return SimpleInstructionTwoContracts.GetTxs([Instruction.PUSH0, Instruction.BLOBHASH], privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.BalanceNonExisting:
             //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SHA2From1Byte:

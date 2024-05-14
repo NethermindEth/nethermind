@@ -10,9 +10,12 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class Push0
+public static class SimpleInstructionTwoContracts
 {
     public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
+        => GetTxs([instruction], privateKey, nonce, blockGasConsumptionTarget);
+
+    public static Transaction[] GetTxs(Instruction[] instructions, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {
         Transaction[] txs = new Transaction[2];
 
@@ -37,7 +40,7 @@ public class Push0
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithTo(null)
             .WithChainId(BlockchainIds.Holesky)
-            .WithData(PreparePush0Code(instruction))
+            .WithData(PreparePush0Code(instructions))
             .WithGasLimit(blockGasConsumptionTarget)
             .SignedAndResolved(privateKey)
             .TestObject;
@@ -53,7 +56,6 @@ public class Push0
 
         codeToDeploy.Add((byte)Instruction.JUMPDEST);
 
-        // consuming 1_058_000 gas in loop between jumps ( 2116 * 500 )
         for (int i = 0; i < 500; i++)
         {
             codeToDeploy.Add((byte)Instruction.PUSH0);
@@ -76,13 +78,16 @@ public class Push0
         return byteCode.ToArray();
     }
 
-    private static byte[] PreparePush0Code(Instruction instruction)
+    private static byte[] PreparePush0Code(Instruction[] instructions)
     {
         List<byte> codeToDeploy = new();
 
         for (int i = 0; i < 1023; i++)
         {
-            codeToDeploy.Add((byte)instruction);
+            foreach (Instruction instruction in instructions)
+            {
+                codeToDeploy.Add((byte)instruction);
+            }
         }
 
         List<byte> byteCode = ContractFactory.GenerateCodeToDeployContract(codeToDeploy);

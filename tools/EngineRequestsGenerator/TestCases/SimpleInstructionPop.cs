@@ -10,7 +10,7 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public class Push0Pop
+public static class SimpleInstructionPop
 {
     public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
     {

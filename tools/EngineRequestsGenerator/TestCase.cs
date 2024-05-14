@@ -29,11 +29,32 @@ public enum TestCase
     [TestCaseMetadata("Push0 - Pop", "endlessly pushing zeros to stack, then popping it")]
     Push0Pop,
 
+    [TestCaseMetadata("MStore - zero", "endlessly pushing zero value to memory with offset zero")]
+    MStoreZero,
+
+    [TestCaseMetadata("MStore - random", "endlessly pushing random value to memory with offset zero")]
+    MStoreRandom,
+
     [TestCaseMetadata("Caller", "endlessly pushing caller address to stack (1000 per 1 contract)")]
     Caller,
 
     [TestCaseMetadata("Caller - Pop", "endlessly pushing caller address to stack, then popping it")]
     CallerPop,
+
+    [TestCaseMetadata("Address", "endlessly pushing account address to stack (1000 per 1 contract)")]
+    Address,
+
+    [TestCaseMetadata("Origin", "endlessly pushing execution origination address to stack (1000 per 1 contract)")]
+    Origin,
+
+    [TestCaseMetadata("BaseFee", "endlessly pushing current base fee to stack (1000 per 1 contract)")]
+    BaseFee,
+
+    [TestCaseMetadata("BlobBaseFee", "endlessly pushing current blob base fee to stack (1000 per 1 contract)")]
+    BlobBaseFee,
+
+    [TestCaseMetadata("BlobHash", "endlessly pushing zero as index and BlobHash opcode to stack when there were no blobs (1000 per 1 contract)")]
+    BlobHashZero,
 
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
     // BalanceNonExisting,
