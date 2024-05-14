@@ -10,8 +10,9 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Tracing;
 
-public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper, ILogsTxTracer
+public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTracerWrapper
 {
+    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
     protected Block Block = null!;
     public bool IsTracingReceipt => true;
     public bool IsTracingActions => _currentTxTracer.IsTracingActions;
@@ -28,10 +29,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public bool IsTracingAccess => _currentTxTracer.IsTracingAccess;
     public bool IsTracingFees => _currentTxTracer.IsTracingFees;
     public bool IsTracingLogs => _currentTxTracer.IsTracingLogs;
-    public bool IsTracingEvmActionLogs => (_logsTxTracer != null && _logsTxTracer!.IsTracingEvmActionLogs);
-
-    private ILogsTxTracer? _logsTxTracer;
-    private IBlockTracer _otherTracer = NullBlockTracer.Instance;
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256? stateRoot = null)
     {
@@ -242,8 +239,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     {
         CurrentTx = tx;
         _currentTxTracer = _otherTracer.StartNewTxTrace(tx);
-        _logsTxTracer = _currentTxTracer as ILogsTxTracer;
-
         return _currentTxTracer;
     }
 
@@ -276,13 +271,5 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void Dispose()
     {
         _currentTxTracer.Dispose();
-    }
-
-    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
-        ExecutionType callType, bool isPrecompileCall = false)
-    {
-        return _logsTxTracer is not null
-            ? _logsTxTracer.ReportActionAndAddResultsToState(gas, value, from, to, input, callType, isPrecompileCall)
-            : Enumerable.Empty<LogEntry>();
     }
 }

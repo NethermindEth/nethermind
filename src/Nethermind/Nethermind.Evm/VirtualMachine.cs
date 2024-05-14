@@ -214,24 +214,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 }
                 else
                 {
-                    var hereIsTracing = typeof(TTracingActions) == typeof(IsTracing);
-
-                    if (hereIsTracing && !currentState.IsContinuation)
+                    if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        if (_txTracer is ILogsTxTracer { IsTracingEvmActionLogs: true } logsTxTracer)
-                        {
-                            IEnumerable<LogEntry> logs = logsTxTracer.ReportActionAndAddResultsToState(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-                                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
-                                currentState.ExecutionType);
-
-                            currentState.Logs.AddRange(logs);
-                        }
-                        else
-                        {
-                            _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-                                currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
-                                currentState.ExecutionType);
-                        }
+                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
+                            currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                            currentState.ExecutionType);
 
                         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);
                     }

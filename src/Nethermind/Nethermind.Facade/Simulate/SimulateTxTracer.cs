@@ -15,7 +15,7 @@ using Log = Nethermind.Facade.Proxy.Models.Simulate.Log;
 
 namespace Nethermind.Facade.Simulate;
 
-internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
+internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
 {
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
@@ -25,8 +25,9 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
     private readonly ulong _currentBlockNumber;
     private readonly Hash256 _txHash;
     private readonly ulong _txIndex;
+    private ICollection<LogEntry>? _logsToMutate;
 
-    public SimulateTxTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
+    public SimulateTxMutatorTracer(bool isTracingTransfers, Hash256 txHash, ulong currentBlockNumber, Hash256 currentBlockHash,
         ulong txIndex)
     {
         _txHash = txHash;
@@ -34,22 +35,20 @@ internal sealed class SimulateTxTracer : TxTracer, ILogsTxTracer
         _currentBlockHash = currentBlockHash;
         _txIndex = txIndex;
         IsTracingReceipt = true;
-        IsTracingEvmActionLogs = isTracingTransfers;
-        if (isTracingTransfers) IsTracingActions = true;
+        IsTracingActions = IsMutatingLogs = isTracingTransfers;
     }
-
 
     public SimulateCallResult? TraceResult { get; set; }
 
-    public bool IsTracingEvmActionLogs { get; }
+    public bool IsMutatingLogs { get; }
 
-    public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to,
-        ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+    public void SetLogsToMutate(ICollection<LogEntry> logsToMutate) => _logsToMutate = logsToMutate;
+
+    public override void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
     {
-        ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
-        var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed,
-            new AbiSignature("", AbiType.UInt256), value);
-        yield return new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]);
+        base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
+        var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256), value);
+        _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]));
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,

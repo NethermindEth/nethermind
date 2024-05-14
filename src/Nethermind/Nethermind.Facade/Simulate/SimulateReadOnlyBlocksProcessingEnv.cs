@@ -49,7 +49,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
-        VirtualMachine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);
+        VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
         _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine,
             CodeInfoRepository, _logManager, !doValidation);
         _blockValidator = CreateValidator();
@@ -87,9 +87,8 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(Hash256 stateRoot)
-    {
-        return new BlockProcessor(SpecProvider,
+    public IBlockProcessor GetProcessor(Hash256 stateRoot) =>
+        new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
             new BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
@@ -98,10 +97,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
             NullWitnessCollector.Instance,
             new BlockhashStore(BlockTree, SpecProvider, StateProvider),
             _logManager);
-    }
 
-    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot)
-    {
-        return new ReadOnlyTransactionProcessor(_transactionProcessor, StateProvider, stateRoot);
-    }
+    public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) =>
+        new ReadOnlyTransactionProcessor(_transactionProcessor, StateProvider, stateRoot);
 }

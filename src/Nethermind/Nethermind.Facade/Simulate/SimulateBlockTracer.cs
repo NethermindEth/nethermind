@@ -13,7 +13,7 @@ namespace Nethermind.Facade.Simulate;
 
 public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
 {
-    private readonly List<SimulateTxTracer> _txTracers = new();
+    private readonly List<SimulateTxMutatorTracer> _txTracers = new();
 
     private Block _currentBlock = null!;
     public List<SimulateBlockResult> Results { get; } = new();
@@ -30,7 +30,7 @@ public class SimulateBlockTracer(bool isTracingLogs) : BlockTracer
         if (tx?.Hash is not null)
         {
             ulong txIndex = (ulong)_txTracers.Count;
-            SimulateTxTracer result = new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, txIndex);
+            SimulateTxMutatorTracer result = new(isTracingLogs, tx.Hash, (ulong)_currentBlock.Number, _currentBlock.Hash, txIndex);
             _txTracers.Add(result);
             return result;
         }
