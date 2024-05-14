@@ -110,7 +110,7 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
 
-        if (_logger.IsWarn) _logger.Warn($"A node discovered via discv5: {newNode}.");
+        if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -190,11 +190,11 @@ public class Discv5DiscoveryApp : IDiscoveryApp
             if (_logger.IsInfo) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
 
             rnd.NextBytes(bytes);
-            var d1 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            var d2 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            var d3 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
             await timer.WaitForNextTickAsync(_appShutdownSource.Token);
         }
     }
