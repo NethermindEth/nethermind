@@ -37,23 +37,23 @@ public class VirtualMachine : IVirtualMachine
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
 
-    internal static readonly byte[] BytesZero = { 0 };
+    internal static readonly byte[] BytesZero = [0];
 
     internal static readonly byte[] BytesZero32 =
-    [
+    {
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0,
         0, 0, 0, 0, 0, 0, 0, 0
-    ];
+    };
 
     internal static readonly byte[] BytesMax32 =
-    [
+    {
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255,
         255, 255, 255, 255, 255, 255, 255, 255
-    ];
+    };
 
     private readonly IVirtualMachine _evm;
 
