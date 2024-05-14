@@ -4,11 +4,14 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using Nethermind.Blockchain;
+using Nethermind.Consensus.Ethash;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
 using Nethermind.Int256;
@@ -96,11 +99,15 @@ namespace Ethereum.Test.Base
             header.MixHash = test.CurrentRandom;
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
-            header.ExcessBlobGas = 0;
+            header.ExcessBlobGas = test.CurrentExcessBlobGas;
+            header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
+
+            if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync();
+
             if (test.Transaction.ChainId == null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
@@ -121,7 +128,21 @@ namespace Ethereum.Test.Base
                 };
                 header.ExcessBlobGas = BlobGasCalculator.CalculateExcessBlobGas(parent, spec);
             }
-            bool isValid = txValidator.IsWellFormed(test.Transaction, spec);
+
+            Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
+            IBlockTree blockTree = Build.A.BlockTree()
+                .WithSpecProvider(specProvider)
+                .WithoutSettingHead
+                .TestObject;
+
+            var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
+            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default);
+            IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
+            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+
+            bool isValid = txValidator.IsWellFormed(test.Transaction, spec) && blockValidator.ValidateOrphanedBlock(block, out _);
+
             if (isValid)
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
             stopwatch.Stop();
