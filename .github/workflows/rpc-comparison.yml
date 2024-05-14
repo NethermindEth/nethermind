@@ -73,17 +73,21 @@ jobs:
         run: |
           convert_to_paprika="${{ github.event.inputs.convert_to_paprika }}"
           is_performance_check="${{ github.event.inputs.is_performance_check }}"
+          echo $convert_to_paprika
+          echo $is_performance_check
           if [[ "$convert_to_paprika" == 'true' && "$is_performance_check" == 'true' ]]; then
+            echo "custom_machine_type=g7-premium-16"
             echo "custom_machine_type=g7-premium-16" >> $GITHUB_OUTPUT
           elif [[ "$convert_to_paprika" == 'true' ]]; then
+            echo "custom_machine_type=g6-standard-8"
             echo "custom_machine_type=g6-standard-8" >> $GITHUB_OUTPUT
           elif [[ "$is_performance_check" == 'true' ]]; then
+            echo "custom_machine_type=g7-premium-8"
             echo "custom_machine_type=g7-premium-8" >> $GITHUB_OUTPUT
           else
+             echo "custom_machine_type="
             echo "custom_machine_type=" >> $GITHUB_OUTPUT
           fi
-        env:
-          machine_type: ${{ steps.compute_machine_type.outputs.machine_type }}
 
   create_main_node:
     name: Create node from current branch
