@@ -7,6 +7,7 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -48,7 +49,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
     {
         base.ReportAction(gas, value, from, to, input, callType, isPrecompileCall);
         var data = AbiEncoder.Instance.Encode(AbiEncodingStyle.Packed, new AbiSignature("", AbiType.UInt256), value);
-        _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, AddressToHash256(from), AddressToHash256(to)]));
+        _logsToMutate?.Add(new LogEntry(Erc20Sender, data, [transferSignature, from.ToHash(), to.ToHash()]));
     }
 
     public override void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs,
@@ -81,18 +82,11 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = -32015, // revert error code stub
+                Code = ErrorCodes.ExecutionError, // revert error code stub
                 Message = error
             },
             ReturnData = null,
             Status = StatusCode.Failure
         };
-    }
-
-    private Hash256 AddressToHash256(Address input)
-    {
-        var addressBytes = new byte[32];
-        Array.Copy(input.Bytes, 0, addressBytes, 32 - Address.Size, Address.Size);
-        return new Hash256(addressBytes);
     }
 }

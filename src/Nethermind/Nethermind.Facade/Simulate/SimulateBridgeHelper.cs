@@ -26,10 +26,11 @@ public class SimulateBridgeHelper(
     ISpecProvider specProvider,
     IBlocksConfig blocksConfig)
 {
-    private static readonly ProcessingOptions _simulateProcessingOptions = ProcessingOptions.ForceProcessing |
-                                                                           ProcessingOptions.IgnoreParentNotOnMainChain |
-                                                                           ProcessingOptions.MarkAsProcessed |
-                                                                           ProcessingOptions.StoreReceipts;
+    private const ProcessingOptions SimulateProcessingOptions =
+        ProcessingOptions.ForceProcessing
+        | ProcessingOptions.IgnoreParentNotOnMainChain
+        | ProcessingOptions.MarkAsProcessed
+        | ProcessingOptions.StoreReceipts;
 
     private void UpdateStateByModifyingAccounts(
         BlockHeader blockHeader,
@@ -162,7 +163,7 @@ public class SimulateBridgeHelper(
                     currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
 
 
-                ProcessingOptions processingFlags = _simulateProcessingOptions;
+                ProcessingOptions processingFlags = SimulateProcessingOptions;
 
                 if (!payload.Validation)
                 {

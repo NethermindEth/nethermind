@@ -17,6 +17,7 @@ using Microsoft.AspNetCore.Http;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
+using Nethermind.Facade;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 

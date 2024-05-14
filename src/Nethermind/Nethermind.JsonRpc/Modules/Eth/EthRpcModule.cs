@@ -57,11 +57,6 @@ public partial class EthRpcModule : IEthRpcModule
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
 
-    private static bool HasStateForBlock(IBlockchainBridge blockchainBridge, BlockHeader header)
-    {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
-    }
-
     public EthRpcModule(
         IJsonRpcConfig rpcConfig,
         IBlockchainBridge blockchainBridge,
@@ -265,7 +260,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        return !HasStateForBlock(_blockchainBridge, header!)
+        return !_blockchainBridge.HasStateForBlock(header!)
             ? GetStateFailureResult<byte[]>(header)
             : ResultWrapper<byte[]>.Success(
                 _stateReader.TryGetAccount(header!.StateRoot!, address, out AccountStruct account)
@@ -721,7 +716,7 @@ public partial class EthRpcModule : IEthRpcModule
         }
 
         BlockHeader header = searchResult.Object;
-        return !HasStateForBlock(_blockchainBridge, header!)
+        return !_blockchainBridge.HasStateForBlock(header!)
             ? GetStateFailureResult<AccountForRpc?>(header)
             : ResultWrapper<AccountForRpc?>.Success(
                 _stateReader.TryGetAccount(header!.StateRoot!, accountAddress, out AccountStruct account)

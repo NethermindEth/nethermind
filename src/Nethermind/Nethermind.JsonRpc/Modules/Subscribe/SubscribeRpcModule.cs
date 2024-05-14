@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules.Subscribe
 {

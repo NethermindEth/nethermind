@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.JsonRpc.Data;
 using Nethermind.Evm;
+using Nethermind.Facade;
 
 namespace Nethermind.JsonRpc.Modules
 {

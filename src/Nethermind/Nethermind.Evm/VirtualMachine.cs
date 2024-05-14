@@ -217,8 +217,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                 {
                     if (typeof(TTracingActions) == typeof(IsTracing) && !currentState.IsContinuation)
                     {
-                        _txTracer.ReportAction(currentState.GasAvailable, currentState.Env.Value, currentState.From, currentState.To,
-                            currentState.ExecutionType.IsAnyCreate() ? currentState.Env.CodeInfo.MachineCode : currentState.Env.InputData,
+                        _txTracer.ReportAction(currentState.GasAvailable,
+                            currentState.Env.Value,
+                            currentState.From,
+                            currentState.To,
+                            currentState.ExecutionType.IsAnyCreate()
+                                ? currentState.Env.CodeInfo.MachineCode
+                                : currentState.Env.InputData,
                             currentState.ExecutionType);
 
                         if (_txTracer.IsTracingCode) _txTracer.ReportByteCode(currentState.Env.CodeInfo.MachineCode);

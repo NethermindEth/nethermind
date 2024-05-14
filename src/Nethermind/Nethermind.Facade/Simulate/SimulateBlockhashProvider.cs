@@ -13,7 +13,7 @@ public sealed class SimulateBlockhashProvider(IBlockhashProvider blockhashProvid
 {
     public Hash256? GetBlockhash(BlockHeader currentBlock, in long number)
     {
-        var bestKnown = blockTree.BestKnownNumber;
+        long bestKnown = blockTree.BestKnownNumber;
         return bestKnown < number && blockTree.BestSuggestedHeader is not null
             ? blockhashProvider.GetBlockhash(blockTree.BestSuggestedHeader!, in bestKnown)
             : blockhashProvider.GetBlockhash(currentBlock, in number);

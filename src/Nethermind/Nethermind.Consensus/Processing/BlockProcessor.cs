@@ -93,7 +93,6 @@ public partial class BlockProcessor : IBlockProcessor
         if (suggestedBlocks.Count == 0) return Array.Empty<Block>();
 
         TxHashCalculator.CalculateInBackground(suggestedBlocks);
-
         BlocksProcessing?.Invoke(this, new BlocksProcessingEventArgs(suggestedBlocks));
 
         /* We need to save the snapshot state root before reorganization in case the new branch has invalid blocks.
@@ -396,7 +395,7 @@ public partial class BlockProcessor : IBlockProcessor
             // Hashes will be required for PersistentReceiptStorage in UpdateMainChain ForkchoiceUpdatedHandler
             // Which occurs after the block has been processed; however the block is stored in cache and picked up
             // from there so we can calculate the hashes now for that later use.
-            foreach (Block block in suggestedBlocks)
+            foreach (Block block in CollectionsMarshal.AsSpan(suggestedBlocks))
             {
                 foreach (Transaction tx in block.Transactions)
                 {

@@ -8,6 +8,7 @@ using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core.Specs;
+using Nethermind.Facade;
 using Nethermind.JsonRpc;
 using Nethermind.Merge.Plugin.Data;
 using Nethermind.Merge.Plugin.GC;

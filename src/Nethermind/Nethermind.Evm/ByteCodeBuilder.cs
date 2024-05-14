@@ -281,7 +281,6 @@ namespace Nethermind.Evm
             return this;
         }
 
-
         public Prepare PushData(byte data)
         {
             PushData(new[] { data });

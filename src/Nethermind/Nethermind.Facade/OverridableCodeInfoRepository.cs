@@ -16,22 +16,16 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
 {
     private readonly Dictionary<Address, CodeInfo> _codeOverwrites = new();
 
-    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec)
-    {
-        return _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
+    public CodeInfo GetCachedCodeInfo(IWorldState worldState, Address codeSource, IReleaseSpec vmSpec) =>
+        _codeOverwrites.TryGetValue(codeSource, out CodeInfo result)
             ? result
             : codeInfoRepository.GetCachedCodeInfo(worldState, codeSource, vmSpec);
-    }
 
-    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode)
-    {
-        return codeInfoRepository.GetOrAdd(codeHash, initCode);
-    }
+    public CodeInfo GetOrAdd(ValueHash256 codeHash, ReadOnlySpan<byte> initCode) => codeInfoRepository.GetOrAdd(codeHash, initCode);
 
-    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec)
-    {
+    public void InsertCode(IWorldState state, ReadOnlyMemory<byte> code, Address codeOwner, IReleaseSpec spec) =>
         codeInfoRepository.InsertCode(state, code, codeOwner, spec);
-    }
+
 
     public void SetCodeOverwrite(
         IWorldState worldState,
@@ -40,7 +34,10 @@ public class OverridableCodeInfoRepository(ICodeInfoRepository codeInfoRepositor
         CodeInfo value,
         Address? redirectAddress = null)
     {
-        if (redirectAddress is not null) _codeOverwrites[redirectAddress] = GetCachedCodeInfo(worldState, key, vmSpec);
+        if (redirectAddress is not null)
+        {
+            _codeOverwrites[redirectAddress] = GetCachedCodeInfo(worldState, key, vmSpec);
+        }
 
         _codeOverwrites[key] = value;
     }

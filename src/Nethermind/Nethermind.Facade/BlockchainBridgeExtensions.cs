@@ -7,8 +7,6 @@ namespace Nethermind.Facade;
 
 public static class BlockchainBridgeExtensions
 {
-    public static bool HasStateForBlock(this IBlockchainBridge blockchainBridge, BlockHeader header)
-    {
-        return blockchainBridge.HasStateForRoot(header.StateRoot!);
-    }
+    public static bool HasStateForBlock(this IBlockchainBridge blockchainBridge, BlockHeader header) =>
+        blockchainBridge.HasStateForRoot(header.StateRoot!);
 }
