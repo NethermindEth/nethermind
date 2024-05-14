@@ -158,6 +158,6 @@ namespace Nethermind.Synchronization.Peers
             return $"{((contexts & AllocationContexts.Headers) == AllocationContexts.Headers ? "H" : " ")}{((contexts & AllocationContexts.Bodies) == AllocationContexts.Bodies ? "B" : " ")}{((contexts & AllocationContexts.Receipts) == AllocationContexts.Receipts ? "R" : " ")}{((contexts & AllocationContexts.State) == AllocationContexts.State ? "N" : " ")}{((contexts & AllocationContexts.Snap) == AllocationContexts.Snap ? "S" : " ")}";
         }
 
-        public override string ToString() => $"[{BuildContextString(AllocatedContexts)}][{BuildContextString(SleepingContexts)}]{SyncPeer}";
+        public override string ToString() => $"[{BuildContextString(AllocatedContexts)} ][{BuildContextString(SleepingContexts)} ]{SyncPeer}";
     }
 }
