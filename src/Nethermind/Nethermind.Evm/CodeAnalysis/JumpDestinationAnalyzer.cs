@@ -6,6 +6,7 @@ using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Runtime.Intrinsics;
 using System.Runtime.Intrinsics.X86;
+using System.Threading;
 
 namespace Nethermind.Evm.CodeAnalysis
 {
@@ -19,17 +20,62 @@ namespace Nethermind.Evm.CodeAnalysis
         private static readonly long[]? _emptyJumpDestinationBitmap = new long[1];
         private long[]? _jumpDestinationBitmap = code.Length == 0 ? _emptyJumpDestinationBitmap : null;
 
+        private object? _analysisComplete;
         private ReadOnlyMemory<byte> MachineCode { get; } = code;
 
         public bool ValidateJump(int destination)
         {
-            ReadOnlySpan<byte> machineCode = MachineCode.Span;
-            _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(machineCode);
+            _jumpDestinationBitmap ??= CreateOrWaitForJumpDestinationBitmap();
 
             // Cast to uint to change negative numbers to very int high numbers
             // Then do length check, this both reduces check by 1 and eliminates the bounds
             // check from accessing the span.
-            return (uint)destination < (uint)machineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
+            return (uint)destination < (uint)MachineCode.Length && IsJumpDestination(_jumpDestinationBitmap, destination);
+        }
+
+        private long[] CreateOrWaitForJumpDestinationBitmap()
+        {
+            object? previous = Volatile.Read(ref _analysisComplete);
+            if (previous is null)
+            {
+                ManualResetEventSlim analysisComplete = new(initialState: false);
+                previous = Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null);
+                if (previous is null)
+                {
+                    // Not already in progress, so start it.
+                    var bitmap = CreateJumpDestinationBitmap();
+                    _jumpDestinationBitmap = bitmap;
+                    // Release the MRES to be GC'd
+                    _analysisComplete = bitmap;
+                    // Signal complete.
+                    analysisComplete.Set();
+                    return bitmap;
+                }
+            }
+
+            if (previous is ManualResetEventSlim resetEvent)
+            {
+                Thread thread = Thread.CurrentThread;
+                ThreadPriority priority = thread.Priority;
+                try
+                {
+                    // We are waiting, so drop priority to normal (BlockProcessing runs at higher priority).
+                    thread.Priority = ThreadPriority.Normal;
+
+                    // Already in progress, wait for completion.
+                    resetEvent.Wait();
+                }
+                finally
+                {
+                    // Restore the priority of the thread.
+                    thread.Priority = priority;
+                }
+
+                return _jumpDestinationBitmap;
+            }
+
+            // Must be the bitmap, and lost check->create benign data race
+            return (long[])previous;
         }
 
         /// <summary>
@@ -55,8 +101,10 @@ namespace Nethermind.Evm.CodeAnalysis
         /// Collects data locations in code.
         /// An unset bit means the byte is an opcode, a set bit means it's data.
         /// </summary>
-        private static long[] CreateJumpDestinationBitmap(ReadOnlySpan<byte> code)
+        private long[] CreateJumpDestinationBitmap()
         {
+            Metrics.IncrementContractsAnalysed();
+            ReadOnlySpan<byte> code = MachineCode.Span;
             long[] jumpDestinationBitmap = new long[GetInt64ArrayLengthFromBitLength(code.Length)];
             int programCounter = 0;
             // We accumulate each array segment to a register and then flush to memory when we move to next.
@@ -146,6 +194,7 @@ namespace Nethermind.Evm.CodeAnalysis
         /// <summary>
         /// Checks if the position is in a code segment.
         /// </summary>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private static bool IsJumpDestination(long[] bitvec, int pos)
         {
             int vecIndex = pos >> BitShiftPerInt64;
@@ -164,8 +213,34 @@ namespace Nethermind.Evm.CodeAnalysis
 
         public void Execute()
         {
-            // This is to support background thread preparation of the bitmap.
-            _jumpDestinationBitmap ??= CreateJumpDestinationBitmap(MachineCode.Span);
+            if (_jumpDestinationBitmap is null && Volatile.Read(ref _analysisComplete) is null)
+            {
+                ManualResetEventSlim analysisComplete = new(initialState: false);
+                if (Interlocked.CompareExchange(ref _analysisComplete, analysisComplete, null) is null)
+                {
+                    Thread thread = Thread.CurrentThread;
+                    ThreadPriority priority = thread.Priority;
+                    try
+                    {
+                        // Boost the priority of the thread as block processing may be waiting on this.
+                        thread.Priority = ThreadPriority.AboveNormal;
+
+                        _jumpDestinationBitmap ??= CreateJumpDestinationBitmap();
+
+                        // Release the MRES to be GC'd
+                        _analysisComplete = _jumpDestinationBitmap;
+                        // Signal complete.
+                        analysisComplete.Set();
+                    }
+                    finally
+                    {
+                        // Restore the priority of the thread.
+                        thread.Priority = priority;
+                    }
+                }
+            }
         }
+
+        public bool RequiresAnalysis => _jumpDestinationBitmap is null;
     }
 }

@@ -411,6 +411,8 @@ namespace Nethermind.Evm.TransactionProcessing
                 ? new(tx.Data ?? Memory<byte>.Empty)
                 : VirtualMachine.GetCachedCodeInfo(WorldState, recipient, spec);
 
+            codeInfo.AnalyseInBackgroundIfRequired();
+
             byte[] inputData = tx.IsMessageCall ? tx.Data.AsArray() ?? Array.Empty<byte>() : Array.Empty<byte>();
 
             return new ExecutionEnvironment
