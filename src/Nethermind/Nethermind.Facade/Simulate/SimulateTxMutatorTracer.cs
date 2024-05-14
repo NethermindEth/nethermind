@@ -7,7 +7,6 @@ using System.Linq;
 using Nethermind.Abi;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Facade.Proxy.Models.Simulate;
@@ -18,6 +17,8 @@ namespace Nethermind.Facade.Simulate;
 
 internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
 {
+    public const int ExecutionError = -32015;
+
     private static readonly Hash256 transferSignature =
         new AbiSignature("Transfer", AbiType.Address, AbiType.Address, AbiType.UInt256).Hash;
 
@@ -82,7 +83,7 @@ internal sealed class SimulateTxMutatorTracer : TxTracer, ITxLogsMutator
             GasUsed = (ulong)gasSpent,
             Error = new Error
             {
-                Code = ErrorCodes.ExecutionError, // revert error code stub
+                Code = ExecutionError, // revert error code stub
                 Message = error
             },
             ReturnData = null,

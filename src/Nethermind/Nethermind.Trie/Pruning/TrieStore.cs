@@ -1275,7 +1275,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         // Used to serve node by hash
-        public byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        private byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Hash256 asHash = new Hash256(key);
             return _pruningStrategy.PruningEnabled
