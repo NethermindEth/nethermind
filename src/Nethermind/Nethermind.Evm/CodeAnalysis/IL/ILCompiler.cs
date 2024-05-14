@@ -21,6 +21,9 @@ internal class ILCompiler
 {
     public static Func<ILEvmState, ILEvmState> CompileSegment(string segmentName, OpcodeInfo[] code)
     {
+        // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
+        // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
+
         Emit<Func<ILEvmState, ILEvmState>> method = Emit<Func<ILEvmState, ILEvmState>>.NewDynamicMethod(segmentName, doVerify: true, strictBranchVerification: true);
 
         using Local jmpDestination = method.DeclareLocal(Word.Int0Field.FieldType);
@@ -506,6 +509,14 @@ internal class ILCompiler
             // each bucket ends with a jump to invalid access to do not fall through to another one
             method.Branch(invalidAddress);
         }
+
+        // EvmExceptionType.StackUnderflow
+        method.MarkLabel(outOfGas);
+        method.LoadLocalAddress(returnState);
+        method.LoadConstant((int)EvmExceptionType.StackUnderflow);
+        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
+        method.Branch(ret);
+
 
         // out of gas
         method.MarkLabel(outOfGas);
