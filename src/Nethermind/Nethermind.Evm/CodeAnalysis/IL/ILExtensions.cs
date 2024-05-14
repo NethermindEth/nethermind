@@ -125,7 +125,7 @@ static class EmitExtensions
         // i < count
         il.LoadLocal(i);
         il.LoadLocal(count);
-        il.BranchIfGreater(end);
+        il.BranchIfEqual(end);
 
         // emit body of loop 
         action(il, i);

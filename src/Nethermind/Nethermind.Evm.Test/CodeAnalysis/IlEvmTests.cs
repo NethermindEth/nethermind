@@ -3,11 +3,14 @@
 
 using FluentAssertions;
 using Nethermind.Core.Specs;
+using Nethermind.Core.Test.Builders;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using Nethermind.Specs;
 using NUnit.Framework;
+using Sigil;
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -136,6 +139,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         public static IEnumerable<byte[]> GetBytecodes()
         {
             yield return Prepare.EvmCode
+                    .Done;
+            yield return Prepare.EvmCode
                     .PushSingle(23)
                     .PushSingle(7)
                     .SUB()
@@ -175,11 +180,20 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         [Test, TestCaseSource(nameof(GetBytecodes))]
         public void Ensure_Evm_ILvm_Compatibility(byte[] bytecode)
         {
+            ILEvmState iLEvmState = new ILEvmState
+            {
+                Stack = new UInt256[1024],
+                Header = BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header,
+                GasAvailable = 1000,
+                ProgramCounter = 0,
+                EvmException = EvmExceptionType.None,
+                StopExecution = false
+            };
             var function = ILCompiler.CompileSegment("ILEVM_TEST", IlAnalyzer.StripByteCode(bytecode));
-            var body = function.Method.GetMethodBody();
-            var result = function(100);
-            Assert.IsNotNull(result);
+            var il_result = function(iLEvmState);
+            Assert.IsNotNull(il_result);
         }
+
 
     }
 }

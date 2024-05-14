@@ -11,12 +11,38 @@ using System.Text;
 using System.Threading.Tasks;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
-internal class ILEvmState
+internal struct ILEvmState
 {
     // static arguments
     public BlockHeader Header;
 
-    public byte[] bytes;
+    public byte[] StackBytes
+    {
+        set
+        {
+            if(value.Length % 32 != 0)
+            {
+                throw new ArgumentException("Invalid byte array length");
+            }
+
+            Stack = new UInt256[value.Length / 32];
+            for(int i = 0; i < value.Length; i += 32)
+            {
+                Stack[i / 32] = new UInt256(value[i..(i + 32)]);
+            }
+        }
+
+        get
+        {
+            byte[] result = new byte[Stack.Length * 32];
+            for(int i = 0; i < Stack.Length; i++)
+            {
+                Stack[i].PaddedBytes(32).CopyTo(result, i * 32);
+            }
+            return result;
+        }
+    }
+
     public UInt256[] Stack;
 
     // in case of exceptions

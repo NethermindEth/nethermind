@@ -45,6 +45,9 @@ internal class ILCompiler
 
         const int wordToAlignTo = 32;
 
+        // init ReturnState
+        method.LoadLocalAddress(returnState);
+        method.InitializeObject<ILEvmState>();
 
         // allocate stack
         method.LoadConstant(EvmStack.MaxStackSize * Word.Size + wordToAlignTo);
@@ -394,6 +397,7 @@ internal class ILCompiler
         }
 
         // prepare ILEvmState
+        // check if returnState is null
 
         // we get stack size
         method.LoadLocal(currentSP);
@@ -405,7 +409,7 @@ internal class ILCompiler
         method.StoreLocal(uint32A);
 
         // set stack
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadLocal(uint32A);
         method.NewArray<UInt256>();
 
@@ -424,23 +428,23 @@ internal class ILCompiler
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Stack)));
 
         // set header
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadArgument(0);
         method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
 
         // set gas available
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadLocal(gasAvailable);
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.GasAvailable)));
 
         // set program counter
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadLocal(programCounter);
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.ProgramCounter)));
 
         // set exception
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadConstant((int)EvmExceptionType.None);
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
 
@@ -505,14 +509,14 @@ internal class ILCompiler
 
         // out of gas
         method.MarkLabel(outOfGas);
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadConstant((int)EvmExceptionType.OutOfGas);
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
 
         // invalid address return
         method.MarkLabel(invalidAddress);
-        method.LoadLocal(returnState);
+        method.LoadLocalAddress(returnState);
         method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
         method.Branch(ret);
