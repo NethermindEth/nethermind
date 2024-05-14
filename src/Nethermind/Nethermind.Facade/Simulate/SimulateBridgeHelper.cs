@@ -42,7 +42,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
-        foreach (Address address in senders.Union(targets).Where(t => t != null))
+        foreach (Address address in senders.Union(targets).Where(t=> t is not null))
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
@@ -146,7 +146,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
         ulong lastKnown = (ulong)latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
+        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
             Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
             if (searchResult is not null)

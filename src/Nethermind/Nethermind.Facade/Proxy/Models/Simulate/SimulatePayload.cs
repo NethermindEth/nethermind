@@ -1,6 +1,8 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Collections.Generic;
+
 namespace Nethermind.Facade.Proxy.Models.Simulate;
 
 public class SimulatePayload<T>
@@ -8,7 +10,7 @@ public class SimulatePayload<T>
     /// <summary>
     ///     Definition of blocks that can contain calls and overrides
     /// </summary>
-    public BlockStateCall<T>[]? BlockStateCalls { get; set; }
+    public List<BlockStateCall<T>>? BlockStateCalls { get; set; }
 
     /// <summary>
     ///     Should trace ETH Transfers

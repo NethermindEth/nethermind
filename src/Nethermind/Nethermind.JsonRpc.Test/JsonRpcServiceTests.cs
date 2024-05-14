@@ -92,7 +92,7 @@ public class JsonRpcServiceTests
     [Test]
     public void CanRunEthSimulateV1Empty()
     {
-        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = Array.Empty<BlockStateCall<TransactionForRpc>>() };
+        SimulatePayload<TransactionForRpc> payload = new() { BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>() };
         string serializedCall = new EthereumJsonSerializer().Serialize(payload);
         IEthRpcModule ethRpcModule = Substitute.For<IEthRpcModule>();
         ethRpcModule.eth_simulateV1(payload).ReturnsForAnyArgs(_ =>
