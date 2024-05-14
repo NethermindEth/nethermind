@@ -122,8 +122,6 @@ public class CodeInfoRepository : ICodeInfoRepository
     {
         CodeInfo codeInfo = new(code);
         codeInfo.AnalyseInBackgroundIfRequired();
-        // Start generating the JumpDestinationBitmap in background.
-        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         state.InsertCode(codeOwner, codeHash, code, spec);
