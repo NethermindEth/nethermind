@@ -21,8 +21,6 @@ using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
 
-
-
 public class SimulateBlockValidationTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
 {
     public SimulateBlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
@@ -55,7 +53,7 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         IBlockTree blockTree,
         ISpecProvider specProvider,
         ILogManager? logManager = null,
-        bool doValidation = false)
+        bool validate = false)
         : base(worldStateManager, blockTree, specProvider, logManager)
     {
         ReadOnlyBlockTree = baseBlockTree;
@@ -65,15 +63,12 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         SpecProvider = specProvider;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
-        BlockhashProvider =
-            new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager),
-                BlockTree);
+        BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
         StateProvider = WorldStateManager.GlobalWorldState;
         StateReader = WorldStateManager.GlobalStateReader;
         CodeInfoRepository = new OverridableCodeInfoRepository(new CodeInfoRepository());
         VirtualMachine = new SimulateVirtualMachine(new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager));
-        _transactionProcessor = new TransactionProcessor(SpecProvider, StateProvider, VirtualMachine,
-            CodeInfoRepository, _logManager, !doValidation);
+        _transactionProcessor = new SimulateTransactionProcessor(SpecProvider, StateProvider, VirtualMachine, CodeInfoRepository, _logManager, validate);
         _blockValidator = CreateValidator();
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }

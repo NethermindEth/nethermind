@@ -6,10 +6,7 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using System.Runtime.CompilerServices;
-using System.Threading;
-
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
@@ -64,15 +61,13 @@ namespace Nethermind.Evm.TransactionProcessing
             /// </summary>
             CommitAndRestore = Commit | Restore | NoValidation
         }
-        private readonly ExecutionOptions _executeOptions;
 
         public TransactionProcessor(
             ISpecProvider? specProvider,
             IWorldState? worldState,
             IVirtualMachine? virtualMachine,
             ICodeInfoRepository? codeInfoRepository,
-            ILogManager? logManager,
-            bool forceNoValidationOnExecute = false)
+            ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(logManager, nameof(logManager));
             ArgumentNullException.ThrowIfNull(specProvider, nameof(specProvider));
@@ -87,11 +82,6 @@ namespace Nethermind.Evm.TransactionProcessing
             _codeInfoRepository = codeInfoRepository;
 
             Ecdsa = new EthereumEcdsa(specProvider.ChainId, logManager);
-            _executeOptions = ExecutionOptions.Commit;
-            if (forceNoValidationOnExecute)
-            {
-                _executeOptions |= ExecutionOptions.NoValidation;
-            }
         }
 
         public TransactionResult CallAndRestore(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
@@ -106,7 +96,7 @@ namespace Nethermind.Evm.TransactionProcessing
         }
 
         public TransactionResult Execute(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
-            Execute(transaction, in blCtx, txTracer, _executeOptions);
+            Execute(transaction, in blCtx, txTracer, ExecutionOptions.Commit);
 
         public TransactionResult Trace(Transaction transaction, in BlockExecutionContext blCtx, ITxTracer txTracer) =>
             Execute(transaction, in blCtx, txTracer, ExecutionOptions.NoValidation);
