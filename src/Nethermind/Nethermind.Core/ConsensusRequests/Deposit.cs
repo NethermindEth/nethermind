@@ -15,7 +15,7 @@ public class Deposit : ConsensusRequest
     {
         Type = ConsensusRequestsType.Deposit;
     }
-    public byte[]? PubKey
+    public byte[]? Pubkey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
@@ -45,12 +45,12 @@ public class Deposit : ConsensusRequest
     }
     public override string ToString() => ToString(string.Empty);
 
-    public string ToString(string indentation) => @$"{indentation}{nameof(Deposit)} 
-            {{{nameof(Index)}: {Index}, 
-            {nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()}, 
-            {nameof(Amount)}: {Amount}, 
-            {nameof(Signature)}: {Signature?.ToHexString()}, 
-            {nameof(PubKey)}: {PubKey?.ToHexString()}}}";
+    public string ToString(string indentation) => @$"{indentation}{nameof(Deposit)}
+            {{{nameof(Index)}: {Index},
+            {nameof(WithdrawalCredentials)}: {WithdrawalCredentials?.ToHexString()},
+            {nameof(Amount)}: {Amount},
+            {nameof(Signature)}: {Signature?.ToHexString()},
+            {nameof(Pubkey)}: {Pubkey?.ToHexString()}}}";
 
 
 }

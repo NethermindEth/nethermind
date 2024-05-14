@@ -22,7 +22,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
 
         return new()
         {
-            PubKey = rlpStream.DecodeByteArray(),
+            Pubkey = rlpStream.DecodeByteArray(),
             WithdrawalCredentials = rlpStream.DecodeByteArray(),
             Amount = rlpStream.DecodeULong(),
             Signature = rlpStream.DecodeByteArray(),
@@ -43,7 +43,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
 
         return new()
         {
-            PubKey = decoderContext.DecodeByteArray(),
+            Pubkey = decoderContext.DecodeByteArray(),
             WithdrawalCredentials = decoderContext.DecodeByteArray(),
             Amount = decoderContext.DecodeULong(),
             Signature = decoderContext.DecodeByteArray(),
@@ -62,7 +62,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
         var contentLength = GetContentLength(item, rlpBehaviors);
 
         stream.StartSequence(contentLength);
-        stream.Encode(item.PubKey);
+        stream.Encode(item.Pubkey);
         stream.Encode(item.WithdrawalCredentials);
         stream.Encode(item.Amount);
         stream.Encode(item.Signature);
@@ -79,7 +79,7 @@ public class DepositDecoder : IRlpStreamDecoder<Deposit>, IRlpValueDecoder<Depos
     }
 
     public int GetContentLength(Deposit item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.PubKey) +
+        Rlp.LengthOf(item.Pubkey) +
         Rlp.LengthOf(item.WithdrawalCredentials) +
         Rlp.LengthOf(item.Amount) +
         Rlp.LengthOf(item.Signature) +

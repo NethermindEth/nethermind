@@ -20,7 +20,7 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest deposit = new Deposit()
         {
             Index = long.MaxValue,
-            PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            Pubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
@@ -56,7 +56,7 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest deposit = new Deposit()
         {
             Index = long.MaxValue,
-            PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            Pubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
@@ -98,7 +98,7 @@ public class ConsensusRequestDecoderTests
         ConsensusRequest deposit = new Deposit()
         {
             Index = long.MaxValue,
-            PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+            Pubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
             Amount = int.MaxValue
@@ -132,7 +132,7 @@ public class ConsensusRequestDecoderTests
             new Deposit()
             {
                 Index = long.MaxValue,
-                PubKey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
+                Pubkey = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
                 Signature = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
                 WithdrawalCredentials = KeccakTests.KeccakOfAnEmptyString.ToBytes(),
                 Amount = int.MaxValue

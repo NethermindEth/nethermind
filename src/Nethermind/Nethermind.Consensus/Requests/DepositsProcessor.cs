@@ -34,7 +34,7 @@ public class DepositsProcessor : IDepositsProcessor
 
                             var newDeposit = new Deposit()
                             {
-                                PubKey = (byte[])result[0],
+                                Pubkey = (byte[])result[0],
                                 WithdrawalCredentials = (byte[])result[1],
                                 Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
                                 Signature = (byte[])result[3],

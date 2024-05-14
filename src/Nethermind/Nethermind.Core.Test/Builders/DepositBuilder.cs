@@ -38,7 +38,7 @@ public class DepositBuilder : BuilderBase<Deposit>
     }
     public DepositBuilder WithPublicKey(byte[] pubKey)
     {
-        TestObject.PubKey = pubKey;
+        TestObject.Pubkey = pubKey;
 
         return this;
     }
