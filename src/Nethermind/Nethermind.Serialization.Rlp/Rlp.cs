@@ -1083,6 +1083,18 @@ namespace Nethermind.Serialization.Rlp
                 throw new RlpException($"Unexpected prefix of {prefix} when decoding {nameof(Hash256)} at position {ctx.Position} in the message of length {ctx.Data.Length} starting with {ctx.Data[..Math.Min(DebugMessageContentLength, ctx.Data.Length)].ToHexString()}");
             }
 
+            public static bool IsAllZeroes(ReadOnlySpan<byte> byteSpan)
+            {
+                foreach (byte b in byteSpan)
+                {
+                    if (b != 0)
+                    {
+                        return false;
+                    }
+                }
+                return true;
+            }
+
             public UInt256 DecodeUInt256(int length = -1)
             {
                 ReadOnlySpan<byte> byteSpan = DecodeByteArraySpan();
@@ -1093,6 +1105,11 @@ namespace Nethermind.Serialization.Rlp
 
                 if (length == -1)
                 {
+                    if (IsAllZeroes(byteSpan))
+                    {
+                        return 0;
+                    }
+
                     if (byteSpan.Length > 1 && byteSpan[0] == 0)
                     {
                         ThrowNonCanonicalUInt256(Position);

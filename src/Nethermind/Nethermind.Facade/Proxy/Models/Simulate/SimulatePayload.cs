@@ -13,11 +13,11 @@ public class SimulatePayload<T>
     /// <summary>
     ///     Should trace ETH Transfers
     /// </summary>
-    public bool TraceTransfers { get; set; }
+    public bool TraceTransfers { get; set; } = false;
 
     /// <summary>
     ///     When true, the simulate does all validations that a normal EVM would do, except contract sender and signature
     ///     checks. When false, multicall behaves like eth_call.
     /// </summary>
-    public bool Validation { get; set; }
+    public bool Validation { get; set; } = false;
 }

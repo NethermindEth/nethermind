@@ -178,7 +178,8 @@ public class SimulateTxExecutor : ExecutorBase<IReadOnlyList<SimulateBlockResult
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
-        if (results.Error != null && results.Error.Contains("invalid transaction"))
+        if (results.Error != null && (results.Error.Contains("invalid transaction")
+                                      || results.Error.Contains("InsufficientBalanceException")))
             results.ErrorCode = ErrorCodes.InvalidTransaction;
 
         return results.Error is null
