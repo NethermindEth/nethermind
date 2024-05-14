@@ -21,7 +21,7 @@ public class WithdrawalRequest : ConsensusRequest
         set { SourceAddressField = value; }
     }
 
-    public byte[]? ValidatorPubkey
+    public byte[]? ValidatorPublicKey
     {
         get { return PubKeyField; }
         set { PubKeyField = value; }
@@ -36,7 +36,7 @@ public class WithdrawalRequest : ConsensusRequest
 
     public string ToString(string indentation) => @$"{indentation}{nameof(WithdrawalRequest)}
             {{{nameof(SourceAddress)}: {SourceAddress},
-            {nameof(ValidatorPubkey)}: {ValidatorPubkey?.ToHexString()},
+            {nameof(ValidatorPublicKey)}: {ValidatorPublicKey?.ToHexString()},
             {nameof(Amount)}: {Amount}}}";
 
 

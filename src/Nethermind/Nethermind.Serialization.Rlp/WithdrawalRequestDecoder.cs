@@ -13,7 +13,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         Rlp.LengthOfSequence(GetContentLength(item, rlpBehaviors));
 
     public int GetContentLength(WithdrawalRequest item, RlpBehaviors rlpBehaviors) =>
-        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPubkey) +
+        Rlp.LengthOf(item.SourceAddress) + Rlp.LengthOf(item.ValidatorPublicKey) +
         Rlp.LengthOf(item.Amount);
 
     public WithdrawalRequest Decode(RlpStream rlpStream, RlpBehaviors rlpBehaviors = RlpBehaviors.None)
@@ -26,7 +26,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = validatorPubkey,
+            ValidatorPublicKey = validatorPubkey,
             Amount = amount
         };
     }
@@ -41,7 +41,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         return new WithdrawalRequest()
         {
             SourceAddress = sourceAddress,
-            ValidatorPubkey = validatorPubkey,
+            ValidatorPublicKey = validatorPubkey,
             Amount = amount
         };
     }
@@ -51,7 +51,7 @@ public class WithdrawalRequestDecoder : IRlpStreamDecoder<WithdrawalRequest>, IR
         int contentLength = GetContentLength(item, rlpBehaviors);
         stream.StartSequence(contentLength);
         stream.Encode(item.SourceAddress);
-        stream.Encode(item.ValidatorPubkey);
+        stream.Encode(item.ValidatorPublicKey);
         stream.Encode(item.Amount);
     }
 
