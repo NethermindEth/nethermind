@@ -34,7 +34,7 @@ public static class SimpleInstructionSingleContract
     {
         List<byte> codeToDeploy = new();
 
-        codeToDeploy.Add((byte)Instruction.JUMPDEST);   // second item - jump destination (on offset 0)
+        codeToDeploy.Add((byte)Instruction.JUMPDEST);
 
         for (int i = 0; i < 12000; i++)
         {

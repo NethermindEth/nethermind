@@ -62,6 +62,24 @@ public enum TestCase
     [TestCaseMetadata("Origin", "endlessly pushing execution origination address to stack (1000 per 1 contract)")]
     Origin,
 
+    [TestCaseMetadata("CoinBase", "endlessly pushing current block's coinbase to stack (1000 per 1 contract)")]
+    CoinBase,
+
+    [TestCaseMetadata("Timestamp", "endlessly pushing current block's timestamp to stack (1000 per 1 contract)")]
+    Timestamp,
+
+    [TestCaseMetadata("Number", "endlessly pushing current block's number to stack (1000 per 1 contract)")]
+    Number,
+
+    [TestCaseMetadata("PrevRandao", "endlessly pushing previous block's randao mix to stack (1000 per 1 contract)")]
+    PrevRandao,
+
+    [TestCaseMetadata("GasLimit", "endlessly pushing current block's gas limit to stack (1000 per 1 contract)")]
+    GasLimit,
+
+    [TestCaseMetadata("ChainId", "endlessly pushing chain ID to stack (1000 per 1 contract)")]
+    ChainId,
+
     [TestCaseMetadata("BaseFee", "endlessly pushing current base fee to stack (1000 per 1 contract)")]
     BaseFee,
 
@@ -70,6 +88,9 @@ public enum TestCase
 
     [TestCaseMetadata("BlobHash", "endlessly pushing zero as index and BlobHash opcode to stack when there were no blobs (1000 per 1 contract)")]
     BlobHashZero,
+
+    [TestCaseMetadata("CodeCopy", "endlessly loading 32-bytes of code to the memory")]
+    CodeCopy,
 
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
     // BalanceNonExisting,
