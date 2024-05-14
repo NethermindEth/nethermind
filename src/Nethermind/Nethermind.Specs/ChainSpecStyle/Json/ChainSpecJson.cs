@@ -179,6 +179,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public UInt256 CanyonBaseFeeChangeDenominator => Params.CanyonBaseFeeChangeDenominator;
             public Address Create2DeployerAddress => Params.Create2DeployerAddress;
             public byte[] Create2DeployerCode => Params.Create2DeployerCode;
+            public string SequencerUrl => Params.SequencerUrl;
             public OptimismEngineParamsJson Params { get; set; }
         }
 
@@ -193,6 +194,7 @@ namespace Nethermind.Specs.ChainSpecStyle.Json
             public UInt256 CanyonBaseFeeChangeDenominator { get; set; }
             public Address Create2DeployerAddress { get; set; }
             public byte[] Create2DeployerCode { get; set; }
+            public string SequencerUrl { get; set; }
         }
 
         internal class NethDevJson

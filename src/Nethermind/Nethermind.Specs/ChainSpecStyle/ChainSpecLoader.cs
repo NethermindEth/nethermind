@@ -341,7 +341,8 @@ public class ChainSpecLoader(IJsonSerializer serializer) : IChainSpecLoader
                 L1BlockAddress = chainSpecJson.Engine.Optimism.L1BlockAddress,
                 CanyonBaseFeeChangeDenominator = chainSpecJson.Engine.Optimism.CanyonBaseFeeChangeDenominator,
                 Create2DeployerAddress = chainSpecJson.Engine.Optimism.Create2DeployerAddress,
-                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode
+                Create2DeployerCode = chainSpecJson.Engine.Optimism.Create2DeployerCode,
+                SequencerUrl = chainSpecJson.Engine.Optimism.SequencerUrl
             };
         }
         else if (chainSpecJson.Engine?.NethDev is not null)
