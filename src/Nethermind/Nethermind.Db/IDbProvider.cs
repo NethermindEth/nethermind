@@ -23,8 +23,6 @@ namespace Nethermind.Db
         // LES (ignore)
         public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
 
-        public IDb WitnessDb => GetDb<IDb>(DbNames.Witness);
-
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
         public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);

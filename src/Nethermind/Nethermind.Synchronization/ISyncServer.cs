@@ -31,6 +31,5 @@ namespace Nethermind.Synchronization
         ulong NetworkId { get; }
         BlockHeader Genesis { get; }
         BlockHeader? Head { get; }
-        Hash256[]? GetBlockWitnessHashes(Hash256 blockHash);
     }
 }

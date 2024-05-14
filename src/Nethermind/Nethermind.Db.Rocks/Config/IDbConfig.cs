@@ -154,18 +154,6 @@ public interface IDbConfig : IConfig
     long? BloomDbMaxBytesPerSec { get; set; }
     IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    ulong WitnessDbWriteBufferSize { get; set; }
-    uint WitnessDbWriteBufferNumber { get; set; }
-    ulong WitnessDbBlockCacheSize { get; set; }
-    bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
-    int? WitnessDbMaxOpenFiles { get; set; }
-    long? WitnessDbMaxBytesPerSec { get; set; }
-    int? WitnessDbBlockSize { get; set; }
-    bool? WitnessUseDirectReads { get; set; }
-    bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? WitnessCompactionReadAhead { get; set; }
-    IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
-
     ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
     uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
     ulong CanonicalHashTrieDbBlockCacheSize { get; set; }

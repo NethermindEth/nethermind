@@ -299,7 +299,6 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(tree, specProvider, stateProvider),
                 logManager);
 
@@ -322,7 +321,6 @@ namespace Nethermind.Synchronization.Test
                 new BlockProcessor.BlockProductionTransactionsExecutor(devTxProcessor, devState, specProvider, logManager),
                 devState,
                 receiptStorage,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(tree, specProvider, devState),
                 logManager);
 
@@ -381,7 +379,6 @@ namespace Nethermind.Synchronization.Test
                 syncPeerPool,
                 selector,
                 syncConfig,
-                NullWitnessCollector.Instance,
                 Policy.FullGossip,
                 MainnetSpecProvider.Instance,
                 logManager);

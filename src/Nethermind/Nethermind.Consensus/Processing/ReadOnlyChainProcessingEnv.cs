@@ -48,7 +48,6 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 StateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(txEnv.BlockTree, specProvider, StateProvider),
                 logManager);
 

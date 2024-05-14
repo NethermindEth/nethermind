@@ -153,18 +153,6 @@ public class DbConfig : IDbConfig
     public long? BloomDbMaxBytesPerSec { get; set; }
     public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-    public uint WitnessDbWriteBufferNumber { get; set; } = 4;
-    public ulong WitnessDbBlockCacheSize { get; set; } = 0;
-    public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? WitnessDbMaxOpenFiles { get; set; }
-    public long? WitnessDbMaxBytesPerSec { get; set; }
-    public int? WitnessDbBlockSize { get; set; }
-    public bool? WitnessUseDirectReads { get; set; }
-    public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
-    public ulong? WitnessCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
-
     // TODO - profile and customize
     public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong)2.MB();
     public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;

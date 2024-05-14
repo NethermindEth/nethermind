@@ -15,7 +15,6 @@ using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Les;
 using Nethermind.Network.P2P.Subprotocols.NodeData;
 using Nethermind.Network.P2P.Subprotocols.Snap;
-using Nethermind.Network.P2P.Subprotocols.Wit;
 
 namespace Nethermind.Network.P2P;
 
@@ -33,7 +32,6 @@ public record struct P2PMessageKey(VersionedProtocol Protocol, int PacketType) :
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Eth, typeof(Eth68MessageCode)))
 
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.NodeData, typeof(NodeDataMessageCode)))
-            .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Wit, typeof(WitMessageCode)))
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Les, typeof(LesMessageCode)))
 
             .Concat(FromMessageCodeClass(Contract.P2P.Protocol.Snap, typeof(SnapMessageCode)))
