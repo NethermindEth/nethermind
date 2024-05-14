@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Core;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Network.Discovery.Messages;
@@ -85,6 +86,12 @@ namespace Nethermind.Network.Test.Builders
         {
             return WithEth66()
                 .With(new Network.P2P.Subprotocols.Eth.V68.Messages.NewPooledTransactionHashesMessageSerializer());
+        }
+
+        public SerializationBuilder WithEth69(ISpecProvider specProvider)
+        {
+            return WithEth68()
+                .With<Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage>(new Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessageSerializer(specProvider));
         }
 
         public SerializationBuilder WithNodeData()
