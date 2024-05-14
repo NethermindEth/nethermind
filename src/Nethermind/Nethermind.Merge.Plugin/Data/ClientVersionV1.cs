@@ -16,7 +16,7 @@ public readonly struct ClientVersionV1
         Code = ProductInfo.ClientCode;
         Name = ProductInfo.Name;
         Version = ProductInfo.Version;
-        Commit = ProductInfo.Commit;
+        Commit = ProductInfo.Commit[..8];
     }
 
     public string Code { get; }
