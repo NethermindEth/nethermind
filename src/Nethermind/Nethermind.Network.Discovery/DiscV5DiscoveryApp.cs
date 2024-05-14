@@ -21,24 +21,27 @@ using Nethermind.Db;
 using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core;
+using Nethermind.Api;
 
 namespace Nethermind.Network.Discovery;
 
 public class Discv5DiscoveryApp : IDiscoveryApp
 {
     private readonly IDiscv5Protocol _discv5Protocol;
+    private readonly IApiWithNetwork _api;
     private readonly Logging.ILogger _logger;
     private readonly SameKeyGenerator _privateKeyProvider;
     private readonly INetworkConfig _networkConfig;
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
 
-    public Discv5DiscoveryApp(SameKeyGenerator privateKeyProvider, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
+    public Discv5DiscoveryApp(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _privateKeyProvider = privateKeyProvider;
         _networkConfig = networkConfig;
         _discoveryDb = discoveryDb;
+        _api = api;
 
         TableConstants.BucketSize = discoveryConfig.BucketSize;
 
@@ -100,14 +103,14 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
     private void NodeAddedByDiscovery(NodeTableEntry newEntry)
     {
-        if(!TryGetNodeFromEnr(newEntry.Record, out Node? newNode))
+        if (!TryGetNodeFromEnr(newEntry.Record, out Node? newNode))
         {
             return;
         }
 
         NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
 
-        if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newEntry.Record}.");
+        if (_logger.IsWarn) _logger.Warn($"A node discovered via discv5: {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -119,17 +122,17 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         NodeRemoved?.Invoke(this, new NodeEventArgs(removedNode));
 
-        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedEntry.Record}.");
+        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedNode}.");
+    }
+
+    private static PublicKey GetPublicKeyFromEnr(IEnr entry)
+    {
+        byte[] keyBytes = entry.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value;
+        return new PublicKey(keyBytes.Length == 33 ? NBitcoin.Secp256k1.Context.Instance.CreatePubKey(keyBytes).ToBytes(false) : keyBytes);
     }
 
     private bool TryGetNodeFromEnr(IEnr enr, [NotNullWhen(true)] out Node? node)
     {
-        static PublicKey GetPublicKeyFromEnr(IEnr entry)
-        {
-            byte[] keyBytes = entry.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1).Value;
-            return new PublicKey(keyBytes.Length == 33 ? NBitcoin.Secp256k1.Context.Instance.CreatePubKey(keyBytes).ToBytes(false) : keyBytes);
-        }
-
         node = null;
         if (!enr.HasKey(EnrEntryKey.Tcp))
         {
@@ -184,25 +187,40 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         while (!_appShutdownSource.IsCancellationRequested)
         {
+            if (_logger.IsInfo) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d1 = await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d2 = await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d3 = await _discv5Protocol.DiscoverAsync(bytes);
             await timer.WaitForNextTickAsync(_appShutdownSource.Token);
         }
     }
 
     public async Task StopAsync()
     {
-        _appShutdownSource.Cancel();
         await _discv5Protocol!.StopAsync();
+        _appShutdownSource.Cancel();
+        _discoveryDb.Clear();
 
-        using IWriteBatch batch = _discoveryDb.StartWriteBatch();
-        foreach (IEnr enr in _discv5Protocol.GetActiveNodes)
+        if (_api.PeerManager is null)
         {
-            batch[enr.NodeId] = enr.EncodeRecord();
+            return;
+        }
+        
+        var activeNodes = _api.PeerManager.ActivePeers.Select(x => new EntrySecp256K1(NBitcoin.Secp256k1.Context.Instance.CreatePubKey(x.Node.Id.PrefixedBytes).ToBytes(false))).ToList();
+
+        var activeNodeEnrs = _discv5Protocol.GetAllNodes.Where(x => activeNodes.Any(n => n.Equals(x.GetEntry<EntrySecp256K1>(EnrEntryKey.Secp256K1))));
+
+        if (activeNodeEnrs.Any())
+        {
+            using IWriteBatch batch = _discoveryDb.StartWriteBatch();
+            foreach (IEnr enr in activeNodeEnrs)
+            {
+                batch[enr.NodeId] = enr.EncodeRecord();
+            }
         }
     }
 
