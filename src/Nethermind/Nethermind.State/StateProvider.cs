@@ -423,8 +423,10 @@ namespace Nethermind.State
 
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
-            if (AccountExists(address)) return;
-            CreateAccount(address, balance, nonce);
+            if (!AccountExists(address))
+            {
+                CreateAccount(address, balance, nonce);
+            }
         }
 
         public void AddToBalanceAndCreateIfNotExists(Address address, in UInt256 balance, IReleaseSpec spec)

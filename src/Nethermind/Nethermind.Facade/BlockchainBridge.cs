@@ -77,7 +77,6 @@ namespace Nethermind.Facade
             IsMining = isMining;
             _simulateBridgeHelper = new SimulateBridgeHelper(
                 simulateProcessingEnvFactory ?? throw new ArgumentNullException(nameof(simulateProcessingEnvFactory)),
-                _specProvider,
                 _blocksConfig);
         }
 
@@ -157,8 +156,7 @@ namespace Nethermind.Facade
             SimulateOutput result = new();
             try
             {
-                (bool success, string error) = _simulateBridgeHelper.TrySimulateTrace(header, payload, new CancellationBlockTracer(tracer, cancellationToken));
-                if (!success)
+                if (!_simulateBridgeHelper.TrySimulate(header, payload, new CancellationBlockTracer(tracer, cancellationToken), out string error))
                 {
                     result.Error = error;
                 }

@@ -3,7 +3,9 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Runtime.InteropServices;
 using Nethermind.Blockchain;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -13,7 +15,6 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm.Tracing;
-using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -21,10 +22,7 @@ using Transaction = Nethermind.Core.Transaction;
 
 namespace Nethermind.Facade.Simulate;
 
-public class SimulateBridgeHelper(
-    SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory,
-    ISpecProvider specProvider,
-    IBlocksConfig blocksConfig)
+public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory, IBlocksConfig blocksConfig)
 {
     private const ProcessingOptions SimulateProcessingOptions =
         ProcessingOptions.ForceProcessing
@@ -32,136 +30,77 @@ public class SimulateBridgeHelper(
         | ProcessingOptions.MarkAsProcessed
         | ProcessingOptions.StoreReceipts;
 
-    private void UpdateStateByModifyingAccounts(
-        BlockHeader blockHeader,
+    private void PrepareState(BlockHeader blockHeader,
+        BlockHeader parent,
         BlockStateCall<TransactionWithSourceDetails> blockStateCall,
-        SimulateReadOnlyBlocksProcessingEnv env)
+        IWorldState stateProvider,
+        OverridableCodeInfoRepository codeInfoRepository,
+        IReleaseSpec releaseSpec)
     {
-        IReleaseSpec currentSpec = env.SpecProvider.GetSpec(blockHeader);
-        env.StateProvider.ApplyStateOverrides(env.CodeInfoRepository, blockStateCall.StateOverrides, currentSpec,
-            blockHeader.Number);
+        stateProvider.StateRoot = parent.StateRoot!;
+        stateProvider.ApplyStateOverrides(codeInfoRepository, blockStateCall.StateOverrides, releaseSpec, blockHeader.Number);
 
-        IEnumerable<Address?> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
-        IEnumerable<Address?> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
-        var all = senders.Union(targets)
-            .Where(address => address is not null && !env.StateProvider.AccountExists(address))
-            .Distinct()
-            .ToList();
-
-        foreach (Address address in all)
+        IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
+        IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
+        foreach (Address address in senders.Union(targets))
         {
-            env.StateProvider.CreateAccountIfNotExists(address, 0, 1);
+            stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
 
-        env.StateProvider.Commit(currentSpec);
-        env.StateProvider.CommitTree(blockHeader.Number - 1);
-        env.StateProvider.RecalculateStateRoot();
+        stateProvider.Commit(releaseSpec);
+        stateProvider.CommitTree(blockHeader.Number - 1);
+        stateProvider.RecalculateStateRoot();
 
-        blockHeader.StateRoot = env.StateProvider.StateRoot;
+        blockHeader.StateRoot = stateProvider.StateRoot;
     }
 
-    public (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer) =>
-        TrySimulateTrace(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.TraceTransfers, payload.Validation));
+    public bool TrySimulate(
+        BlockHeader parent,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        IBlockTracer tracer,
+        [NotNullWhen(false)] out string? error) =>
+        TrySimulate(parent, payload, tracer, simulateProcessingEnvFactory.Create(payload.TraceTransfers, payload.Validation), out error);
 
 
-    private (bool Success, string Error) TrySimulateTrace(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTracer tracer, SimulateReadOnlyBlocksProcessingEnv env)
+    private bool TrySimulate(
+        BlockHeader parent,
+        SimulatePayload<TransactionWithSourceDetails> payload,
+        IBlockTracer tracer,
+        SimulateReadOnlyBlocksProcessingEnv env,
+        [NotNullWhen(false)] out string? error)
     {
-        Block? latestBlock = env.BlockTree.FindLatestBlock();
-        long latestBlockNumber = latestBlock?.Number ?? 0;
-
-        if (latestBlockNumber < parent.Number)
-        {
-            parent = latestBlock?.Header ?? env.BlockTree.Head!.Header;
-        }
-
-        BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
-
-        ulong lastKnown = (ulong)latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
-        {
-            Block? searchResult = env.BlockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
-            if (searchResult is not null)
-            {
-                parent = searchResult.Header;
-            }
-        }
+        IBlockTree blockTree = env.BlockTree;
         IWorldState stateProvider = env.StateProvider;
-        stateProvider.StateRoot = parent.StateRoot!;
+        parent = GetParent(parent, payload, blockTree);
+        IReleaseSpec spec = env.SpecProvider.GetSpec(parent);
+
         if (payload.BlockStateCalls is not null)
         {
             Dictionary<Address, UInt256> nonceCache = new();
-            using ArrayPoolList<Block> suggestedBlocks = new(payload.BlockStateCalls.Length);
+            List<Block> suggestedBlocks = [null];
 
-            foreach (BlockStateCall<TransactionWithSourceDetails> callInputBlock in payload.BlockStateCalls)
+            foreach (BlockStateCall<TransactionWithSourceDetails> blockCall in payload.BlockStateCalls)
             {
-                stateProvider.StateRoot = parent.StateRoot!;
+                nonceCache.Clear();
+                BlockHeader callHeader = GetCallHeader(blockCall, parent, payload.Validation, spec); //currentSpec is still parent spec
+                spec = env.SpecProvider.GetSpec(callHeader);
+                PrepareState(callHeader, parent, blockCall, env.StateProvider, env.CodeInfoRepository, spec);
 
-
-                BlockHeader callHeader = GetCallHeader(callInputBlock, parent);
-                UpdateStateByModifyingAccounts(callHeader, callInputBlock, env);
-                stateProvider.StateRoot = env.StateProvider.StateRoot;
-
-                using IReadOnlyTransactionProcessor? readOnlyTransactionProcessor = env.Build(stateProvider.StateRoot!);
-
-                IReleaseSpec spec = specProvider.GetSpec(parent);
-
-                var specifiedGasTxs = callInputBlock.Calls.Where(details => details.HadGasLimitInRequest).ToList();
-                var notSpecifiedGasTxs = callInputBlock.Calls.Where(details => !details.HadGasLimitInRequest).ToList();
-                var gasSpecified =
-                    specifiedGasTxs.Sum(details => details.Transaction.GasLimit);
-                if (notSpecifiedGasTxs.Any())
+                if (blockCall.BlockOverrides is { BaseFeePerGas: not null })
                 {
-                    var gasPerTx = callHeader.GasLimit - gasSpecified / notSpecifiedGasTxs.Count;
-                    foreach (TransactionWithSourceDetails? call in notSpecifiedGasTxs)
-                    {
-                        call.Transaction.GasLimit = gasPerTx;
-                    }
+                    callHeader.BaseFeePerGas = blockCall.BlockOverrides.BaseFeePerGas.Value;
                 }
-
-                if (!payload.Validation)
+                else if(!payload.Validation)
                 {
                     callHeader.BaseFeePerGas = 0;
                 }
+                callHeader.Hash = callHeader.CalculateHash();
 
-                if (callInputBlock.BlockOverrides is { BaseFeePerGas: not null })
+                Transaction[] transactions = CreateTransactions(payload, blockCall, callHeader, stateProvider, nonceCache);
+                if (!TryGetBlock(payload, env, callHeader, transactions, out Block currentBlock, out error))
                 {
-                    callHeader.BaseFeePerGas = callInputBlock.BlockOverrides.BaseFeePerGas.Value;
+                    return false;
                 }
-
-                Transaction[] transactions = callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, env, nonceCache, payload.Validation)).ToArray()
-                                                        ?? Array.Empty<Transaction>();
-
-                nonceCache.Clear();
-
-
-
-                Block currentBlock = new Block(callHeader, Array.Empty<Transaction>(), Array.Empty<BlockHeader>());
-                currentBlock.Header.Hash = currentBlock.Header.CalculateHash();
-
-                var shoot = stateProvider.TakeSnapshot();
-                var testedTxs = new HashSet<Transaction>();
-                for (var index = 0; index < transactions.Length; index++)
-                {
-                    Transaction transaction = transactions[index];
-                    BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction,
-                        testedTxs,
-                        stateProvider);
-
-                    if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
-                    {
-                        return (false, $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}");
-                    }
-                    stateProvider.IncrementNonce(transaction.SenderAddress);
-
-                    testedTxs.Add(transaction);
-                }
-
-                stateProvider.Restore(shoot);
-                stateProvider.RecalculateStateRoot();
-
-                currentBlock =
-                    currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
-
 
                 ProcessingOptions processingFlags = SimulateProcessingOptions;
 
@@ -170,45 +109,120 @@ public class SimulateBridgeHelper(
                     processingFlags |= ProcessingOptions.NoValidation;
                 }
 
-                suggestedBlocks.Clear();
-                suggestedBlocks.Add(currentBlock);
+                suggestedBlocks[0] = currentBlock;
 
-
-                Block[] currentBlocks;
                 //try
-                {
-                    IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!, payload.Validation);
-                    currentBlocks = processor.Process(stateProvider.StateRoot, suggestedBlocks.ToList(), processingFlags, tracer);
-
-                }
+                //{
+                IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!, payload.Validation);
+                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
+                //}
                 //catch (Exception)
                 //{
                 //    return (false, $"invalid on block {callHeader.Number}");
                 //}
 
-                Block processedBlock = currentBlocks[0];
-
-                if (processedBlock is not null)
-                {
-                    parent = processedBlock.Header;
-                    stateProvider.StateRoot = processedBlock.StateRoot;
-                    env.StateProvider.StateRoot = processedBlock.StateRoot;
-                    var currentSpec = env.SpecProvider.GetSpec(processedBlock.Header);
-                    env.StateProvider.Commit(currentSpec);
-                    env.StateProvider.CommitTree(currentBlock.Number);
-                    env.BlockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
-                    env.BlockTree.UpdateHeadBlock(processedBlock.Hash!);
-                }
+                FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
+                parent = processedBlock.Header;
             }
         }
 
-        return (true, "");
+        error = null;
+        return true;
     }
 
-    private Transaction CreateTransaction(
-        TransactionWithSourceDetails transactionDetails,
-        BlockHeader callHeader,
+    private static void FinalizeStateAndBlock(IWorldState stateProvider, Block processedBlock, IReleaseSpec currentSpec, Block currentBlock, IBlockTree blockTree)
+    {
+        stateProvider.StateRoot = processedBlock.StateRoot!;
+        stateProvider.Commit(currentSpec);
+        stateProvider.CommitTree(currentBlock.Number);
+        blockTree.SuggestBlock(processedBlock, BlockTreeSuggestOptions.ForceSetAsMain);
+        blockTree.UpdateHeadBlock(processedBlock.Hash!);
+    }
+
+    private static BlockHeader GetParent(BlockHeader parent, SimulatePayload<TransactionWithSourceDetails> payload, IBlockTree blockTree)
+    {
+        Block? latestBlock = blockTree.FindLatestBlock();
+        long latestBlockNumber = latestBlock?.Number ?? 0;
+
+        if (latestBlockNumber < parent.Number)
+        {
+            parent = latestBlock?.Header ?? blockTree.Head!.Header;
+        }
+
+        BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
+
+        ulong lastKnown = (ulong)latestBlockNumber;
+        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
+        {
+            Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
+            if (searchResult is not null)
+            {
+                parent = searchResult.Header;
+            }
+        }
+
+        return parent;
+    }
+
+    private static bool TryGetBlock(
+        SimulatePayload<TransactionWithSourceDetails> payload,
         SimulateReadOnlyBlocksProcessingEnv env,
+        BlockHeader callHeader,
+        Transaction[] transactions,
+        out Block currentBlock,
+        [NotNullWhen(false)] out string? error)
+    {
+        IWorldState stateProvider = env.StateProvider;
+        Snapshot shoot = stateProvider.TakeSnapshot();
+        currentBlock = new Block(callHeader);
+        LinkedHashSet<Transaction> testedTxs = new();
+        for (int index = 0; index < transactions.Length; index++)
+        {
+            Transaction transaction = transactions[index];
+            BlockProcessor.AddingTxEventArgs? args = env.BlockTransactionPicker.CanAddTransaction(currentBlock, transaction, testedTxs, stateProvider);
+
+            if (args.Action is BlockProcessor.TxAction.Stop or BlockProcessor.TxAction.Skip && payload.Validation)
+            {
+                error = $"invalid transaction index: {index} at block number: {callHeader.Number}, Reason: {args.Reason}";
+                return false;
+            }
+
+            stateProvider.IncrementNonce(transaction.SenderAddress!);
+            testedTxs.Add(transaction);
+        }
+
+        stateProvider.Restore(shoot);
+        stateProvider.RecalculateStateRoot();
+
+        currentBlock = currentBlock.WithReplacedBody(currentBlock.Body.WithChangedTransactions(testedTxs.ToArray()));
+        error = null;
+        return true;
+    }
+
+    private Transaction[] CreateTransactions(SimulatePayload<TransactionWithSourceDetails> payload,
+        BlockStateCall<TransactionWithSourceDetails> callInputBlock,
+        BlockHeader callHeader,
+        IWorldState stateProvider,
+        Dictionary<Address, UInt256> nonceCache)
+    {
+        int notSpecifiedGasTxsCount = callInputBlock.Calls?.Count(details => !details.HadGasLimitInRequest) ?? 0;
+        long gasSpecified = callInputBlock.Calls?.Where(details => details.HadGasLimitInRequest).Sum(details => details.Transaction.GasLimit) ?? 0;
+        if (notSpecifiedGasTxsCount > 0)
+        {
+            long gasPerTx = callHeader.GasLimit - gasSpecified / notSpecifiedGasTxsCount;
+            IEnumerable<TransactionWithSourceDetails> notSpecifiedGasTxs = callInputBlock.Calls?.Where(details => !details.HadGasLimitInRequest) ?? Enumerable.Empty<TransactionWithSourceDetails>();
+            foreach (TransactionWithSourceDetails call in notSpecifiedGasTxs)
+            {
+                call.Transaction.GasLimit = gasPerTx;
+            }
+        }
+
+        return callInputBlock.Calls?.Select(t => CreateTransaction(t, callHeader, stateProvider, nonceCache, payload.Validation)).ToArray() ?? Array.Empty<Transaction>();
+    }
+
+    private Transaction CreateTransaction(TransactionWithSourceDetails transactionDetails,
+        BlockHeader callHeader,
+        IWorldState stateProvider,
         Dictionary<Address, UInt256> nonceCache,
         bool validate)
     {
@@ -219,23 +233,18 @@ public class SimulateBridgeHelper(
 
         if (!transactionDetails.HadNonceInRequest)
         {
-            if (!nonceCache.TryGetValue(transaction.SenderAddress, out UInt256 cachedNonce))
+            ref UInt256 cachedNonce = ref CollectionsMarshal.GetValueRefOrAddDefault(nonceCache, transaction.SenderAddress, out bool exist);
+            if (!exist)
             {
-                if (env.StateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
+                if (stateProvider.TryGetAccount(transaction.SenderAddress, out AccountStruct test))
                 {
                     cachedNonce = test.Nonce;
                 }
-                else
-                {
-                    cachedNonce = 0; // Todo think if we shall create account here
-                }
-
-                nonceCache[transaction.SenderAddress] = cachedNonce;
+                // else // Todo think if we shall create account here
             }
             else
             {
                 cachedNonce++;
-                nonceCache[transaction.SenderAddress] = cachedNonce;
             }
 
             transaction.Nonce = cachedNonce;
@@ -263,9 +272,9 @@ public class SimulateBridgeHelper(
         return transaction;
     }
 
-    private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent) =>
+    private BlockHeader GetCallHeader(BlockStateCall<TransactionWithSourceDetails> block, BlockHeader parent, bool payloadValidation, IReleaseSpec parentSpec) =>
         block.BlockOverrides is not null
-            ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig, specProvider.GetSpec(parent))
+            ? block.BlockOverrides.GetBlockHeader(parent, blocksConfig, parentSpec)
             : new BlockHeader(
                 parent.Hash!,
                 Keccak.OfAnEmptySequenceRlp,
@@ -273,11 +282,10 @@ public class SimulateBridgeHelper(
                 UInt256.Zero,
                 parent.Number + 1,
                 parent.GasLimit,
-
                 parent.Timestamp + 1,
                 Array.Empty<byte>())
             {
-                BaseFeePerGas = BaseFeeCalculator.Calculate(parent, specProvider.GetSpec(parent)),
+                BaseFeePerGas = !payloadValidation ? 0 : BaseFeeCalculator.Calculate(parent, parentSpec),
                 MixHash = parent.MixHash,
                 IsPostMerge = parent.Difficulty == 0
             };
