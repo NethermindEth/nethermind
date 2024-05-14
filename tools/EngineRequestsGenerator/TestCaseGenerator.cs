@@ -232,14 +232,24 @@ public class TestCaseGenerator
             case TestCase.Push0:
                 return SimpleInstructionTwoContracts.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Push0Pop:
-                return SimpleInstructionPop.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionSingleContract.GetTxs(Instruction.PUSH0, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Gas:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.GAS, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.GasPop:
+                return SimpleInstructionSingleContract.GetTxs(Instruction.GAS, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.SelfBalance:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.SELFBALANCE, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.JumpDest:
+                return SimpleInstructionSingleContract.GetTxs(Instruction.JUMPDEST, privateKey, nonce, blockGasConsumptionTarget, pop: false);
+            case TestCase.MSize:
+                return SimpleInstructionTwoContracts.GetTxs(Instruction.MSIZE, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.MStoreZero:
             case TestCase.MStoreRandom:
                 return MStore.GetTxs(Instruction.MSTORE, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Caller:
                 return SimpleInstructionTwoContracts.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.CallerPop:
-                return SimpleInstructionPop.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
+                return SimpleInstructionSingleContract.GetTxs(Instruction.CALLER, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Address:
                 return SimpleInstructionTwoContracts.GetTxs(Instruction.ADDRESS, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.Origin:

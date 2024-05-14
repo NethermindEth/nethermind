@@ -26,8 +26,23 @@ public enum TestCase
     [TestCaseMetadata("Push0", "endlessly pushing zeros to stack (1000 per 1 contract)")]
     Push0,
 
-    [TestCaseMetadata("Push0 - Pop", "endlessly pushing zeros to stack, then popping it")]
+    [TestCaseMetadata("Push0-Pop", "endlessly pushing zeros to stack, then popping it")]
     Push0Pop,
+
+    [TestCaseMetadata("Gas", "endlessly pushing amount of remaining gas to stack (1000 per 1 contract)")]
+    Gas,
+
+    [TestCaseMetadata("Gas-Pop", "endlessly pushing amount of remaining gas to stack, then popping it")]
+    GasPop,
+
+    [TestCaseMetadata("SelfBalance", "endlessly pushing self balance to stack (1000 per 1 contract)")]
+    SelfBalance,
+
+    [TestCaseMetadata("JumpDest", "block full of JumpDest opcode only")]
+    JumpDest,
+
+    [TestCaseMetadata("MSize", "endlessly pushing memory size to stack (1000 per 1 contract)")]
+    MSize,
 
     [TestCaseMetadata("MStore - zero", "endlessly pushing zero value to memory with offset zero")]
     MStoreZero,
@@ -38,7 +53,7 @@ public enum TestCase
     [TestCaseMetadata("Caller", "endlessly pushing caller address to stack (1000 per 1 contract)")]
     Caller,
 
-    [TestCaseMetadata("Caller - Pop", "endlessly pushing caller address to stack, then popping it")]
+    [TestCaseMetadata("Caller-Pop", "endlessly pushing caller address to stack, then popping it")]
     CallerPop,
 
     [TestCaseMetadata("Address", "endlessly pushing account address to stack (1000 per 1 contract)")]

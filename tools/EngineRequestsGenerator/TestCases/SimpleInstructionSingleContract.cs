@@ -10,9 +10,9 @@ using Nethermind.Int256;
 
 namespace EngineRequestsGenerator.TestCases;
 
-public static class SimpleInstructionPop
+public static class SimpleInstructionSingleContract
 {
-    public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget)
+    public static Transaction[] GetTxs(Instruction instruction, PrivateKey privateKey, int nonce, long blockGasConsumptionTarget, bool pop = true)
     {
         return
         [
@@ -23,14 +23,14 @@ public static class SimpleInstructionPop
             .WithMaxPriorityFeePerGas(1.GWei())
             .WithTo(null)
             .WithChainId(BlockchainIds.Holesky)
-            .WithData(PrepareCode(instruction))
+            .WithData(PrepareCode(instruction, pop))
             .WithGasLimit(blockGasConsumptionTarget)
             .SignedAndResolved(privateKey)
             .TestObject
         ];
     }
 
-    private static byte[] PrepareCode(Instruction instruction)
+    private static byte[] PrepareCode(Instruction instruction, bool pop)
     {
         List<byte> codeToDeploy = new();
 
@@ -39,7 +39,7 @@ public static class SimpleInstructionPop
         for (int i = 0; i < 12000; i++)
         {
             codeToDeploy.Add((byte)instruction);
-            codeToDeploy.Add((byte)Instruction.POP);
+            if (pop) codeToDeploy.Add((byte)Instruction.POP);
         }
 
         codeToDeploy.Add((byte)Instruction.PUSH0);
