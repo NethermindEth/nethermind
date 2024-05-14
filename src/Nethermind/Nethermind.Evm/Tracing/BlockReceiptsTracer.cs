@@ -281,13 +281,8 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public IEnumerable<LogEntry> ReportActionAndAddResultsToState(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input,
         ExecutionType callType, bool isPrecompileCall = false)
     {
-        if (_logsTxTracer != null)
-        {
-            return _logsTxTracer.ReportActionAndAddResultsToState(gas, value, from, to, input, callType,
-                isPrecompileCall);
-        }
-
-        return Enumerable.Empty<LogEntry>();
-
+        return _logsTxTracer is not null
+            ? _logsTxTracer.ReportActionAndAddResultsToState(gas, value, from, to, input, callType, isPrecompileCall)
+            : Enumerable.Empty<LogEntry>();
     }
 }

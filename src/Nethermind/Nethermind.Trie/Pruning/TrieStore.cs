@@ -52,7 +52,7 @@ namespace Nethermind.Trie.Pruning
                 }
             }
 
-            public virtual TrieNode FindCachedOrUnknown(in Key key)
+            public TrieNode FindCachedOrUnknown(in Key key)
             {
                 if (TryGetValue(key, out TrieNode trieNode))
                 {
@@ -609,7 +609,6 @@ namespace Nethermind.Trie.Pruning
             new ReadOnlyTrieStore(this, store);
 
         public bool IsNodeCached(Hash256? address, in TreePath path, Hash256? hash) => _dirtyNodes.IsNodeCached(new DirtyNodesCache.Key(address, path, hash));
-        private bool IsNodeCached(DirtyNodesCache.Key key) => _dirtyNodes.IsNodeCached(key);
 
         public virtual TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256? hash) =>
             FindCachedOrUnknown(address, path, hash, false);
@@ -1276,7 +1275,7 @@ namespace Nethermind.Trie.Pruning
         }
 
         // Used to serve node by hash
-        public virtual byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
+        public byte[]? GetByHash(ReadOnlySpan<byte> key, ReadFlags flags = ReadFlags.None)
         {
             Hash256 asHash = new Hash256(key);
             return _pruningStrategy.PruningEnabled
