@@ -12,7 +12,7 @@ public class SimulateVirtualMachine(IVirtualMachine virtualMachine) : IVirtualMa
 {
     public TransactionSubstate Run<TTracingActions>(EvmState state, IWorldState worldState, ITxTracer txTracer) where TTracingActions : struct, VirtualMachine.IIsTracing
     {
-        if (typeof(TTracingActions)== typeof(VirtualMachine.IsTracing) && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
+        if (typeof(TTracingActions) == typeof(VirtualMachine.IsTracing) && TryGetLogsMutator(txTracer, out ITxLogsMutator logsMutator))
         {
             logsMutator.SetLogsToMutate(state.Logs);
         }

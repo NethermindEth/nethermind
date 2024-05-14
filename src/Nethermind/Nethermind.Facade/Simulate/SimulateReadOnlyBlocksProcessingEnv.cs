@@ -34,7 +34,7 @@ public class SimulateBlockValidationTransactionsExecutor : BlockProcessor.BlockV
     protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
         BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
     {
-        processingOptions |= ProcessingOptions.DoNotVerifyNonce;
+        processingOptions |= ProcessingOptions.ForceProcessing | ProcessingOptions.DoNotVerifyNonce | ProcessingOptions.NoValidation;
         base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
     }
 }

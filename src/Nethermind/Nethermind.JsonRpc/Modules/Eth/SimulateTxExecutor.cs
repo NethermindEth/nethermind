@@ -155,7 +155,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
             HashSet<long> existingBlockNumbers =
             [
-                ..call.BlockStateCalls.Select(b => (long)(b.BlockOverrides?.Number ?? ulong.MinValue))
+                .. call.BlockStateCalls.Select(b => (long)(b.BlockOverrides?.Number ?? ulong.MinValue))
             ];
 
             List<BlockStateCall<TransactionForRpc>> completeBlockStateCalls = call.BlockStateCalls;
@@ -186,7 +186,8 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
-        if (results.Error?.Contains("invalid transaction") == true)
+        if (results.Error != null && (results.Error.Contains("invalid transaction")
+                                      || results.Error.Contains("InsufficientBalanceException")))
             results.ErrorCode = ErrorCodes.InvalidTransaction;
 
         return results.Error is null

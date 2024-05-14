@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.IO;
 using System.Security.Cryptography;
 using System.Threading;
@@ -90,15 +91,23 @@ public static class KzgPolynomialCommitments
 
     public static bool AreProofsValid(byte[][] blobs, byte[][] commitments, byte[][] proofs)
     {
-        byte[] flatBlobs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerBlob];
-        byte[] flatCommitments = new byte[blobs.Length * Ckzg.Ckzg.BytesPerCommitment];
-        byte[] flatProofs = new byte[blobs.Length * Ckzg.Ckzg.BytesPerProof];
+        var length = blobs.Length * Ckzg.Ckzg.BytesPerBlob;
+        byte[] flatBlobsArray = ArrayPool<byte>.Shared.Rent(length);
+        var flatBlobs = new Span<byte>(flatBlobsArray, 0, length);
+
+        length = blobs.Length * Ckzg.Ckzg.BytesPerCommitment;
+        byte[] flatCommitmentsArray = ArrayPool<byte>.Shared.Rent(length);
+        var flatCommitments = new Span<byte>(flatCommitmentsArray, 0, length);
+
+        length = blobs.Length * Ckzg.Ckzg.BytesPerProof;
+        byte[] flatProofsArray = ArrayPool<byte>.Shared.Rent(length);
+        var flatProofs = new Span<byte>(flatProofsArray, 0, length);
 
         for (int i = 0; i < blobs.Length; i++)
         {
-            Array.Copy(blobs[i], 0, flatBlobs, i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob);
-            Array.Copy(commitments[i], 0, flatCommitments, i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment);
-            Array.Copy(proofs[i], 0, flatProofs, i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof);
+            blobs[i].CopyTo(flatBlobs.Slice(i * Ckzg.Ckzg.BytesPerBlob, Ckzg.Ckzg.BytesPerBlob));
+            commitments[i].CopyTo(flatCommitments.Slice(i * Ckzg.Ckzg.BytesPerCommitment, Ckzg.Ckzg.BytesPerCommitment));
+            proofs[i].CopyTo(flatProofs.Slice(i * Ckzg.Ckzg.BytesPerProof, Ckzg.Ckzg.BytesPerProof));
         }
 
         try
@@ -110,10 +119,16 @@ public static class KzgPolynomialCommitments
         {
             return false;
         }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(flatBlobsArray);
+            ArrayPool<byte>.Shared.Return(flatCommitmentsArray);
+            ArrayPool<byte>.Shared.Return(flatProofsArray);
+        }
     }
 
     /// <summary>
-    /// Method to genereate correct data for tests only, not safe
+    /// Method to generate correct data for tests only, not safe
     /// </summary>
     public static void KzgifyBlob(ReadOnlySpan<byte> blob, Span<byte> commitment, Span<byte> proof, Span<byte> hashV1)
     {

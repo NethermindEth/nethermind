@@ -42,7 +42,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
         IEnumerable<Address> senders = blockStateCall.Calls?.Select(details => details.Transaction.SenderAddress) ?? Enumerable.Empty<Address?>();
         IEnumerable<Address> targets = blockStateCall.Calls?.Select(details => details.Transaction.To!) ?? Enumerable.Empty<Address?>();
-        foreach (Address address in senders.Union(targets).Where(t=> t is not null))
+        foreach (Address address in senders.Union(targets).Where(t => t is not null))
         {
             stateProvider.CreateAccountIfNotExists(address, 0, 1);
         }
@@ -90,7 +90,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
                 {
                     callHeader.BaseFeePerGas = blockCall.BlockOverrides.BaseFeePerGas.Value;
                 }
-                else if(!payload.Validation)
+                else if (!payload.Validation)
                 {
                     callHeader.BaseFeePerGas = 0;
                 }
@@ -111,15 +111,9 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
 
                 suggestedBlocks[0] = currentBlock;
 
-                //try
-                //{
                 IBlockProcessor processor = env.GetProcessor(currentBlock.StateRoot!, payload.Validation);
-                Block processedBlock = processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
-                //}
-                //catch (Exception)
-                //{
-                //    return (false, $"invalid on block {callHeader.Number}");
-                //}
+                Block processedBlock =
+                        processor.Process(stateProvider.StateRoot, suggestedBlocks, processingFlags, tracer)[0];
 
                 FinalizeStateAndBlock(stateProvider, processedBlock, spec, currentBlock, blockTree);
                 parent = processedBlock.Header;
