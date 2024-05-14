@@ -93,9 +93,7 @@ namespace Nethermind.Specs
 
         public bool IsEip2200Enabled => _spec.IsEip2200Enabled;
 
-        public bool IsEip2315Enabled => _spec.IsEip2315Enabled;
-
-        public bool IsEip2537Enabled => _spec.IsEip2315Enabled;
+        public bool IsEip2537Enabled => _spec.IsEip2537Enabled;
 
         public bool IsEip2565Enabled => _spec.IsEip2565Enabled;
 
@@ -132,7 +130,6 @@ namespace Nethermind.Specs
         public Address Eip4788ContractAddress => _spec.Eip4788ContractAddress;
         public bool IsEip2935Enabled => _spec.IsEip2935Enabled;
         public Address Eip2935ContractAddress => _spec.Eip2935ContractAddress;
-        public ulong Eip2935TransitionTimestamp => _spec.Eip2935TransitionTimestamp;
         public UInt256 ForkBaseFee => _spec.ForkBaseFee;
         public UInt256 BaseFeeMaxChangeDenominator => _spec.BaseFeeMaxChangeDenominator;
         public long ElasticityMultiplier => _spec.ElasticityMultiplier;

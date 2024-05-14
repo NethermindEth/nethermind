@@ -8,16 +8,38 @@ using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
+using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Db;
 using Nethermind.Evm;
+using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.State;
 using static Nethermind.Consensus.Processing.BlockProcessor;
 
 namespace Nethermind.Facade.Simulate;
+
+
+
+public class SimulateBlockValidationTransactionsExecutor : BlockProcessor.BlockValidationTransactionsExecutor
+{
+    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessor transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
+    {
+    }
+
+    public SimulateBlockValidationTransactionsExecutor(ITransactionProcessorAdapter transactionProcessor, IWorldState stateProvider) : base(transactionProcessor, stateProvider)
+    {
+    }
+
+    protected override void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index,
+        BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
+    {
+        processingOptions |= ProcessingOptions.DoNotVerifyNonce;
+        base.ProcessTransaction(in blkCtx, currentTx, index, receiptsTracer, processingOptions);
+    }
+}
 
 public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, IDisposable
 {
@@ -87,11 +109,13 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         return new SimulateBlockValidatorProxy(blockValidator);
     }
 
-    public IBlockProcessor GetProcessor(Hash256 stateRoot) =>
+    public IBlockProcessor GetProcessor(Hash256 stateRoot, bool validate) =>
         new BlockProcessor(SpecProvider,
             _blockValidator,
             NoBlockRewards.Instance,
-            new BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
+            validate
+                ? new BlockValidationTransactionsExecutor(_transactionProcessor, StateProvider)
+                : new SimulateBlockValidationTransactionsExecutor(_transactionProcessor, StateProvider),
             StateProvider,
             NullReceiptStorage.Instance,
             NullWitnessCollector.Instance,
