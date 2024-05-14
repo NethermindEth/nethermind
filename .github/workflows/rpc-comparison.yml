@@ -49,6 +49,8 @@ jobs:
   verify_correctness_of_setup:
     name: Verify if inputs are correct
     runs-on: ubuntu-latest
+    outputs:
+      custom_machine_type: ${{ steps.compute_machine_type.outputs.machine_type }}
     steps:
       - name: Verify if inputs are correctly applied
         run: |
@@ -65,6 +67,23 @@ jobs:
           IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
           BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
           COMPARE_WITH: ${{ inputs.compare_with }}
+          
+      - name: Compute Machine Type
+        id: compute_machine_type
+        run: |
+          convert_to_paprika="${{ github.event.inputs.convert_to_paprika }}"
+          is_performance_check="${{ github.event.inputs.is_performance_check }}"
+          if [[ "$convert_to_paprika" == 'true' && "$is_performance_check" == 'true' ]]; then
+            echo "custom_machine_type=g7-premium-16" >> $GITHUB_OUTPUT
+          elif [[ "$convert_to_paprika" == 'true' ]]; then
+            echo "custom_machine_type=g6-standard-8" >> $GITHUB_OUTPUT
+          elif [[ "$is_performance_check" == 'true' ]]; then
+            echo "custom_machine_type=g7-premium-8" >> $GITHUB_OUTPUT
+          else
+            echo "custom_machine_type=" >> $GITHUB_OUTPUT
+          fi
+        env:
+          machine_type: ${{ steps.compute_machine_type.outputs.machine_type }}
 
   create_main_node:
     name: Create node from current branch
@@ -79,7 +98,7 @@ jobs:
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
       additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] log=INFO
@@ -102,7 +121,7 @@ jobs:
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
       additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] log=INFO
