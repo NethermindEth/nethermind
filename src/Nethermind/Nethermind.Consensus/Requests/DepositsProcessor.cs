@@ -7,7 +7,6 @@ using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using System.Linq;
-using Nethermind.Core.Extensions;
 using System;
 
 namespace Nethermind.Consensus.Requests;
@@ -37,13 +36,10 @@ public class DepositsProcessor : IDepositsProcessor
                             {
                                 PubKey = (byte[])result[0],
                                 WithdrawalCredentials = (byte[])result[1],
-                                // Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
                                 Amount = BitConverter.ToUInt64(((byte[])result[2]).Reverse().ToArray(), 0),
                                 Signature = (byte[])result[3],
-                                // Index = ((byte[])result[4]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
                                 Index = BitConverter.ToUInt64(((byte[])result[4]).Reverse().ToArray(), 0)
                             };
-
                             yield return newDeposit;
                         }
                     }
