@@ -104,7 +104,7 @@ public class EthSimulateTestsBlocksAndTransactions
 
         SimulatePayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
+            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
             {
                 new()
                 {
@@ -183,7 +183,7 @@ public class EthSimulateTestsBlocksAndTransactions
         TransactionForRpc transactionForRpc2 = new(txAtoB1) { Nonce = null };
         SimulatePayload<TransactionForRpc> payload = new()
         {
-            BlockStateCalls = new BlockStateCall<TransactionForRpc>[]
+            BlockStateCalls = new List<BlockStateCall<TransactionForRpc>>
             {
                 new()
                 {

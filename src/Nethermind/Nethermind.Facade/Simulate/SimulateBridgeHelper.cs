@@ -152,7 +152,7 @@ public class SimulateBridgeHelper(SimulateReadOnlyBlocksProcessingEnvFactory sim
         BlockStateCall<TransactionWithSourceDetails>? firstBlock = payload.BlockStateCalls?.FirstOrDefault();
 
         ulong lastKnown = (ulong)latestBlockNumber;
-        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock?.BlockOverrides?.Number < lastKnown)
+        if (firstBlock?.BlockOverrides?.Number > 0 && firstBlock.BlockOverrides?.Number < lastKnown)
         {
             Block? searchResult = blockTree.FindBlock((long)firstBlock.BlockOverrides.Number);
             if (searchResult is not null)
