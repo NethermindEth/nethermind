@@ -6,8 +6,6 @@ using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.State;
@@ -55,7 +53,8 @@ public class WithdrawalRequestsProcessor : IWithdrawalRequestsProcessor
             byte[] validatorPubKey = new byte[48];
             state.Get(validatorAddressFirstCell)[..32].CopyTo(validatorPubKey[..32]);
             state.Get(validatorAddressSecondCell)[..16].CopyTo(validatorPubKey[32..]);
-            ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
+            // ulong amount = state.Get(validatorAddressSecondCell)[16..24].ToULongFromBigEndianByteArrayWithoutLeadingZeros(); // ToDo write tests to extension method
+            UInt64 amount = BitConverter.ToUInt64(state.Get(validatorAddressSecondCell)[16..24].ToArray(), 0);
             yield return new WithdrawalRequest { SourceAddress = sourceAddress, ValidatorPubkey = validatorPubKey, Amount = amount };
         }
 

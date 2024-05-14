@@ -39,10 +39,8 @@ public class DepositProcessorTests
         {
             PubKey = (byte[])result[0],
             WithdrawalCredentials = (byte[])result[1],
-            // Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(),
             Amount = BitConverter.ToUInt64(((byte[])result[2]).Reverse().ToArray(), 0),
             Signature = (byte[])result[3],
-            // Index = ((byte[])result[4]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(),
             Index = BitConverter.ToUInt64(((byte[])result[4]).Reverse().ToArray(), 0)
         };
     }
