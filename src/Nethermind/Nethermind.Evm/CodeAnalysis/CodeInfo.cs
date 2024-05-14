@@ -46,5 +46,13 @@ namespace Nethermind.Evm.CodeAnalysis
         {
             _analyzer.Execute();
         }
+
+        public void AnalyseInBackgroundIfRequired()
+        {
+            if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            }
+        }
     }
 }
