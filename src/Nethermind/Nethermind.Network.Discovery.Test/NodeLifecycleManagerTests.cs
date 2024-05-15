@@ -149,7 +149,18 @@ namespace Nethermind.Network.Discovery.Test
         }
 
         [Test]
-        public async Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        public Task processNeighboursMessage_willCombineTwoSubsequentMessage()
+        {
+            return processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0), 16);
+        }
+
+        [Test]
+        public Task processNeighboursMessage_willCombineDeduplicateMultipleIps()
+        {
+            return processNeighboursMessage_Test((pubkey, i) => new Node(pubkey, $"127.0.0.100", 0), 1);
+        }
+
+        public async Task processNeighboursMessage_Test(Func<PublicKey, int, Node> createNode, int expectedCount)
         {
             IDiscoveryConfig discoveryConfig = new DiscoveryConfig();
             discoveryConfig.PongTimeout = 50;
@@ -172,13 +183,13 @@ namespace Nethermind.Network.Discovery.Test
 
             Node[] firstNodes = TestItem.PublicKeys
                 .Take(12)
-                .Select((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 1}", 0))
+                .Select(createNode)
                 .ToArray();
             NeighborsMsg firstNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, firstNodes);
             Node[] secondNodes = TestItem.PublicKeys
                 .Skip(12)
                 .Take(4)
-                .Select((pubkey, i) => new Node(pubkey, $"127.0.0.{i + 14}", 0))
+                .Select((pubkey, i) => createNode(pubkey, i + 14))
                 .ToArray();
             NeighborsMsg secondNodeMsg = new NeighborsMsg(TestItem.PublicKeyA, 1, secondNodes);
 
@@ -186,7 +197,7 @@ namespace Nethermind.Network.Discovery.Test
             nodeManager.ProcessNeighborsMsg(secondNodeMsg);
 
             _discoveryManagerMock
-                .Received(16)
+                .Received(expectedCount)
                 .GetNodeLifecycleManager(Arg.Any<Node>(), Arg.Any<bool>());
         }
 
