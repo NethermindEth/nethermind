@@ -131,7 +131,7 @@ namespace Ethereum.Test.Base
 
             Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
 
-            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidateBlock(block, specProvider);
+            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidBlock(block, specProvider);
 
             if (isValid)
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
@@ -178,7 +178,7 @@ namespace Ethereum.Test.Base
             stateProvider.Reset();
         }
 
-        private bool IsValidateBlock(Block block, ISpecProvider specProvider)
+        private bool IsValidBlock(Block block, ISpecProvider specProvider)
         {
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
