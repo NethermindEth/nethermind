@@ -33,7 +33,7 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static UInt256 _defaultBaseFeeForStateTest = 0xA;
-        private TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
+        private readonly TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
         public void Setup()
