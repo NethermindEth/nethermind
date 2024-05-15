@@ -7,6 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
@@ -55,7 +56,7 @@ namespace Nethermind.Clique.Test
             private readonly Dictionary<PrivateKey, ISnapshotManager> _snapshotManager = new();
             private readonly Dictionary<PrivateKey, BlockTree> _blockTrees = new();
             private readonly Dictionary<PrivateKey, AutoResetEvent> _blockEvents = new();
-            private readonly Dictionary<PrivateKey, CliqueBlockProducer> _producers = new();
+            private readonly Dictionary<PrivateKey, CliqueBlockProducerRunner> _producers = new();
             private readonly Dictionary<PrivateKey, TxPool.TxPool> _pools = new();
 
             private On()
@@ -175,7 +176,6 @@ namespace Nethermind.Clique.Test
                     txPoolTxSource,
                     minerProcessor,
                     minerStateProvider,
-                    blockTree,
                     _timestamper,
                     new CryptoRandom(),
                     snapshotManager,
@@ -184,11 +184,21 @@ namespace Nethermind.Clique.Test
                     MainnetSpecProvider.Instance,
                     _cliqueConfig,
                     nodeLogManager);
-                blockProducer.Start();
 
-                ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, blockProducer);
+                CliqueBlockProducerRunner producerRunner = new CliqueBlockProducerRunner(
+                    blockTree,
+                    _timestamper,
+                    new CryptoRandom(),
+                    snapshotManager,
+                    blockProducer,
+                    _cliqueConfig,
+                    LimboLogs.Instance);
 
-                _producers.Add(privateKey, blockProducer);
+                producerRunner.Start();
+
+                ProducedBlockSuggester suggester = new ProducedBlockSuggester(blockTree, producerRunner);
+
+                _producers.Add(privateKey, producerRunner);
 
                 return this;
             }
@@ -249,7 +259,7 @@ namespace Nethermind.Clique.Test
             public On IsProducingBlocks(PrivateKey nodeId, bool expected, ulong? maxInterval)
             {
                 if (_logger.IsInfo) _logger.Info($"IsProducingBlocks");
-                Assert.That(((IBlockProducer)_producers[nodeId]).IsProducingBlocks(maxInterval), Is.EqualTo(expected));
+                Assert.That(((IBlockProducerRunner)_producers[nodeId]).IsProducingBlocks(maxInterval), Is.EqualTo(expected));
                 return this;
             }
 

@@ -4,6 +4,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Core.Extensions;
@@ -18,7 +19,7 @@ public class BlockImprovementContext : IBlockImprovementContext
     private readonly FeesTracer _feesTracer = new();
 
     public BlockImprovementContext(Block currentBestBlock,
-        IManualBlockProductionTrigger blockProductionTrigger,
+        IBlockProducer blockProducer,
         TimeSpan timeout,
         BlockHeader parentHeader,
         PayloadAttributes payloadAttributes,
@@ -27,8 +28,8 @@ public class BlockImprovementContext : IBlockImprovementContext
         _cancellationTokenSource = new CancellationTokenSource(timeout);
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
-        ImprovementTask = blockProductionTrigger
-            .BuildBlock(parentHeader, _cancellationTokenSource.Token, _feesTracer, payloadAttributes)
+        ImprovementTask = blockProducer
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
     }
 

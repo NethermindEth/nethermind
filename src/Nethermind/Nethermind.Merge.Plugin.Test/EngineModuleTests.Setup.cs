@@ -211,12 +211,11 @@ public partial class EngineModuleTests
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();
-            PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(
-                blockProducerEnv, BlockProductionTrigger);
+            PostMergeBlockProducer? postMergeBlockProducer = blockProducerFactory.Create(blockProducerEnv);
             PostMergeBlockProducer = postMergeBlockProducer;
             PayloadPreparationService ??= new PayloadPreparationService(
                 postMergeBlockProducer,
-                new BlockImprovementContextFactory(BlockProductionTrigger, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
+                new BlockImprovementContextFactory(PostMergeBlockProducer, TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot)),
                 TimerFactory.Default,
                 LogManager,
                 TimeSpan.FromSeconds(MergeConfig.SecondsPerSlot),

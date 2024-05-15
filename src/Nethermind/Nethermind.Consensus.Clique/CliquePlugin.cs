@@ -68,7 +68,7 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
@@ -142,7 +142,6 @@ namespace Nethermind.Consensus.Clique
                 additionalTxSource.Then(txPoolTxSource),
                 chainProcessor,
                 producerEnv.StateProvider,
-                getFromApi.BlockTree!,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,
@@ -152,9 +151,21 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            getFromApi.DisposeStack.Push(blockProducer);
-
             return Task.FromResult((IBlockProducer)blockProducer);
+        }
+
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            _blockProducerRunner = new CliqueBlockProducerRunner(
+                _nethermindApi.BlockTree,
+                _nethermindApi.Timestamper,
+                _nethermindApi.CryptoRandom,
+                _snapshotManager,
+                (CliqueBlockProducer)_nethermindApi.BlockProducer!,
+                _cliqueConfig,
+                _nethermindApi.LogManager);
+            _nethermindApi.DisposeStack.Push(_blockProducerRunner);
+            return _blockProducerRunner;
         }
 
         public Task InitNetworkProtocol()
@@ -171,7 +182,7 @@ namespace Nethermind.Consensus.Clique
 
             (IApiWithNetwork getFromApi, _) = _nethermindApi!.ForRpc;
             CliqueRpcModule cliqueRpcModule = new(
-                getFromApi!.BlockProducer as ICliqueBlockProducer,
+                _blockProducerRunner,
                 _snapshotManager!,
                 getFromApi.BlockTree!);
 
@@ -183,9 +194,6 @@ namespace Nethermind.Consensus.Clique
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Clique;
 
-        [Todo("Redo clique producer to support triggers and MEV")]
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
-
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
 
         private INethermindApi? _nethermindApi;
@@ -195,5 +203,6 @@ namespace Nethermind.Consensus.Clique
         private ICliqueConfig? _cliqueConfig;
 
         private IBlocksConfig? _blocksConfig;
+        private CliqueBlockProducerRunner _blockProducerRunner = null!;
     }
 }

@@ -49,9 +49,9 @@ namespace Nethermind.Mev.Test
             await plugin.InitRpcModules();
 
             IConsensusPlugin consensusPlugin = Substitute.For<IConsensusPlugin>();
-            consensusPlugin.InitBlockProducer(NeverProduceTrigger.Instance, null).Returns(Substitute.For<IBlockProducer>());
+            consensusPlugin.InitBlockProducer(null).Returns(Substitute.For<IBlockProducer>());
 
-            Task<IBlockProducer> blockProducer = plugin.InitBlockProducer(consensusPlugin, NeverProduceTrigger.Instance, null);
+            Task<IBlockProducer> blockProducer = plugin.InitBlockProducer(consensusPlugin, null);
 
             blockProducer.Result.Should().BeOfType(typeof(MevBlockProducer));
         }
