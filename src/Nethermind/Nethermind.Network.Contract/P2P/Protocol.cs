@@ -30,10 +30,6 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Bzz = "bzz";
         /// <summary>
-        /// Lightweight Clients
-        /// </summary>
-        public const string Les = "les";
-        /// <summary>
         /// Parity Warp Sync
         /// </summary>
         public const string Par = "par";
