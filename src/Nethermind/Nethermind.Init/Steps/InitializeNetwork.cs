@@ -35,10 +35,8 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -101,8 +99,6 @@ public class InitializeNetwork : IStep
         {
             NetworkDiagTracer.Start(_api.LogManager);
         }
-
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
 
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
@@ -181,10 +177,8 @@ public class InitializeNetwork : IStep
             _api.Config<ISyncConfig>(),
             _api.GossipPolicy,
             _api.SpecProvider!,
-            _api.LogManager,
-            cht);
+            _api.LogManager);
 
-        _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();

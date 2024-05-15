@@ -154,18 +154,6 @@ public interface IDbConfig : IConfig
     long? BloomDbMaxBytesPerSec { get; set; }
     IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
-    uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
-    ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
-    bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
-    int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    int? CanonicalHashTrieDbBlockSize { get; set; }
-    bool? CanonicalHashTrieUseDirectReads { get; set; }
-    bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
-    IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
-
     ulong MetadataDbWriteBufferSize { get; set; }
     uint MetadataDbWriteBufferNumber { get; set; }
     ulong MetadataDbBlockCacheSize { get; set; }
