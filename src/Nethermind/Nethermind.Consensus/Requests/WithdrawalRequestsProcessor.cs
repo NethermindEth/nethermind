@@ -3,11 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
-using Nethermind.Core.Crypto;
-using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Evm;
@@ -58,7 +55,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
             request.ValidatorPubkey = span.Slice(20, 48).ToArray();
-            request.Amount = BitConverter.ToUInt64(span.Slice(68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
+            request.Amount = (ulong)new UInt256(span.Slice(68, 8));
 
             yield return request;
         }
