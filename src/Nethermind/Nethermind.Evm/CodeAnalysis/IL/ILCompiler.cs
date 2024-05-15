@@ -66,7 +66,13 @@ internal class ILCompiler
         method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.GasAvailable)));
         method.Convert<int>();
         method.StoreLocal(gasAvailable);
-        Label outOfGas = method.DefineLabel("OutOfGas");
+
+        Dictionary<EvmExceptionType, Label> labels = new();
+
+        foreach (var exception in Enum.GetValues<EvmExceptionType>())
+        {
+            labels.Add(exception, method.DefineLabel(exception.ToString()));
+        }
 
         // set pc to local
         method.LoadArgument(0);
@@ -107,7 +113,7 @@ internal class ILCompiler
             method.Convert<uint>();
 
             // if gas is not available, branch to out of gas
-            method.BranchIfLess(outOfGas);
+            method.BranchIfLess(labels[EvmExceptionType.OutOfGas]);
 
             // else emit 
             switch (op.Operation)
@@ -510,27 +516,14 @@ internal class ILCompiler
             method.Branch(invalidAddress);
         }
 
-        // EvmExceptionType.StackUnderflow
-        method.MarkLabel(outOfGas);
-        method.LoadLocalAddress(returnState);
-        method.LoadConstant((int)EvmExceptionType.StackUnderflow);
-        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
-        method.Branch(ret);
-
-
-        // out of gas
-        method.MarkLabel(outOfGas);
-        method.LoadLocalAddress(returnState);
-        method.LoadConstant((int)EvmExceptionType.OutOfGas);
-        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
-        method.Branch(ret);
-
-        // invalid address return
-        method.MarkLabel(invalidAddress);
-        method.LoadLocalAddress(returnState);
-        method.LoadConstant((int)EvmExceptionType.InvalidJumpDestination);
-        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
-        method.Branch(ret);
+        foreach (var kvp in labels)
+        {
+            method.MarkLabel(kvp.Value);
+            method.LoadLocalAddress(returnState);
+            method.LoadConstant((int)kvp.Key);
+            method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.EvmException)));
+            method.Branch(ret);
+        }
 
         // return
         method.MarkLabel(ret);
