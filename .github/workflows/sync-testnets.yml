@@ -112,7 +112,7 @@ jobs:
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
 
-            if [[ $found_bad_log == true ]]; then
+            if [ $found_bad_log = true ]; then
               ((counter++))
               if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
