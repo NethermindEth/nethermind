@@ -23,7 +23,7 @@ public class DepositsProcessor : IDepositsProcessor
         if (spec.DepositsEnabled)
         {
             for (int i = 0; i < receipts.Length; i++)
-            { 
+            {
                 LogEntry[]? logEntries = receipts[i].Logs;
                 if (logEntries is not null)
                 {
