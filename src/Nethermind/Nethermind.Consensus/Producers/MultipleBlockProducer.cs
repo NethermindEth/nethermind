@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Producers
                     produceTasks[i] = Task.FromResult<Block?>(null);
                     continue;
                 }
-                produceTasks[i] = blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, token);
+                produceTasks[i] = blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, cancellationToken: token);
             }
 
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;
