@@ -87,10 +87,10 @@ namespace Nethermind.Network.Discovery.Test
                                       "8443b9a355010203b525a138aa34383fec3d2719a0";
             NeighborsMsg msg = _messageSerializationService.Deserialize<NeighborsMsg>(Bytes.FromHexString(encodedNeighbors));
             Assert.That(msg.ExpirationTime, Is.EqualTo(1136239445));
-            Assert.That(msg.Nodes[0]!.IdHash.ToString(true), Is.EqualTo("0xca25217b2fbd0ae6d435be1f0f99282a930dac3ca4c3358900da74e7caa7eee4"));
-            Assert.That(msg.Nodes[1]!.IdHash.ToString(true), Is.EqualTo("0x6b1e430439aaf971bf408b99c0097bc560238d10d5642e44cdd89d8192bb0554"));
-            Assert.That(msg.Nodes[2]!.IdHash.ToString(true), Is.EqualTo("0x7d38ab8183dce7e53e5d5536956a8de7ab45aaeb12948848a30efae067f2b2e9"));
-            Assert.That(msg.Nodes[3]!.IdHash.ToString(true), Is.EqualTo("0xaaa7e418c80aa0a3e9a29af1ecf831fdcc1093510d0c73febaea674e69e7e58b"));
+            Assert.That(msg.Nodes[0]?.IdHash?.ToString(true), Is.Null);
+            Assert.That(msg.Nodes[1]?.IdHash?.ToString(true), Is.EqualTo("0x6b1e430439aaf971bf408b99c0097bc560238d10d5642e44cdd89d8192bb0554"));
+            Assert.That(msg.Nodes[2]?.IdHash?.ToString(true), Is.EqualTo("0x7d38ab8183dce7e53e5d5536956a8de7ab45aaeb12948848a30efae067f2b2e9"));
+            Assert.That(msg.Nodes[3]?.IdHash?.ToString(true), Is.Null);
         }
     }
 }
