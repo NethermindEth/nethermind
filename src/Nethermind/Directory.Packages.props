@@ -58,7 +58,7 @@
     <PackageVersion Include="NUnit3TestAdapter" Version="4.5.0" />
     <PackageVersion Include="Open.NAT.Core" Version="2.1.0.5" />
     <PackageVersion Include="Polly" Version="8.3.0" />
-    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.3.0" />
+    <PackageVersion Include="BouncyCastle.Cryptography" Version="2.3.1" />
     <PackageVersion Include="prometheus-net.AspNetCore" Version="8.2.1" />
     <PackageVersion Include="Pyroscope" Version="0.8.14" />
     <PackageVersion Include="ReadLine" Version="2.0.1" />

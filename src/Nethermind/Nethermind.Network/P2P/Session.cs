@@ -453,7 +453,7 @@ namespace Nethermind.Network.P2P
 
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
-            if(_logger.IsInfo && disconnectReason != DisconnectReason.ConnectionClosed && disconnectReason != DisconnectReason.OutgoingConnectionFailed) _logger.Info($"{this} disconnected {disconnectReason} {disconnectType}");
+            //if(_logger.IsInfo && disconnectReason != DisconnectReason.ConnectionClosed && disconnectReason != DisconnectReason.OutgoingConnectionFailed) _logger.Info($"{this} disconnected {disconnectReason} {disconnectType}");
 
             lock (_sessionStateLock)
             {

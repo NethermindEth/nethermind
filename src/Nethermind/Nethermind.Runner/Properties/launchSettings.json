@@ -77,9 +77,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "Base Goerli": {
+    "Base Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c base-goerli -dd %NETHERMIND_DATA_DIR%",
+      "commandLineArgs": "-c base-sepolia -dd %NETHERMIND_DATA_DIR%",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

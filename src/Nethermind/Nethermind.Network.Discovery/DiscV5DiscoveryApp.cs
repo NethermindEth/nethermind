@@ -22,6 +22,8 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Api;
+using Lantern.Discv5.WireProtocol.Messages;
+using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.Discovery;
 
@@ -35,10 +37,14 @@ public class Discv5DiscoveryApp : IDiscoveryApp
     private readonly IDiscoveryConfig _discoveryConfig;
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
-    const bool logDiscovery = false;
+    private bool logDiscovery = true;
 
     public Discv5DiscoveryApp(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
+        //MessageRequester.Log = (msg) =>
+        //{
+        //    if (logDiscovery) _logger.Warn(msg);
+        //};
         _logger = logManager.GetClassLogger();
         _privateKeyProvider = privateKeyProvider;
         _networkConfig = networkConfig;
@@ -103,20 +109,38 @@ public class Discv5DiscoveryApp : IDiscoveryApp
             .Build();
 
 
-        _discv5Protocol.NodeAdded += NodeAddedByDiscovery;
+        _discv5Protocol.NodeAdded += (e) =>  NodeAddedByDiscovery(e.Record);
         _discv5Protocol.NodeRemoved += NodeRemovedByDiscovery;
+
+        _ = Task.Run(async () =>
+        {
+            while (!_appShutdownSource.IsCancellationRequested)
+            {
+                if (_logger.IsInfo) _logger.Info($"Nodes checked: {Interlocked.Exchange(ref NodesChecked, 0)}, table: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}, total eth {TotalEth}.");
+                await Task.Delay(5_000);
+            }
+        });
     }
 
-    private void NodeAddedByDiscovery(NodeTableEntry newEntry)
+    int NodesChecked = 0;
+    int TotalEth = 0;
+    HashSet<IEnr> seen = [];
+
+    private void NodeAddedByDiscovery(IEnr newEntry)
     {
-        if (!TryGetNodeFromEnr(newEntry.Record, out Node? newNode))
+        if (!TryGetNodeFromEnr(newEntry, out Node? newNode))
         {
             return;
         }
-
+        if (seen.Contains(newEntry))
+        {
+            return;
+        }
+        seen.Add(newEntry);
         NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
-
-        if (_logger.IsInfo && logDiscovery) _logger.Info($"A node discovered via discv5: {newEntry.Record} = {newNode}.");
+        Interlocked.Increment(ref NodesChecked);
+        Interlocked.Increment(ref TotalEth);
+        if (_logger.IsInfo && logDiscovery) _logger.Info($"A node discovered via discv5: {newEntry} = {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -155,6 +179,11 @@ public class Discv5DiscoveryApp : IDiscoveryApp
             if (_logger.IsTrace) _logger.Trace($"Enr declined, no signature.");
             return false;
         }
+        if (enr.HasKey(EnrEntryKey.Eth2))
+        {
+            if (_logger.IsTrace) _logger.Trace($"Enr declined, ETH2 detected.");
+            return false;
+        }
 
         PublicKey key = GetPublicKeyFromEnr(enr);
         IPAddress ip = enr.GetEntry<EntryIp>(EnrEntryKey.Ip).Value;
@@ -181,29 +210,182 @@ public class Discv5DiscoveryApp : IDiscoveryApp
         _ = DiscoverViaRandomWalk();
     }
 
+    int refreshTime = 30_000;
+
+    Random rnd = new();
     private async Task DiscoverViaRandomWalk()
     {
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryInterval));
-
-        Random rnd = new();
-        await _discv5Protocol!.InitAsync();
-        await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
-
-        if (_logger.IsInfo && logDiscovery) _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
-
-        byte[] bytes = new byte[32];
-        while (!_appShutdownSource.IsCancellationRequested)
+        try
         {
-            rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
-            rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
-            rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
-            if (_logger.IsInfo && logDiscovery) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
-            await timer.WaitForNextTickAsync(_appShutdownSource.Token);
+            await _discv5Protocol!.InitAsync();
+            await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
+
+            _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+
+            byte[] randomNodeId = new byte[32];
+            while (!_appShutdownSource.IsCancellationRequested)
+            {               
+                for (int i = 0; i < 3; i++)
+                {
+                    rnd.NextBytes(randomNodeId);
+                    (await DiscoverAsync(randomNodeId))?.ToList().ForEach(NodeAddedByDiscovery);;
+                }
+
+                {
+                    (await DiscoverAsync(_discv5Protocol.SelfEnr.NodeId))?.ToList().ForEach(NodeAddedByDiscovery);
+                }
+
+                await Task.Delay(refreshTime, _appShutdownSource.Token);
+                _logger.Info($"Refreshed with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+            }
+        }
+        catch (Exception ex)
+        {
+            _logger.Error($"DiscoverViaRandomWalk exception {ex.Message}.");
+
         }
     }
+
+    private async Task<List<IEnr>> DiscoverAsync(byte[] randomNodeId)
+    {
+        HashSet<IEnr> discovered = [];
+
+        for (; ; )
+        {
+            var c = discovered.Count;
+            var nodes = (await _discv5Protocol.DiscoverAsync(randomNodeId))?.ToArray();
+            if (nodes is null)
+            {
+                break;
+            }
+            if (nodes.Length == 0)
+            {
+                break;
+            }
+            Console.WriteLine("ITERATE", Convert.ToHexString(randomNodeId.Take(8).ToArray()).ToLower());
+            discovered.AddRange(nodes);
+            if (c == discovered.Count)
+            {
+                break;
+            }
+        }
+        return [.. discovered];
+    }
+
+    //private async Task DiscoverAsync(byte[] nodeId, bool isSelf = false)
+    //{
+    //    HashSet<string> checkedNodes = [];
+    //    Queue<IEnr> nodesToCheck = new(_discv5Protocol.GetActiveNodes.ToList());
+
+    //    while (nodesToCheck.Any())
+    //    {
+    //        rnd.NextBytes(nodeId);
+    //        IEnr newEntry = nodesToCheck.Dequeue();
+    //        byte[] lookupNodeId = isSelf ? TableUtility.Distance(newEntry.NodeId, nodeId) : nodeId;
+
+    //        checkedNodes.Add(newEntry.ToPeerId());
+
+    //        if (!_discv5Protocol.GetActiveNodes.Contains(newEntry))
+    //        {
+    //            await _discv5Protocol.SendPingAsync(newEntry);
+    //        }
+    //        var enrs = (await _discv5Protocol.SendFindNodeAsync(newEntry, lookupNodeId))?.ToList();
+    //        if (enrs is null)
+    //        {
+    //            continue;
+    //        }
+    //        foreach (var enr in enrs)
+    //        {
+    //            if (checkedNodes.Contains(enr.ToPeerId()))
+    //            {
+    //                continue;
+    //            }
+
+    //            if (newEntry.NodeId.SequenceEqual(nodeId) || newEntry.NodeId.SequenceEqual(lookupNodeId))
+    //            {
+    //                continue;
+    //            }
+
+    //            NodeAddedByDiscovery(enr);
+
+    //            nodesToCheck.Enqueue(enr);
+    //        }
+    //    }
+    //}
+
+    //SemaphoreSlim s = new(1, 1);
+    //private async Task Crawl()
+    //{
+    //    byte[] nodeId = new byte[32];
+
+    //    HashSet<string> checkedNodes = [];
+    //    Queue<IEnr> nodesToCheck = new(_discv5Protocol.GetActiveNodes.ToList());
+
+    //    rnd.NextBytes(nodeId);
+    //    while (true)
+    //    {
+    //        if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
+    //        {
+    //            await Task.Delay(100);
+    //            continue;
+    //        }
+    //        checkedNodes.Add(newEntry.ToPeerId());
+
+    //        _ = Task.Run(async () =>
+    //        {
+    //            var item = newEntry;
+    //            await s.WaitAsync();
+    //            try
+    //            {
+    //                _logger.Info($"Querying {Convert.ToHexString(item.NodeId).ToLower()}");
+    //                Task timeout = Task.Delay(20_000);
+
+    //                for (byte i = 255; i > 240; i--)
+    //                {
+    //                    if (timeout.IsCompleted)
+    //                    {
+    //                        _logger.Info($"Break on t/o");
+    //                        break;
+    //                    }
+    //                    _logger.Info($"Request {i + 1} from {Convert.ToHexString(item.NodeId).ToLower()}");
+    //                    var enrs = (await _discv5Protocol.SendFindNodeAsync(item, nodeId, [i]))?.ToList();
+    //                    if (enrs is null)
+    //                    {
+    //                        continue;
+    //                    }
+    //                    _logger.Info($"Returned {enrs.Count} from {Convert.ToHexString(item.NodeId).ToLower()}");
+
+    //                    await Task.Delay(300);
+
+    //                    foreach (var enr in enrs)
+    //                    {
+    //                        if (checkedNodes.Contains(enr.ToPeerId()))
+    //                        {
+    //                            continue;
+    //                        }
+
+    //                        if (item.NodeId.SequenceEqual(nodeId) || item.NodeId.SequenceEqual(nodeId))
+    //                        {
+    //                            continue;
+    //                        }
+
+    //                        NodeAddedByDiscovery(enr);
+
+    //                        nodesToCheck.Enqueue(enr);
+    //                    }
+    //                }
+    //            }
+    //            finally
+    //            {
+    //                s.Release();
+    //            }
+    //        });
+    //    }
+
+
+    //}
+
+
 
     public async Task StopAsync()
     {
