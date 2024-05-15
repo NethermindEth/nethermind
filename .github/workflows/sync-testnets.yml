@@ -125,7 +125,7 @@ jobs:
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
-                $found_bad_log=true
+                found_bad_log=true
                 continue 2
               fi
             done
