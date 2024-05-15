@@ -134,6 +134,18 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
     IdentityFrom128Bytes,
 
+    [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
+    Blake1Round,
+
+    [TestCaseMetadata("Blake2f 1k rounds", "Blake2f precompile with 1000 rounds of computations")]
+    Blake1KRounds,
+
+    [TestCaseMetadata("Blake2f 1M rounds", "Blake2f precompile with 1_000_000 rounds of computations")]
+    Blake1MRounds,
+
+    [TestCaseMetadata("Blake2f 10M rounds", "Blake2f precompile with 10_000_000 rounds of computations")]
+    Blake10MRounds,
+
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,
 

@@ -293,6 +293,11 @@ public class TestCaseGenerator
             case TestCase.IdentityFrom32Bytes:
             case TestCase.IdentityFrom128Bytes:
                 return SimplePrecompile.GetTxs(0x04, testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.Blake1Round:
+            case TestCase.Blake1KRounds:
+            case TestCase.Blake1MRounds:
+            case TestCase.Blake10MRounds:
+                return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
             case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
             case TestCase.SStoreManyAccountsRandomKeysRandomValue:
