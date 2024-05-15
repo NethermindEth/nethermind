@@ -36,7 +36,7 @@ namespace Nethermind.Consensus.Producers
             for (int i = 0; i < _blockProducers.Length; i++)
             {
                 T blockProducerInfo = _blockProducers[i];
-                if (!blockProducerInfo.Condition(parentHeader))
+                if (!blockProducerInfo.Condition.CanProduce(parentHeader))
                 {
                     produceTasks[i] = Task.FromResult<Block?>(null);
                     continue;

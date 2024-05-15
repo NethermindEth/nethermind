@@ -173,25 +173,9 @@ public class MevPlugin : IConsensusWrapperPlugin
         int bundleLimit = 0,
         ITxSource? additionalTxSource = null)
     {
-        bool BundleLimitTriggerCondition(BlockHeader blockHeader)
-        {
-            // TODO: why we are checking parent and not the currently produced block...?
-            BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(blockHeader);
-            if (parent is not null)
-            {
-                IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, _nethermindApi.Timestamper);
-                return bundles.Count() >= bundleLimit;
-            }
-
-            return false;
-        }
-
-        static bool AlwaysOk(BlockHeader parentHeader)
-        {
-            return true;
-        }
-
-        Func<BlockHeader, bool> condition = bundleLimit == 0 ? AlwaysOk : BundleLimitTriggerCondition;
+        IBlockProductionCondition condition = bundleLimit == 0 ?
+            AlwaysOkBlockProductionCondition.Instance :
+            new BundleLimitBlockProductionTrigger(_nethermindApi.BlockTree!, _nethermindApi.Timestamper!, BundlePool, bundleLimit);
 
         IBlockProducer producer = await consensusPlugin.InitBlockProducer(additionalTxSource);
         return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
@@ -200,4 +184,25 @@ public class MevPlugin : IConsensusWrapperPlugin
     public bool Enabled => _mevConfig.Enabled;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private class BundleLimitBlockProductionTrigger(
+        IBlockTree blockTree,
+        ITimestamper timestamper,
+        IBundlePool bundlePool,
+        int bundleLimit
+    ) : IBlockProductionCondition
+    {
+        public bool CanProduce(BlockHeader parentHeader)
+        {
+            // TODO: why we are checking parent and not the currently produced block...?
+            BlockHeader? parent = blockTree!.GetProducedBlockParent(parentHeader);
+            if (parent is not null)
+            {
+                IEnumerable<MevBundle> bundles = bundlePool.GetBundles(parent, timestamper);
+                return bundles.Count() >= bundleLimit;
+            }
+
+            return false;
+        }
+    }
 }

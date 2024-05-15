@@ -48,12 +48,12 @@ namespace Nethermind.Mev
         public class MevBlockProducerInfo : IBlockProducerInfo
         {
             public IBlockProducer BlockProducer { get; }
-            public Func<BlockHeader, bool> Condition { get; }
+            public IBlockProductionCondition Condition { get; }
             public IBlockTracer BlockTracer => BeneficiaryTracer;
             public BeneficiaryTracer BeneficiaryTracer { get; }
             public MevBlockProducerInfo(
                 IBlockProducer blockProducer,
-                Func<BlockHeader, bool> checkCondition,
+                IBlockProductionCondition checkCondition,
                 BeneficiaryTracer beneficiaryTracer)
             {
                 BlockProducer = blockProducer;

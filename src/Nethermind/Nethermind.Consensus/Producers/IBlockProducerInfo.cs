@@ -10,7 +10,7 @@ namespace Nethermind.Consensus.Producers
     public interface IBlockProducerInfo
     {
         IBlockProducer BlockProducer { get; }
-        Func<BlockHeader, bool> Condition { get; }
+        IBlockProductionCondition Condition { get; }
         IBlockTracer BlockTracer => NullBlockTracer.Instance;
     }
 }

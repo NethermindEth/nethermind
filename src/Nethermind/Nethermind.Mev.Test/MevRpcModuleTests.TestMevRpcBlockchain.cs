@@ -119,27 +119,9 @@ namespace Nethermind.Mev.Test
                 MevBlockProducer.MevBlockProducerInfo CreateProducer(int bundleLimit = 0,
                     ITxSource? additionalTxSource = null)
                 {
-                    // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
-                    bool BundleLimitTriggerCondition(BlockHeader parentHeader)
-                    {
-                        // TODO: why do we need this parent? later we use only the current block number
-                        BlockHeader? parent = BlockTree.GetProducedBlockParent(parentHeader);
-                        if (parent is not null)
-                        {
-                            // ToDo resolved conflict parent.Timestamp?
-                            IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent.Number + 1, parent.Timestamp);
-                            return bundles.Count() >= bundleLimit;
-                        }
-
-                        return false;
-                    }
-
-                    static bool AlwaysOk(BlockHeader parentHeader)
-                    {
-                        return true;
-                    }
-
-                    Func<BlockHeader, bool> condition = bundleLimit == 0 ? AlwaysOk : BundleLimitTriggerCondition;
+                    IBlockProductionCondition condition = bundleLimit == 0
+                        ? AlwaysOkBlockProductionCondition.Instance
+                        : new TestBundleLimitBlockProductionTrigger(BlockTree, BundlePool, bundleLimit);
 
                     IBlockProducer producer = CreatePostMergeBlockProducer(additionalTxSource);
                     return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
@@ -269,6 +251,29 @@ namespace Nethermind.Mev.Test
                 resultOfBundle.Result.Should().NotBe(Result.Success);
                 resultOfBundle.Data.Should().Be(true);
                 return new MevBundle(blockNumber, txs);
+            }
+        }
+
+        private class TestBundleLimitBlockProductionTrigger(
+            IBlockTree blockTree,
+            IBundlePool bundlePool,
+            int bundleLimit
+        ) : IBlockProductionCondition
+        {
+
+            // TODO: this could be simplified a lot of the parent was not retrieved, not sure why do we need the parent here
+            public bool CanProduce(BlockHeader parentHeader)
+            {
+                // TODO: why do we need this parent? later we use only the current block number
+                BlockHeader? parent = blockTree.GetProducedBlockParent(parentHeader);
+                if (parent is not null)
+                {
+                    // ToDo resolved conflict parent.Timestamp?
+                    IEnumerable<MevBundle> bundles = bundlePool.GetBundles(parent.Number + 1, parent.Timestamp);
+                    return bundles.Count() >= bundleLimit;
+                }
+
+                return false;
             }
         }
     }
