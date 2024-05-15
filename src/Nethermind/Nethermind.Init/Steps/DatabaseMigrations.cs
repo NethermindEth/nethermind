@@ -1,12 +1,11 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Blockchain.Synchronization;
 using Nethermind.Init.Steps.Migrations;
 
 namespace Nethermind.Init.Steps
@@ -31,10 +30,7 @@ namespace Nethermind.Init.Steps
 
         private IEnumerable<IDatabaseMigration> CreateMigrations()
         {
-            yield return new BloomMigration(_api);
-            yield return new ReceiptMigration(_api);
-            yield return new ReceiptFixMigration(_api);
-            yield return new TotalDifficultyFixMigration(_api.ChainLevelInfoRepository, _api.BlockTree, _api.Config<ISyncConfig>(), _api.LogManager);
+            return Enumerable.Empty<IDatabaseMigration>();
         }
     }
 }
