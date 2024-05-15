@@ -32,14 +32,17 @@ public class Discv5DiscoveryApp : IDiscoveryApp
     private readonly Logging.ILogger _logger;
     private readonly SameKeyGenerator _privateKeyProvider;
     private readonly INetworkConfig _networkConfig;
+    private readonly IDiscoveryConfig _discoveryConfig;
     private readonly SimpleFilePublicKeyDb _discoveryDb;
     private readonly CancellationTokenSource _appShutdownSource = new();
+    const bool logDiscovery = false;
 
     public Discv5DiscoveryApp(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
     {
         _logger = logManager.GetClassLogger();
         _privateKeyProvider = privateKeyProvider;
         _networkConfig = networkConfig;
+        _discoveryConfig = discoveryConfig;
         _discoveryDb = discoveryDb;
         _api = api;
 
@@ -83,7 +86,10 @@ public class Discv5DiscoveryApp : IDiscoveryApp
         EnrBuilder enrBuilder = new EnrBuilder()
             .WithIdentityScheme(sessionOptions.Verifier, sessionOptions.Signer)
             .WithEntry(EnrEntryKey.Id, new EntryId("v4"))
-            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(sessionOptions.Signer.PublicKey));
+            .WithEntry(EnrEntryKey.Secp256K1, new EntrySecp256K1(sessionOptions.Signer.PublicKey))
+            .WithEntry(EnrEntryKey.Ip, new EntryIp(_api.IpResolver!.ExternalIp))
+            .WithEntry(EnrEntryKey.Tcp, new EntryTcp(_networkConfig.P2PPort))
+            .WithEntry(EnrEntryKey.Udp, new EntryUdp(_networkConfig.DiscoveryPort));
 
         _discv5Protocol = new Discv5ProtocolBuilder(services)
             .WithConnectionOptions(new ConnectionOptions
@@ -110,7 +116,7 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
 
-        if (_logger.IsWarn) _logger.Warn($"A node discovered via discv5: {newEntry.Record} = {newNode}.");
+        if (_logger.IsInfo && logDiscovery) _logger.Info($"A node discovered via discv5: {newEntry.Record} = {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -177,24 +183,24 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
     private async Task DiscoverViaRandomWalk()
     {
-        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(30_000));
+        PeriodicTimer timer = new(TimeSpan.FromMilliseconds(_discoveryConfig.DiscoveryInterval));
 
         Random rnd = new();
         await _discv5Protocol!.InitAsync();
         await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
 
-        byte[] bytes = new byte[32];
+        if (_logger.IsInfo && logDiscovery) _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
 
+        byte[] bytes = new byte[32];
         while (!_appShutdownSource.IsCancellationRequested)
         {
-            if (_logger.IsInfo) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
-
             rnd.NextBytes(bytes);
-            var d1 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            var d2 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            var d3 = await _discv5Protocol.DiscoverAsync(bytes);
+            await _discv5Protocol.DiscoverAsync(bytes);
+            if (_logger.IsInfo && logDiscovery) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
             await timer.WaitForNextTickAsync(_appShutdownSource.Token);
         }
     }
@@ -226,5 +232,6 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
     public void AddNodeToDiscovery(Node node)
     {
+        if (_logger.IsInfo && logDiscovery) _logger.Info($"Node for discovery: {node}.");
     }
 }

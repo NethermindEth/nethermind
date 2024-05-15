@@ -273,6 +273,7 @@ public class InitializeNetwork : IStep
 
         if (_logger.IsDebug) _logger.Debug("Starting discovery process.");
         _api.DiscoveryApp.Start();
+        _api.DiscoveryV5App?.Start();
         if (_logger.IsDebug) _logger.Debug("Discovery process started.");
         return Task.CompletedTask;
     }
@@ -565,7 +566,7 @@ public class InitializeNetwork : IStep
             _api.DisposeStack.Push(new NodeSourceToDiscV4Feeder(enrDiscovery, _api.DiscoveryApp, 50));
         }
 
-        CompositeNodeSource nodeSources = new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp);
+        CompositeNodeSource nodeSources = _api.DiscoveryV5App is null ? new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp) : new(_api.StaticNodesManager, nodesLoader, enrDiscovery, _api.DiscoveryApp, _api.DiscoveryV5App);
         _api.PeerPool = new PeerPool(nodeSources, _api.NodeStatsManager, peerStorage, _networkConfig, _api.LogManager);
         _api.PeerManager = new PeerManager(
             _api.RlpxPeer,
