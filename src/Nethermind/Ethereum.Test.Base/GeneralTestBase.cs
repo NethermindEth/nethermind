@@ -33,6 +33,7 @@ namespace Ethereum.Test.Base
         private static ILogger _logger = new(new ConsoleAsyncLogger(LogLevel.Info));
         private static ILogManager _logManager = LimboLogs.Instance;
         private static UInt256 _defaultBaseFeeForStateTest = 0xA;
+        private TxValidator _txValidator = new(MainnetSpecProvider.Instance.ChainId);
 
         [SetUp]
         public void Setup()
@@ -103,7 +104,6 @@ namespace Ethereum.Test.Base
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
-            TxValidator? txValidator = new((MainnetSpecProvider.Instance.ChainId));
             IReleaseSpec? spec = specProvider.GetSpec((ForkActivation)test.CurrentNumber);
 
             if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync();
@@ -130,18 +130,8 @@ namespace Ethereum.Test.Base
             }
 
             Block block = Build.A.Block.WithTransactions(test.Transaction).WithHeader(header).TestObject;
-            IBlockTree blockTree = Build.A.BlockTree()
-                .WithSpecProvider(specProvider)
-                .WithoutSettingHead
-                .TestObject;
 
-            var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
-            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default);
-            IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
-            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
-            IBlockValidator blockValidator = new BlockValidator(txValidator, headerValidator, unclesValidator, specProvider, _logManager);
-
-            bool isValid = txValidator.IsWellFormed(test.Transaction, spec) && blockValidator.ValidateOrphanedBlock(block, out _);
+            bool isValid = _txValidator.IsWellFormed(test.Transaction, spec) && IsValidateBlock(block, specProvider);
 
             if (isValid)
                 transactionProcessor.Execute(test.Transaction, new BlockExecutionContext(header), txTracer);
@@ -186,6 +176,22 @@ namespace Ethereum.Test.Base
             stateProvider.Commit(specProvider.GenesisSpec);
             stateProvider.CommitTree(0);
             stateProvider.Reset();
+        }
+
+        private bool IsValidateBlock(Block block, ISpecProvider specProvider)
+        {
+            IBlockTree blockTree = Build.A.BlockTree()
+                .WithSpecProvider(specProvider)
+                .WithoutSettingHead
+                .TestObject;
+
+            var difficultyCalculator = new EthashDifficultyCalculator(specProvider);
+            var sealer = new EthashSealValidator(_logManager, difficultyCalculator, new CryptoRandom(), new Ethash(_logManager), Timestamper.Default);
+            IHeaderValidator headerValidator = new HeaderValidator(blockTree, sealer, specProvider, _logManager);
+            IUnclesValidator unclesValidator = new UnclesValidator(blockTree, headerValidator, _logManager);
+            IBlockValidator blockValidator = new BlockValidator(_txValidator, headerValidator, unclesValidator, specProvider, _logManager);
+
+            return blockValidator.ValidateOrphanedBlock(block, out _);
         }
 
         private List<string> RunAssertions(GeneralStateTest test, IWorldState stateProvider)
