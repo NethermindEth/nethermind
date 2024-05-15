@@ -325,8 +325,8 @@ public class CliqueBlockProducer : IBlockProducer
 
     public ConcurrentDictionary<Address, bool> Proposals => _proposals;
 
-    public async Task<Block?> BuildBlock(BlockHeader? parentHeader, CancellationToken? token, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null)
+    public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
+        PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
     {
         token ??= default;
         Block? block = PrepareBlock(parentHeader);

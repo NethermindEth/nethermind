@@ -29,8 +29,8 @@ namespace Nethermind.Consensus.Producers
             _logger = logManager.GetClassLogger();
         }
 
-        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, CancellationToken? token, IBlockTracer? blockTracer = null,
-            PayloadAttributes? payloadAttributes = null)
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
+            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
         {
             Task<Block?>[] produceTasks = new Task<Block?>[_blockProducers.Length];
             for (int i = 0; i < _blockProducers.Length; i++)
@@ -41,7 +41,7 @@ namespace Nethermind.Consensus.Producers
                     produceTasks[i] = Task.FromResult<Block?>(null);
                     continue;
                 }
-                produceTasks[i] = blockProducerInfo.BlockProducer.BuildBlock(parentHeader, token, blockProducerInfo.BlockTracer);
+                produceTasks[i] = blockProducerInfo.BlockProducer.BuildBlock(parentHeader, blockProducerInfo.BlockTracer, token);
             }
 
             IEnumerable<(Block? Block, T BlockProducer)> blocksWithProducers;

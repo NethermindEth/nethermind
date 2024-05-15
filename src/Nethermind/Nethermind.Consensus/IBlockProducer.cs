@@ -13,7 +13,7 @@ public interface IBlockProducer
 {
     Task<Block?> BuildBlock(
         BlockHeader? parentHeader = null,
-        CancellationToken? cancellationToken = null,
         IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null);
+        PayloadAttributes? payloadAttributes = null,
+        CancellationToken? cancellationToken = null);
 }

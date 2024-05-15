@@ -29,7 +29,7 @@ public class BlockImprovementContext : IBlockImprovementContext
         CurrentBestBlock = currentBestBlock;
         StartDateTime = startDateTime;
         ImprovementTask = blockProducer
-            .BuildBlock(parentHeader, _cancellationTokenSource.Token, _feesTracer, payloadAttributes)
+            .BuildBlock(parentHeader, _feesTracer, payloadAttributes, _cancellationTokenSource.Token)
             .ContinueWith(SetCurrentBestBlock, _cancellationTokenSource.Token);
     }
 

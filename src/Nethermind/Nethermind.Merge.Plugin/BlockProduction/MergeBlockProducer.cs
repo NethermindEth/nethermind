@@ -25,11 +25,11 @@ public class MergeBlockProducer : IBlockProducer
         _poSSwitcher = poSSwitcher ?? throw new ArgumentNullException(nameof(poSSwitcher));
     }
 
-    public Task<Block?> BuildBlock(BlockHeader? parentHeader, CancellationToken? token, IBlockTracer? blockTracer = null,
-        PayloadAttributes? payloadAttributes = null)
+    public Task<Block?> BuildBlock(BlockHeader? parentHeader, IBlockTracer? blockTracer = null,
+        PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
     {
         return _poSSwitcher.HasEverReachedTerminalBlock() || HasPreMergeProducer == false
-            ? _eth2BlockProducer.BuildBlock(parentHeader, token, blockTracer, payloadAttributes)
-            : _preMergeProducer!.BuildBlock(parentHeader, token, blockTracer, payloadAttributes);
+            ? _eth2BlockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, token)
+            : _preMergeProducer!.BuildBlock(parentHeader, blockTracer, payloadAttributes, token);
     }
 }

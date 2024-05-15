@@ -33,7 +33,7 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
         Block? block = null;
         try
         {
-            block = await blockProducer.BuildBlock(parentHeader, token, blockTracer, payloadAttributes);
+            block = await blockProducer.BuildBlock(parentHeader, blockTracer, payloadAttributes, token);
             if (block is not null)
             {
                 _lastProducedBlockDateTime = DateTime.UtcNow;

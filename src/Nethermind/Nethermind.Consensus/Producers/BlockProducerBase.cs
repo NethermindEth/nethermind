@@ -72,7 +72,8 @@ namespace Nethermind.Consensus.Producers
             _blocksConfig = blocksConfig ?? throw new ArgumentNullException(nameof(blocksConfig));
         }
 
-        public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, CancellationToken? token = null, IBlockTracer? blockTracer = null, PayloadAttributes? payloadAttributes = null)
+        public async Task<Block?> BuildBlock(BlockHeader? parentHeader = null, IBlockTracer? blockTracer = null,
+            PayloadAttributes? payloadAttributes = null, CancellationToken? token = null)
         {
             token ??= default;
             Block? block = null;
