@@ -75,6 +75,7 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
                 var port = ctx.DecodeInt();
                 if (port != address.Port)
                 {
+                    // We only store one port, so reject this peer if the ports are different
                     ctx.SkipItem();
                     return null;
                 }
