@@ -453,6 +453,7 @@ namespace Nethermind.Network.P2P
 
         public void MarkDisconnected(DisconnectReason disconnectReason, DisconnectType disconnectType, string details)
         {
+            _logger.Warn($"MarkDisconnected {this} -> disconnected {disconnectType} {disconnectReason} {details}");
             lock (_sessionStateLock)
             {
                 if (State >= SessionState.Disconnecting)

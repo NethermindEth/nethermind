@@ -110,7 +110,7 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         NodeAdded?.Invoke(this, new NodeEventArgs(newNode));
 
-        if (_logger.IsDebug) _logger.Debug($"A node discovered via discv5: {newNode}.");
+        if (_logger.IsWarn) _logger.Warn($"A node discovered via discv5: {newEntry.Record} = {newNode}.");
     }
 
     private void NodeRemovedByDiscovery(NodeTableEntry removedEntry)
@@ -122,7 +122,7 @@ public class Discv5DiscoveryApp : IDiscoveryApp
 
         NodeRemoved?.Invoke(this, new NodeEventArgs(removedNode));
 
-        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedNode}.");
+        if (_logger.IsDebug) _logger.Debug($"Node removed from discovered via discv5: {removedEntry.Record} = {removedNode}.");
     }
 
     private static PublicKey GetPublicKeyFromEnr(IEnr entry)
@@ -190,11 +190,11 @@ public class Discv5DiscoveryApp : IDiscoveryApp
             if (_logger.IsInfo) _logger.Info($"Refresh with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
 
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d1 = await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d2 = await _discv5Protocol.DiscoverAsync(bytes);
             rnd.NextBytes(bytes);
-            await _discv5Protocol.DiscoverAsync(bytes);
+            var d3 = await _discv5Protocol.DiscoverAsync(bytes);
             await timer.WaitForNextTickAsync(_appShutdownSource.Token);
         }
     }
