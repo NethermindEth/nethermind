@@ -5,12 +5,12 @@ using System;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Hive
 {
-    public class HivePlugin : INethermindPlugin
+    public class HivePlugin : INethermindPlugin<INethermindApi>
     {
         private INethermindApi _api = null!;
         private IHiveConfig _hiveConfig = null!;

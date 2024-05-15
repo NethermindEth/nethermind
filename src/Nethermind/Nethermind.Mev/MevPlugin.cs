@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
@@ -22,7 +23,7 @@ using Nethermind.Mev.Source;
 
 namespace Nethermind.Mev;
 
-public class MevPlugin : IConsensusWrapperPlugin
+public class MevPlugin : IConsensusWrapperPlugin, INethermindPlugin<INethermindApi>
 {
     private static readonly ProcessingOptions SimulateBundleProcessingOptions = ProcessingOptions.ProducingBlock | ProcessingOptions.IgnoreParentNotOnMainChain;
 

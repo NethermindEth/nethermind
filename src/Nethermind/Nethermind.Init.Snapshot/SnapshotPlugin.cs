@@ -3,7 +3,7 @@ using Nethermind.Api.Extensions;
 
 namespace Nethermind.Init.Snapshot;
 
-public class SnapshotPlugin : IInitializationPlugin
+public class SnapshotPlugin : IInitializationPlugin<INethermindApi>
 {
     public string Name => "Snapshot";
 

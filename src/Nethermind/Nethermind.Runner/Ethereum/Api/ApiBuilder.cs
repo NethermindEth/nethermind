@@ -8,6 +8,7 @@ using System.Linq;
 using System.Threading;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Core;
@@ -52,7 +53,7 @@ namespace Nethermind.Runner.Ethereum.Api
             IConsensusPlugin? enginePlugin = consensusPlugins.FirstOrDefault(p => p.SealEngineType == engine);
 
             INethermindApi nethermindApi =
-                enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) ??
+                enginePlugin?.CreateApi(_configProvider, _jsonSerializer, _logManager, chainSpec) as INethermindApi ??
                 new NethermindApi(_configProvider, _jsonSerializer, _logManager, chainSpec);
             nethermindApi.SealEngineType = engine;
             nethermindApi.SpecProvider = new ChainSpecBasedSpecProvider(chainSpec, _logManager);

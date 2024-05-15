@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.Threading.Tasks;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 
 namespace Nethermind.Api.Test
 {
-    public class TestPlugin : INethermindPlugin
+    public class TestPlugin : INethermindPlugin<INethermindApi>
     {
         public ValueTask DisposeAsync()
         {

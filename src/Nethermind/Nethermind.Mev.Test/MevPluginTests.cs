@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
+using Nethermind.ApiBase.Extensions;
 
 namespace Nethermind.Mev.Test
 {

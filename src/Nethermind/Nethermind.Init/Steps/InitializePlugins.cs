@@ -6,7 +6,7 @@ using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Logging;
 
 namespace Nethermind.Init.Steps
@@ -25,7 +25,7 @@ namespace Nethermind.Init.Steps
         {
             ILogger logger = _api.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info($"Initializing {_api.Plugins.Count} plugins");
-            foreach (INethermindPlugin plugin in _api.Plugins)
+            foreach (INethermindPlugin<INethermindApi> plugin in _api.Plugins)
             {
                 try
                 {

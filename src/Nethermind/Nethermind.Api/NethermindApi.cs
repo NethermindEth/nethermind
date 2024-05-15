@@ -58,6 +58,8 @@ using Nethermind.Trie;
 using Nethermind.Synchronization.VerkleSync;
 using Nethermind.Verkle.Tree.History.V2;
 using Nethermind.Verkle.Tree.TreeStore;
+using Nethermind.ApiBase.Extensions;
+using Nethermind.ApiBase;
 
 namespace Nethermind.Api
 {
@@ -100,6 +102,11 @@ namespace Nethermind.Api
                 blocksConfig,
                 miningConfig.Enabled
             );
+        }
+
+        public static NethermindApi Create(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec)
+        {
+            return new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
         }
 
         public IAbiEncoder AbiEncoder { get; } = Nethermind.Abi.AbiEncoder.Instance;

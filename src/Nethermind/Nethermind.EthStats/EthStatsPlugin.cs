@@ -4,7 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.EthStats.Clients;
@@ -14,17 +14,16 @@ using Nethermind.EthStats.Senders;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.Network.P2P;
-using ILogger = Nethermind.Logging.InterfaceLogger;
 
 namespace Nethermind.EthStats;
 
-public class EthStatsPlugin : INethermindPlugin
+public class EthStatsPlugin : INethermindPlugin<INethermindApi>
 {
     private IEthStatsConfig _ethStatsConfig = null!;
     private IEthStatsClient _ethStatsClient = null!;
     private IEthStatsIntegration _ethStatsIntegration = null!;
     private INethermindApi _api = null!;
-    private Logging.ILogger _logger;
+    private ILogger _logger;
 
     private bool _isOn;
 

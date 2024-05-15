@@ -3,14 +3,19 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase;
+using Nethermind.ApiBase.Extensions;
+using Nethermind.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class EthashPlugin : IConsensusPlugin
+    public class EthashPlugin : IConsensusPlugin, INethermindPlugin<INethermindApi>
     {
         private INethermindApi _nethermindApi;
 
@@ -60,6 +65,8 @@ namespace Nethermind.Consensus.Ethash
         {
             return Task.CompletedTask;
         }
+
+        public IBasicApiWithPlugins CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
         public string SealEngineType => Nethermind.Core.SealEngineType.Ethash;
 

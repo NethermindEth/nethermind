@@ -5,14 +5,14 @@
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Core.PubSub;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.TxPool;
 
 namespace Nethermind.Analytics
 {
-    public class AnalyticsPlugin : INethermindPlugin
+    public class AnalyticsPlugin : INethermindPlugin<INethermindApi>
     {
         private IAnalyticsConfig _analyticsConfig;
         private IList<IPublisher> _publishers;
