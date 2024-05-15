@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Linq;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.ConsensusRequests;
@@ -55,7 +56,7 @@ public class WithdrawalRequestsProcessor(ITransactionProcessor transactionProces
             Span<byte> span = new Span<byte>(result, i * sizeOfClass, sizeOfClass);
             request.SourceAddress = new Address(span.Slice(0, 20).ToArray());
             request.ValidatorPublicKey = span.Slice(20, 48).ToArray();
-            request.Amount = (ulong)new UInt256(span.Slice(68, 8));
+            request.Amount = BitConverter.ToUInt64(span.Slice(68, 8).ToArray().Reverse().ToArray()); // ToDo Optimize
 
             yield return request;
         }

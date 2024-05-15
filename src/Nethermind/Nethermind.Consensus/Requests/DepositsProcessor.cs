@@ -38,9 +38,9 @@ public class DepositsProcessor : IDepositsProcessor
                             {
                                 Pubkey = (byte[])result[0],
                                 WithdrawalCredentials = (byte[])result[1],
-                                Amount = (ulong)new UInt256((byte[])result[2]),
+                                Amount = BitConverter.ToUInt64((byte[])result[2], 0),
                                 Signature = (byte[])result[3],
-                                Index = (ulong)new UInt256((byte[])result[4])
+                                Index = BitConverter.ToUInt64((byte[])result[4], 0)
                             };
 
                             yield return newDeposit;
