@@ -31,6 +31,8 @@ namespace Nethermind.Consensus.AuRa
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
+        private StartBlockProducerAuRa? _blockProducerStarter;
+
 
         public ValueTask DisposeAsync()
         {
@@ -53,19 +55,24 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)
             {
-                StartBlockProducerAuRa blockProducerStarter = new(_nethermindApi);
-                DefaultBlockProductionTrigger ??= blockProducerStarter.CreateTrigger();
-                return blockProducerStarter.BuildProducer(blockProductionTrigger ?? DefaultBlockProductionTrigger, additionalTxSource);
+                _blockProducerStarter = new(_nethermindApi);
+                return _blockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
             return Task.FromResult<IBlockProducer>(null);
         }
 
-        public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            return new StandardBlockProducerRunner(
+                _blockProducerStarter.CreateTrigger(),
+                _nethermindApi.BlockTree,
+                _nethermindApi.BlockProducer!);
+        }
 
         public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);

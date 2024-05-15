@@ -46,13 +46,19 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             return Task.FromResult((IBlockProducer)null);
         }
 
         public string SealEngineType => Core.SealEngineType.Ethash;
 
-        public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi.ManualBlockProductionTrigger;
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            return new StandardBlockProducerRunner(
+                _nethermindApi.ManualBlockProductionTrigger,
+                _nethermindApi.BlockTree,
+                _nethermindApi.BlockProducer!);
+        }
     }
 }
