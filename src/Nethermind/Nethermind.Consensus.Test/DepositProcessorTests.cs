@@ -22,7 +22,7 @@ public class DepositProcessorTests
         {
             Amount = 32000000000,
             Index = 0,
-            PubKey = Bytes.FromHexString(
+            Pubkey = Bytes.FromHexString(
                 "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000001"),
             Signature = Bytes.FromHexString(
                 "000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000003"),
@@ -36,7 +36,7 @@ public class DepositProcessorTests
 
         var newDeposit = new Deposit()
         {
-            PubKey = (byte[])result[0],
+            Pubkey = (byte[])result[0],
             WithdrawalCredentials = (byte[])result[1],
             Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(),
             Signature = (byte[])result[3],
