@@ -49,7 +49,7 @@ namespace Nethermind.Serialization.Rlp
                 txReceipt.GasUsedTotal = (long)rlpStream.DecodeUBigInt();
             }
 
-            if ((rlpBehaviors & RlpBehaviors.Eip7642Receipts) != RlpBehaviors.Eip7642Receipts)
+            if ((rlpBehaviors & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
             {
                 txReceipt.Bloom = rlpStream.DecodeBloom();
             }
@@ -77,7 +77,7 @@ namespace Nethermind.Serialization.Rlp
             int contentLength = 0;
             contentLength += Rlp.LengthOf(item.GasUsedTotal);
 
-            if ((rlpBehaviors & RlpBehaviors.Eip7642Receipts) != RlpBehaviors.Eip7642Receipts)
+            if ((rlpBehaviors & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
             {
                 contentLength += Rlp.LengthOf(item.Bloom);
             }
@@ -176,7 +176,7 @@ namespace Nethermind.Serialization.Rlp
 
             rlpStream.Encode(item.GasUsedTotal);
 
-            if ((rlpBehaviors & RlpBehaviors.Eip7642Receipts) != RlpBehaviors.Eip7642Receipts)
+            if ((rlpBehaviors & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
             {
                 rlpStream.Encode(item.Bloom);
             }

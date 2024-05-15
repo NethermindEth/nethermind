@@ -27,7 +27,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
 
-            if (message.TotalDifficulty.HasValue)
+            if (message.TotalDifficulty.HasValue && (GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
             {
                 rlpStream.Encode(message.TotalDifficulty.Value);
             }
@@ -45,7 +45,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         public int GetLength(StatusMessage message, out int contentLength)
         {
-
             int forkIdSequenceLength = 0;
             if (message.ForkId.HasValue)
             {
@@ -57,10 +56,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             contentLength =
                 Rlp.LengthOf(message.ProtocolVersion) +
                 Rlp.LengthOf(message.NetworkId) +
-                Rlp.LengthOf(message.TotalDifficulty) +
                 Rlp.LengthOf(message.BestHash) +
                 Rlp.LengthOf(message.GenesisHash) +
                 forkIdSequenceLength;
+
+            if ((GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+                contentLength += Rlp.LengthOf(message.TotalDifficulty);
 
             return Rlp.LengthOfSequence(contentLength);
         }
@@ -68,16 +69,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
         public StatusMessage Deserialize(IByteBuffer byteBuffer)
         {
             RlpStream rlpStream = new NettyRlpStream(byteBuffer);
-            return Deserialize(rlpStream);
-        }
 
-        private static StatusMessage Deserialize(RlpStream rlpStream)
-        {
             StatusMessage statusMessage = new();
             rlpStream.ReadSequenceLength();
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.NetworkId = rlpStream.DecodeUInt256();
-            statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+
+            if ((GetDecodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+                statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
+
             statusMessage.BestHash = rlpStream.DecodeKeccak();
             statusMessage.GenesisHash = rlpStream.DecodeKeccak();
             if (rlpStream.Position < rlpStream.Length)
@@ -91,5 +91,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             return statusMessage;
         }
+
+        protected virtual RlpBehaviors GetEncodingBehavior() => RlpBehaviors.None;
+        protected virtual RlpBehaviors GetDecodingBehavior() => RlpBehaviors.None;
     }
 }

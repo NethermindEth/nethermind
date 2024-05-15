@@ -13,10 +13,10 @@ public class ReceiptsMessageInnerSerializer: V63.Messages.ReceiptsMessageSeriali
     public ReceiptsMessageInnerSerializer(ISpecProvider specProvider): base(specProvider) { }
 
     protected override RlpBehaviors GetEncodingBehavior(TxReceipt txReceipt) =>
-        base.GetEncodingBehavior(txReceipt) | RlpBehaviors.Eip7642Receipts;
+        base.GetEncodingBehavior(txReceipt) | RlpBehaviors.Eip7642Messages;
 
     protected override RlpBehaviors GetDecodingBehavior() =>
-        base.GetDecodingBehavior() | RlpBehaviors.Eip7642Receipts;
+        base.GetDecodingBehavior() | RlpBehaviors.Eip7642Messages;
 
     int IZeroInnerMessageSerializer<ReceiptsInnerMessage>.GetLength(ReceiptsInnerMessage message, out int contentLength) =>
         GetLength(message, out contentLength);

@@ -8,7 +8,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -17,6 +16,7 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using ReceiptsMessage = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage;
+using StatusMessage = Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.StatusMessage;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69;
 
@@ -49,6 +49,11 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
+            case Eth62MessageCode.Status:
+                StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
+                base.ReportIn(statusMsg, size);
+                Handle(statusMsg);
+                break;
             case Eth62MessageCode.NewBlockHashes:
                 break;
             case Eth62MessageCode.NewBlock:
@@ -69,13 +74,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         }
     }
 
-    protected override void EnrichStatusMessage(StatusMessage statusMessage)
-    {
-        base.EnrichStatusMessage(statusMessage);
-        statusMessage.TotalDifficulty = null;
-    }
-
-    protected override void Handle(StatusMessage status)
+    private void Handle(StatusMessage status)
     {
         status.TotalDifficulty = 0; // TODO handle properly for eth/69
         base.Handle(status);
