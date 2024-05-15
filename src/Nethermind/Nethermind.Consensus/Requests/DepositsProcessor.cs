@@ -8,20 +8,22 @@ using Nethermind.Core.ConsensusRequests;
 using Nethermind.Core.Specs;
 using System.Linq;
 using Nethermind.Core.Extensions;
+using System;
+using Nethermind.Int256;
 
 namespace Nethermind.Consensus.Requests;
 
 public class DepositsProcessor : IDepositsProcessor
 {
     private AbiSignature depositEventABI = new("DepositEvent", AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes, AbiType.DynamicBytes);
-    AbiEncoder abiEncoder = new();
+    AbiEncoder abiEncoder = AbiEncoder.Instance;
 
     public IEnumerable<Deposit> ProcessDeposits(Block block, TxReceipt[] receipts, IReleaseSpec spec)
     {
         if (spec.DepositsEnabled)
         {
             for (int i = 0; i < receipts.Length; i++)
-            {
+            { 
                 LogEntry[]? logEntries = receipts[i].Logs;
                 if (logEntries is not null)
                 {
@@ -36,9 +38,9 @@ public class DepositsProcessor : IDepositsProcessor
                             {
                                 Pubkey = (byte[])result[0],
                                 WithdrawalCredentials = (byte[])result[1],
-                                Amount = ((byte[])result[2]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                                Amount = (ulong)new UInt256((byte[])result[2]),
                                 Signature = (byte[])result[3],
-                                Index = ((byte[])result[4]).Reverse().ToArray().ToULongFromBigEndianByteArrayWithoutLeadingZeros(), // ToDo not optimal - optimize
+                                Index = (ulong)new UInt256((byte[])result[4])
                             };
 
                             yield return newDeposit;
