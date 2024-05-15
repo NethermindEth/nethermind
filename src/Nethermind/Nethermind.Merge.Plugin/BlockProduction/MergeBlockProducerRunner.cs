@@ -37,12 +37,12 @@ public class MergeBlockProducerRunner : IBlockProducerRunner
         _preMergeProducer?.StopAsync();
     }
 
-    public async Task Start()
+    public void Start()
     {
-        await _eth2BlockProducer.Start();
+        _eth2BlockProducer.Start();
         if (_poSSwitcher.HasEverReachedTerminalBlock() == false && HasPreMergeProducer)
         {
-            await _preMergeProducer!.Start();
+            _preMergeProducer!.Start();
         }
     }
 

@@ -172,11 +172,10 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
 
     private Task? _producerTask;
 
-    public Task Start()
+    public void Start()
     {
         _blockTree.NewHeadBlock += BlockTreeOnNewHeadBlock;
         _producerTask = RunConsumeSignal();
-        return Task.CompletedTask;
     }
 
     private Task RunConsumeSignal()

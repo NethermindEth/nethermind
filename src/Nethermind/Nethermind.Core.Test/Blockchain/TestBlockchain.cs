@@ -206,7 +206,7 @@ public class TestBlockchain : IDisposable
         ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
         BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
         BlockProducerRunner ??= CreateBlockProducerRunner();
-        await BlockProducerRunner.Start();
+        BlockProducerRunner.Start();
         Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
         _resetEvent = new SemaphoreSlim(0);

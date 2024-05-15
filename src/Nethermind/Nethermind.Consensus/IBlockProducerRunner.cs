@@ -9,7 +9,7 @@ namespace Nethermind.Consensus;
 
 public interface IBlockProducerRunner
 {
-    Task Start();
+    void Start();
     Task StopAsync();
     bool IsProducingBlocks(ulong? maxProducingInterval);
     event EventHandler<BlockEventArgs> BlockProduced;

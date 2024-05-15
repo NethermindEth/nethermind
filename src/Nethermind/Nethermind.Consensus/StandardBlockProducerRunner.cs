@@ -50,13 +50,12 @@ public class StandardBlockProducerRunner(IBlockProductionTrigger trigger, IBlock
         return block;
     }
 
-    public virtual Task Start()
+    public virtual void Start()
     {
         _producerCancellationToken = new CancellationTokenSource();
         _isRunning = true;
         trigger.TriggerBlockProduction += OnTriggerBlockProduction;
         _lastProducedBlockDateTime = DateTime.UtcNow;
-        return Task.CompletedTask;
     }
 
     public virtual Task StopAsync()
