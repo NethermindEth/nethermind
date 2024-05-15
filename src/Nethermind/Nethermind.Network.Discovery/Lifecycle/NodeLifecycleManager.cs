@@ -198,6 +198,11 @@ public class NodeLifecycleManager : INodeLifecycleManager
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
                 continue;
             }
+            else if (!NetworkStorage.NodesFilter.Set(node.Address.Address))
+            {
+                // Already seen this node ip recently
+                continue;
+            }
 
             //If node is new it will create a new nodeLifecycleManager and will update state to New, which will trigger Ping
             _discoveryManager.GetNodeLifecycleManager(node);

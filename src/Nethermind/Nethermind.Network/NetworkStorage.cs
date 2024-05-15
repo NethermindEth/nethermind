@@ -3,10 +3,13 @@
 
 using System;
 using System.Collections.Generic;
+using System.Net;
+using System.Runtime.InteropServices;
 using System.Text;
 
 using Nethermind.Config;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Db;
@@ -17,10 +20,13 @@ namespace Nethermind.Network
 {
     public class NetworkStorage : INetworkStorage
     {
+        public static LruKeyCache<IPAddress> NodesFilter { get; } = new(2048, "Ip Filter");
+
         private readonly object _lock = new();
         private readonly IFullDb _fullDb;
         private readonly ILogger _logger;
         private readonly Dictionary<PublicKey, NetworkNode> _nodesDict = new();
+        private readonly Dictionary<IPAddress, NetworkNode> _hosts = new();
         private long _updateCounter;
         private long _removeCounter;
         private NetworkNode[]? _nodes;
@@ -78,13 +84,27 @@ namespace Nethermind.Network
                 try
                 {
                     NetworkNode node = GetNode(nodeRlp);
-                    _nodesDict[node.NodeId] = node;
+                    // Add to the filter
+                    NodesFilter.Set(node.HostIp);
+                    // Only add one node per IpAddress
+                    if (_hosts.TryAdd(node.HostIp, node))
+                    {
+                        _nodesDict[node.NodeId] = node;
+                    }
+                    else
+                    {
+                        // Remove duplicate node
+                        RemoveNode(node.NodeId);
+                    }
                 }
                 catch (Exception e)
                 {
                     if (_logger.IsDebug) _logger.Debug($"Failed to add one of the persisted nodes (with RLP {nodeRlp.ToHexString()}), {e.Message}");
                 }
             }
+
+            // Clear any duplicates from db
+            Commit();
         }
 
         public void UpdateNode(NetworkNode node)
@@ -99,6 +119,16 @@ namespace Nethermind.Network
         {
             (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[node.NodeId.Bytes] = Rlp.Encode(node).Bytes;
             _updateCounter++;
+
+            ref NetworkNode currentNode = ref CollectionsMarshal.GetValueRefOrAddDefault(_hosts, node.HostIp, out bool exists);
+            if (exists && currentNode.NodeId != node.NodeId)
+            {
+                (_currentBatch ?? (IWriteOnlyKeyValueStore)_fullDb)[currentNode.NodeId.Bytes] = null;
+                _removeCounter++;
+                _nodesDict.Remove(currentNode.NodeId);
+            }
+
+            currentNode = node;
 
             if (!_nodesDict.ContainsKey(node.NodeId))
             {
