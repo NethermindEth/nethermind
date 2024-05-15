@@ -40,6 +40,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
     [TestFixture, Parallelizable(ParallelScope.Self)]
     public class Eth62ProtocolHandlerTests
     {
+        private static int _ip = 100;
         private ISession _session = null!;
         private IMessageSerializationService _svc = null!;
         private ISyncServer _syncManager = null!;
@@ -58,7 +59,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V62
             NetworkDiagTracer.IsEnabled = true;
 
             _session = Substitute.For<ISession>();
-            Node node = new(TestItem.PublicKeyA, new IPEndPoint(IPAddress.Broadcast, 30303));
+            Node node = new(TestItem.PublicKeyA, IPEndPoint.Parse($"127.0.1.{Interlocked.Increment(ref _ip)}:30303"));
             _session.Node.Returns(node);
             _syncManager = Substitute.For<ISyncServer>();
             _transactionPool = Substitute.For<ITxPool>();
