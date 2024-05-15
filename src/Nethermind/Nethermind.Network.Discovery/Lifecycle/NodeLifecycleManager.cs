@@ -190,8 +190,13 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryNeighboursIn);
         RefreshNodeContactTime();
 
-        foreach (Node node in msg.Nodes)
+        foreach (Node? node in msg.Nodes)
         {
+            if (node is null)
+            {
+                // ports differed between tcp and udp
+                return;
+            }
             if (node.Address.Address == _localhost)
             {
                 if (_logger.IsTrace)

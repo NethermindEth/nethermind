@@ -32,7 +32,8 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
             stream.StartSequence(nodesContentLength);
             for (int i = 0; i < msg.Nodes.Length; i++)
             {
-                Node node = msg.Nodes[i];
+                Node? node = msg.Nodes[i];
+                if (node is null) continue;
                 SerializeNode(stream, node.Address, node.Id.Bytes);
             }
         }
@@ -71,7 +72,12 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
             IPEndPoint address = GetAddress(ip, ctx.DecodeInt());
             if (count > 3)
             {
-                ctx.DecodeInt();
+                var port = ctx.DecodeInt();
+                if (port != address.Port)
+                {
+                    ctx.SkipItem();
+                    return null;
+                }
             }
 
             ReadOnlySpan<byte> id = ctx.DecodeByteArraySpan();
@@ -79,12 +85,13 @@ public class NeighborsMsgSerializer : DiscoveryMsgSerializerBase, IZeroInnerMess
         });
     }
 
-    private static int GetNodesLength(Node[] nodes, out int contentLength)
+    private static int GetNodesLength(Node?[] nodes, out int contentLength)
     {
         contentLength = 0;
         for (int i = 0; i < nodes.Length; i++)
         {
-            Node node = nodes[i];
+            Node? node = nodes[i];
+            if (node is null) continue;
             contentLength += Rlp.LengthOfSequence(GetLengthSerializeNode(node.Address, node.Id.Bytes));
         }
         return Rlp.LengthOfSequence(contentLength);
