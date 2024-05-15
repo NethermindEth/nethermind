@@ -2,12 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
-using Nethermind.Crypto;
 
 using G1 = Nethermind.Crypto.Bls.P1;
+using Scalar = Nethermind.Crypto.Bls.Scalar;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -48,16 +47,17 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
 
         try
         {
-            G1 acc = new();
-            for (int i = 0; i < inputData.Length / ItemSize; i++)
+            G1[] points = new G1[inputData.Length / ItemSize];
+            Scalar[] scalars = new Scalar[inputData.Length / ItemSize];
+            for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                G1 x = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
-                G1 res = x.mult(inputData[(offset + BlsParams.LenG1)..(offset + ItemSize)].ToArray().Reverse().ToArray());
-                acc.add(res);
+                points[i] = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
+                scalars[i] = new(inputData[(offset + BlsParams.LenG1)..].ToArray());
             }
-
-            result = (acc.ToBytesUntrimmed(), true);
+            G1 res = new();
+            res.multi_mult(points, scalars);
+            result = (res.ToBytesUntrimmed(), true);
         }
         catch (Exception)
         {
