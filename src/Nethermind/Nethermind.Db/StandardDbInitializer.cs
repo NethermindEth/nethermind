@@ -52,7 +52,6 @@ namespace Nethermind.Db
 
             RegisterDb(BuildDbSettings(DbNames.Code));
             RegisterDb(BuildDbSettings(DbNames.Bloom));
-            RegisterDb(BuildDbSettings(DbNames.CHT));
             if (useReceiptsDb)
             {
                 RegisterColumnsDb<ReceiptsColumns>(BuildDbSettings(DbNames.Receipts));

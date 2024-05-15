@@ -13,8 +13,8 @@ public class PerTableDbConfigTests
     public void CanReadAllConfigForAllTable()
     {
         DbConfig dbConfig = new DbConfig();
-        string[] tables = new[]
-        {
+        string[] tables =
+        [
             DbNames.Storage,
             DbNames.State,
             DbNames.Code,
@@ -23,9 +23,8 @@ public class PerTableDbConfigTests
             DbNames.Receipts,
             DbNames.BlockInfos,
             DbNames.Bloom,
-            DbNames.CHT,
-            DbNames.Metadata,
-        };
+            DbNames.Metadata
+        ];
 
         foreach (string table in tables)
         {

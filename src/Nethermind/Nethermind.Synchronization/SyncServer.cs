@@ -22,9 +22,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
-using Nethermind.State;
 using Nethermind.Synchronization.FastSync;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
 
@@ -46,7 +44,6 @@ namespace Nethermind.Synchronization
         private readonly IReadOnlyKeyValueStore _codeDb;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
-        private readonly CanonicalHashTrie? _cht;
         private bool _gossipStopped = false;
         private readonly Random _broadcastRandomizer = new();
 
@@ -68,8 +65,7 @@ namespace Nethermind.Synchronization
             ISyncConfig syncConfig,
             IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
-            ILogManager logManager,
-            CanonicalHashTrie? cht = null)
+            ILogManager logManager)
         {
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
@@ -83,7 +79,6 @@ namespace Nethermind.Synchronization
             _receiptFinder = receiptFinder ?? throw new ArgumentNullException(nameof(receiptFinder));
             _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
-            _cht = cht;
             _pivotNumber = config.PivotNumberParsed;
             _pivotHash = new Hash256(config.PivotHash ?? Keccak.Zero.ToString());
 
@@ -392,11 +387,6 @@ namespace Nethermind.Synchronization
             return values;
         }
 
-        public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant)
-        {
-            return _blockTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, Sync.MaxReorgLength);
-        }
-
         public Block Find(Hash256 hash) => _blockTree.FindBlock(hash, BlockTreeLookupOptions.TotalDifficultyNotNeeded | BlockTreeLookupOptions.ExcludeTxHashes);
 
         public Hash256? FindHash(long number)
@@ -454,50 +444,6 @@ namespace Nethermind.Synchronization
         public void Dispose()
         {
             StopNotifyingPeersAboutNewBlocks();
-        }
-
-        private readonly object _chtLock = new();
-
-        // TODO - Cancellation token?
-        // TODO - not a fan of this function name - CatchUpCHT, AddMissingCHTBlocks, ...?
-        public Task BuildCHT()
-        {
-            return Task.CompletedTask; // removing LES code
-
-#pragma warning disable 162
-            return Task.Run(() =>
-            {
-                lock (_chtLock)
-                {
-                    if (_cht is null)
-                    {
-                        throw new InvalidAsynchronousStateException("CHT reference is null when building CHT.");
-                    }
-
-                    // Note: The spec says this should be 2048, but I don't think we'd ever want it to be higher than the max reorg depth we allow.
-                    long maxSection =
-                        CanonicalHashTrie.GetSectionFromBlockNo(_blockTree.FindLatestHeader().Number -
-                                                                Sync.MaxReorgLength);
-                    long maxKnownSection = CanonicalHashTrie.GetMaxSectionIndex();
-
-                    for (long section = (maxKnownSection + 1); section <= maxSection; section++)
-                    {
-                        long sectionStart = section * CanonicalHashTrie.SectionSize;
-                        for (int blockOffset = 0; blockOffset < CanonicalHashTrie.SectionSize; blockOffset++)
-                        {
-                            _cht.Set(_blockTree.FindHeader(sectionStart + blockOffset));
-                        }
-
-                        _cht.Commit(section);
-                    }
-                }
-            });
-#pragma warning restore 162
-        }
-
-        public CanonicalHashTrie? GetCHT()
-        {
-            return _cht;
         }
     }
 }

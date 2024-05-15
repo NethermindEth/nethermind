@@ -20,9 +20,6 @@ namespace Nethermind.Db
         // BloomDB progress / config (does not contain blooms - they are kept in bloom storage)
         public IDb BloomDb => GetDb<IDb>(DbNames.Bloom);
 
-        // LES (ignore)
-        public IDb ChtDb => GetDb<IDb>(DbNames.CHT);
-
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
         public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);
