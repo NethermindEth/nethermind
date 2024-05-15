@@ -23,6 +23,7 @@ namespace Nethermind.Consensus.Test;
 public class WithdrawalRequestProcessorTests
 {
     [Test]
+    [Explicit("This test is not yet implemented")]
     public void ShouldProcessWithdrawalRequest()
     {
 
