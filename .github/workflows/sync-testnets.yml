@@ -22,7 +22,7 @@ jobs:
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
             cl-client: "lighthouse:sigp/lighthouse:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
-            agent: ubuntu-latest
+            agent: sync-agent-80gb
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse:sigp/lighthouse:latest"
@@ -82,6 +82,7 @@ jobs:
           --el-extra-flag Sync.NonValidatorNode=true --el-extra-flag Sync.DownloadBodiesInFastSync=false \
           --el-extra-flag Sync.DownloadReceiptsInFastSync=false \
           --el-extra-flag JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug] \
+          --el-extra-flag Sync.SnapSync=true \
           --checkpoint-sync-url=${{ matrix.checkpoint-sync-url }}
           echo 'Running sedge...'
           ./build/sedge run -p $GITHUB_WORKSPACE/sedge

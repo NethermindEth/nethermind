@@ -37,14 +37,22 @@ namespace Nethermind.Evm.CodeAnalysis
             _analyzer = _emptyAnalyzer;
         }
 
-        public bool ValidateJump(int destination, bool isSubroutine)
+        public bool ValidateJump(int destination)
         {
-            return _analyzer.ValidateJump(destination, isSubroutine);
+            return _analyzer.ValidateJump(destination);
         }
 
         void IThreadPoolWorkItem.Execute()
         {
             _analyzer.Execute();
+        }
+
+        public void AnalyseInBackgroundIfRequired()
+        {
+            if (!ReferenceEquals(_analyzer, _emptyAnalyzer) && _analyzer.RequiresAnalysis)
+            {
+                ThreadPool.UnsafeQueueUserWorkItem(this, preferLocal: false);
+            }
         }
     }
 }
