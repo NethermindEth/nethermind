@@ -44,7 +44,6 @@ namespace Nethermind.Synchronization
         private readonly ISealValidator _sealValidator;
         private readonly IReadOnlyKeyValueStore _stateDb;
         private readonly IReadOnlyKeyValueStore _codeDb;
-        private readonly IWitnessRepository _witnessRepository;
         private readonly IGossipPolicy _gossipPolicy;
         private readonly ISpecProvider _specProvider;
         private readonly CanonicalHashTrie? _cht;
@@ -67,14 +66,12 @@ namespace Nethermind.Synchronization
             ISyncPeerPool pool,
             ISyncModeSelector syncModeSelector,
             ISyncConfig syncConfig,
-            IWitnessRepository? witnessRepository,
             IGossipPolicy gossipPolicy,
             ISpecProvider specProvider,
             ILogManager logManager,
             CanonicalHashTrie? cht = null)
         {
             ISyncConfig config = syncConfig ?? throw new ArgumentNullException(nameof(syncConfig));
-            _witnessRepository = witnessRepository ?? throw new ArgumentNullException(nameof(witnessRepository));
             _gossipPolicy = gossipPolicy ?? throw new ArgumentNullException(nameof(gossipPolicy));
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
             _pool = pool ?? throw new ArgumentNullException(nameof(pool));
@@ -118,15 +115,7 @@ namespace Nethermind.Synchronization
             }
         }
 
-        public Hash256[]? GetBlockWitnessHashes(Hash256 blockHash)
-        {
-            return _witnessRepository.Load(blockHash);
-        }
-
-        public int GetPeerCount()
-        {
-            return _pool.PeerCount;
-        }
+        public int GetPeerCount() => _pool.PeerCount;
 
         private readonly Guid _sealValidatorUserGuid = Guid.NewGuid();
 

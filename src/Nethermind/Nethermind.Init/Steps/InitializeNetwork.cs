@@ -179,7 +179,6 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool,
             _api.SyncModeSelector,
             _api.Config<ISyncConfig>(),
-            _api.WitnessRepository,
             _api.GossipPolicy,
             _api.SpecProvider!,
             _api.LogManager,
@@ -532,11 +531,6 @@ public class InitializeNetwork : IStep
         if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
-
-        if (_syncConfig.WitnessProtocolEnabled)
-        {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
         }
 
         _api.ProtocolValidator = protocolValidator;

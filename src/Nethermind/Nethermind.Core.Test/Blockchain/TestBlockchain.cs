@@ -356,7 +356,6 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            NullWitnessCollector.Instance,
             new BlockhashStore(BlockTree, SpecProvider, State),
             LogManager);
 

@@ -73,7 +73,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 new BlockProcessor.BlockValidationTransactionsExecutor(txProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 LimboLogs.Instance);
             BlockchainProcessor blockchainProcessor = new(

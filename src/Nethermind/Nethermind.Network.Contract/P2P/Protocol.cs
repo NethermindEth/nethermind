@@ -42,10 +42,6 @@ namespace Nethermind.Network.Contract.P2P
         /// </summary>
         public const string Ndm = "ndm";
         /// <summary>
-        /// Witness
-        /// </summary>
-        public const string Wit = "wit";
-        /// <summary>
         /// Account Abstraction
         /// </summary>
         public const string AA = "aa";
