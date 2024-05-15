@@ -150,6 +150,23 @@ jobs:
               exit 0
             fi
           done
+
+          if [[ "$found_bad_log" == true ]]; then
+            exit 1
+          fi
+
+          all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+
+          if ! $all_reached_required_count; then
+            echo "Not all required logs were found."
+            exit 1
+          fi
           
       - name: Get Consensus Logs
         if: always()
