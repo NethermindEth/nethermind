@@ -151,7 +151,7 @@ jobs:
             fi
           done
 
-          if [[ "$found_bad_log" == true ]]; then
+          if [ "$found_bad_log" = true ]; then
             exit 1
           fi
 
