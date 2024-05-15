@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Nethermind.Blockchain.Find;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -12,6 +13,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
 
+[assembly: InternalsVisibleTo("nethermind.JsonRpc.Test")]
 namespace Nethermind.JsonRpc.Modules.Eth.GasPrice
 {
     public class GasPriceOracle : IGasPriceOracle

@@ -4,6 +4,7 @@
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.ApiBase;
 using Nethermind.Core.Attributes;
 using Nethermind.Crypto;
 

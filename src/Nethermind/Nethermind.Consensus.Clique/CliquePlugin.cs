@@ -5,6 +5,8 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -17,11 +19,14 @@ using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Attributes;
 using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
+using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
 {
-    public class CliquePlugin : IConsensusPlugin
+    public class CliquePlugin : IConsensusPlugin, INethermindPlugin<INethermindApi>
     {
         public string Name => "Clique";
 
@@ -187,6 +192,8 @@ namespace Nethermind.Consensus.Clique
         public IBlockProductionTrigger DefaultBlockProductionTrigger => _nethermindApi!.ManualBlockProductionTrigger;
 
         public ValueTask DisposeAsync() { return ValueTask.CompletedTask; }
+
+        public IBasicApiWithPlugins CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
         private INethermindApi? _nethermindApi;
 

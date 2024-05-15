@@ -3,7 +3,6 @@
 
 using System.Linq;
 using FluentAssertions;
-using Nethermind.Api.Extensions;
 using Nethermind.Logging;
 using NUnit.Framework;
 

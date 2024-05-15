@@ -3,6 +3,7 @@
 
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Db;
 using Nethermind.Evm.Tracing.ParityStyle;
 using Nethermind.JsonRpc.Modules;
@@ -11,7 +12,7 @@ using Nethermind.Logging;
 
 namespace Nethermind.JsonRpc.TraceStore;
 
-public class TraceStorePlugin : INethermindPlugin
+public class TraceStorePlugin : INethermindPlugin<NethermindApi>
 {
     private const string DbName = "TraceStore";
     private INethermindApi _api = null!;
@@ -27,7 +28,7 @@ public class TraceStorePlugin : INethermindPlugin
     public string Author => "Nethermind";
     private bool Enabled => _config?.Enabled == true;
 
-    public Task Init(INethermindApi nethermindApi)
+    public Task Init(NethermindApi nethermindApi)
     {
         _api = nethermindApi;
         _logManager = _api.LogManager;

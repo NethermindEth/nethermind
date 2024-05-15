@@ -16,10 +16,11 @@ using Nethermind.JsonRpc;
 using Nethermind.Monitoring.Config;
 using Nethermind.Core.Extensions;
 using Nethermind.Merge.Plugin;
+using Nethermind.ApiBase.Extensions;
 
 namespace Nethermind.HealthChecks
 {
-    public class HealthChecksPlugin : INethermindPlugin, INethermindServicesPlugin
+    public class HealthChecksPlugin : INethermindPlugin<INethermindApi>, INethermindServicesPlugin
     {
         private INethermindApi _api;
         private IHealthChecksConfig _healthChecksConfig;

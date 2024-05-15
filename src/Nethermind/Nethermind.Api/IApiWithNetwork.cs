@@ -16,16 +16,14 @@ using Nethermind.Stats;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Peers;
 using Nethermind.Sockets;
-using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.VerkleSync;
+using Nethermind.ApiBase;
 
 namespace Nethermind.Api
 {
-    public interface IApiWithNetwork : IApiWithBlockchain
-    {
-        (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
 
+    public interface IApiNetwork
+    {
         IDisconnectsAnalyzer? DisconnectsAnalyzer { get; set; }
         IDiscoveryApp? DiscoveryApp { get; set; }
         IGrpcServer? GrpcServer { get; set; }
@@ -52,5 +50,10 @@ namespace Nethermind.Api
         IWebSocketsManager WebSocketsManager { get; set; }
         ISubscriptionFactory? SubscriptionFactory { get; set; }
         VerkleSyncServer? VerkleSyncServer { get; set; }
+    }
+
+    public interface IApiWithNetwork : IApiNetwork, IApiWithBlockchain
+    {
+        (IApiWithNetwork GetFromApi, IApiWithNetwork SetInApi) ForNetwork => (this, this);
     }
 }

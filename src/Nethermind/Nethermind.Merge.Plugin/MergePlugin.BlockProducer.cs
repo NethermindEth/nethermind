@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
 using Nethermind.Core;

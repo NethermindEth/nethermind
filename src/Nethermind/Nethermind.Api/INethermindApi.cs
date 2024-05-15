@@ -4,15 +4,13 @@
 #nullable enable
 using Nethermind.Config;
 
-namespace Nethermind.Api
-{
-    public interface INethermindApi : IApiWithNetwork
-    {
-        public T Config<T>() where T : IConfig
-        {
-            return ConfigProvider.GetConfig<T>();
-        }
+namespace Nethermind.Api;
 
-        (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
+public interface INethermindApi : IApiWithNetwork
+{
+    public T Config<T>() where T : IConfig
+    {
+        return ConfigProvider.GetConfig<T>();
     }
+    (IApiWithNetwork GetFromApi, INethermindApi SetInApi) ForRpc => (this, this);
 }

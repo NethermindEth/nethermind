@@ -5,6 +5,8 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -14,11 +16,13 @@ using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Serialization.Json;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
 
 namespace Nethermind.Consensus.Ethash
 {
-    public class NethDevPlugin : IConsensusPlugin
+    public class NethDevPlugin : IConsensusPlugin, INethermindPlugin<INethermindApi>
     {
         private INethermindApi? _nethermindApi;
 
@@ -106,7 +110,7 @@ namespace Nethermind.Consensus.Ethash
             return Task.FromResult(blockProducer);
         }
 
-        public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;
+        public string SealEngineType => Core.SealEngineType.NethDev;
         public IBlockProductionTrigger DefaultBlockProductionTrigger { get; private set; }
 
         public Task InitNetworkProtocol()
@@ -118,5 +122,7 @@ namespace Nethermind.Consensus.Ethash
         {
             return Task.CompletedTask;
         }
-    }
+
+        public IBasicApiWithPlugins CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer, ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
+}
 }

@@ -33,10 +33,11 @@ using Nethermind.Network.Config;
 using Nethermind.Consensus.Producers;
 using Nethermind.Config;
 using Nethermind.Network.Contract.P2P;
+using Nethermind.ApiBase.Extensions;
 
 namespace Nethermind.AccountAbstraction;
 
-public class AccountAbstractionPlugin : IConsensusWrapperPlugin
+public class AccountAbstractionPlugin : IConsensusWrapperPlugin, INethermindPlugin<INethermindApi>
 {
     private IAccountAbstractionConfig _accountAbstractionConfig = null!;
     private AbiDefinition _entryPointContractAbi = null!;

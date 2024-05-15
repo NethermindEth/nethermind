@@ -9,6 +9,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
@@ -43,10 +44,10 @@ namespace Nethermind.Runner.Ethereum
         {
             yield return typeof(IStep).Assembly;
             yield return GetType().Assembly;
-            IEnumerable<IInitializationPlugin> enabledInitializationPlugins =
-                _api.Plugins.OfType<IInitializationPlugin>().Where(p => p.ShouldRunSteps(api));
+            IEnumerable<IInitializationPlugin<INethermindApi>> enabledInitializationPlugins =
+                _api.Plugins.OfType<IInitializationPlugin<INethermindApi>>().Where(p => p.ShouldRunSteps(api));
 
-            foreach (IInitializationPlugin initializationPlugin in enabledInitializationPlugins)
+            foreach (IInitializationPlugin<INethermindApi> initializationPlugin in enabledInitializationPlugins)
             {
                 yield return initializationPlugin.GetType().Assembly;
             }
@@ -66,7 +67,7 @@ namespace Nethermind.Runner.Ethereum
             Task rlpxPeerTask = Stop(() => _api.RlpxPeer?.Shutdown(), "Stopping rlpx peer");
             await Task.WhenAll(discoveryStopTask, rlpxPeerTask, peerManagerTask, synchronizerTask, syncPeerPoolTask, peerPoolTask, blockchainProcessorTask, blockProducerTask);
 
-            foreach (INethermindPlugin plugin in _api.Plugins)
+            foreach (INethermindPlugin<INethermindApi> plugin in _api.Plugins)
             {
                 await Stop(async () => await plugin.DisposeAsync(), $"Disposing plugin {plugin.Name}");
             }

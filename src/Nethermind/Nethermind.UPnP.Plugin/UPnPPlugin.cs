@@ -2,14 +2,14 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Open.Nat;
 
 namespace Nethermind.UPnP.Plugin;
 
-public class UPnPPlugin : INethermindPlugin
+public class UPnPPlugin : INethermindPlugin<INethermindApi>
 {
     public string Name => "UPnP";
     public string Description => "Automatic port forwarding with UPnP";
