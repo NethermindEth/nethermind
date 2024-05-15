@@ -276,11 +276,23 @@ public class TestCaseGenerator
                 return CodeCopy.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.BalanceNonExisting:
             //     return BalanceNonExisting.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.EcRecover:
+                return EcRecover.GetTxs(privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SHA2From1Byte:
             case TestCase.SHA2From8Bytes:
             case TestCase.SHA2From32Bytes:
             case TestCase.SHA2From128Bytes:
-                return Sha2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+                return SimplePrecompile.GetTxs(0x02, testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.RipemdFrom1Byte:
+            case TestCase.RipemdFrom8Bytes:
+            case TestCase.RipemdFrom32Bytes:
+            case TestCase.RipemdFrom128Bytes:
+                return SimplePrecompile.GetTxs(0x03, testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.IdentityFrom1Byte:
+            case TestCase.IdentityFrom8Bytes:
+            case TestCase.IdentityFrom32Bytes:
+            case TestCase.IdentityFrom128Bytes:
+                return SimplePrecompile.GetTxs(0x04, testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
             case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
             case TestCase.SStoreManyAccountsRandomKeysRandomValue:

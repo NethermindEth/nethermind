@@ -95,6 +95,9 @@ public enum TestCase
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
     // BalanceNonExisting,
 
+    [TestCaseMetadata("EcRecover precompile", "EcRecover precompile calculations")]
+    EcRecover,
+
     [TestCaseMetadata("SHA-2 precompile from 1 byte", "SHA-2 precompile calculations based on 1-byte source data")]
     SHA2From1Byte,
 
@@ -106,6 +109,30 @@ public enum TestCase
 
     [TestCaseMetadata("SHA-2 precompile from 128 bytes", "SHA-2 precompile calculations based on 128-byte source data")]
     SHA2From128Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 1 byte", "Ripemd-160 precompile calculations based on 1-byte source data")]
+    RipemdFrom1Byte,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 8 bytes", "Ripemd-160 precompile calculations based on 8-byte source data")]
+    RipemdFrom8Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 32 bytes", "Ripemd-160 precompile calculations based on 32-byte source data")]
+    RipemdFrom32Bytes,
+
+    [TestCaseMetadata("Ripemd-160 precompile from 128 bytes", "Ripemd-160 precompile calculations based on 128-byte source data")]
+    RipemdFrom128Bytes,
+
+    [TestCaseMetadata("Identity precompile from 1 byte", "Identity precompile call based on 1-byte source data")]
+    IdentityFrom1Byte,
+
+    [TestCaseMetadata("Identity precompile from 8 bytes", "Identity precompile call based on 8-byte source data")]
+    IdentityFrom8Bytes,
+
+    [TestCaseMetadata("Identity precompile from 32 bytes", "Identity precompile call based on 32-byte source data")]
+    IdentityFrom32Bytes,
+
+    [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
+    IdentityFrom128Bytes,
 
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,

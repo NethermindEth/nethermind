@@ -6,7 +6,7 @@ using Nethermind.Evm;
 
 namespace EngineRequestsGenerator;
 
-public class ContractFactory
+public static class ContractFactory
 {
     public static List<byte> GenerateCodeToDeployContract(List<byte> codeToDeploy)
     {
