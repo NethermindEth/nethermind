@@ -52,6 +52,8 @@ public class DbConfig : IDbConfig
     public ulong BytesPerSync { get; set; } = 0;
     public double? DataBlockIndexUtilRatio { get; set; }
 
+    public ulong BlobTransactionsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
+
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;
     public ulong ReceiptsDbBlockCacheSize { get; set; } = (ulong)8.MiB();
