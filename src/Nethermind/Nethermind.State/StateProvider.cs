@@ -6,15 +6,12 @@ using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
-using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
@@ -43,7 +40,7 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
 
-        public StateProvider(IStateOwner owner, IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
+        public StateProvider(IStateOwner owner, IStateFactory factory, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
@@ -63,17 +60,6 @@ namespace Nethermind.State
 
             throw new NotImplementedException($"The type of visitor {visitor.GetType()} is not handled now");
         }
-
-        public Hash256 StateRoot
-        {
-            get
-            {
-                return _tree.RootHash;
-            }
-            set => _tree.RootHash = value;
-        }
-
-        internal readonly StateTree _tree;
 
         public bool IsContract(Address address)
         {
@@ -294,18 +280,10 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(in ValueHash256 codeHash)
-        {
-            if (_codeDb is WitnessingStore witnessingStore)
-            {
-                witnessingStore.Touch(codeHash.Bytes);
-            }
-        }
-
-        public ValueHash256 GetCodeHash(Address address)
+        public Hash256 GetCodeHash(Address address)
         {
             AccountStruct account = GetThroughCache(address);
-            return account.IsNull ? Keccak.OfAnEmptyString : account.CodeHash;
+            return new Hash256(account.IsNull ? Keccak.OfAnEmptyString : account.CodeHash);
         }
 
         public byte[] GetCode(Hash256 codeHash)

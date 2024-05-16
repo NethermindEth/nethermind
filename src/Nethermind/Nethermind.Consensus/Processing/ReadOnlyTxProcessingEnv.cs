@@ -50,7 +50,7 @@ namespace Nethermind.Consensus.Processing
             StateProvider = new WorldState(stateFactory, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
-            BlockhashProvider = new BlockhashProvider(BlockTree, logManager);
+            BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
 
             Machine = new VirtualMachine(BlockhashProvider, specProvider, logManager);
             TransactionProcessor = new TransactionProcessor(specProvider, StateProvider, Machine, logManager);

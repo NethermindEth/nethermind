@@ -15,8 +15,6 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
-using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 
 namespace Nethermind.Init;
@@ -65,23 +63,8 @@ public class InitializeStateDb : IStep
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
-        IWitnessCollector witnessCollector;
-        if (syncConfig.WitnessProtocolEnabled)
-        {
-            WitnessCollector witnessCollectorImpl = new(getApi.DbProvider.WitnessDb, _api.LogManager);
-            witnessCollector = setApi.WitnessCollector = witnessCollectorImpl;
-            setApi.WitnessRepository = witnessCollectorImpl.WithPruning(getApi.BlockTree!, getApi.LogManager);
-        }
-        else
-        {
-            witnessCollector = setApi.WitnessCollector = NullWitnessCollector.Instance;
-            setApi.WitnessRepository = NullWitnessCollector.Instance;
-        }
-
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-            .WitnessedBy(witnessCollector);
-
         IStateFactory stateFactory = setApi.StateFactory!;
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
 
         // This is probably the point where a different state implementation would switch.
         IWorldState worldState = new WorldState(stateFactory, codeDb, getApi.LogManager);

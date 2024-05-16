@@ -64,7 +64,7 @@ public class VirtualMachineTestsBase
         _stateDb = new PaprikaStateFactory();
         TestState = new WorldState(_stateDb, codeDb, logManager);
         _ethereumEcdsa = new EthereumEcdsa(SpecProvider.ChainId, logManager);
-        IBlockhashProvider blockhashProvider = TestBlockhashProvider.Instance;
+        IBlockhashProvider blockhashProvider = new TestBlockhashProvider(SpecProvider);
         Machine = new VirtualMachine(blockhashProvider, SpecProvider, logManager);
         _processor = new TransactionProcessor(SpecProvider, TestState, Machine, logManager);
     }

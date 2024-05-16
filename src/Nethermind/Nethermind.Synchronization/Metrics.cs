@@ -72,14 +72,6 @@ namespace Nethermind.Synchronization
         public static long StateBranchProgress;
 
         [GaugeMetric]
-        [Description("Requests sent for processing by the witness state sync")]
-        public static long WitnessStateRequests;
-
-        [GaugeMetric]
-        [Description("Requests sent for processing by the witness block sync")]
-        public static long WitnessBlockRequests;
-
-        [GaugeMetric]
         [Description("Sync time in seconds")]
         public static long SyncTime;
     }

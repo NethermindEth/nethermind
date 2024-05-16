@@ -3,6 +3,7 @@
 
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 using Nethermind.Core.Attributes;
 
@@ -77,6 +78,11 @@ public class Metrics
     [CounterMetric]
     [Description("Number of contract create calls.")]
     public static long Creates { get; set; }
+    private static long _contractsAnalysed;
+    [Description("Number of contracts' code analysed for jump destinations.")]
+    public static long ContractsAnalysed => _contractsAnalysed;
+    public static void IncrementContractsAnalysed() => Interlocked.Increment(ref _contractsAnalysed);
+
     internal static long Transactions { get; set; }
     internal static float AveGasPrice { get; set; }
     internal static float MinGasPrice { get; set; } = float.MaxValue;

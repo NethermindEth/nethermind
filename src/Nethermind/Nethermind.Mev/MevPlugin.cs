@@ -135,7 +135,7 @@ public class MevPlugin : IConsensusWrapperPlugin
         return Task.CompletedTask;
     }
 
-    public async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource)
+    public async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
         if (!Enabled)
         {
@@ -167,7 +167,7 @@ public class MevPlugin : IConsensusWrapperPlugin
             blockProducers.Add(bundleProducer);
         }
 
-        return new MevBlockProducer(blockProductionTrigger, _nethermindApi.LogManager, blockProducers.ToArray());
+        return new MevBlockProducer(_nethermindApi.LogManager, blockProducers.ToArray());
     }
 
     private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
@@ -175,31 +175,36 @@ public class MevPlugin : IConsensusWrapperPlugin
         int bundleLimit = 0,
         ITxSource? additionalTxSource = null)
     {
-        bool BundleLimitTriggerCondition(BlockProductionEventArgs e)
-        {
-            // TODO: why we are checking parent and not the currently produced block...?
-            BlockHeader? parent = _nethermindApi.BlockTree!.GetProducedBlockParent(e.ParentHeader);
-            if (parent is not null)
-            {
-                IEnumerable<MevBundle> bundles = BundlePool.GetBundles(parent, _nethermindApi.Timestamper);
-                return bundles.Count() >= bundleLimit;
-            }
+        IBlockProductionCondition condition = bundleLimit == 0 ?
+            AlwaysOkBlockProductionCondition.Instance :
+            new BundleLimitBlockProductionTrigger(_nethermindApi.BlockTree!, _nethermindApi.Timestamper!, BundlePool, bundleLimit);
 
-            return false;
-        }
-
-        IManualBlockProductionTrigger manualTrigger = new BuildBlocksWhenRequested();
-        IBlockProductionTrigger trigger = manualTrigger;
-        if (bundleLimit != 0)
-        {
-            trigger = new TriggerWithCondition(manualTrigger, BundleLimitTriggerCondition);
-        }
-
-        IBlockProducer producer = await consensusPlugin.InitBlockProducer(trigger, additionalTxSource);
-        return new MevBlockProducer.MevBlockProducerInfo(producer, manualTrigger, new BeneficiaryTracer());
+        IBlockProducer producer = await consensusPlugin.InitBlockProducer(additionalTxSource);
+        return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
     }
 
     public bool Enabled => _mevConfig.Enabled;
 
     public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+
+    private class BundleLimitBlockProductionTrigger(
+        IBlockTree blockTree,
+        ITimestamper timestamper,
+        IBundlePool bundlePool,
+        int bundleLimit
+    ) : IBlockProductionCondition
+    {
+        public bool CanProduce(BlockHeader parentHeader)
+        {
+            // TODO: why we are checking parent and not the currently produced block...?
+            BlockHeader? parent = blockTree!.GetProducedBlockParent(parentHeader);
+            if (parent is not null)
+            {
+                IEnumerable<MevBundle> bundles = bundlePool.GetBundles(parent, timestamper);
+                return bundles.Count() >= bundleLimit;
+            }
+
+            return false;
+        }
+    }
 }

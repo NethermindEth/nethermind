@@ -6,7 +6,6 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
-using Nethermind.Api.Extensions;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Core;
 using Nethermind.Db;
@@ -17,7 +16,6 @@ using Nethermind.JsonRpc.Modules.Admin;
 using Nethermind.JsonRpc.Modules.DebugModule;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
-using Nethermind.JsonRpc.Modules.Evm;
 using Nethermind.JsonRpc.Modules.Net;
 using Nethermind.JsonRpc.Modules.Parity;
 using Nethermind.JsonRpc.Modules.Personal;
@@ -26,11 +24,9 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
-using Nethermind.Serialization.Json;
 
 namespace Nethermind.Init.Steps;
 
@@ -119,7 +115,6 @@ public class RegisterRpcModules : IStep
         if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
         if (_api.KeyStore is null) throw new StepDependencyException(nameof(_api.KeyStore));
         if (_api.PeerPool is null) throw new StepDependencyException(nameof(_api.PeerPool));
-        if (_api.WitnessRepository is null) throw new StepDependencyException(nameof(_api.WitnessRepository));
         if (_api.BadBlocksStore is null) throw new StepDependencyException(nameof(_api.BadBlocksStore));
 
         ProofModuleFactory proofModuleFactory = new(_api.DbProvider.AsReadOnly(false), _api.StateFactory!,
@@ -205,9 +200,6 @@ public class RegisterRpcModules : IStep
             _api.SpecProvider,
             _api.PeerManager);
         rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
-
-        WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
-        rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
 
         if (_api.ReceiptMonitor is null) throw new StepDependencyException(nameof(_api.ReceiptMonitor));
 

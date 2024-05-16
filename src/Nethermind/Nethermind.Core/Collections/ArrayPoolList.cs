@@ -145,7 +145,7 @@ public sealed class ArrayPoolList<T> : IList<T>, IList, IOwnedReadOnlyList<T>
         else if (RuntimeHelpers.IsReferenceOrContainsReferences<T>())
         {
             // Release any references to the objects in the array that are no longer in use.
-            Array.Clear(_array, count, oldCount);
+            Array.Clear(_array, count, oldCount - count);
         }
 
         void ThrowOnlyReduce(int count)
