@@ -6,24 +6,18 @@ using System;
 using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
-using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Evm.CodeAnalysis;
 using Nethermind.Evm.Precompiles;
-using Nethermind.Evm.Precompiles.Bls;
-using Nethermind.Evm.Precompiles.Snarks;
 using Nethermind.Evm.Tracing;
 using Nethermind.Logging;
 using Nethermind.State;
 using System.Diagnostics.CodeAnalysis;
-using System.Diagnostics;
 using System.Runtime.Intrinsics;
-using Nethermind.Core.Collections;
 using static Nethermind.Evm.VirtualMachine;
 using static System.Runtime.CompilerServices.Unsafe;
-using ValueHash256 = Nethermind.Core.Crypto.ValueHash256;
 
 #if DEBUG
 using Nethermind.Evm.Tracing.Debugger;
@@ -32,11 +26,6 @@ using Nethermind.Evm.Tracing.Debugger;
 [assembly: InternalsVisibleTo("Nethermind.Evm.Test")]
 
 namespace Nethermind.Evm;
-
-using System.Collections.Frozen;
-using System.Linq;
-using System.Runtime.InteropServices;
-using System.Threading;
 
 using Int256;
 
@@ -48,7 +37,7 @@ public class VirtualMachine : IVirtualMachine
     internal static readonly UInt256 BigInt256 = 256;
     internal static readonly UInt256 BigInt32 = 32;
 
-    internal static readonly byte[] BytesZero = { 0 };
+    internal static readonly byte[] BytesZero = [0];
 
     internal static readonly byte[] BytesZero32 =
     {
