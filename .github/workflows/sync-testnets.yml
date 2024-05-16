@@ -106,13 +106,13 @@ jobs:
           required_count["Processed"]=20      
       
           docker logs -f sedge-execution-client | while read -r line; do
-          
+            echo "$line"
+            
             counter=0
             found_bad_log=false
           
             if [[ "$line" == *"All done, goodbye!"* ]]; then
               echo "Unexpected termination detected: $line"
-              kill $docker_pid
               exit 1
             fi
       
@@ -120,7 +120,6 @@ jobs:
               ((counter++))
               if [ $counter -ge 1000 ]; then
                 echo "Exiting after capturing extra logs due to error."
-                kill $docker_pid
                 exit 1
               else
                 continue
@@ -152,16 +151,9 @@ jobs:
       
             if $all_reached_required_count; then
               echo "All required logs found."
-              kill $docker_pid
               exit 0
             fi
           done
-      
-          if [[ "$line" == *"All done, goodbye!"* ]]; then
-            echo "Unexpected termination detected2: $line"
-            kill $docker_pid
-            exit 1
-          fi
           
       - name: Get Consensus Logs
         if: always()
