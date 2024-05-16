@@ -170,7 +170,7 @@ public partial class BlockProcessor : IBlockProcessor
 
             if (incrementReorgMetric)
                 Metrics.Reorganizations++;
-            _stateProvider.Reset();
+            _stateProvider.Reset(clearCaches: false);
             _stateProvider.StateRoot = branchStateRoot;
 
             if (_cacheBlockNumber + 1 != blockNumber || branchStateRoot != _cacheBlockStateRoot)
@@ -198,7 +198,7 @@ public partial class BlockProcessor : IBlockProcessor
     private void RestoreBranch(Hash256 branchingPointStateRoot)
     {
         if (_logger.IsTrace) _logger.Trace($"Restoring the branch checkpoint - {branchingPointStateRoot}");
-        _stateProvider.Reset();
+        _stateProvider.Reset(clearCaches: false);
         _stateProvider.StateRoot = branchingPointStateRoot;
         if (_logger.IsTrace) _logger.Trace($"Restored the branch checkpoint - {branchingPointStateRoot} | {_stateProvider.StateRoot}");
     }

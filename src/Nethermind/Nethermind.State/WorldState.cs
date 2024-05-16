@@ -90,8 +90,12 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset()
+        public void Reset(bool clearCaches = true)
         {
+            if (clearCaches)
+            {
+                ResetCache();
+            }
             _stateProvider.Reset();
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();

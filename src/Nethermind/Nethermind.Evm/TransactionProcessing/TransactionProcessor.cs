@@ -136,7 +136,7 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                WorldState.Reset();
+                WorldState.Reset(clearCaches: false);
                 if (deleteCallerAccount)
                 {
                     WorldState.DeleteAccount(tx.SenderAddress);
