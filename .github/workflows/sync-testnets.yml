@@ -20,17 +20,17 @@ jobs:
         include:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "nimbus:statusim/nimbus-eth2:amd64-latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "nimbus:statusim/nimbus-eth2:amd64-latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "nimbus:statusim/nimbus-eth2:amd64-latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
@@ -40,15 +40,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           clean: true
-
-      - name: Configure settings
-        id: settings
-        run: |
-          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
 
       - name: Installing requirements
         run: |
