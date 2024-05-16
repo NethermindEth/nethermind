@@ -117,8 +117,6 @@ jobs:
           trap "kill $docker_pid" EXIT
       
           while IFS= read -r line; do
-            echo "$line"
-      
             if [[ "$line" == *"All done, goodbye!"* ]]; then
               echo "Unexpected termination detected: $line"
               kill $docker_pid
@@ -127,7 +125,7 @@ jobs:
       
             if [ "$found_bad_log" = true ]; then
               ((counter++))
-              if [ $counter -ge 100 ]; then
+              if [ $counter -ge 1000 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 kill $docker_pid
                 exit 1
