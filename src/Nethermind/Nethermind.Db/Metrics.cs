@@ -15,8 +15,16 @@ namespace Nethermind.Db
         public static long CodeDbCache { get; set; }
 
         [CounterMetric]
+        [Description("Number of State Trie cache hits.")]
+        public static long StateTreeCache { get; set; }
+
+        [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of State Reader reads.")]
+        public static long StateReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]
@@ -27,8 +35,16 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
+        [Description("Number of storage trie cache hits.")]
+        public static long StorageTreeCache { get; set; }
+
+        [CounterMetric]
         [Description("Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of storage reader reads.")]
+        public static long StorageReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

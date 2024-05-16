@@ -308,6 +308,10 @@ namespace Nethermind.State
             _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
         }
 
+        internal void ResetCache()
+        {
+        }
+
         private class StorageTreeFactory : IStorageTreeFactory
         {
             public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)

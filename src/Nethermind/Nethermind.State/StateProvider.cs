@@ -28,7 +28,8 @@ namespace Nethermind.State
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Hash256AsKey> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruCacheNonConcurrent<AddressAsKey, Account> _accountCache = new(8192, "Account Cache");
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -665,14 +666,23 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
+            if (!_accountCache.TryGet(address, out Account? account))
+            {
+                Metrics.StateTreeReads++;
+                account = _tree.Get(address);
+                _accountCache.Set(address, account);
+            }
+            else
+            {
+                Metrics.StateTreeCache++;
+            }
             return account;
         }
 
         private void SetState(Address address, Account? account)
         {
             _needsStateRootUpdate = true;
+            _accountCache.Set(address, account);
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
         }
@@ -828,5 +838,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace($"  Update {address} N {account.Nonce} -> {changedAccount.Nonce}");
             PushUpdate(address, changedAccount);
         }
+
+        public void ResetCache() => _accountCache.Clear();
     }
 }

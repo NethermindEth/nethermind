@@ -236,5 +236,11 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
+
+        public void ResetCache()
+        {
+            _persistentStorageProvider.ResetCache();
+            _stateProvider.ResetCache();
+        }
     }
 }
