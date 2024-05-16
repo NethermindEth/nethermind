@@ -93,9 +93,6 @@ public interface ISyncConfig : IConfig
     [ConfigItem(DisabledForCli = true, HiddenFromDocs = true, DefaultValue = "1")]
     public long AncientReceiptsBarrierCalc => Math.Max(1, Math.Min(PivotNumberParsed, Math.Max(AncientBodiesBarrier, AncientReceiptsBarrier)));
 
-    [ConfigItem(Description = "Whether to enable the Witness protocol.", DefaultValue = "false")]
-    public bool WitnessProtocolEnabled { get; set; }
-
     [ConfigItem(Description = "Whether to use the Snap sync mode.", DefaultValue = "false")]
     public bool SnapSync { get; set; }
 

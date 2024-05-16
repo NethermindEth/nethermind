@@ -29,6 +29,7 @@ namespace Nethermind.Blockchain.Test
             worldState.Commit(Frontier.Instance);
             return worldState;
         }
+
         private static BlockhashProvider CreateBlockHashProvider(IBlockFinder tree, IReleaseSpec spec)
         {
             IWorldState worldState = CreateWorldState();
@@ -73,7 +74,8 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength)
+                .OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
@@ -88,7 +90,8 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength)
+                .OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
@@ -105,7 +108,8 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength)
+                .OfChainLength(out Block _, chainLength, 1).TestObject;
 
             BlockhashProvider provider = CreateBlockHashProvider(tree, Frontier.Instance);
 
@@ -128,7 +132,8 @@ namespace Nethermind.Blockchain.Test
             const int chainLength = 512;
 
             Block genesis = Build.A.Block.Genesis.TestObject;
-            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength).OfChainLength(out Block _, chainLength, 1).TestObject;
+            BlockTree tree = Build.A.BlockTree(genesis).OfHeadersOnly.OfChainLength(out Block headBlock, chainLength)
+                .OfChainLength(out Block _, chainLength, 1).TestObject;
             Block current = Build.A.Block.WithParent(headBlock).TestObject;
             for (int i = 0; i < 6; i++)
             {
@@ -250,18 +255,14 @@ namespace Nethermind.Blockchain.Test
             tree.SuggestHeader(current.Header);
 
             IWorldState worldState = CreateWorldState();
-            var specToUse = new OverridableReleaseSpec(Prague.Instance)
-            {
-                Eip2935TransitionTimestamp = current.Timestamp
-            };
             var specProvider = new CustomSpecProvider(
                 (new ForkActivation(0, genesis.Timestamp), Frontier.Instance),
-                (new ForkActivation(0, current.Timestamp), specToUse));
+                (new ForkActivation(0, current.Timestamp), Prague.Instance));
             BlockhashProvider provider = new(tree, specProvider, worldState, LimboLogs.Instance);
             BlockhashStore store = new(tree, specProvider, worldState);
 
             store.ApplyHistoryBlockHashes(current.Header);
-            worldState.Commit(specToUse);
+            worldState.Commit(Prague.Instance);
 
             Hash256? result = provider.GetBlockhash(current.Header, chainLength - 1);
             Assert.That(result, Is.EqualTo(head?.Hash));
@@ -279,7 +280,8 @@ namespace Nethermind.Blockchain.Test
             AssertGenesisHash(provider, current.Header, genesis.Hash!);
         }
 
-        private static void AssertGenesisHash(BlockhashProvider provider, BlockHeader currentHeader, Hash256 genesisHash)
+        private static void AssertGenesisHash(BlockhashProvider provider, BlockHeader currentHeader,
+            Hash256 genesisHash)
         {
             Hash256? result = provider.GetBlockhash(currentHeader, 0);
             if (currentHeader.Number > Eip2935Constants.RingBufferSize)

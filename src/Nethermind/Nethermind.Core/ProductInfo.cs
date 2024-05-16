@@ -4,8 +4,10 @@
 using System;
 using System.Linq;
 using System.Reflection;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
+[assembly: InternalsVisibleTo("Nethermind.Merge.Plugin.Test")]
 namespace Nethermind.Core;
 
 public static class ProductInfo
@@ -39,7 +41,7 @@ public static class ProductInfo
 
     public static string ClientCode { get; }
 
-    public static string Commit { get; }
+    public static string Commit { get; internal set; }
 
     public static string Name { get; }
 

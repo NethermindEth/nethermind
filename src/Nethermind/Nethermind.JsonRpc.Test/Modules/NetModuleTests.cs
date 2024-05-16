@@ -57,7 +57,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 Substitute.For<ISyncPeerPool>(),
                 Substitute.For<ISyncModeSelector>(),
                 syncConfig,
-                Substitute.For<IWitnessRepository>(),
                 Substitute.For<IGossipPolicy>(),
                 Substitute.For<ISpecProvider>(),
                 Substitute.For<ILogManager>());
