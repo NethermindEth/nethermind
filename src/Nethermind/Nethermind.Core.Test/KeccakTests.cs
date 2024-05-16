@@ -5,6 +5,7 @@ using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
+using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
@@ -109,6 +110,14 @@ namespace Nethermind.Core.Test
             }
 
             Assert.That(Keccak.Compute(byteArray.AsSpan()), Is.EqualTo(Keccak.Compute(byteArray)));
+        }
+
+        [TestCase("0xAAAAAAAAAAAA", "f8e06bc47a06f221f1523d3b646226e6cdb322619be1da7bafd113e459bf4140")]
+        public void Sanity_check(string hexString, string expected)
+        {
+            byte[] bytes = Bytes.FromHexString(hexString);
+            ValueHash256 h = ValueKeccak.Compute(bytes);
+            h.Bytes.ToHexString().Should().Be(expected);
         }
     }
 }
