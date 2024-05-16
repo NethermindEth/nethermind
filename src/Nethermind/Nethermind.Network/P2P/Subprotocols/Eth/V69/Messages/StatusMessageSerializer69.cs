@@ -6,21 +6,21 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class StatusMessageSerializer: V62.Messages.StatusMessageSerializer,
-    IZeroInnerMessageSerializer<StatusMessage>
+public class StatusMessageSerializer69: V62.Messages.StatusMessageSerializer,
+    IZeroInnerMessageSerializer<StatusMessage69>
 {
-    void IZeroMessageSerializer<StatusMessage>.Serialize(IByteBuffer byteBuffer, StatusMessage message)
+    void IZeroMessageSerializer<StatusMessage69>.Serialize(IByteBuffer byteBuffer, StatusMessage69 message)
     {
         base.Serialize(byteBuffer, message);
     }
 
-    StatusMessage IZeroMessageSerializer<StatusMessage>.Deserialize(IByteBuffer byteBuffer)
+    StatusMessage69 IZeroMessageSerializer<StatusMessage69>.Deserialize(IByteBuffer byteBuffer)
     {
         V62.Messages.StatusMessage? message = base.Deserialize(byteBuffer);
-        return new StatusMessage(message);
+        return new StatusMessage69(message);
     }
 
-    int IZeroInnerMessageSerializer<StatusMessage>.GetLength(StatusMessage message, out int contentLength)
+    int IZeroInnerMessageSerializer<StatusMessage69>.GetLength(StatusMessage69 message, out int contentLength)
     {
         return base.GetLength(message, out contentLength);
     }

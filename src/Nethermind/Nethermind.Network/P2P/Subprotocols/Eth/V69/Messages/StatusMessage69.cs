@@ -3,11 +3,11 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class StatusMessage: V62.Messages.StatusMessage
+public class StatusMessage69: V62.Messages.StatusMessage
 {
-    public StatusMessage() { }
+    public StatusMessage69() { }
 
-    public StatusMessage(V62.Messages.StatusMessage message): base(message) { }
+    public StatusMessage69(V62.Messages.StatusMessage message): base(message) { }
 
     public override string ToString()
     {

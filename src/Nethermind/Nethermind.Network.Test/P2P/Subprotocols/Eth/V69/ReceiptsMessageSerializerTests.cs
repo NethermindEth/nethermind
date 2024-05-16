@@ -68,12 +68,12 @@ public class ReceiptsMessageSerializerTests
     [TestCaseSource(nameof(TestData))]
     public void Roundtrip(long requestId, TxReceipt[] receipts, string expected)
     {
-        using ReceiptsMessage message = new(requestId, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(requestId, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
         {
             receipts
         }));
 
-        var serializer = new ReceiptsMessageSerializer(new TestSpecProvider(Prague.Instance));
+        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
 
         SerializerTester.TestZero(
             serializer,
@@ -85,7 +85,7 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void IgnoresBloom()
     {
-        using ReceiptsMessage message = new(0, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(0, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
         {
             new TxReceipt[]
             {
@@ -93,7 +93,7 @@ public class ReceiptsMessageSerializerTests
             }
         }));
 
-        var serializer = new ReceiptsMessageSerializer(new TestSpecProvider(Prague.Instance));
+        var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
         message.EthMessage.TxReceipts[0]![0].Bloom = null;

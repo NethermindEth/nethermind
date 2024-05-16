@@ -15,7 +15,7 @@ public class StatusMessageSerializerTests
     [
         new object[]
         {
-            new StatusMessage
+            new StatusMessage69
             {
                 ProtocolVersion = 69,
                 BestHash = Keccak.Compute("1"),
@@ -26,16 +26,16 @@ public class StatusMessageSerializerTests
         },
         new object[]
         {
-            new StatusMessage(),
+            new StatusMessage69(),
             "c480808080"
         },
     ];
 
     [Theory]
     [TestCaseSource(nameof(TestData))]
-    public void Roundtrip(StatusMessage message, string expected)
+    public void Roundtrip(StatusMessage69 message, string expected)
     {
-        var serializer = new StatusMessageSerializer();
+        var serializer = new StatusMessageSerializer69();
 
         SerializerTester.TestZero(
             serializer,
@@ -47,7 +47,7 @@ public class StatusMessageSerializerTests
     [Test]
     public void IgnoresTotalDifficulty()
     {
-        var message = new StatusMessage
+        var message = new StatusMessage69
         {
             ProtocolVersion = 69,
             BestHash = Keccak.Compute("1"),
@@ -56,7 +56,7 @@ public class StatusMessageSerializerTests
             TotalDifficulty = null
         };
 
-        var serializer = new StatusMessageSerializer();
+        var serializer = new StatusMessageSerializer69();
         byte[] encoded = serializer.Serialize(message);
 
         message.TotalDifficulty = 0;

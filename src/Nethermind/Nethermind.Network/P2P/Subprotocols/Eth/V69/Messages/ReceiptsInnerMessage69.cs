@@ -6,7 +6,7 @@ using Nethermind.Core.Collections;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class ReceiptsInnerMessage: V63.Messages.ReceiptsMessage
+public class ReceiptsInnerMessage69: V63.Messages.ReceiptsMessage
 {
-    public ReceiptsInnerMessage(IOwnedReadOnlyList<TxReceipt[]> txReceipts): base(txReceipts) { }
+    public ReceiptsInnerMessage69(IOwnedReadOnlyList<TxReceipt[]> txReceipts): base(txReceipts) { }
 }
