@@ -394,6 +394,7 @@ namespace Nethermind.Evm
             Instruction.TLOAD or Instruction.TSTORE => true,
             Instruction.EXTCODESIZE or Instruction.EXTCODECOPY or Instruction.EXTCODEHASH => true,
             Instruction.SELFDESTRUCT => true,
+            Instruction.BALANCE => true,
             _ =>  false,
         };
 

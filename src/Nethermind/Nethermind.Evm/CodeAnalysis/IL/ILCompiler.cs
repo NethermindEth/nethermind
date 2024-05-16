@@ -49,8 +49,8 @@ internal class ILCompiler
         const int wordToAlignTo = 32;
 
         // init ReturnState
-        method.LoadLocalAddress(returnState);
-        method.InitializeObject<ILEvmState>();
+        method.LoadArgument(0);
+        method.StoreLocal(returnState);
 
         // allocate stack
         method.LoadConstant(EvmStack.MaxStackSize * Word.Size + wordToAlignTo);
@@ -80,7 +80,6 @@ internal class ILCompiler
         method.StoreLocal(programCounter);
 
         Label ret = method.DefineLabel("Return"); // the label just before return
-        Label invalidAddress = method.DefineLabel("InvalidAddress"); // invalid jump address
         Label jumpTable = method.DefineLabel("Jumptable"); // jump table
 
         Dictionary<int, Label> jumpDestinations = new();
@@ -118,6 +117,12 @@ internal class ILCompiler
             // else emit 
             switch (op.Operation)
             {
+                case Instruction.STOP:
+                    method.LoadLocalAddress(returnState);
+                    method.LoadConstant(true);
+                    method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.StopExecution)));
+                    method.Branch(ret);
+                    break;
                 case Instruction.JUMPDEST:
                     // mark the jump destination
                     jumpDestinations[pc] = method.DefineLabel();
@@ -213,7 +218,7 @@ internal class ILCompiler
                     break;
 
                 case Instruction.MOD:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!,
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Mod), BindingFlags.Public | BindingFlags.Static)!, 
                         (il, postInstructionLabel, locals) =>
                         {
                             Label label = il.DefineLabel();
@@ -228,7 +233,7 @@ internal class ILCompiler
                             il.Branch(postInstructionLabel);
 
                             il.MarkLabel(label);
-                        });
+                        }, uint256A, uint256B);
                     break;
 
                 case Instruction.DIV:
@@ -247,11 +252,11 @@ internal class ILCompiler
                             il.Branch(postInstructionLabel);
 
                             il.MarkLabel(label);
-                        });
+                        }, uint256A, uint256B);
                     break;
 
                 case Instruction.EXP:
-                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null);
+                    EmitBinaryUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod(nameof(UInt256.Exp), BindingFlags.Public | BindingFlags.Static)!, null, uint256A, uint256B);
                     break;
                 case Instruction.LT:
                     EmitComparaisonUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod("op_LessThan", new[] { typeof(UInt256), typeof(UInt256) }));
@@ -263,6 +268,8 @@ internal class ILCompiler
                     EmitComparaisonUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256), typeof(UInt256) }));
                     break;
                 case Instruction.ISZERO:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
                     // we load the currentSP
                     method.StackLoadPrevious(currentSP, 1);
                     method.StackPop(currentSP, 1);
@@ -271,8 +278,7 @@ internal class ILCompiler
                     method.Call(Word.GetIsZero);
 
                     // we convert the result to a Uint256 and store it in the currentSP
-                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
-                    method.Call(Word.SetUInt256);
+                    method.StoreField(GetFieldInfo<Word>(nameof(Word.Byte0)));
                     method.StackPush(currentSP);
                     break;
                 case Instruction.POP:
@@ -341,8 +347,7 @@ internal class ILCompiler
                     method.CleanWord(currentSP);
                     method.LoadLocal(currentSP);
                     method.LoadConstant(code.Length);
-                    method.Call(typeof(UInt256).GetMethod("op_Implicit", new[] { typeof(int) }));
-                    method.Call(Word.SetUInt256);
+                    method.StoreField(GetFieldInfo<Word>(nameof(Word.UInt0)));
                     method.StackPush(currentSP);
                     break;
                 case Instruction.PC:
@@ -358,9 +363,6 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
                     method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.GasBeneficiary)));
-                    method.LoadObject(typeof(Address));
-                    method.StoreLocal(address);
-                    method.LoadLocal(address);
                     method.Call(Word.SetAddress);
                     method.StackPush(currentSP);
                     break;
@@ -370,9 +372,6 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
                     method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.Timestamp)));
-                    method.LoadObject(typeof(UInt256));
-                    method.StoreLocal(uint256A);
-                    method.LoadLocal(uint256A);
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
@@ -382,9 +381,6 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
                     method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.Number)));
-                    method.LoadObject(typeof(UInt256));
-                    method.StoreLocal(uint256A);
-                    method.LoadLocal(uint256A);
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
@@ -394,13 +390,85 @@ internal class ILCompiler
                     method.LoadArgument(0);
                     method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
                     method.LoadField(GetFieldInfo<BlockHeader>(nameof(BlockHeader.GasLimit)));
-                    method.LoadObject(typeof(UInt256));
-                    method.StoreLocal(uint256A);
-                    method.LoadLocal(uint256A);
                     method.Call(Word.SetUInt256);
                     method.StackPush(currentSP);
                     break;
-                default:
+                case Instruction.CALLER:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<ExecutionEnvironment>(nameof(ExecutionEnvironment.Caller)));
+                    method.Call(Word.SetAddress);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.ADDRESS:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<ExecutionEnvironment>(nameof(ExecutionEnvironment.ExecutingAccount)));
+                    method.Call(Word.SetAddress);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.ORIGIN:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.TxCtx)));
+                    method.LoadField(GetFieldInfo<TxExecutionContext>(nameof(TxExecutionContext.Origin)));
+                    method.Call(Word.SetAddress);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.CALLVALUE:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<ExecutionEnvironment>(nameof(ExecutionEnvironment.Value)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.GASPRICE:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<TxExecutionContext>(nameof(TxExecutionContext.GasPrice)));
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+
+                case Instruction.CALLDATALOAD:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<ExecutionEnvironment>(nameof(ExecutionEnvironment.InputData)));
+                    method.StackLoadPrevious(currentSP, 1);
+                    method.LoadConstant(32);
+                    method.Call(typeof(ByteArrayExtensions).GetMethod(nameof(ByteArrayExtensions.SliceWithZeroPadding), BindingFlags.Static | BindingFlags.Public));
+                    method.Call(typeof(ZeroPaddedSpan).GetMethod(nameof(ZeroPaddedSpan.ToArray), BindingFlags.Instance | BindingFlags.Public));
+                    method.StoreLocal(localArr);
+                    // we call UInt256 constructor taking a span of bytes and a bool
+                    method.LoadLocalAddress(localArr);
+                    method.LoadConstant(0);
+                    method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
+
+                    method.Call(Word.SetUInt256);
+                    method.StackPush(currentSP);
+                    break;
+                case Instruction.CALLDATASIZE:
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadArgument(0);
+                    method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Env)));
+                    method.LoadField(GetFieldInfo<ExecutionEnvironment>(nameof(ExecutionEnvironment.InputData)));
+                    method.Call(GetPropertyInfo<ReadOnlyMemory<byte>>(nameof(ReadOnlyMemory<byte>.Length), false, out _));
+                    method.StoreField(GetFieldInfo<Word>(nameof(Word.Int0)));
+                    method.StackPush(currentSP);
+                    break;
+            default:
                     throw new NotSupportedException();
             }
         }
@@ -435,12 +503,6 @@ internal class ILCompiler
             il.StackPop(currentSP);
         });
         method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Stack)));
-
-        // set header
-        method.LoadLocalAddress(returnState);
-        method.LoadArgument(0);
-        method.LoadField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
-        method.StoreField(GetFieldInfo<ILEvmState>(nameof(ILEvmState.Header)));
 
         // set gas available
         method.LoadLocalAddress(returnState);
@@ -477,7 +539,7 @@ internal class ILCompiler
         method.LoadConstant(uint.MaxValue);
         method.Call(typeof(UInt256).GetMethod("op_GreaterThan", new[] { typeof(UInt256).MakeByRefType(), typeof(int) }));
         // goto invalid address
-        method.BranchIfTrue(invalidAddress);
+        method.BranchIfTrue(labels[EvmExceptionType.InvalidJumpDestination]);
         // else
 
         const int jumpFanOutLog = 7; // 128
@@ -513,7 +575,7 @@ internal class ILCompiler
             }
 
             // each bucket ends with a jump to invalid access to do not fall through to another one
-            method.Branch(invalidAddress);
+            method.Branch(labels[EvmExceptionType.InvalidJumpDestination]);
         }
 
         foreach (var kvp in labels)

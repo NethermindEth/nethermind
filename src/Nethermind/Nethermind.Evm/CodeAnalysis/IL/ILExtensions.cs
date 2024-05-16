@@ -19,6 +19,12 @@ static class EmitExtensions
     {
         return typeof(T).GetField(name);
     }
+    public static MethodInfo GetPropertyInfo<T>(string name, bool getSetter, out PropertyInfo propInfo)
+    {
+        propInfo = typeof(T).GetProperty(name);
+        return getSetter? propInfo.GetSetMethod() : propInfo.GetGetMethod();
+    }
+
     public static void Load<T>(this Emit<T> il, Local local, FieldInfo wordField)
     {
         if (local.LocalType != typeof(Word*))

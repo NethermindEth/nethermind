@@ -15,7 +15,9 @@ internal struct ILEvmState
 {
     // static arguments
     public BlockHeader Header;
-
+    public ExecutionEnvironment Env;
+    public TxExecutionContext TxCtx;
+    public BlockExecutionContext BlkCtx;
     public byte[] StackBytes
     {
         set
