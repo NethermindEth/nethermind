@@ -117,6 +117,11 @@ jobs:
           trap "kill $docker_pid" EXIT
       
           while IFS= read -r line; do
+            if ! kill -0 $docker_pid 2>/dev/null; then
+              echo "Docker process ended prematurely."
+              exit 1
+            fi
+            
             if [ "$found_bad_log" = true ]; then
               ((counter++))
               if [ $counter -ge 1000 ]; then
