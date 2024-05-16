@@ -14,14 +14,14 @@ namespace Nethermind.Optimism;
 public class OptimismEthModuleFactory : ModuleFactoryBase<IEthRpcModule>
 {
     private readonly ModuleFactoryBase<IEthRpcModule> _ethModuleFactory;
-    private readonly BasicJsonRpcClient _sequencerRpcClient;
+    private readonly BasicJsonRpcClient? _sequencerRpcClient;
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly IAccountStateProvider _accountStateProvider;
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
 
     public OptimismEthModuleFactory(ModuleFactoryBase<IEthRpcModule> ethModuleFactory,
-        BasicJsonRpcClient sequencerRpcClient, IBlockchainBridge blockchainBridge,
+        BasicJsonRpcClient? sequencerRpcClient, IBlockchainBridge blockchainBridge,
         IAccountStateProvider accountStateProvider, IEthereumEcdsa ecdsa, ITxSealer sealer)
     {
         _ethModuleFactory = ethModuleFactory;

@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
@@ -25,13 +24,13 @@ namespace Nethermind.Optimism;
 public class OptimismEthRpcModule : IEthRpcModule
 {
     private readonly IEthRpcModule _ethRpcModule;
-    private readonly IJsonRpcClient _sequencerRpcClient;
+    private readonly IJsonRpcClient? _sequencerRpcClient;
     private readonly IBlockchainBridge _blockchainBridge;
     private readonly IAccountStateProvider _accountStateProvider;
     private readonly IEthereumEcdsa _ecdsa;
     private readonly ITxSealer _sealer;
 
-    public OptimismEthRpcModule(IEthRpcModule ethRpcModule, IJsonRpcClient sequencerRpcClient,
+    public OptimismEthRpcModule(IEthRpcModule ethRpcModule, IJsonRpcClient? sequencerRpcClient,
         IBlockchainBridge blockchainBridge, IAccountStateProvider accountStateProvider, IEthereumEcdsa ecdsa, ITxSealer sealer)
     {
         _ethRpcModule = ethRpcModule;
@@ -169,6 +168,10 @@ public class OptimismEthRpcModule : IEthRpcModule
 
     public async Task<ResultWrapper<Hash256>> eth_sendRawTransaction(byte[] transaction)
     {
+        if (_sequencerRpcClient is null)
+        {
+            return ResultWrapper<Hash256>.Fail("No sequencer url in the config");
+        }
         Hash256? result = await _sequencerRpcClient.Post<Hash256>(nameof(eth_sendRawTransaction), transaction);
         if (result is null)
         {

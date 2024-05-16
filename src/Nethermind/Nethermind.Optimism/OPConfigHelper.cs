@@ -23,7 +23,6 @@ public class OPSpecHelper : IOPConfigHelper
         L1FeeReceiver = parameters.L1FeeRecipient;
         Create2DeployerCode = parameters.Create2DeployerCode;
         Create2DeployerAddress = parameters.Create2DeployerAddress;
-        SequencerUrl = parameters.SequencerUrl;
     }
 
     public bool IsRegolith(BlockHeader header)
@@ -41,7 +40,6 @@ public class OPSpecHelper : IOPConfigHelper
         return header.Timestamp >= (_canyonTimestamp ?? long.MaxValue);
     }
 
-    public string SequencerUrl { get; }
     public Address? Create2DeployerAddress { get; }
     public byte[]? Create2DeployerCode { get; }
 }
