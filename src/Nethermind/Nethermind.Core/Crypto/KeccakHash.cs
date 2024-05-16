@@ -162,7 +162,6 @@ namespace Nethermind.Core.Crypto
                 ego = bCo ^ ((~bCu) & bCa);
                 egu = bCu ^ ((~bCa) & bCe);
 
-                st.abe();
                 bCa = RotateLeft(st.abe() ^ de, 1);
                 bCe = RotateLeft(st.agi() ^ di, 6);
                 bCi = RotateLeft(st.ako() ^ @do, 25);
