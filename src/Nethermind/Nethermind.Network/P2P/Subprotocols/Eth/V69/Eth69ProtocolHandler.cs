@@ -3,8 +3,10 @@
 
 using System.Threading;
 using System.Threading.Tasks;
+using Nethermind.Blockchain;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Scheduler;
+using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
@@ -52,7 +54,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
             case Eth62MessageCode.Status:
                 StatusMessage statusMsg = Deserialize<StatusMessage>(message.Content);
                 base.ReportIn(statusMsg, size);
-                Handle(statusMsg);
+                this.Handle(statusMsg);
                 break;
             case Eth62MessageCode.NewBlockHashes:
                 break;
@@ -66,7 +68,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
             case Eth63MessageCode.GetReceipts:
                 GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                 ReportIn(getReceiptsMessage, size);
-                BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, Handle);
+                BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, this.Handle);
                 break;
             default:
                 base.HandleMessage(message);
@@ -84,5 +86,26 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
     {
         V66.Messages.ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
         return new ReceiptsMessage(message.RequestId, message.EthMessage);
+    }
+
+    protected override void NotifyOfStatus(BlockHeader head)
+    {
+        StatusMessage statusMessage = new()
+        {
+            NetworkId = SyncServer.NetworkId,
+            ProtocolVersion = ProtocolVersion,
+            TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
+            BestHash = head.Hash!,
+            GenesisHash = SyncServer.Genesis.Hash!
+        };
+
+        EnrichStatusMessage(statusMessage);
+
+        Send(statusMessage);
+    }
+
+    public override void NotifyOfNewBlock(Block block, SendBlockMode mode)
+    {
+        // Skip
     }
 }
