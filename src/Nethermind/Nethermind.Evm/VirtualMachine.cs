@@ -1488,14 +1488,24 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         gasAvailable -= GasCostOf.BlockHash;
 
-                        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
-                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, eip2935Account, spec)) goto OutOfGas;
-
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
-                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
+                        if (spec.IsBlockHashInStateAvailable)
+                        {
+                            if (!(number >= blkCtx.Header.Number ||
+                                number + Eip2935Constants.RingBufferSize < blkCtx.Header.Number))
+                            {
+                                var blockIndex = new UInt256((ulong)(number % Eip2935Constants.RingBufferSize));
+                                Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+                                StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
+                                if (!ChargeStorageAccessGas(ref gasAvailable, vmState, blockHashStoreCell,
+                                        StorageAccessType.SLOAD, spec)) goto OutOfGas;
+                            }
+                        }
 
+
+                        Hash256? blockHash = _blockhashProvider.GetBlockhash(blkCtx.Header, number);
                         stack.PushBytes(blockHash is not null ? blockHash.Bytes : BytesZero32);
 
                         if (typeof(TLogger) == typeof(IsTracing))
