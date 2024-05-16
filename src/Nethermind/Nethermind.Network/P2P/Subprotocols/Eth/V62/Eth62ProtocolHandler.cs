@@ -230,12 +230,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62
                 Protocol = status.Protocol,
                 ProtocolVersion = status.ProtocolVersion,
                 ForkId = status.ForkId,
-                TotalDifficulty = status.TotalDifficulty.Value
+                TotalDifficulty = status.TotalDifficulty
             };
 
             Session.IsNetworkIdMatched = SyncServer.NetworkId == (ulong)status.NetworkId;
             HeadHash = status.BestHash;
-            TotalDifficulty = status.TotalDifficulty.Value;
+            TotalDifficulty = status.TotalDifficulty;
             ProtocolInitialized?.Invoke(this, eventArgs);
         }
 

@@ -11,7 +11,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         public byte ProtocolVersion { get; set; }
         public UInt256 NetworkId { get; set; }
-        public UInt256? TotalDifficulty { get; set; }
+        public UInt256 TotalDifficulty { get; set; }
         public Hash256? BestHash { get; set; }
         public Hash256? GenesisHash { get; set; }
         public ForkId? ForkId { get; set; }

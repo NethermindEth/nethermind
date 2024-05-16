@@ -52,8 +52,7 @@ public class StatusMessageSerializerTests
             ProtocolVersion = 69,
             BestHash = Keccak.Compute("1"),
             GenesisHash = Keccak.Compute("0"),
-            NetworkId = 1,
-            TotalDifficulty = null
+            NetworkId = 1
         };
 
         var serializer = new StatusMessageSerializer69();

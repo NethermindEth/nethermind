@@ -83,7 +83,7 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
 
     private new async Task<ReceiptsMessage69> Handle(GetReceiptsMessage getReceiptsMessage, CancellationToken cancellationToken)
     {
-        V66.Messages.ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
+        ReceiptsMessage message = await base.Handle(getReceiptsMessage, cancellationToken);
         return new ReceiptsMessage69(message.RequestId, message.EthMessage);
     }
 

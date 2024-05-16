@@ -27,10 +27,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
 
-            if (message.TotalDifficulty.HasValue && (GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
-            {
-                rlpStream.Encode(message.TotalDifficulty.Value);
-            }
+            if ((GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+                rlpStream.Encode(message.TotalDifficulty);
 
             rlpStream.Encode(message.BestHash);
             rlpStream.Encode(message.GenesisHash);

@@ -91,7 +91,8 @@ namespace Nethermind.Network.Test.Builders
         public SerializationBuilder WithEth69(ISpecProvider specProvider)
         {
             return WithEth68()
-                .With<Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage69>(new Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessageSerializer69(specProvider));
+                .With<Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage69>(new Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessageSerializer69(specProvider))
+                .With<Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages.StatusMessage69>(new Network.P2P.Subprotocols.Eth.V69.Messages.StatusMessageSerializer69());
         }
 
         public SerializationBuilder WithNodeData()
