@@ -19,11 +19,11 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly ILogger _logger;
     private readonly IOptimismConfig _config;
 
-    public RegisterOptimismRpcModules(INethermindApi api, ILogger logger) : base(api)
+    public RegisterOptimismRpcModules(INethermindApi api) : base(api)
     {
         _api = (OptimismNethermindApi)api;
         _config = _api.Config<IOptimismConfig>();
-        _logger = logger;
+        _logger = _api.LogManager.GetClassLogger();
     }
 
     protected override ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
