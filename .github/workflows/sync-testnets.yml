@@ -108,8 +108,10 @@ jobs:
           counter=0
           found_bad_log=false
       
+          log_file="/tmp/docker_logs.txt"
+      
           echo "Starting Docker logs monitoring..."
-          docker logs -f sedge-execution-client > docker_logs.txt &
+          docker logs -f sedge-execution-client | tee $log_file &
           docker_pid=$!
       
           trap "kill $docker_pid" EXIT
@@ -156,7 +158,7 @@ jobs:
               kill $docker_pid
               exit 0
             fi
-          done < docker_logs.txt
+          done < <(tail -f $log_file)
       
           wait $docker_pid
       
