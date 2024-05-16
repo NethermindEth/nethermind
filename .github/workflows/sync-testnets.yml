@@ -119,7 +119,7 @@ jobs:
           while IFS= read -r line; do
             if [ "$found_bad_log" = true ]; then
               ((counter++))
-              if [ $counter -ge 100 ]; then
+              if [ $counter -ge 1000 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 kill $docker_pid
                 exit 1
