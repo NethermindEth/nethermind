@@ -114,8 +114,6 @@ jobs:
           docker logs -f sedge-execution-client | tee "$log_file" &
           docker_pid=$!
       
-          trap "kill $docker_pid" EXIT
-      
           while IFS= read -r line; do
             if [[ "$line" == *"All done, goodbye!"* ]]; then
               echo "Unexpected termination detected: $line"
