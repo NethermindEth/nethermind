@@ -106,36 +106,31 @@ namespace Nethermind.Core.Crypto
             ulong ema, eme, emi, emo, emu;
             ulong esa, ese, esi, eso, esu;
 
-            {
-                // Access last element to perform range check once
-                // and not for every ascending access
-                _ = st[24];
-            }
-            aba = st[0];
-            abe = st[1];
-            abi = st[2];
-            abo = st[3];
-            abu = st[4];
-            aga = st[5];
-            age = st[6];
-            agi = st[7];
-            ago = st[8];
-            agu = st[9];
-            aka = st[10];
-            ake = st[11];
-            aki = st[12];
-            ako = st[13];
-            aku = st[14];
-            ama = st[15];
-            ame = st[16];
-            ami = st[17];
-            amo = st[18];
-            amu = st[19];
-            asa = st[20];
-            ase = st[21];
-            asi = st[22];
-            aso = st[23];
             asu = st[24];
+            aso = st[23];
+            asi = st[22];
+            ase = st[21];
+            asa = st[20];
+            amu = st[19];
+            amo = st[18];
+            ami = st[17];
+            ame = st[16];
+            ama = st[15];
+            aku = st[14];
+            ako = st[13];
+            aki = st[12];
+            ake = st[11];
+            aka = st[10];
+            agu = st[9];
+            ago = st[8];
+            agi = st[7];
+            age = st[6];
+            aga = st[5];
+            abu = st[4];
+            abo = st[3];
+            abi = st[2];
+            abe = st[1];
+            aba = st[0];
 
             for (int round = 0; round < ROUNDS; round += 2)
             {
@@ -280,31 +275,31 @@ namespace Nethermind.Core.Crypto
             }
 
             //copyToState(state, A)
-            st[0] = aba;
-            st[1] = abe;
-            st[2] = abi;
-            st[3] = abo;
-            st[4] = abu;
-            st[5] = aga;
-            st[6] = age;
-            st[7] = agi;
-            st[8] = ago;
-            st[9] = agu;
-            st[10] = aka;
-            st[11] = ake;
-            st[12] = aki;
-            st[13] = ako;
-            st[14] = aku;
-            st[15] = ama;
-            st[16] = ame;
-            st[17] = ami;
-            st[18] = amo;
-            st[19] = amu;
-            st[20] = asa;
-            st[21] = ase;
-            st[22] = asi;
-            st[23] = aso;
             st[24] = asu;
+            st[23] = aso;
+            st[22] = asi;
+            st[21] = ase;
+            st[20] = asa;
+            st[19] = amu;
+            st[18] = amo;
+            st[17] = ami;
+            st[16] = ame;
+            st[15] = ama;
+            st[14] = aku;
+            st[13] = ako;
+            st[12] = aki;
+            st[11] = ake;
+            st[10] = aka;
+            st[9] = agu;
+            st[8] = ago;
+            st[7] = agi;
+            st[6] = age;
+            st[5] = aga;
+            st[4] = abu;
+            st[3] = abo;
+            st[2] = abi;
+            st[1] = abe;
+            st[0] = aba;
         }
 
         public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
