@@ -1488,6 +1488,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         gasAvailable -= GasCostOf.BlockHash;
 
+                        Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
+                        if (!ChargeAccountAccessGas(ref gasAvailable, vmState, eip2935Account, spec)) goto OutOfGas;
+
                         if (!stack.PopUInt256(out a)) goto StackUnderflow;
                         long number = a > long.MaxValue ? long.MaxValue : (long)a;
 
