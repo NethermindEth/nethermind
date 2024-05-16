@@ -92,7 +92,7 @@ jobs:
         timeout-minutes: 180
         run: |
           set +e
-          
+      
           declare -A bad_logs
           bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
@@ -111,6 +111,8 @@ jobs:
           echo "Starting Docker logs monitoring..."
           docker logs -f sedge-execution-client > docker_logs.txt &
           docker_pid=$!
+      
+          trap "kill $docker_pid" EXIT
       
           while IFS= read -r line; do
             echo "$line"
@@ -156,6 +158,8 @@ jobs:
             fi
           done < docker_logs.txt
       
+          wait $docker_pid
+      
           if [ "$found_bad_log" = true ]; then
             echo "Found bad log, exiting."
             exit 1
@@ -173,6 +177,9 @@ jobs:
             echo "Not all required logs were found."
             exit 1
           fi
+      
+          echo "All required logs were found, exiting successfully."
+          exit 0
           
       - name: Get Consensus Logs
         if: always()
