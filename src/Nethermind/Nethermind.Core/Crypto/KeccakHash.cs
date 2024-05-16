@@ -105,7 +105,7 @@ namespace Nethermind.Core.Crypto
             Span<ulong> aka_ake_aki_ako_aku = st.Slice(10, 5);
             Span<ulong> aga_age_agi_ago_agu = st.Slice(5, 5);
             Span<ulong> aba_abe_abi_abo_abu = st.Slice(0, 5);
-            
+
             for (int round = 0; round < ROUNDS; round += 2)
             {
                 //    prepareTheta
@@ -227,17 +227,11 @@ namespace Nethermind.Core.Crypto
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                eba ^= da;
-                ege ^= de;
-                emo ^= @do;
-                eki ^= di;
-                esu ^= du;
-
-                bCa = eba;
-                bCe = RotateLeft(ege, 44);
-                bCi = RotateLeft(eki, 43);
-                bCo = RotateLeft(emo, 21);
-                bCu = RotateLeft(esu, 14);
+                bCa = eba ^ da;
+                bCe = RotateLeft(ege ^ de, 44);
+                bCo = RotateLeft(emo ^ @do, 21);
+                bCi = RotateLeft(eki ^ di, 43);
+                bCu = RotateLeft(esu ^ du, 14);
 
                 aba_abe_abi_abo_abu[0] = bCa ^ ((~bCe) & bCi);
                 aba_abe_abi_abo_abu[0] ^= RoundConstants[round + 1];
@@ -246,17 +240,12 @@ namespace Nethermind.Core.Crypto
                 aba_abe_abi_abo_abu[3] = bCo ^ ((~bCu) & bCa);
                 aba_abe_abi_abo_abu[4] = bCu ^ ((~bCa) & bCe);
 
-                ebo ^= @do;
-                egu ^= du;
-                eka ^= da;
-                eme ^= de;
-                esi ^= di;
 
-                bCa = RotateLeft(ebo, 28);
-                bCe = RotateLeft(egu, 20);
-                bCi = RotateLeft(eka, 3);
-                bCo = RotateLeft(eme, 45);
-                bCu = RotateLeft(esi, 61);
+                bCa = RotateLeft(ebo ^ @do, 28);
+                bCe = RotateLeft(egu ^ du, 20);
+                bCi = RotateLeft(eka ^ da, 3);
+                bCo = RotateLeft(eme ^ de, 45);
+                bCu = RotateLeft(esi ^ di, 61);
 
                 aga_age_agi_ago_agu[0] = bCa ^ ((~bCe) & bCi);
                 aga_age_agi_ago_agu[1] = bCe ^ ((~bCi) & bCo);
@@ -264,17 +253,11 @@ namespace Nethermind.Core.Crypto
                 aga_age_agi_ago_agu[3] = bCo ^ ((~bCu) & bCa);
                 aga_age_agi_ago_agu[4] = bCu ^ ((~bCa) & bCe);
 
-                ebe ^= de;
-                egi ^= di;
-                eko ^= @do;
-                emu ^= du;
-                esa ^= da;
-
-                bCa = RotateLeft(ebe, 1);
-                bCe = RotateLeft(egi, 6);
-                bCi = RotateLeft(eko, 25);
-                bCo = RotateLeft(emu, 8);
-                bCu = RotateLeft(esa, 18);
+                bCa = RotateLeft(ebe ^ de, 1);
+                bCe = RotateLeft(egi ^ di, 6);
+                bCi = RotateLeft(eko ^ @do, 25);
+                bCo = RotateLeft(emu ^ du, 8);
+                bCu = RotateLeft(esa ^ da, 18);
 
                 aka_ake_aki_ako_aku[0] = bCa ^ ((~bCe) & bCi);
                 aka_ake_aki_ako_aku[1] = bCe ^ ((~bCi) & bCo);
@@ -282,32 +265,22 @@ namespace Nethermind.Core.Crypto
                 aka_ake_aki_ako_aku[3] = bCo ^ ((~bCu) & bCa);
                 aka_ake_aki_ako_aku[4] = bCu ^ ((~bCa) & bCe);
 
-                ebu ^= du;
-                bCa = RotateLeft(ebu, 27);
-                ega ^= da;
-                bCe = RotateLeft(ega, 36);
-                eke ^= de;
-                bCi = RotateLeft(eke, 10);
-                emi ^= di;
-                bCo = RotateLeft(emi, 15);
-                eso ^= @do;
-                bCu = RotateLeft(eso, 56);
+                bCa = RotateLeft(ebu ^ du, 27);
+                bCe = RotateLeft(ega ^ da, 36);
+                bCi = RotateLeft(eke ^ de, 10);
+                bCo = RotateLeft(emi ^ di, 15);
+                bCu = RotateLeft(eso ^ @do, 56);
                 ama_ame_ami_amo_amu[0] = bCa ^ ((~bCe) & bCi);
                 ama_ame_ami_amo_amu[1] = bCe ^ ((~bCi) & bCo);
                 ama_ame_ami_amo_amu[2] = bCi ^ ((~bCo) & bCu);
                 ama_ame_ami_amo_amu[3] = bCo ^ ((~bCu) & bCa);
                 ama_ame_ami_amo_amu[4] = bCu ^ ((~bCa) & bCe);
 
-                ebi ^= di;
-                bCa = RotateLeft(ebi, 62);
-                ego ^= @do;
-                bCe = RotateLeft(ego, 55);
-                eku ^= du;
-                bCi = RotateLeft(eku, 39);
-                ema ^= da;
-                bCo = RotateLeft(ema, 41);
-                ese ^= de;
-                bCu = RotateLeft(ese, 2);
+                bCa = RotateLeft(ebi ^ di, 62);
+                bCe = RotateLeft(ego ^ @do, 55);
+                bCi = RotateLeft(eku ^ du, 39);
+                bCo = RotateLeft(ema ^ da, 41);
+                bCu = RotateLeft(ese ^ de, 2);
                 asa_ase_asi_aso_asu[0] = bCa ^ ((~bCe) & bCi);
                 asa_ase_asi_aso_asu[1] = bCe ^ ((~bCi) & bCo);
                 asa_ase_asi_aso_asu[2] = bCi ^ ((~bCo) & bCu);
