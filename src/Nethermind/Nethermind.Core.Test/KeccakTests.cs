@@ -5,7 +5,6 @@ using System;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Evm.Tracing.GethStyle.Custom.JavaScript;
 using NUnit.Framework;
 
 namespace Nethermind.Core.Test
