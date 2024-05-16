@@ -102,12 +102,12 @@ jobs:
           declare -A required_count
           required_count["Synced Chain Head"]=20
           required_count["Processed"]=20      
+            
+          counter=0
+          found_bad_log=false
       
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
-            
-            counter=0
-            found_bad_log=false
           
             if [[ "$line" == *"All done"* ]]; then
               echo "Unexpected termination detected: $line"
@@ -115,7 +115,7 @@ jobs:
             fi
       
             if [ "$found_bad_log" = true ]; then
-              ((counter++))
+              counter=$((counter + 1))
               if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 exit 1
@@ -134,7 +134,7 @@ jobs:
       
             for good_log in "${!good_logs[@]}"; do
               if [[ "$line" == *"$good_log"* ]]; then
-                ((good_logs["$good_log"]++))
+                good_logs["$good_log"]=$((good_logs["$good_log"]+1))
               fi
             done
       
