@@ -164,7 +164,11 @@ jobs:
             fi
           done < <(tail -f "$log_file")
       
-          wait $docker_pid
+          if [[ "$line" == *"All done, goodbye!"* ]]; then
+            echo "Unexpected termination detected2: $line"
+            kill $docker_pid
+            exit 1
+          fi
           
       - name: Get Consensus Logs
         if: always()
