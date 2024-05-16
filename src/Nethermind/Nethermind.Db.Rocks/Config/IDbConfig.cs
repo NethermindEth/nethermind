@@ -53,6 +53,8 @@ public interface IDbConfig : IConfig
     ulong BytesPerSync { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
 
+    ulong BlobTransactionsDbBlockCacheSize { get; set; }
+
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
