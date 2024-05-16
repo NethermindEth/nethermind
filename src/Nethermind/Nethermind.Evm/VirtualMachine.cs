@@ -1501,6 +1501,8 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
                                 if (!ChargeStorageAccessGas(ref gasAvailable, vmState, blockHashStoreCell,
                                         StorageAccessType.SLOAD, spec)) goto OutOfGas;
+                                long fakeGas = 1000000;
+                                ChargeAccountAccessGas(ref fakeGas, vmState, eip2935Account, spec);
                             }
                         }
 
