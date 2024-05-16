@@ -53,6 +53,8 @@ public interface IDbConfig : IConfig
     ulong BytesPerSync { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
 
+    ulong BlobTransactionsDbBlockCacheSize { get; set; }
+
     ulong ReceiptsDbWriteBufferSize { get; set; }
     uint ReceiptsDbWriteBufferNumber { get; set; }
     ulong ReceiptsDbBlockCacheSize { get; set; }
@@ -153,30 +155,6 @@ public interface IDbConfig : IConfig
     int? BloomDbMaxOpenFiles { get; set; }
     long? BloomDbMaxBytesPerSec { get; set; }
     IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
-
-    ulong WitnessDbWriteBufferSize { get; set; }
-    uint WitnessDbWriteBufferNumber { get; set; }
-    ulong WitnessDbBlockCacheSize { get; set; }
-    bool WitnessDbCacheIndexAndFilterBlocks { get; set; }
-    int? WitnessDbMaxOpenFiles { get; set; }
-    long? WitnessDbMaxBytesPerSec { get; set; }
-    int? WitnessDbBlockSize { get; set; }
-    bool? WitnessUseDirectReads { get; set; }
-    bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? WitnessCompactionReadAhead { get; set; }
-    IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
-
-    ulong CanonicalHashTrieDbWriteBufferSize { get; set; }
-    uint CanonicalHashTrieDbWriteBufferNumber { get; set; }
-    ulong CanonicalHashTrieDbBlockCacheSize { get; set; }
-    bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; }
-    int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    int? CanonicalHashTrieDbBlockSize { get; set; }
-    bool? CanonicalHashTrieUseDirectReads { get; set; }
-    bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
-    ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
-    IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
 
     ulong MetadataDbWriteBufferSize { get; set; }
     uint MetadataDbWriteBufferNumber { get; set; }

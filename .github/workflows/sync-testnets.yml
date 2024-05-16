@@ -112,7 +112,7 @@ jobs:
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
 
-            if [[ $found_bad_log == true ]]; then
+            if $found_bad_log; then
               ((counter++))
               if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
@@ -125,7 +125,7 @@ jobs:
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
-                $found_bad_log=true
+                found_bad_log=true
                 continue 2
               fi
             done
@@ -150,6 +150,24 @@ jobs:
               exit 0
             fi
           done
+
+          if $found_bad_log; then
+            echo "Found bad log, exiting."
+            exit 1
+          fi
+
+          all_reached_required_count=true
+            for good_log in "${!good_logs[@]}"; do
+              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
+                all_reached_required_count=false
+                break
+              fi
+            done
+
+          if ! $all_reached_required_count; then
+            echo "Not all required logs were found."
+            exit 1
+          fi
           
       - name: Get Consensus Logs
         if: always()
