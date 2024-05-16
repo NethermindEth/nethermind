@@ -21,17 +21,17 @@ jobs:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
             cl-client: "lighthouse:sigp/lighthouse:latest"
-            el-client: "nethermind:nethermindeth/nethermind:separate-block-production-and-running"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
             cl-client: "lighthouse:sigp/lighthouse:latest"
-            el-client: "nethermind:nethermindeth/nethermind:separate-block-production-and-running"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
             cl-client: "lighthouse:sigp/lighthouse:latest"
-            el-client: "nethermind:nethermindeth/nethermind:separate-block-production-and-running"
+            el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
     runs-on: ${{ matrix.agent }}
@@ -116,7 +116,7 @@ jobs:
       
             if [ "$found_bad_log" = true ]; then
               ((counter++))
-              if [ $counter -ge 1000 ]; then
+              if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 exit 1
               else
