@@ -6,7 +6,7 @@
     },
     "Blockchain Test": {
       "commandName": "Project",
-      "commandLineArgs": "-b -i blockchainTest1.json"
+      "commandLineArgs": "-b -i C:\\Users\\marek\\Nethermind\\tests\\fixtures\\blockchain_tests\\prague\\eip3074_auth_authcall\\auth\\extcodesize.json"
     },
     "Regex State Test": {
       "commandName": "Project",

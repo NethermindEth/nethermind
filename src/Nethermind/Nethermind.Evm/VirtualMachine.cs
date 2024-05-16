@@ -2192,13 +2192,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (!stack.PopUInt256(out UInt256 offset)) return EvmExceptionType.StackUnderflow;
         if (!stack.PopUInt256(out UInt256 length)) return EvmExceptionType.StackUnderflow;
 
-        if (_state.IsContract(authority))
-        {
-            vmState.Authorized = null;
-            stack.PushUInt256(0);
-            return EvmExceptionType.None;
-        }
-
         gasAvailable -= GasCostOf.Auth;
 
         if (!UpdateMemoryCost(vmState, ref gasAvailable, offset, length))
@@ -2206,6 +2199,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (!ChargeAccountAccessGas(ref gasAvailable, vmState, authority, spec))
             return EvmExceptionType.OutOfGas;
+
+        if (_state.IsContract(authority))
+        {
+            vmState.Authorized = null;
+            stack.PushUInt256(0);
+            return EvmExceptionType.None;
+        }
 
         ReadOnlySpan<byte> memData = vmState.Memory.Load(in offset, length).Span;
 
