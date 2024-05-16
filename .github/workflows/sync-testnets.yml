@@ -111,20 +111,23 @@ jobs:
           log_file="/tmp/docker_logs.txt"
       
           echo "Starting Docker logs monitoring..."
-          docker logs -f sedge-execution-client | tee /tmp/docker_logs.txt &
+          docker logs -f sedge-execution-client | tee "$log_file" &
           docker_pid=$!
       
           trap "kill $docker_pid" EXIT
       
           while IFS= read -r line; do
-            if ! kill -0 $docker_pid 2>/dev/null; then
-              echo "Docker process ended prematurely."
+            echo "$line"
+      
+            if [[ "$line" == *"All done, goodbye!"* ]]; then
+              echo "Unexpected termination detected: $line"
+              kill $docker_pid
               exit 1
             fi
-            
+      
             if [ "$found_bad_log" = true ]; then
               ((counter++))
-              if [ $counter -ge 1000 ]; then
+              if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 kill $docker_pid
                 exit 1
@@ -137,7 +140,7 @@ jobs:
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
                 found_bad_log=true
-                continue 2
+                break
               fi
             done
       
@@ -161,30 +164,9 @@ jobs:
               kill $docker_pid
               exit 0
             fi
-          done < <(tail -f /tmp/docker_logs.txt)
+          done < <(tail -f "$log_file")
       
           wait $docker_pid
-      
-          if [ "$found_bad_log" = true ]; then
-            echo "Found bad log, exiting."
-            exit 1
-          fi
-      
-          all_reached_required_count=true
-          for good_log in "${!good_logs[@]}"; do
-            if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
-              all_reached_required_count=false
-              break
-            fi
-          done
-      
-          if ! $all_reached_required_count; then
-            echo "Not all required logs were found."
-            exit 1
-          fi
-      
-          echo "All required logs were found, exiting successfully."
-          exit 0
           
       - name: Get Consensus Logs
         if: always()
