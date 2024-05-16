@@ -42,6 +42,7 @@ namespace Nethermind.Consensus.AuRa
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
+            _blockProducerStarter = new(_nethermindApi);
             return Task.CompletedTask;
         }
 
@@ -69,7 +70,6 @@ namespace Nethermind.Consensus.AuRa
         {
             if (_nethermindApi is not null)
             {
-                _blockProducerStarter = new(_nethermindApi);
                 return _blockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
