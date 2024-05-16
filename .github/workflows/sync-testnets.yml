@@ -103,18 +103,13 @@ jobs:
       
           declare -A required_count
           required_count["Synced Chain Head"]=20
-          required_count["Processed"]=20
+          required_count["Processed"]=20      
       
-          counter=0
-          found_bad_log=false
-      
-          log_file="/tmp/docker_logs.txt"
-      
-          echo "Starting Docker logs monitoring..."
-          docker logs -f sedge-execution-client | tee "$log_file" &
-          docker_pid=$!
-      
-          while IFS= read -r line; do
+          docker logs -f sedge-execution-client | while read -r line; do
+          
+            counter=0
+            found_bad_log=false
+          
             if [[ "$line" == *"All done, goodbye!"* ]]; then
               echo "Unexpected termination detected: $line"
               kill $docker_pid
@@ -160,7 +155,7 @@ jobs:
               kill $docker_pid
               exit 0
             fi
-          done < <(tail -f "$log_file")
+          done
       
           if [[ "$line" == *"All done, goodbye!"* ]]; then
             echo "Unexpected termination detected2: $line"
