@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using static System.Numerics.BitOperations;
 
@@ -91,11 +92,6 @@ namespace Nethermind.Core.Crypto
         {
             Debug.Assert(st.Length == 25);
 
-            ulong aba, abe, abi, abo, abu;
-            ulong aga, age, agi, ago, agu;
-            ulong aka, ake, aki, ako, aku;
-            ulong ama, ame, ami, amo, amu;
-            ulong asa, ase, asi, aso, asu;
             ulong bCa, bCe, bCi, bCo, bCu;
             ulong da, de, di, @do, du;
             ulong eba, ebe, ebi, ebo, ebu;
@@ -104,45 +100,20 @@ namespace Nethermind.Core.Crypto
             ulong ema, eme, emi, emo, emu;
             ulong esa, ese, esi, eso, esu;
 
-            {
-                // Access last element to perform range check once
-                // and not for every ascending access
-                _ = st[24];
-            }
-            aba = st[0];
-            abe = st[1];
-            abi = st[2];
-            abo = st[3];
-            abu = st[4];
-            aga = st[5];
-            age = st[6];
-            agi = st[7];
-            ago = st[8];
-            agu = st[9];
-            aka = st[10];
-            ake = st[11];
-            aki = st[12];
-            ako = st[13];
-            aku = st[14];
-            ama = st[15];
-            ame = st[16];
-            ami = st[17];
-            amo = st[18];
-            amu = st[19];
-            asa = st[20];
-            ase = st[21];
-            asi = st[22];
-            aso = st[23];
-            asu = st[24];
-
+            Span<ulong> asa_ase_asi_aso_asu = st.Slice(20, 5);
+            Span<ulong> ama_ame_ami_amo_amu = st.Slice(15, 5);
+            Span<ulong> aka_ake_aki_ako_aku = st.Slice(10, 5);
+            Span<ulong> aga_age_agi_ago_agu = st.Slice(5, 5);
+            Span<ulong> aba_abe_abi_abo_abu = st.Slice(0, 5);
+            
             for (int round = 0; round < ROUNDS; round += 2)
             {
                 //    prepareTheta
-                bCa = aba ^ aga ^ aka ^ ama ^ asa;
-                bCe = abe ^ age ^ ake ^ ame ^ ase;
-                bCi = abi ^ agi ^ aki ^ ami ^ asi;
-                bCo = abo ^ ago ^ ako ^ amo ^ aso;
-                bCu = abu ^ agu ^ aku ^ amu ^ asu;
+                bCa = aba_abe_abi_abo_abu[0] ^ aga_age_agi_ago_agu[0] ^ aka_ake_aki_ako_aku[0] ^ ama_ame_ami_amo_amu[0] ^ asa_ase_asi_aso_asu[0];
+                bCe = aba_abe_abi_abo_abu[1] ^ aga_age_agi_ago_agu[1] ^ aka_ake_aki_ako_aku[1] ^ ama_ame_ami_amo_amu[1] ^ asa_ase_asi_aso_asu[1];
+                bCi = aba_abe_abi_abo_abu[2] ^ aga_age_agi_ago_agu[2] ^ aka_ake_aki_ako_aku[2] ^ ama_ame_ami_amo_amu[2] ^ asa_ase_asi_aso_asu[2];
+                bCo = aba_abe_abi_abo_abu[3] ^ aga_age_agi_ago_agu[3] ^ aka_ake_aki_ako_aku[3] ^ ama_ame_ami_amo_amu[3] ^ asa_ase_asi_aso_asu[3];
+                bCu = aba_abe_abi_abo_abu[4] ^ aga_age_agi_ago_agu[4] ^ aka_ake_aki_ako_aku[4] ^ ama_ame_ami_amo_amu[4] ^ asa_ase_asi_aso_asu[4];
 
                 //thetaRhoPiChiIotaPrepareTheta(round  , A, E)
                 da = bCu ^ RotateLeft(bCe, 1);
@@ -151,16 +122,18 @@ namespace Nethermind.Core.Crypto
                 @do = bCi ^ RotateLeft(bCu, 1);
                 du = bCo ^ RotateLeft(bCa, 1);
 
-                aba ^= da;
-                bCa = aba;
-                age ^= de;
-                bCe = RotateLeft(age, 44);
-                aki ^= di;
-                bCi = RotateLeft(aki, 43);
-                amo ^= @do;
-                bCo = RotateLeft(amo, 21);
-                asu ^= du;
-                bCu = RotateLeft(asu, 14);
+                aba_abe_abi_abo_abu[0] ^= da;
+                aga_age_agi_ago_agu[1] ^= de;
+                aka_ake_aki_ako_aku[2] ^= di;
+                ama_ame_ami_amo_amu[3] ^= @do;
+                asa_ase_asi_aso_asu[4] ^= du;
+
+                bCa = aba_abe_abi_abo_abu[0];
+                bCe = RotateLeft(aga_age_agi_ago_agu[1], 44);
+                bCi = RotateLeft(aka_ake_aki_ako_aku[2], 43);
+                bCo = RotateLeft(ama_ame_ami_amo_amu[3], 21);
+                bCu = RotateLeft(asa_ase_asi_aso_asu[4], 14);
+
                 eba = bCa ^ ((~bCe) & bCi);
                 eba ^= RoundConstants[round];
                 ebe = bCe ^ ((~bCi) & bCo);
@@ -168,64 +141,72 @@ namespace Nethermind.Core.Crypto
                 ebo = bCo ^ ((~bCu) & bCa);
                 ebu = bCu ^ ((~bCa) & bCe);
 
-                abo ^= @do;
-                bCa = RotateLeft(abo, 28);
-                agu ^= du;
-                bCe = RotateLeft(agu, 20);
-                aka ^= da;
-                bCi = RotateLeft(aka, 3);
-                ame ^= de;
-                bCo = RotateLeft(ame, 45);
-                asi ^= di;
-                bCu = RotateLeft(asi, 61);
+                aba_abe_abi_abo_abu[3] ^= @do;
+                aga_age_agi_ago_agu[4] ^= du;
+                aka_ake_aki_ako_aku[0] ^= da;
+                ama_ame_ami_amo_amu[1] ^= de;
+                asa_ase_asi_aso_asu[2] ^= di;
+
+                bCa = RotateLeft(aba_abe_abi_abo_abu[3], 28);
+                bCe = RotateLeft(aga_age_agi_ago_agu[4], 20);
+                bCi = RotateLeft(aka_ake_aki_ako_aku[0], 3);
+                bCo = RotateLeft(ama_ame_ami_amo_amu[1], 45);
+                bCu = RotateLeft(asa_ase_asi_aso_asu[2], 61);
+
                 ega = bCa ^ ((~bCe) & bCi);
                 ege = bCe ^ ((~bCi) & bCo);
                 egi = bCi ^ ((~bCo) & bCu);
                 ego = bCo ^ ((~bCu) & bCa);
                 egu = bCu ^ ((~bCa) & bCe);
 
-                abe ^= de;
-                bCa = RotateLeft(abe, 1);
-                agi ^= di;
-                bCe = RotateLeft(agi, 6);
-                ako ^= @do;
-                bCi = RotateLeft(ako, 25);
-                amu ^= du;
-                bCo = RotateLeft(amu, 8);
-                asa ^= da;
-                bCu = RotateLeft(asa, 18);
+                aba_abe_abi_abo_abu[1] ^= de;
+                aga_age_agi_ago_agu[2] ^= di;
+                aka_ake_aki_ako_aku[3] ^= @do;
+                ama_ame_ami_amo_amu[4] ^= du;
+                asa_ase_asi_aso_asu[0] ^= da;
+
+                bCa = RotateLeft(aba_abe_abi_abo_abu[1], 1);
+                bCe = RotateLeft(aga_age_agi_ago_agu[2], 6);
+                bCi = RotateLeft(aka_ake_aki_ako_aku[3], 25);
+                bCo = RotateLeft(ama_ame_ami_amo_amu[4], 8);
+                bCu = RotateLeft(asa_ase_asi_aso_asu[0], 18);
+
                 eka = bCa ^ ((~bCe) & bCi);
                 eke = bCe ^ ((~bCi) & bCo);
                 eki = bCi ^ ((~bCo) & bCu);
                 eko = bCo ^ ((~bCu) & bCa);
                 eku = bCu ^ ((~bCa) & bCe);
 
-                abu ^= du;
-                bCa = RotateLeft(abu, 27);
-                aga ^= da;
-                bCe = RotateLeft(aga, 36);
-                ake ^= de;
-                bCi = RotateLeft(ake, 10);
-                ami ^= di;
-                bCo = RotateLeft(ami, 15);
-                aso ^= @do;
-                bCu = RotateLeft(aso, 56);
+                aba_abe_abi_abo_abu[4] ^= du;
+                aga_age_agi_ago_agu[0] ^= da;
+                aka_ake_aki_ako_aku[1] ^= de;
+                ama_ame_ami_amo_amu[2] ^= di;
+                asa_ase_asi_aso_asu[3] ^= @do;
+
+                bCa = RotateLeft(aba_abe_abi_abo_abu[4], 27);
+                bCe = RotateLeft(aga_age_agi_ago_agu[0], 36);
+                bCi = RotateLeft(aka_ake_aki_ako_aku[1], 10);
+                bCo = RotateLeft(ama_ame_ami_amo_amu[2], 15);
+                bCu = RotateLeft(asa_ase_asi_aso_asu[3], 56);
+
                 ema = bCa ^ ((~bCe) & bCi);
                 eme = bCe ^ ((~bCi) & bCo);
                 emi = bCi ^ ((~bCo) & bCu);
                 emo = bCo ^ ((~bCu) & bCa);
                 emu = bCu ^ ((~bCa) & bCe);
 
-                abi ^= di;
-                bCa = RotateLeft(abi, 62);
-                ago ^= @do;
-                bCe = RotateLeft(ago, 55);
-                aku ^= du;
-                bCi = RotateLeft(aku, 39);
-                ama ^= da;
-                bCo = RotateLeft(ama, 41);
-                ase ^= de;
-                bCu = RotateLeft(ase, 2);
+                aba_abe_abi_abo_abu[2] ^= di;
+                aga_age_agi_ago_agu[3] ^= @do;
+                aka_ake_aki_ako_aku[4] ^= du;
+                ama_ame_ami_amo_amu[0] ^= da;
+                asa_ase_asi_aso_asu[1] ^= de;
+
+                bCa = RotateLeft(aba_abe_abi_abo_abu[2], 62);
+                bCe = RotateLeft(aga_age_agi_ago_agu[3], 55);
+                bCi = RotateLeft(aka_ake_aki_ako_aku[4], 39);
+                bCo = RotateLeft(ama_ame_ami_amo_amu[0], 41);
+                bCu = RotateLeft(asa_ase_asi_aso_asu[1], 2);
+
                 esa = bCa ^ ((~bCe) & bCi);
                 ese = bCe ^ ((~bCi) & bCo);
                 esi = bCi ^ ((~bCo) & bCu);
@@ -247,53 +228,59 @@ namespace Nethermind.Core.Crypto
                 du = bCo ^ RotateLeft(bCa, 1);
 
                 eba ^= da;
-                bCa = eba;
                 ege ^= de;
-                bCe = RotateLeft(ege, 44);
-                eki ^= di;
-                bCi = RotateLeft(eki, 43);
                 emo ^= @do;
-                bCo = RotateLeft(emo, 21);
+                eki ^= di;
                 esu ^= du;
+
+                bCa = eba;
+                bCe = RotateLeft(ege, 44);
+                bCi = RotateLeft(eki, 43);
+                bCo = RotateLeft(emo, 21);
                 bCu = RotateLeft(esu, 14);
-                aba = bCa ^ ((~bCe) & bCi);
-                aba ^= RoundConstants[round + 1];
-                abe = bCe ^ ((~bCi) & bCo);
-                abi = bCi ^ ((~bCo) & bCu);
-                abo = bCo ^ ((~bCu) & bCa);
-                abu = bCu ^ ((~bCa) & bCe);
+
+                aba_abe_abi_abo_abu[0] = bCa ^ ((~bCe) & bCi);
+                aba_abe_abi_abo_abu[0] ^= RoundConstants[round + 1];
+                aba_abe_abi_abo_abu[1] = bCe ^ ((~bCi) & bCo);
+                aba_abe_abi_abo_abu[2] = bCi ^ ((~bCo) & bCu);
+                aba_abe_abi_abo_abu[3] = bCo ^ ((~bCu) & bCa);
+                aba_abe_abi_abo_abu[4] = bCu ^ ((~bCa) & bCe);
 
                 ebo ^= @do;
-                bCa = RotateLeft(ebo, 28);
                 egu ^= du;
-                bCe = RotateLeft(egu, 20);
                 eka ^= da;
-                bCi = RotateLeft(eka, 3);
                 eme ^= de;
-                bCo = RotateLeft(eme, 45);
                 esi ^= di;
+
+                bCa = RotateLeft(ebo, 28);
+                bCe = RotateLeft(egu, 20);
+                bCi = RotateLeft(eka, 3);
+                bCo = RotateLeft(eme, 45);
                 bCu = RotateLeft(esi, 61);
-                aga = bCa ^ ((~bCe) & bCi);
-                age = bCe ^ ((~bCi) & bCo);
-                agi = bCi ^ ((~bCo) & bCu);
-                ago = bCo ^ ((~bCu) & bCa);
-                agu = bCu ^ ((~bCa) & bCe);
+
+                aga_age_agi_ago_agu[0] = bCa ^ ((~bCe) & bCi);
+                aga_age_agi_ago_agu[1] = bCe ^ ((~bCi) & bCo);
+                aga_age_agi_ago_agu[2] = bCi ^ ((~bCo) & bCu);
+                aga_age_agi_ago_agu[3] = bCo ^ ((~bCu) & bCa);
+                aga_age_agi_ago_agu[4] = bCu ^ ((~bCa) & bCe);
 
                 ebe ^= de;
-                bCa = RotateLeft(ebe, 1);
                 egi ^= di;
-                bCe = RotateLeft(egi, 6);
                 eko ^= @do;
-                bCi = RotateLeft(eko, 25);
                 emu ^= du;
-                bCo = RotateLeft(emu, 8);
                 esa ^= da;
+
+                bCa = RotateLeft(ebe, 1);
+                bCe = RotateLeft(egi, 6);
+                bCi = RotateLeft(eko, 25);
+                bCo = RotateLeft(emu, 8);
                 bCu = RotateLeft(esa, 18);
-                aka = bCa ^ ((~bCe) & bCi);
-                ake = bCe ^ ((~bCi) & bCo);
-                aki = bCi ^ ((~bCo) & bCu);
-                ako = bCo ^ ((~bCu) & bCa);
-                aku = bCu ^ ((~bCa) & bCe);
+
+                aka_ake_aki_ako_aku[0] = bCa ^ ((~bCe) & bCi);
+                aka_ake_aki_ako_aku[1] = bCe ^ ((~bCi) & bCo);
+                aka_ake_aki_ako_aku[2] = bCi ^ ((~bCo) & bCu);
+                aka_ake_aki_ako_aku[3] = bCo ^ ((~bCu) & bCa);
+                aka_ake_aki_ako_aku[4] = bCu ^ ((~bCa) & bCe);
 
                 ebu ^= du;
                 bCa = RotateLeft(ebu, 27);
@@ -305,11 +292,11 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(emi, 15);
                 eso ^= @do;
                 bCu = RotateLeft(eso, 56);
-                ama = bCa ^ ((~bCe) & bCi);
-                ame = bCe ^ ((~bCi) & bCo);
-                ami = bCi ^ ((~bCo) & bCu);
-                amo = bCo ^ ((~bCu) & bCa);
-                amu = bCu ^ ((~bCa) & bCe);
+                ama_ame_ami_amo_amu[0] = bCa ^ ((~bCe) & bCi);
+                ama_ame_ami_amo_amu[1] = bCe ^ ((~bCi) & bCo);
+                ama_ame_ami_amo_amu[2] = bCi ^ ((~bCo) & bCu);
+                ama_ame_ami_amo_amu[3] = bCo ^ ((~bCu) & bCa);
+                ama_ame_ami_amo_amu[4] = bCu ^ ((~bCa) & bCe);
 
                 ebi ^= di;
                 bCa = RotateLeft(ebi, 62);
@@ -321,39 +308,12 @@ namespace Nethermind.Core.Crypto
                 bCo = RotateLeft(ema, 41);
                 ese ^= de;
                 bCu = RotateLeft(ese, 2);
-                asa = bCa ^ ((~bCe) & bCi);
-                ase = bCe ^ ((~bCi) & bCo);
-                asi = bCi ^ ((~bCo) & bCu);
-                aso = bCo ^ ((~bCu) & bCa);
-                asu = bCu ^ ((~bCa) & bCe);
+                asa_ase_asi_aso_asu[0] = bCa ^ ((~bCe) & bCi);
+                asa_ase_asi_aso_asu[1] = bCe ^ ((~bCi) & bCo);
+                asa_ase_asi_aso_asu[2] = bCi ^ ((~bCo) & bCu);
+                asa_ase_asi_aso_asu[3] = bCo ^ ((~bCu) & bCa);
+                asa_ase_asi_aso_asu[4] = bCu ^ ((~bCa) & bCe);
             }
-
-            //copyToState(state, A)
-            st[0] = aba;
-            st[1] = abe;
-            st[2] = abi;
-            st[3] = abo;
-            st[4] = abu;
-            st[5] = aga;
-            st[6] = age;
-            st[7] = agi;
-            st[8] = ago;
-            st[9] = agu;
-            st[10] = aka;
-            st[11] = ake;
-            st[12] = aki;
-            st[13] = ako;
-            st[14] = aku;
-            st[15] = ama;
-            st[16] = ame;
-            st[17] = ami;
-            st[18] = amo;
-            st[19] = amu;
-            st[20] = asa;
-            st[21] = ase;
-            st[22] = asi;
-            st[23] = aso;
-            st[24] = asu;
         }
 
         public static Span<byte> ComputeHash(ReadOnlySpan<byte> input, int size = HASH_SIZE)
