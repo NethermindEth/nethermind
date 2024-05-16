@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Diagnostics;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -25,7 +26,7 @@ public class PaprikaStateFactory : IStateFactory
     private static readonly long _sepolia = 32.GiB();
     private static readonly long _mainnet = 256.GiB();
 
-    private static readonly TimeSpan _flushFileEvery = TimeSpan.FromSeconds(10);
+    private static readonly TimeSpan _flushFileEvery = TimeSpan.FromMinutes(10);
 
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
