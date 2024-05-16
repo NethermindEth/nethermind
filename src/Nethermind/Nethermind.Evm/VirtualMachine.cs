@@ -2123,6 +2123,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
+        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec);
+        codeInfo.AnalyseInBackgroundIfRequired();
+
         if (spec.Use63Over64Rule)
         {
             gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
@@ -2166,8 +2169,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
-        CodeInfo codeInfo = _codeInfoRepository.GetCachedCodeInfo(_worldState, codeSource, spec);
-        codeInfo.AnalyseInBackgroundIfRequired();
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,

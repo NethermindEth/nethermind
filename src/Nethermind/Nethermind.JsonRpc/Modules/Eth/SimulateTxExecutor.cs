@@ -88,8 +88,6 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
         BlockHeader header = searchResult.Object.Header;
 
-        if (blockParameter?.Type == BlockParameterType.Latest) header = _blockFinder.FindLatestBlock()?.Header;
-
         if (!_blockchainBridge.HasStateForBlock(header!))
             return ResultWrapper<IReadOnlyList<SimulateBlockResult>>.Fail($"No state available for block {header.Hash}",
                 ErrorCodes.ResourceUnavailable);
@@ -186,7 +184,7 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
     {
         SimulateOutput results = _blockchainBridge.Simulate(header, tx, token);
 
-        if (results.Error != null && (results.Error.Contains("invalid transaction")
+        if (results.Error is not null && (results.Error.Contains("invalid transaction")
                                       || results.Error.Contains("InsufficientBalanceException")))
             results.ErrorCode = ErrorCodes.InvalidTransaction;
 
