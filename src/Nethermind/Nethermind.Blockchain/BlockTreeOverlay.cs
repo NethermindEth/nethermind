@@ -109,9 +109,6 @@ public class BlockTreeOverlay : IBlockTree
         return overlayHeaders.Count > 0 ? overlayHeaders : _baseTree.FindHeaders(hash, numberOfBlocks, skip, reverse);
     }
 
-    public BlockHeader FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant, long maxSearchDepth) =>
-        _overlayTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth) ?? _baseTree.FindLowestCommonAncestor(firstDescendant, secondDescendant, maxSearchDepth);
-
     public void DeleteInvalidBlock(Block invalidBlock) =>
         _overlayTree.DeleteInvalidBlock(invalidBlock);
 

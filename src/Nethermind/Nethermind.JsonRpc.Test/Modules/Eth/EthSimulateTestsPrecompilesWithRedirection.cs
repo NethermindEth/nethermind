@@ -66,6 +66,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
 
         //Check results
         byte[]? returnData = result.Data[0].Calls.First().ReturnData;
+        Assert.IsNotNull(returnData);
     }
 
 

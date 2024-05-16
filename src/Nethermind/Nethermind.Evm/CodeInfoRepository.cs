@@ -90,8 +90,6 @@ public class CodeInfoRepository : ICodeInfoRepository
         else
         {
             Db.Metrics.CodeDbCache++;
-            // need to touch code so that any collectors that track database access are informed
-            worldState.TouchCode(codeHash);
         }
 
         return cachedCodeInfo;
