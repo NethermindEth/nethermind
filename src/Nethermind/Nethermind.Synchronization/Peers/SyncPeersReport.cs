@@ -135,7 +135,6 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.Receipts += contexts.HasFlag(AllocationContexts.Receipts) ? 1 : 0;
                 contextCounts.Blocks += contexts.HasFlag(AllocationContexts.Blocks) ? 1 : 0;
                 contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
-                contextCounts.Witness += contexts.HasFlag(AllocationContexts.Witness) ? 1 : 0;
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
             }
         }
@@ -240,7 +239,6 @@ namespace Nethermind.Synchronization.Peers
             public int Receipts { get; set; }
             public int Blocks { get; set; }
             public int State { get; set; }
-            public int Witness { get; set; }
             public int Snap { get; set; }
             public int Total { get; set; }
 
@@ -259,7 +257,6 @@ namespace Nethermind.Synchronization.Peers
                 if (Receipts > 0) AddComma(sb, ref added).Append(Receipts).Append(" Receipts");
                 if (Blocks > 0) AddComma(sb, ref added).Append(Blocks).Append(" Blocks");
                 if (State > 0) AddComma(sb, ref added).Append(State).Append(" State");
-                if (Witness > 0) AddComma(sb, ref added).Append(Witness).Append(" Witness");
                 if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
 
                 static StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)

@@ -108,10 +108,4 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? traver, bool isGenesis = false);
 
     void CommitTree(long blockNumber);
-
-    /// <summary>
-    /// For witness
-    /// </summary>
-    /// <param name="codeHash"></param>
-    void TouchCode(in ValueHash256 codeHash);
 }

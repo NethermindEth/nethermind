@@ -36,7 +36,6 @@ public partial class BlockProcessor : IBlockProcessor
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator;
-    private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
@@ -58,7 +57,6 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
-        IWitnessCollector? witnessCollector,
         IBlockhashStore? blockHashStore,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
@@ -69,7 +67,6 @@ public partial class BlockProcessor : IBlockProcessor
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
@@ -104,7 +101,6 @@ public partial class BlockProcessor : IBlockProcessor
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
-        using IDisposable tracker = _witnessCollector.TrackOnThisThread();
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -114,7 +110,6 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                 }
 
-                _witnessCollector.Reset();
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                 processedBlocks[i] = processedBlock;
 
@@ -122,7 +117,6 @@ public partial class BlockProcessor : IBlockProcessor
                 PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
                 if (notReadOnly)
                 {
-                    _witnessCollector.Persist(processedBlock.Hash!);
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 

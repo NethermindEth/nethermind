@@ -75,7 +75,6 @@ namespace Nethermind.JsonRpc.Test.Modules.Trace
                 new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
                 stateProvider,
                 NullReceiptStorage.Instance,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(_blockTree, specProvider, stateProvider),
                 LimboLogs.Instance);
 

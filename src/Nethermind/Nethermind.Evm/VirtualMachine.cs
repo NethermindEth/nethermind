@@ -545,7 +545,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         UInt256 transferValue = state.Env.TransferValue;
         long gasAvailable = state.GasAvailable;
 
-        IPrecompile precompile = state.Env.CodeInfo.Precompile!;
+        IPrecompile precompile = state.Env.CodeInfo.Precompile;
         long baseGasCost = precompile.BaseGasCost(spec);
         long blobGasCost = precompile.DataGasCost(callData, spec);
 

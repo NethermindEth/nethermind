@@ -169,7 +169,6 @@ namespace Ethereum.Test.Base
                     stateProvider),
                 stateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(blockTree, specProvider, stateProvider),
                 _logManager);
 

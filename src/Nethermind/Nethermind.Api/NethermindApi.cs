@@ -116,6 +116,7 @@ namespace Nethermind.Api
         public IBlockProcessingQueue? BlockProcessingQueue { get; set; }
         public IBlockProcessor? MainBlockProcessor { get; set; }
         public IBlockProducer? BlockProducer { get; set; }
+        public IBlockProducerRunner? BlockProducerRunner { get; set; }
         public IBlockTree? BlockTree { get; set; }
         public IBlockValidator? BlockValidator { get; set; }
         public IBloomStorage? BloomStorage { get; set; }
@@ -156,8 +157,6 @@ namespace Nethermind.Api
         public IProtocolsManager? ProtocolsManager { get; set; }
         public IProtocolValidator? ProtocolValidator { get; set; }
         public IReceiptStorage? ReceiptStorage { get; set; }
-        public IWitnessCollector? WitnessCollector { get; set; }
-        public IWitnessRepository? WitnessRepository { get; set; }
         public IReceiptFinder? ReceiptFinder { get; set; }
         public IReceiptMonitor? ReceiptMonitor { get; set; }
         public IRewardCalculatorSource? RewardCalculatorSource { get; set; } = NoBlockRewards.Instance;
