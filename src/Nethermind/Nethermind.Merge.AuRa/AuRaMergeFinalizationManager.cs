@@ -13,7 +13,7 @@ namespace Nethermind.Merge.Plugin
     public class AuRaMergeFinalizationManager : MergeFinalizationManager, IManualBlockFinalizationManager, IAuRaBlockFinalizationManager
     {
         private readonly IAuRaBlockFinalizationManager? _auRaBlockFinalizationManager;
-        
+
         public AuRaMergeFinalizationManager(IManualBlockFinalizationManager manualBlockFinalizationManager, IBlockFinalizationManager? blockFinalizationManager, IPoSSwitcher poSSwitcher) : base(manualBlockFinalizationManager, blockFinalizationManager, poSSwitcher)
         {
             _auRaBlockFinalizationManager = blockFinalizationManager as IAuRaBlockFinalizationManager;
