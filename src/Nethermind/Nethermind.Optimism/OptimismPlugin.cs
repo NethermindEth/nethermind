@@ -54,7 +54,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
 
     public IBlockProductionTrigger DefaultBlockProductionTrigger => NeverProduceTrigger.Instance;
 
-    public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
     {
         if (additionalTxSource is not null)
             throw new ArgumentException(
@@ -63,7 +63,7 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin, IInitial
         ArgumentNullException.ThrowIfNull(_api);
         ArgumentNullException.ThrowIfNull(_api.BlockProducer);
 
-        return Task.FromResult(_api.BlockProducer);
+        return _api.BlockProducer;
     }
 
     #endregion
