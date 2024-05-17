@@ -311,6 +311,8 @@ namespace Nethermind.State
         public override void ClearStorage(Address address)
         {
             base.ClearStorage(address);
+            // Bit heavy-handed, but we need to clear all the cache for that address
+            _blockCache.Clear();
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
