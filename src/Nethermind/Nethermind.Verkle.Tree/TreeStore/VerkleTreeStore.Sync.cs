@@ -39,7 +39,7 @@ public partial class VerkleTreeStore<TPersistence>
         long bytes)
     {
         if (bytes == 0) yield break;
-
+        if(!HasStateForBlock(stateRoot)) yield break;
         var fromRangeBytes = new byte[32];
         var toRangeBytes = new byte[32];
         fromRange.BytesAsSpan.CopyTo(fromRangeBytes);
