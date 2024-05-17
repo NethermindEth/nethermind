@@ -15,7 +15,7 @@ public class KnownChainSizesTests
     {
         // Pruning size have to be updated frequently
         ChainSizes.CreateChainSizeInfo(BlockchainIds.Mainnet).PruningSize.Should().BeLessThan(220.GB());
-        ChainSizes.CreateChainSizeInfo(BlockchainIds.Sepolia).PruningSize.Should().BeLessThan(20.GB());
+        ChainSizes.CreateChainSizeInfo(BlockchainIds.Sepolia).PruningSize.Should().BeLessThan(22.GB());
 
         ChainSizes.CreateChainSizeInfo(BlockchainIds.Chiado).PruningSize.Should().Be(null);
         ChainSizes.CreateChainSizeInfo(BlockchainIds.Gnosis).PruningSize.Should().Be(null);
