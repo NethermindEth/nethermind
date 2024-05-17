@@ -105,6 +105,8 @@ class ShutterCryptoTests
 
         byte[] encoded = EncodeEncryptedMessage(c);
         TestContext.WriteLine("encrypted tx: " + Convert.ToHexString(encoded));
+        // uncomment this to output
+        // Assert.That(false);
     }
 
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
