@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using Nethermind.Core;
+using Nethermind.Core.Caching;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -32,6 +33,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
+        private readonly LruCacheNonConcurrent<StorageCell, byte[]> _blockCache = new(8192, "Storage Cache");
 
         public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
             : base(logManager)
@@ -50,6 +52,7 @@ namespace Nethermind.State
         public override void Reset()
         {
             base.Reset();
+            _blockCache.Clear();
             _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
@@ -215,6 +218,7 @@ namespace Nethermind.State
             Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
+            _blockCache.Set(change.StorageCell, change.Value);
         }
 
         /// <summary>
@@ -249,18 +253,25 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-
-            Db.Metrics.StorageTreeReads++;
-
-            if (!storageCell.IsHash)
+            if (!_blockCache.TryGet(storageCell, out byte[] data))
             {
-                byte[] value = tree.Get(storageCell.Index);
-                PushToRegistryOnly(storageCell, value);
-                return value;
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+
+                Db.Metrics.StorageTreeReads++;
+
+                data = !storageCell.IsHash ?
+                    tree.Get(storageCell.Index) :
+                    tree.GetArray(storageCell.Hash.Bytes);
+
+                _blockCache.Set(storageCell, data);
+            }
+            else
+            {
+                Db.Metrics.StorageTreeCache++;
             }
 
-            return tree.Get(storageCell.Hash.Bytes);
+            if (!storageCell.IsHash) PushToRegistryOnly(storageCell, data);
+            return data;
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)

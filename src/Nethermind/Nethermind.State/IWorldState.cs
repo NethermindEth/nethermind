@@ -101,7 +101,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? traver, bool isGenesis = false);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false);
 
     void CommitTree(long blockNumber);
 }
