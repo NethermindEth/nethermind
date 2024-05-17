@@ -298,6 +298,9 @@ public class TestCaseGenerator
             case TestCase.Blake1MRounds:
             case TestCase.Blake10MRounds:
                 return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            // case TestCase.PointEvaluationZeros:
+            case TestCase.PointEvaluationOneData:
+                return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             case TestCase.SStoreManyAccountsConsecutiveKeysRandomValue:
             case TestCase.SStoreManyAccountsConsecutiveKeysZeroValue:
             case TestCase.SStoreManyAccountsRandomKeysRandomValue:

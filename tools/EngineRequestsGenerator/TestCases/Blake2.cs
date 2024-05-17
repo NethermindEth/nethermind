@@ -30,7 +30,7 @@ public static class Blake2
         ];
     }
 
-        private static byte[] PrepareCode(TestCase testCase, long blockGasConsumptionTarget)
+    private static byte[] PrepareCode(TestCase testCase, long blockGasConsumptionTarget)
     {
         List<byte> codeToDeploy = new();
 

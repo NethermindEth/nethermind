@@ -134,6 +134,9 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
     IdentityFrom128Bytes,
 
+    // [TestCaseMetadata("Modexp precompile", "Modexp precompile")]
+    // Modexp,
+
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,
 
@@ -145,6 +148,12 @@ public enum TestCase
 
     [TestCaseMetadata("Blake2f 10M rounds", "Blake2f precompile with 10_000_000 rounds of computations")]
     Blake10MRounds,
+
+    // [TestCaseMetadata("Point evaluation - zeros", "Point evaluation precompile with just zeros as an argument")]
+    // PointEvaluationZeros,
+
+    [TestCaseMetadata("Point evaluation - one data", "Point evaluation precompile repeating computations on the same data")]
+    PointEvaluationOneData,
 
     [TestCaseMetadata("SStore - one storage key, repeating zero value", "SStore - repeating storing zero in single storage key of single account")]
     SStoreOneAccountOneKeyZeroValue,
