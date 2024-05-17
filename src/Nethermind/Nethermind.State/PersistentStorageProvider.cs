@@ -19,7 +19,7 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    internal class PersistentStorageProvider : PartialStorageProviderBase
+    internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
         private readonly StateProvider _stateProvider;
@@ -33,7 +33,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly LruCacheNonConcurrent<StorageCell, byte[]> _blockCache = new(8192, "Storage Cache");
+        private readonly LruCacheNonConcurrent<StorageCell, byte[]> _blockCache = new(4_096, "Storage Cache");
 
         public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
             : base(logManager)
