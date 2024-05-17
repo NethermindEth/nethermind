@@ -37,7 +37,7 @@ public class WithdrawalRequestProcessorTests
                 .WithHeader(
                     Build.A.BlockHeader
                         .WithParentHash(
-                            new Hash256(Bytes.FromHexString("0x6ec1120707c89dc46895d187ebf345845d01ca6f79f6ed0a6b0d4232a63bff4f"))
+                            new Hash256(Bytes.FromHexString("0x825d0a25f8989de79a07be308f626a275930df1d1a41df7211ed67ce0cacb1c7"))
                         )
                         .WithUnclesHash(
                             new Hash256(Bytes.FromHexString("0x1dcc4de8dec75d7aab85b567b6ccd41ad312451b948a7413f0a142fd40d49347"))
@@ -50,22 +50,22 @@ public class WithdrawalRequestProcessorTests
                         .WithGasLimit(100000000000000000)
                         .WithTimestamp(12)
                         .WithHash(
-                            new Hash256(Bytes.FromHexString("0x0f2f6d3487133112c7f801e3e6fdb24fdb774962836a83dba7e3085acccb91a3"))
+                            new Hash256(Bytes.FromHexString("0x4f01465e6b7a381227d736639f72e645b7023a223bb4e1df7fcd11555bb789be"))
                         )
                         .WithMixHash(
                             new Hash256("0x0000000000000000000000000000000000000000000000000000000000000000")
                         )
                         .WithReceiptsRoot(
-                            new Hash256(Bytes.FromHexString("0x87048f1c285b93e2cc7ab5f4f2aec173c7bb1419236808c380c4d202f5d0527c"))
+                            new Hash256(Bytes.FromHexString("0x12a36f1d9611048f267288cd54c8c3f96cdfcdbaf3547eb91cfa71012c6b4120"))
                         )
                         .WithRequestsRoot(
-                            new Hash256(Bytes.FromHexString("0x42b195048f9da90a3c57186b9ac197ceca615cd47421287dc2c11ee8885598ff"))
+                            new Hash256(Bytes.FromHexString("0xe922b6c8c2a1aef3e0886455d4b791e8351d6213d38814aa5a1170e5e1af59a1"))
                         )
                         .WithWithdrawalsRoot(
                             new Hash256(Bytes.FromHexString("0x56e81f171bcc55a6ff8345e692c0f86e5b48e01b996cadc001622fb5e363b421"))
                         )
                         .WithTransactionsRoot(
-                            new Hash256(Bytes.FromHexString("0x5146d157c5e1d75d4493bcfc34f89f4f31a3add255683f201d4b2e0c21f003c0"))
+                            new Hash256(Bytes.FromHexString("0x6415cfd997ac8058810eb6866dfcf25f23da303840f34adddf68bef6c95dbf5d"))
                         )
                     .TestObject
                 )
