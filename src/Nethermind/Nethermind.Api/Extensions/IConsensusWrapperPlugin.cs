@@ -18,6 +18,5 @@ namespace Nethermind.Api.Extensions
         /// </summary>
         int Priority => 0;
 
-        bool Enabled { get; }
     }
 }
