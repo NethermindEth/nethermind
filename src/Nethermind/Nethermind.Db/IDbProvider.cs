@@ -6,11 +6,11 @@ using System.Collections.Generic;
 
 namespace Nethermind.Db
 {
-    public interface IDbProvider : IDisposable
+    public interface IDbProvider
     {
         public IDb StateDb => GetDb<IDb>(DbNames.State);
         public IDb CodeDb => GetDb<IDb>(DbNames.Code);
-        public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetColumnDb<ReceiptsColumns>(DbNames.Receipts);
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb { get; }
         public IDb BlocksDb => GetDb<IDb>(DbNames.Blocks);
         public IDb HeadersDb => GetDb<IDb>(DbNames.Headers);
         public IDb BlockNumbersDb => GetDb<IDb>(DbNames.BlockNumbers);
@@ -22,13 +22,9 @@ namespace Nethermind.Db
 
         public IDb MetadataDb => GetDb<IDb>(DbNames.Metadata);
 
-        public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions);
+        public IColumnsDb<BlobTxsColumns> BlobTransactionsDb { get; }
 
         T GetDb<T>(string dbName) where T : class, IDb;
-        IColumnsDb<T> GetColumnDb<T>(string dbName);
-
-        void RegisterDb<T>(string dbName, T db) where T : class, IDb;
-        void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db);
         IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta();
     }
 }

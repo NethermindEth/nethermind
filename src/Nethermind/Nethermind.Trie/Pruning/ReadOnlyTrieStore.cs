@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Db.FullPruning;
 
 namespace Nethermind.Trie.Pruning
 {
@@ -58,12 +59,6 @@ namespace Nethermind.Trie.Pruning
         public IScopedTrieStore GetTrieStore(Hash256? address)
         {
             return new ScopedReadOnlyTrieStore(this, address);
-        }
-
-
-        public void PersistCache(CancellationToken cancellationToken)
-        {
-            _trieStore.PersistCache(cancellationToken);
         }
 
         public bool HasRoot(Hash256 stateRoot)

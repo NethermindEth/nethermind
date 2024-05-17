@@ -9,6 +9,7 @@ using System.Threading.Tasks;
 using Autofac.Features.AttributeFilters;
 using Nethermind.Api;
 using Nethermind.Config;
+using Nethermind.Core;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
@@ -29,7 +30,7 @@ public class SetupKeyStore : IStep
     private readonly ILogManager _logManager;
 
     public SetupKeyStore(
-        [KeyFilter(PrivateKeyName.NodeKey)] ProtectedPrivateKey nodeKey,
+        [KeyFilter(ComponentKey.NodeKey)] ProtectedPrivateKey nodeKey,
         ChainSpec chainSpec,
         INetworkConfig networkConfig,
         IDiscoveryConfig discoveryConfig,

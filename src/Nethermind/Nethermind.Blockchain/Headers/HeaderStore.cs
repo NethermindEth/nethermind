@@ -4,6 +4,7 @@
 using System;
 using System.Buffers.Binary;
 using System.IO;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
@@ -24,7 +25,7 @@ public class HeaderStore : IHeaderStore
     private readonly LruCache<ValueHash256, BlockHeader> _headerCache =
         new(CacheSize, CacheSize, "headers");
 
-    public HeaderStore(IDb headerDb, IDb blockNumberDb)
+    public HeaderStore([KeyFilter(DbNames.Headers)] IDb headerDb, [KeyFilter(DbNames.BlockNumbers)] IDb blockNumberDb)
     {
         _headerDb = headerDb;
         _blockNumberDb = blockNumberDb;

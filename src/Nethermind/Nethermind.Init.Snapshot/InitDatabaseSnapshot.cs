@@ -4,11 +4,14 @@
 using System.Net.Http.Headers;
 using Nethermind.Api;
 using Nethermind.Init.Steps;
-using Nethermind.Logging;
 using System.IO.Compression;
 using System.Net;
 using System.Security.Cryptography;
+using DnsClient.Internal;
 using Nethermind.Core.Extensions;
+using Nethermind.Core.Timers;
+using Nethermind.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Init.Snapshot;
 
@@ -16,18 +19,30 @@ public class InitDatabaseSnapshot : InitDatabase
 {
     private const int BufferSize = 8192;
 
-    private readonly INethermindApi _api;
+    private readonly IInitConfig _initConfig;
+    private readonly ISnapshotConfig _snapshotConfig;
     private readonly ILogger _logger;
+    private readonly ILogManager _logManager;
+    private readonly ITimerFactory _timerFactory;
 
-    public InitDatabaseSnapshot(INethermindApi api) : base(api)
+    public InitDatabaseSnapshot(
+        IInitConfig initConfig,
+        ISnapshotConfig snapshotConfig,
+        ITimerFactory timerFactory,
+        ILogManager logManager,
+        ILogger logger
+    )
     {
-        _api = api;
-        _logger = _api.LogManager.GetClassLogger();
+        _initConfig = initConfig;
+        _snapshotConfig = snapshotConfig;
+        _timerFactory = timerFactory;
+        _logManager = logManager;
+        _logger = logger;
     }
 
     public override async Task Execute(CancellationToken cancellationToken)
     {
-        switch (_api.Config<IInitConfig>().DiagnosticMode)
+        switch (_initConfig.DiagnosticMode)
         {
             case DiagnosticMode.RpcDb:
             case DiagnosticMode.ReadOnlyDb:
@@ -43,9 +58,15 @@ public class InitDatabaseSnapshot : InitDatabase
 
     private async Task InitDbFromSnapshot(CancellationToken cancellationToken)
     {
+        ISnapshotConfig snapshotConfig = _snapshotConfig;
+        string dbPath = _initConfig.BaseDbPath;
+        if (Path.Exists(dbPath))
+        {
+            if (_logger.IsInfo)
+                _logger.Info($"Database already exists at {dbPath}. Skipping snapshot initialization.");
+            return;
+        }
 
-        ISnapshotConfig snapshotConfig = _api.Config<ISnapshotConfig>();
-        string dbPath = _api.Config<IInitConfig>().BaseDbPath;
         string snapshotUrl = snapshotConfig.DownloadUrl ??
                              throw new InvalidOperationException("Snapshot download URL is not configured");
         string snapshotFileName = Path.Combine(snapshotConfig.SnapshotDirectory, snapshotConfig.SnapshotFileName);
@@ -173,7 +194,7 @@ public class InitDatabaseSnapshot : InitDatabase
         long? totalBytesToRead = totalBytesRead + response.Content.Headers.ContentLength;
 
         using ProgressTracker progressTracker = new(
-            _api.LogManager, _api.TimerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
+            _logManager, _timerFactory, TimeSpan.FromSeconds(5), totalBytesRead, totalBytesToRead);
 
         byte[] buffer = new byte[BufferSize];
         while (true)

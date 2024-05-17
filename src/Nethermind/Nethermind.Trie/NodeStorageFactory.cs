@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;

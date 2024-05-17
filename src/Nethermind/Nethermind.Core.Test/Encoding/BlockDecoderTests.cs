@@ -28,7 +28,7 @@ public class BlockDecoderTests
                 .WithData(new byte[] { (byte)i })
                 .WithNonce((UInt256)i)
                 .WithValue((UInt256)i)
-                .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), TestItem.PrivateKeyA, true)
+                .Signed(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Logger), TestItem.PrivateKeyA, true)
                 .TestObject;
         }
 

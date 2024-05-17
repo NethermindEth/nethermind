@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Db;
@@ -45,8 +46,7 @@ public class TraceStorePlugin : INethermindPlugin
             _traceSerializer = new ParityLikeTraceSerializer(_logManager, _config.MaxDepth, _config.VerifySerialized);
 
             // Setup DB
-            _db = _api.DbFactory!.CreateDb(new DbSettings(DbName, DbName.ToLower()));
-            _api.DbProvider!.RegisterDb(DbName, _db);
+            _db = _api.BaseContainer.Resolve<IDbFactory>().CreateDb(new DbSettings(DbName, DbName.ToLower()));
 
             //Setup pruning if configured
             if (_config.BlocksToKeep != 0)

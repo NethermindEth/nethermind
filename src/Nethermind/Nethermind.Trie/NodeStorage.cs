@@ -3,6 +3,7 @@
 
 using System;
 using System.Diagnostics;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -20,7 +21,10 @@ public class NodeStorage : INodeStorage
     public INodeStorage.KeyScheme Scheme { get; set; }
     public bool RequirePath { get; }
 
-    public NodeStorage(IKeyValueStore keyValueStore, INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath, bool requirePath = true)
+    public NodeStorage(
+        IKeyValueStore keyValueStore,
+        INodeStorage.KeyScheme scheme = INodeStorage.KeyScheme.HalfPath,
+        bool requirePath = true)
     {
         _keyValueStore = keyValueStore ?? throw new ArgumentNullException(nameof(keyValueStore));
         Scheme = scheme;

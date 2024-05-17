@@ -41,6 +41,10 @@ namespace Nethermind.Db
             }
         }
 
+        public IColumnsDb<ReceiptsColumns> ReceiptsDb => GetColumnDb<ReceiptsColumns>(DbNames.Receipts, () => _wrappedProvider.ReceiptsDb);
+
+        public IColumnsDb<BlobTxsColumns> BlobTransactionsDb => GetColumnDb<BlobTxsColumns>(DbNames.BlobTransactions, () => _wrappedProvider.BlobTransactionsDb);
+
         public T GetDb<T>(string dbName) where T : class, IDb
         {
             return (T)_registeredDbs
@@ -49,22 +53,11 @@ namespace Nethermind.Db
                     .CreateReadOnly(_createInMemoryWriteStore));
         }
 
-        public IColumnsDb<T> GetColumnDb<T>(string dbName)
+        public IColumnsDb<T> GetColumnDb<T>(string dbName, Func<IColumnsDb<T>> wrapperFetcher)
         {
             return (IColumnsDb<T>)_registeredColumnDbs
-                .GetOrAdd(dbName, (_) => _wrappedProvider
-                    .GetColumnDb<T>(dbName)
+                .GetOrAdd(dbName, (_) => wrapperFetcher()
                     .CreateReadOnly(_createInMemoryWriteStore));
-        }
-
-        public void RegisterDb<T>(string dbName, T db) where T : class, IDb
-        {
-            _wrappedProvider.RegisterDb(dbName, db);
-        }
-
-        public void RegisterColumnDb<T>(string dbName, IColumnsDb<T> db)
-        {
-            _wrappedProvider.RegisterColumnDb(dbName, db);
         }
 
         public IEnumerable<KeyValuePair<string, IDbMeta>> GetAllDbMeta()

@@ -3,11 +3,14 @@
 
 using System;
 using System.Threading.Tasks;
+using Autofac.Features.AttributeFilters;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 using Nethermind.Logging;
 using Nethermind.Serialization.Rlp;
+using Nethermind.Wallet;
 
 namespace Nethermind.Consensus
 {
@@ -21,17 +24,22 @@ namespace Nethermind.Consensus
 
         public bool CanSign => _key is not null;
 
-        public Signer(ulong chainId, PrivateKey? key, ILogManager logManager)
+        public Signer(ISpecProvider specProvider, [KeyFilter(ComponentKey.SignerKey)] ProtectedPrivateKey key, ILogger logger)
+            : this(specProvider.ChainId, key, logger)
+        {
+        }
+
+        public Signer(ulong chainId, PrivateKey? key, ILogManager logger)
         {
             _chainId = chainId;
-            _logger = logManager.GetClassLogger<Signer>();
+            _logger = logger.GetClassLogger();
             SetSigner(key);
         }
 
-        public Signer(ulong chainId, ProtectedPrivateKey key, ILogManager logManager)
+        public Signer(ulong chainId, ProtectedPrivateKey key, ILogger logger)
         {
             _chainId = chainId;
-            _logger = logManager?.GetClassLogger<Signer>() ?? throw new ArgumentNullException(nameof(logManager));
+            _logger = logger;
             SetSigner(key);
         }
 

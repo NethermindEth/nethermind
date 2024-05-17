@@ -24,6 +24,7 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Synchronization.ParallelSync;
 using Autofac;
 using Autofac.Core;
+using Nethermind.Crypto;
 using Nethermind.HealthChecks;
 using Nethermind.Init.Steps;
 using Nethermind.Specs.ChainSpecStyle;
@@ -93,7 +94,6 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin
         _api.PoSSwitcher = AlwaysPoS.Instance;
 
         _blockCacheService = new BlockCacheService();
-        _api.EthereumEcdsa = new OptimismEthereumEcdsa(_api.EthereumEcdsa);
         _api.InvalidChainTracker = _invalidChainTracker = new InvalidChainTracker(
             _api.PoSSwitcher,
             _api.BlockTree,
@@ -295,6 +295,9 @@ public class OptimismPlugin : IConsensusPlugin, ISynchronizationPlugin
             builder.RegisterType<OptimismGasLimitCalculator>()
                 .As<IGasLimitCalculator>()
                 .SingleInstance();
+
+            builder.RegisterType<OptimismEthereumEcdsa>()
+                .As<IEthereumEcdsa>();
 
             builder.RegisterIStepsFromAssembly(GetType().Assembly);
         }

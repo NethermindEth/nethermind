@@ -211,9 +211,7 @@ public class SnapServerTest
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDbProvider dbProviderClient = TestMemDbProvider.Init();
 
         using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
@@ -247,9 +245,7 @@ public class SnapServerTest
 
         SnapServer server = new(store.AsReadOnly(), codeDb, CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        dbProviderClient.RegisterDb(DbNames.State, new MemDb());
-        dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
+        IDbProvider dbProviderClient = TestMemDbProvider.Init();
 
         using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
         SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);

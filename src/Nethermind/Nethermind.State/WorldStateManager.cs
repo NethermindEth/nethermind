@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using Autofac.Features.AttributeFilters;
+using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Trie.Pruning;
@@ -14,7 +16,7 @@ public class WorldStateManager : ReadOnlyWorldStateManager
     private readonly ITrieStore _trieStore;
 
     public WorldStateManager(
-        IWorldState worldState,
+        [KeyFilter(ComponentKey.MainWorldState)] IWorldState worldState,
         ITrieStore trieStore,
         IDbProvider dbProvider,
         ILogManager logManager

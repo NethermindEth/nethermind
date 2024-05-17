@@ -5,6 +5,7 @@ using System;
 using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.Diagnostics.CodeAnalysis;
+using Autofac.Features.AttributeFilters;
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -28,7 +29,7 @@ public class BlobTxStorage : IBlobTxStorage
         _processedBlobTxsDb = new MemDb();
     }
 
-    public BlobTxStorage(IColumnsDb<BlobTxsColumns> database)
+    public BlobTxStorage([KeyFilter(DbNames.BlobTransactions)] IColumnsDb<BlobTxsColumns> database)
     {
         _fullBlobTxsDb = database.GetColumnDb(BlobTxsColumns.FullBlobTxs);
         _lightBlobTxsDb = database.GetColumnDb(BlobTxsColumns.LightBlobTxs);

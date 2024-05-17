@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.IO.Abstractions;
 using Autofac;
 using Nethermind.Api;
 using Nethermind.Core;
@@ -18,9 +17,7 @@ public class KeyStoreModule : Module
     protected override void Load(ContainerBuilder builder)
     {
         base.Load(builder);
-        builder.RegisterType<FileKeyStore>()
-            .As<IKeyStore>()
-            .SingleInstance();
+        builder.RegisterImpl<FileKeyStore, IKeyStore>();
 
         builder.Register<ICryptoRandom, ITimestamper, IKeyStoreConfig, ProtectedPrivateKeyFactory>(CreateProtectedKeyFactory)
             .As<IProtectedPrivateKeyFactory>()
@@ -32,13 +29,8 @@ public class KeyStoreModule : Module
         builder.Register(CreateNodeKeyManager)
             .SingleInstance();
 
-        builder.Register<INodeKeyManager, ProtectedPrivateKey>((keyManager) => keyManager.LoadNodeKey())
-            .Keyed<ProtectedPrivateKey>(PrivateKeyName.NodeKey)
-            .SingleInstance();
-
-        builder.Register<INodeKeyManager, ProtectedPrivateKey>((keyManager) => keyManager.LoadSignerKey())
-            .Keyed<ProtectedPrivateKey>(PrivateKeyName.SignerKey)
-            .SingleInstance();
+        builder.RegisterKeyedMapping<INodeKeyManager, ProtectedPrivateKey>(ComponentKey.NodeKey, keyManager => keyManager.LoadNodeKey());
+        builder.RegisterKeyedMapping<INodeKeyManager, ProtectedPrivateKey>(ComponentKey.SignerKey, keyManager => keyManager.LoadSignerKey());
     }
 
     private ProtectedPrivateKeyFactory CreateProtectedKeyFactory(ICryptoRandom cryptoRandom, ITimestamper timeStamper, IKeyStoreConfig keyStoreConfig)

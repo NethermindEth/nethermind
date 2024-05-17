@@ -24,6 +24,7 @@ namespace Nethermind.Logging
         private static LimboLogs _instance;
 
         public static LimboLogs Instance => _instance ?? LazyInitializer.EnsureInitialized(ref _instance, () => new LimboLogs());
+        public static ILogger Logger => Instance.GetClassLogger();
 
         public ILogger GetClassLogger(Type type) => LimboTraceLogger.Instance;
 
