@@ -3,6 +3,7 @@
 
 using System;
 using System.Threading.Tasks;
+using Nethermind.ApiBase.Extensions;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
