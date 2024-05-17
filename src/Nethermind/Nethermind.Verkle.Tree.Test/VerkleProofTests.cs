@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Blockchain.BlockHashInState;
@@ -23,6 +24,7 @@ using Nethermind.State;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.TreeStore;
+using Newtonsoft.Json;
 
 namespace Nethermind.Verkle.Tree.Test;
 
