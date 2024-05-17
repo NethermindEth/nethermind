@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Blockchain.FullPruning;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Init.Steps.Migrations;
 using Nethermind.JsonRpc;
@@ -79,6 +80,8 @@ public class RegisterRpcModules : IStep
         IInitConfig initConfig = _api.Config<IInitConfig>();
         IJsonRpcConfig rpcConfig = _api.Config<IJsonRpcConfig>();
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong SecondsPerSlot = blockConfig.SecondsPerSlot;
 
         // lets add threads to support parallel eth_getLogs
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
@@ -104,7 +107,8 @@ public class RegisterRpcModules : IStep
             _api.ReceiptStorage,
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
-            feeHistoryOracle);
+            feeHistoryOracle,
+            SecondsPerSlot);
 
         RpcLimits.Init(rpcConfig.RequestQueueLimit);
         rpcModuleProvider.RegisterBounded(ethModuleFactory, rpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, rpcConfig.Timeout);

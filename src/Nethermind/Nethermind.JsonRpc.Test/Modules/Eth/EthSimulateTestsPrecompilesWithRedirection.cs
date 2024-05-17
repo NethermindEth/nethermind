@@ -6,6 +6,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -60,7 +61,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);
 
@@ -177,7 +178,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         };
 
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
-        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig());
+        SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
         Debug.Assert(contractAddress is not null, nameof(contractAddress) + " != null");
         Assert.IsTrue(chain.State.AccountExists(contractAddress));

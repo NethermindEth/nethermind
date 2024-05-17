@@ -15,11 +15,10 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, IBlocksConfig? blocksConfig = null)
+public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong _secondsPerSlot)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
-    private readonly ulong _interBlocksTimings = (blocksConfig ?? new BlocksConfig()).SecondsPerSlot;
     private readonly long _blocksLimit = rpcConfig.MaxSimulateBlocksCap ?? 256;
     private long _gasCapBudget = rpcConfig.GasCap ?? long.MaxValue;
 
@@ -127,8 +126,8 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 ulong givenTime = blockToSimulate.BlockOverrides.Time ??
                                   (lastBlockTime == 0
-                                      ? header.Timestamp + _interBlocksTimings
-                                      : lastBlockTime + _interBlocksTimings);
+                                      ? header.Timestamp + _secondsPerSlot
+                                      : lastBlockTime + _secondsPerSlot);
 
                 if (givenTime > lastBlockTime)
                 {

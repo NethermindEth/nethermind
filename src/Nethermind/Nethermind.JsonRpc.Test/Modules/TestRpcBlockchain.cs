@@ -127,7 +127,6 @@ namespace Nethermind.JsonRpc.Test.Modules
                 roBlockTree,
                 SpecProvider,
                 LimboLogs.Instance);
-
             SimulateReadOnlyBlocksProcessingEnvFactory simulateProcessingEnvFactory = new SimulateReadOnlyBlocksProcessingEnvFactory(
                 WorldStateManager,
                 roBlockTree,
@@ -135,8 +134,9 @@ namespace Nethermind.JsonRpc.Test.Modules
                 SpecProvider,
                 LimboLogs.Instance);
 
+            BlocksConfig blocksConfig = new BlocksConfig();
             ReceiptFinder ??= ReceiptStorage;
-            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, new BlocksConfig(), false);
+            Bridge ??= new BlockchainBridge(processingEnv, simulateProcessingEnvFactory, TxPool, ReceiptFinder, filterStore, filterManager, EthereumEcdsa, Timestamper, LogFinder, SpecProvider, blocksConfig, false);
             BlockFinder ??= BlockTree;
             GasPriceOracle ??= new GasPriceOracle(BlockFinder, SpecProvider, LogManager);
 
@@ -160,7 +160,8 @@ namespace Nethermind.JsonRpc.Test.Modules
                 GasPriceOracle,
                 new EthSyncingInfo(BlockTree, ReceiptStorage, syncConfig,
                     new StaticSelector(SyncMode.All), Substitute.For<ISyncProgressResolver>(), LogManager),
-                FeeHistoryOracle);
+                FeeHistoryOracle,
+                blocksConfig.SecondsPerSlot);
 
             return this;
         }

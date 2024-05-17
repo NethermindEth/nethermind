@@ -56,6 +56,7 @@ public partial class EthRpcModule : IEthRpcModule
     private readonly IEthSyncingInfo _ethSyncingInfo;
 
     private readonly IFeeHistoryOracle _feeHistoryOracle;
+    private readonly ulong _secondsPerSlot;
 
     public EthRpcModule(
         IJsonRpcConfig rpcConfig,
@@ -70,7 +71,8 @@ public partial class EthRpcModule : IEthRpcModule
         ISpecProvider specProvider,
         IGasPriceOracle gasPriceOracle,
         IEthSyncingInfo ethSyncingInfo,
-        IFeeHistoryOracle feeHistoryOracle)
+        IFeeHistoryOracle feeHistoryOracle,
+        ulong secondsPerSlot)
     {
         _logger = logManager.GetClassLogger();
         _rpcConfig = rpcConfig ?? throw new ArgumentNullException(nameof(rpcConfig));
@@ -85,6 +87,7 @@ public partial class EthRpcModule : IEthRpcModule
         _gasPriceOracle = gasPriceOracle ?? throw new ArgumentNullException(nameof(gasPriceOracle));
         _ethSyncingInfo = ethSyncingInfo ?? throw new ArgumentNullException(nameof(ethSyncingInfo));
         _feeHistoryOracle = feeHistoryOracle ?? throw new ArgumentNullException(nameof(feeHistoryOracle));
+        _secondsPerSlot = secondsPerSlot;
     }
 
     public ResultWrapper<string> eth_protocolVersion()
@@ -341,7 +344,7 @@ public partial class EthRpcModule : IEthRpcModule
             .ExecuteTx(transactionCall, blockParameter);
 
     public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null) =>
-        new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig)
+        new SimulateTxExecutor(_blockchainBridge, _blockFinder, _rpcConfig, _secondsPerSlot)
             .Execute(payload, blockParameter);
 
 
