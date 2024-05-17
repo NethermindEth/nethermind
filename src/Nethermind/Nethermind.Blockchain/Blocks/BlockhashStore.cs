@@ -4,6 +4,7 @@
 using System;
 using System.IO;
 using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -49,8 +50,8 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         var blockIndex = new UInt256((ulong)(requiredBlockNumber % Eip2935Constants.RingBufferSize));
         Address? eip2935Account = spec.Eip2935ContractAddress ?? Eip2935Constants.BlockHashHistoryAddress;
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        ReadOnlySpan<byte> data = worldState.Get(blockHashStoreCell);
-        return data.SequenceEqual(EmptyBytes) ? null : new Hash256(data);
+        Vector256<byte> data = worldState.Get(blockHashStoreCell);
+        return data.IsZero() ? null : new Hash256(data.AsSpan());
     }
 
     private void InitHistoryOnForkBlock(BlockHeader currentBlock, Address eip2935Account)
@@ -74,6 +75,6 @@ public class BlockhashStore(IBlockFinder blockFinder, ISpecProvider specProvider
         Hash256 parentBlockHash = blockHeader.ParentHash;
         var blockIndex = new UInt256((ulong)((blockHeader.Number - 1) % Eip2935Constants.RingBufferSize));
         StorageCell blockHashStoreCell = new(eip2935Account, blockIndex);
-        worldState.Set(blockHashStoreCell, parentBlockHash!.Bytes.WithoutLeadingZeros().ToArray());
+        worldState.Set(blockHashStoreCell, parentBlockHash.ValueHash256.Vector);
     }
 }
