@@ -29,7 +29,7 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
-        private readonly LruCacheNonConcurrent<AddressAsKey, Account> _blockCache = new(4_096, "Account Cache");
+        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -666,11 +666,11 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            if (!_blockCache.TryGet(address, out Account? account))
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+            if (!exists)
             {
                 Metrics.StateTreeReads++;
                 account = _tree.Get(address);
-                _blockCache.Set(address, account);
             }
             else
             {
@@ -681,7 +681,7 @@ namespace Nethermind.State
 
         private void SetState(Address address, Account? account)
         {
-            _blockCache.Set(address, account);
+            _blockCache[address] = account;
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
