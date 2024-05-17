@@ -154,7 +154,7 @@ public class VerkleProtocolHandler : ZeroProtocolHandlerBase, IVerkleSyncPeer
 
     public async Task<SubTreesAndProofs> GetSubTreeRange(SubTreeRange range, CancellationToken token)
     {
-        Logger.Info($"VerkleSync GetSubTreeRange: {range.StartingStem} {range.LimitStem} {range.RootHash} {range.BlockNumber}");
+        Logger.Info($"VerkleSync GetSubTreeRange: {range.BlockNumber} SS:{range.StartingStem} LS:{range.LimitStem} RH:{range.RootHash}");
         SubTreeRangeMessage response = await _requestSizer.MeasureLatency((bytesLimit) =>
             SendRequest(new GetSubTreeRangeMessage()
             {
