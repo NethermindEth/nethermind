@@ -123,7 +123,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 containerBuilder.RegisterInstance(Substitute.For<IWorldState>()).As<IWorldState>();
                 containerBuilder.RegisterInstance(Substitute.For<IStateReader>()).As<IStateReader>();
                 containerBuilder.RegisterInstance(Substitute.For<ITrieStore>()).As<ITrieStore>();
-                containerBuilder.RegisterInstance(Substitute.For<IWitnessRepository>()).As<IWitnessRepository>();
                 containerBuilder.RegisterInstance(Substitute.For<IWorldStateManager>()).As<IWorldStateManager>();
                 containerBuilder.RegisterInstance(Substitute.For<IReadOnlyStateProvider>()).As<IReadOnlyStateProvider>();
                 containerBuilder.RegisterInstance(new ChainSpec());

@@ -18,9 +18,7 @@ using Nethermind.Db.FullPruning;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Trie;
-using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -29,7 +27,6 @@ namespace Nethermind.Runner.Modules;
 public class StateModule: Module
 {
     private readonly bool _trieHealingEnabled;
-    private readonly bool _witnessProtocolEnabled;
     private readonly PruningMode _pruningMode;
     private readonly FullPruningTrigger _fullPruningTrigger;
 
@@ -37,7 +34,6 @@ public class StateModule: Module
     {
         ISyncConfig syncConfig = configProvider.GetConfig<ISyncConfig>();
         _trieHealingEnabled = syncConfig.TrieHealing;
-        _witnessProtocolEnabled = syncConfig.WitnessProtocolEnabled;
         IPruningConfig pruningConfig = configProvider.GetConfig<IPruningConfig>();
         _pruningMode = pruningConfig.Mode;
         _fullPruningTrigger = pruningConfig.FullPruningTrigger;
@@ -47,7 +43,6 @@ public class StateModule: Module
     public StateModule()
     {
         _trieHealingEnabled = true;
-        _witnessProtocolEnabled = true;
         _pruningMode = PruningMode.None;
         _fullPruningTrigger = FullPruningTrigger.Manual;
     }
@@ -84,30 +79,6 @@ public class StateModule: Module
             })
             .As<INodeStorage>()
             .SingleInstance();
-
-        if (_witnessProtocolEnabled)
-        {
-            builder.RegisterType<WitnessCollector>()
-                .WithAttributeFiltering()
-                .AsSelf()
-                .As<IWitnessCollector>()
-                .SingleInstance();
-            builder.Register<WitnessCollector, IBlockTree, ILogManager, IWitnessRepository>((wc, btree, log) => wc.WithPruning(btree, log))
-                .As<IWitnessRepository>()
-                .SingleInstance();
-
-            builder.RegisterDecorator<IKeyValueStoreWithBatching>(
-                (ctx, codeDb) => codeDb.WitnessedBy(ctx.Resolve<IWitnessCollector>()),
-                DbNames.Code);
-            builder.RegisterDecorator<IKeyValueStoreWithBatching>(
-                (ctx, stateDb) => stateDb.WitnessedBy(ctx.Resolve<IWitnessCollector>()),
-                DbNames.State);
-        }
-        else
-        {
-            builder.RegisterInstance(NullWitnessCollector.Instance).As<IWitnessCollector>();
-            builder.RegisterInstance(NullWitnessCollector.Instance).As<IWitnessRepository>();
-        }
 
         builder.RegisterDecorator<ISyncConfig>((ctx, _, syncConfig) =>
         {

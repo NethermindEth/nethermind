@@ -155,7 +155,6 @@ public class DatabaseModuleTests
         dbProvider.BlockInfosDb.Should().BeOfType(dbType);
         dbProvider.BlocksDb.Should().BeOfType(dbType);
         dbProvider.BloomDb.Should().BeOfType(dbType);
-        dbProvider.ChtDb.Should().BeOfType(dbType);
         dbProvider.HeadersDb.Should().BeOfType(dbType);
         dbProvider.ReceiptsDb.Should().BeOfType(receiptsDb);
         dbProvider.CodeDb.Should().BeOfType(dbType);

@@ -82,8 +82,6 @@ public class DatabaseModule : Module
         RegisterDb(builder, DbNames.BadBlocks);
         RegisterDb(builder, DbNames.Code);
         RegisterDb(builder, DbNames.Bloom);
-        RegisterDb(builder, DbNames.CHT);
-        RegisterDb(builder, DbNames.Witness);
         RegisterDb(builder, DbNames.Metadata);
 
         RegisterColumnsDb<ReceiptsColumns>(builder, DbNames.Receipts, readOnly: !_storeReceipts);
