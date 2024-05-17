@@ -232,6 +232,10 @@ Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.JsonRpc.Modules"
 EndProject
 Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.ApiBase", "Nethermind.ApiBase\Nethermind.ApiBase.csproj", "{F225BD8C-500B-4BCF-9592-4C42E69FB153}"
 EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Light", "Light", "{27373855-7B0E-40B7-8137-1736FB9FB01D}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Light", "Nethermind.Light\Nethermind.Light.csproj", "{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -634,6 +638,10 @@ Global
 		{F225BD8C-500B-4BCF-9592-4C42E69FB153}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{F225BD8C-500B-4BCF-9592-4C42E69FB153}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{F225BD8C-500B-4BCF-9592-4C42E69FB153}.Release|Any CPU.Build.0 = Release|Any CPU
+		{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
@@ -700,6 +708,7 @@ Global
 		{E1E7BEFC-52C0-49ED-B0A7-CB8C3250D120} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4} = {4019B82F-1104-4D2C-9F96-05FD7D3575E8}
 		{01E93AE8-76B6-4EDB-B7ED-F97A9EC4D18C} = {16714742-3389-41AA-8B93-1736E67F4AF2}
+		{EDDB1BC8-1FD2-4A63-BE19-D5035E7CECC5} = {27373855-7B0E-40B7-8137-1736FB9FB01D}
 	EndGlobalSection
 	GlobalSection(ExtensibilityGlobals) = postSolution
 		SolutionGuid = {092CA5E3-6180-4ED7-A3CB-9B57FAC2AA85}

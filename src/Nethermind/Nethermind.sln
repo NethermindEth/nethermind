@@ -224,9 +224,13 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		nuget.config = nuget.config
 	EndProjectSection
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree", "Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj", "{8901DFA2-D081-4511-B251-D3BB3A07E591}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Verkle.Tree", "Nethermind.Verkle.Tree\Nethermind.Verkle.Tree.csproj", "{8901DFA2-D081-4511-B251-D3BB3A07E591}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{C311716E-F9D0-4076-8E9D-DDB1C99090A4}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Verkle.Tree.Test", "Nethermind.Verkle.Tree.Test\Nethermind.Verkle.Tree.Test.csproj", "{C311716E-F9D0-4076-8E9D-DDB1C99090A4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.ApiBase", "Nethermind.ApiBase\Nethermind.ApiBase.csproj", "{17F0DC84-8951-420C-9C86-BE6445B0FDD4}"
+EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.JsonRpc.Modules", "Nethermind.JsonRpc.Modules\Nethermind.JsonRpc.Modules.csproj", "{847FAFAF-D2E3-4E31-B345-07A1B62D0993}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -626,6 +630,14 @@ Global
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{C311716E-F9D0-4076-8E9D-DDB1C99090A4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{17F0DC84-8951-420C-9C86-BE6445B0FDD4}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{17F0DC84-8951-420C-9C86-BE6445B0FDD4}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{17F0DC84-8951-420C-9C86-BE6445B0FDD4}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{17F0DC84-8951-420C-9C86-BE6445B0FDD4}.Release|Any CPU.Build.0 = Release|Any CPU
+		{847FAFAF-D2E3-4E31-B345-07A1B62D0993}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{847FAFAF-D2E3-4E31-B345-07A1B62D0993}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{847FAFAF-D2E3-4E31-B345-07A1B62D0993}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{847FAFAF-D2E3-4E31-B345-07A1B62D0993}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
