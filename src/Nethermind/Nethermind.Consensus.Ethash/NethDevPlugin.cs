@@ -37,11 +37,11 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
             {
-                return Task.FromResult((IBlockProducer)null);
+                return null;
             }
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
@@ -99,7 +99,7 @@ namespace Nethermind.Consensus.Ethash
                 getFromApi.Config<IBlocksConfig>(),
                 getFromApi.LogManager);
 
-            return Task.FromResult(blockProducer);
+            return blockProducer;
         }
 
         public string SealEngineType => Nethermind.Core.SealEngineType.NethDev;

@@ -72,7 +72,7 @@ public class StartBlockProducerAuRa
         return onlyWhenNotProcessing;
     }
 
-    public Task<IBlockProducer> BuildProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer BuildProducer(ITxSource? additionalTxSource = null)
     {
         if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -99,7 +99,7 @@ public class StartBlockProducerAuRa
             _api.LogManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>());
 
-        return Task.FromResult(blockProducer);
+        return blockProducer;
     }
 
     private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv)
