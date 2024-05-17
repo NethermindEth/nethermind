@@ -3,6 +3,7 @@
 
 using System;
 using System.Runtime.CompilerServices;
+using System.Threading;
 using Nethermind.Blockchain.Spec;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -18,7 +19,7 @@ namespace Nethermind.Blockchain
     public class ChainHeadInfoProvider : IChainHeadInfoProvider
     {
         public ChainHeadInfoProvider(ISpecProvider specProvider, IBlockTree blockTree, IStateReader stateReader)
-            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new ChainHeadReadOnlyStateProvider(blockTree, stateReader))
+            : this(new ChainHeadSpecProvider(specProvider, blockTree), blockTree, new HeadAccountStateProvider(blockTree, stateReader))
         {
         }
 
@@ -60,6 +61,58 @@ namespace Nethermind.Blockchain
                     ? currentPricePerBlobGas
                     : UInt256.Zero;
             HeadChanged?.Invoke(sender, e);
+        }
+
+        /// <summary>
+        /// Provides a custom implementation of <see cref="IAccountStateProvider"/> that
+        /// is capable of following the head changes and replace the underlying reader.
+        /// This makes it responsible for providing the scoping.
+        ///
+        /// The swap is done using a short-lived RLW.Write lock so that it should not hit readers hard.
+        /// </summary>
+        private sealed class HeadAccountStateProvider : IAccountStateProvider
+        {
+            private readonly IStateReader _stateReader;
+            private readonly ReaderWriterLockSlim _lock = new();
+            private IScopedStateReader? _reader;
+
+            public HeadAccountStateProvider(IBlockTree blockTree, IStateReader stateReader)
+            {
+                _stateReader = stateReader;
+                blockTree.BlockAddedToMain += OnHeadChanged;
+            }
+
+            private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
+            {
+                IScopedStateReader current = _stateReader.ForStateRoot(e.Block.StateRoot);
+                IScopedStateReader? previous;
+
+                _lock.EnterWriteLock();
+                try
+                {
+                    previous = _reader;
+                    _reader = current;
+                }
+                finally
+                {
+                    _lock.ExitWriteLock();
+                }
+
+                previous?.Dispose();
+            }
+
+            public bool TryGetAccount(Address address, out AccountStruct account)
+            {
+                _lock.EnterReadLock();
+                try
+                {
+                    return _reader.TryGetAccount(address, out account);
+                }
+                finally
+                {
+                    _lock.ExitReadLock();
+                }
+            }
         }
     }
 }

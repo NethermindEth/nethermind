@@ -58,6 +58,17 @@ namespace Nethermind.State
         }
 
         public bool HasStateForRoot(Hash256 stateRoot) => _factory.HasRoot(stateRoot);
+        public IScopedStateReader ForStateRoot(Hash256 stateRoot) => new ScopedStateReader(factory.GetReadOnly(stateRoot));
+
+        private class ScopedStateReader(IReadOnlyState state) : IScopedStateReader
+        {
+            public bool TryGetAccount(Address address, out AccountStruct account) => state.TryGet(address, out account);
+
+            public EvmWord GetStorage(Address address, in UInt256 index) => state.GetStorageAt(new StorageCell(address, index));
+
+            public Hash256 StateRoot => state.StateRoot;
+            public void Dispose() => state.Dispose();
+        }
 
         public byte[]? GetCode(in ValueHash256 codeHash) => codeHash == Keccak.OfAnEmptyString ? Array.Empty<byte>() : _codeDb[codeHash.Bytes];
 

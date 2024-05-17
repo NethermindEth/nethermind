@@ -108,4 +108,6 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? traver, bool isGenesis = false);
 
     void CommitTree(long blockNumber);
+
+    void FullReset();
 }
