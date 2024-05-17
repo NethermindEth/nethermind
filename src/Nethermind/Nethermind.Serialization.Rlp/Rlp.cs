@@ -1093,11 +1093,6 @@ namespace Nethermind.Serialization.Rlp
 
                 if (length == -1)
                 {
-                    if (byteSpan.IndexOfAnyExcept((byte)0) == -1)
-                    {
-                        return 0;
-                    }
-
                     if (byteSpan.Length > 1 && byteSpan[0] == 0)
                     {
                         ThrowNonCanonicalUInt256(Position);

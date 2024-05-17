@@ -42,13 +42,16 @@ public class SimulateReadOnlyBlocksProcessingEnvFactory(
 
     private static BlockTree CreateTempBlockTree(IReadOnlyDbProvider readOnlyDbProvider, ISpecProvider? specProvider, ILogManager? logManager, IReadOnlyDbProvider editableDbProvider)
     {
-        IBlockStore blockStore = new BlockStore(editableDbProvider.BlocksDb);
-        IHeaderStore headerStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        IBlockStore mainblockStore = new BlockStore(editableDbProvider.BlocksDb);
+        IHeaderStore mainHeaderStore = new HeaderStore(editableDbProvider.HeadersDb, editableDbProvider.BlockNumbersDb);
+        SimulateDictionaryHeaderStore tmpHeaderStore = new(mainHeaderStore);
         const int badBlocksStored = 1;
+
+        SimulateDictionaryBlockStore tmpBlockStore = new(mainblockStore);
         IBlockStore badBlockStore = new BlockStore(editableDbProvider.BadBlocksDb, badBlocksStored);
 
-        return new(blockStore,
-            headerStore,
+        return new(tmpBlockStore,
+            tmpHeaderStore,
             editableDbProvider.BlockInfosDb,
             editableDbProvider.MetadataDb,
             badBlockStore,
