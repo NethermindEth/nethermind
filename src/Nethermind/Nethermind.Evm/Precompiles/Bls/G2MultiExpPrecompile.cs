@@ -8,6 +8,7 @@ using Nethermind.Core.Specs;
 using Nethermind.Crypto;
 
 using G2 = Nethermind.Crypto.Bls.P2;
+using Scalar = Nethermind.Crypto.Bls.Scalar;
 
 namespace Nethermind.Evm.Precompiles.Bls;
 
@@ -48,16 +49,22 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
 
         try
         {
-            G2 acc = G2.generator();
-            for (int i = 0; i < inputData.Length / ItemSize; i++)
+            G2[] points = new G2[inputData.Length / ItemSize];
+            Scalar[] scalars = new Scalar[inputData.Length / ItemSize];
+            for (int i = 0; i < points.Length; i++)
             {
                 int offset = i * ItemSize;
-                G2 x = BlsExtensions.G2FromUntrimmed(inputData[offset..(offset + BlsParams.LenG2)]);
-                G2 res = x.mult(inputData[(offset + BlsParams.LenG2)..(offset + ItemSize)].ToArray().Reverse().ToArray());
-                acc.add(res);
-            }
+                points[i] = BlsExtensions.G2FromUntrimmed(inputData[offset..(offset + BlsParams.LenG2)]);
+                scalars[i] = new(inputData[(offset + BlsParams.LenG2)..(offset + BlsParams.LenG2 + 32)].ToArray());
 
-            result = (acc.ToBytesUntrimmed(), true);
+                if (!points[i].in_group() || !points[i].on_curve())
+                {
+                    return (Array.Empty<byte>(), false);
+                }
+            }
+            G2 res = new();
+            res.multi_mult(points, scalars);
+            result = (res.ToBytesUntrimmed(), true);
         }
         catch (Exception)
         {

@@ -46,8 +46,16 @@ public class G2MulPrecompile : IPrecompile<G2MulPrecompile>
         try
         {
             G2 x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
-            G2 res = x.mult(inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray());
-            result = (res.ToBytesUntrimmed(), true);
+
+            if (x.on_curve() && x.in_group())
+            {
+                G2 res = x.mult(inputData[BlsParams.LenG2..].ToArray().Reverse().ToArray());
+                result = (res.ToBytesUntrimmed(), true);
+            }
+            else
+            {
+                result = (Array.Empty<byte>(), false);
+            }
         }
         catch (Exception)
         {

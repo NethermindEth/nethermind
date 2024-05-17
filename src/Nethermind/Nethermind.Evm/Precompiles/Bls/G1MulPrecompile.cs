@@ -46,8 +46,15 @@ public class G1MulPrecompile : IPrecompile<G1MulPrecompile>
         try
         {
             G1 x = BlsExtensions.G1FromUntrimmed(inputData[..BlsParams.LenG1]);
-            G1 res = x.mult(inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray());
-            result = (res.ToBytesUntrimmed(), true);
+            if (x.on_curve() && x.in_group())
+            {
+                G1 res = x.mult(inputData[BlsParams.LenG1..].ToArray().Reverse().ToArray());
+                result = (res.ToBytesUntrimmed(), true);
+            }
+            else
+            {
+                result = (Array.Empty<byte>(), false);
+            }
         }
         catch (Exception)
         {

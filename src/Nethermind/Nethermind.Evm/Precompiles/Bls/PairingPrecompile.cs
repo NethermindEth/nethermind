@@ -42,12 +42,16 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
 
         try
         {
-            GT acc = new();
+            GT acc = GT.one();
             for (int i = 0; i < inputData.Length / PairSize; i++)
             {
                 int offset = i * PairSize;
                 G1 x = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
                 G2 y = BlsExtensions.G2FromUntrimmed(inputData[(offset + BlsParams.LenG1)..(offset + PairSize)]);
+                if (!x.on_curve() || !x.in_group() || !y.on_curve() || !y.in_group())
+                {
+                    return (Array.Empty<byte>(), false);
+                }
                 acc.mul(new GT(y, x));
             }
 

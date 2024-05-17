@@ -46,8 +46,16 @@ public class G2AddPrecompile : IPrecompile<G2AddPrecompile>
         {
             G2 x = BlsExtensions.G2FromUntrimmed(inputData[..BlsParams.LenG2]);
             G2 y = BlsExtensions.G2FromUntrimmed(inputData[BlsParams.LenG2..]);
-            G2 res = x.add(y);
-            result = (res.ToBytesUntrimmed(), true);
+
+            if (x.on_curve() && y.on_curve())
+            {
+                G2 res = x.add(y);
+                result = (res.ToBytesUntrimmed(), true);
+            }
+            else
+            {
+                result = (Array.Empty<byte>(), false);
+            }
         }
         catch (Exception)
         {

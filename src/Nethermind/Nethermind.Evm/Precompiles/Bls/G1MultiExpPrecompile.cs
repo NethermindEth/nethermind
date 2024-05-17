@@ -53,7 +53,12 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
             {
                 int offset = i * ItemSize;
                 points[i] = BlsExtensions.G1FromUntrimmed(inputData[offset..(offset + BlsParams.LenG1)]);
-                scalars[i] = new(inputData[(offset + BlsParams.LenG1)..].ToArray());
+                scalars[i] = new(inputData[(offset + BlsParams.LenG1)..(offset + BlsParams.LenG1 + 32)].ToArray());
+
+                if (!points[i].in_group() || !points[i].on_curve())
+                {
+                    return (Array.Empty<byte>(), false);
+                }
             }
             G1 res = new();
             res.multi_mult(points, scalars);
