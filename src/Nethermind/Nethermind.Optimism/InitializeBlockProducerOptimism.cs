@@ -57,7 +57,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             producerEnv.TxSource,
             producerEnv.ChainProcessor,
             producerEnv.BlockTree,
-            _api.ManualBlockProductionTrigger,
             producerEnv.ReadOnlyStateProvider,
             _api.GasLimitCalculator,
             NullSealEngine.Instance,

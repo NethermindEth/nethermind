@@ -42,12 +42,13 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 testRpc.State,
                 testRpc.BlockTree,
-                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 new BlocksConfig(),
                 LimboLogs.Instance);
-            await AssertIsProducingBlocks(blockProducer);
+            StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+                Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
+            await AssertIsProducingBlocks(runner);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -61,12 +62,13 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.State,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance,
                 blocksConfig);
-            await AssertIsProducingBlocks(blockProducer);
+            StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+                Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
+            await AssertIsProducingBlocks(runner);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -79,14 +81,15 @@ namespace Nethermind.Blockchain.Test.Producers
                 testRpc.BlockchainProcessor,
                 Substitute.For<ISealer>(),
                 testRpc.BlockTree,
-                Substitute.For<IBlockProductionTrigger>(),
                 testRpc.State,
                 Substitute.For<IGasLimitCalculator>(),
                 testRpc.Timestamper,
                 testRpc.SpecProvider,
                 LimboLogs.Instance,
                 blocksConfig);
-            await AssertIsProducingBlocks(blockProducer);
+            StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+                Substitute.For<IBlockProductionTrigger>(), testRpc.BlockTree, blockProducer);
+            await AssertIsProducingBlocks(runner);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -97,7 +100,6 @@ namespace Nethermind.Blockchain.Test.Producers
             AuRaBlockProducer blockProducer = new(
                 Substitute.For<ITxSource>(),
                 Substitute.For<IBlockchainProcessor>(),
-                Substitute.For<IBlockProductionTrigger>(),
                 Substitute.For<IWorldState>(),
                 Substitute.For<ISealer>(),
                 Substitute.For<IBlockTree>(),
@@ -109,7 +111,9 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISpecProvider>(),
                 LimboLogs.Instance,
                 Substitute.For<IBlocksConfig>());
-            await AssertIsProducingBlocks(blockProducer);
+            StandardBlockProducerRunner runner = new StandardBlockProducerRunner(
+                Substitute.For<IBlockProductionTrigger>(), Substitute.For<IBlockTree>(), blockProducer);
+            await AssertIsProducingBlocks(runner);
         }
 
         [Test, Timeout(Timeout.MaxTestTime)]
@@ -120,7 +124,6 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ITxSource>(),
                 testRpc.BlockchainProcessor,
                 testRpc.State,
-                testRpc.BlockTree,
                 testRpc.Timestamper,
                 Substitute.For<ICryptoRandom>(),
                 Substitute.For<ISnapshotManager>(),
@@ -129,7 +132,17 @@ namespace Nethermind.Blockchain.Test.Producers
                 Substitute.For<ISpecProvider>(),
                 new CliqueConfig(),
                 LimboLogs.Instance);
-            await AssertIsProducingBlocks(blockProducer);
+
+            CliqueBlockProducerRunner runner = new CliqueBlockProducerRunner(
+                testRpc.BlockTree,
+                testRpc.Timestamper,
+                Substitute.For<ICryptoRandom>(),
+                Substitute.For<ISnapshotManager>(),
+                blockProducer,
+                new CliqueConfig(),
+                LimboLogs.Instance);
+
+            await AssertIsProducingBlocks(runner);
         }
 
         private async Task<TestRpcBlockchain> CreateTestRpc()
@@ -143,10 +156,10 @@ namespace Nethermind.Blockchain.Test.Producers
             return testRpc;
         }
 
-        private async Task AssertIsProducingBlocks(IBlockProducer blockProducer)
+        private async Task AssertIsProducingBlocks(IBlockProducerRunner blockProducer)
         {
             Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(false));
-            await blockProducer.Start();
+            blockProducer.Start();
             Assert.That(blockProducer.IsProducingBlocks(null), Is.EqualTo(true));
             Thread.Sleep(5000);
             Assert.That(blockProducer.IsProducingBlocks(1), Is.EqualTo(false));

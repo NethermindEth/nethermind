@@ -20,9 +20,7 @@ using Nethermind.JsonRpc.Converters;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Trie;
-using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -86,23 +84,8 @@ public class InitializeStateDb : IStep
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
-        IWitnessCollector witnessCollector;
-        if (syncConfig.WitnessProtocolEnabled)
-        {
-            WitnessCollector witnessCollectorImpl = new(getApi.DbProvider.WitnessDb, _api.LogManager);
-            witnessCollector = setApi.WitnessCollector = witnessCollectorImpl;
-            setApi.WitnessRepository = witnessCollectorImpl.WithPruning(getApi.BlockTree!, getApi.LogManager);
-        }
-        else
-        {
-            witnessCollector = setApi.WitnessCollector = NullWitnessCollector.Instance;
-            setApi.WitnessRepository = NullWitnessCollector.Instance;
-        }
-
-        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-            .WitnessedBy(witnessCollector);
-        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
+        IKeyValueStoreWithBatching stateDb = getApi.DbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -128,7 +111,7 @@ public class InitializeStateDb : IStep
             persistenceStrategy = Persist.EveryBlock;
         }
 
-        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateWitnessedBy);
+        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateDb);
 
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(

@@ -146,7 +146,6 @@ namespace Nethermind.Consensus.Producers
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.StateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
                 new BlockhashStore(_blockTree, _specProvider, readOnlyTxProcessingEnv.StateProvider),
                 readOnlyTxProcessingEnv.TransactionProcessor,
                 logManager,

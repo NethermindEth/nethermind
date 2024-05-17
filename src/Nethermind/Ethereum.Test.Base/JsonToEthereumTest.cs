@@ -234,6 +234,7 @@ namespace Ethereum.Test.Base
                     test.CurrentRandom = testJson.Env.CurrentRandom;
                     test.CurrentBeaconRoot = testJson.Env.CurrentBeaconRoot;
                     test.CurrentWithdrawalsRoot = testJson.Env.CurrentWithdrawalsRoot;
+                    test.CurrentExcessBlobGas = testJson.Env.CurrentExcessBlobGas;
                     test.ParentBlobGasUsed = testJson.Env.ParentBlobGasUsed;
                     test.ParentExcessBlobGas = testJson.Env.ParentExcessBlobGas;
                     test.PostReceiptsRoot = stateJson.Logs;

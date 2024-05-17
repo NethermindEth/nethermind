@@ -150,11 +150,6 @@ namespace Nethermind.State
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
-        public void TouchCode(in ValueHash256 codeHash)
-        {
-            _stateProvider.TouchCode(codeHash);
-        }
-
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
         public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
