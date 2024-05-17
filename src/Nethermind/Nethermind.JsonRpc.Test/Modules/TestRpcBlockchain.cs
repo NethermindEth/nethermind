@@ -4,6 +4,8 @@
 using System;
 using System.IO;
 using System.Threading.Tasks;
+using Autofac;
+using Autofac.Core;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.Find;
@@ -29,6 +31,7 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 
 using Nethermind.Config;
+using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.Synchronization.ParallelSync;
 using NSubstitute;
 
@@ -53,7 +56,7 @@ namespace Nethermind.JsonRpc.Test.Modules
         public static Builder<TestRpcBlockchain> ForTest(string sealEngineType) => ForTest<TestRpcBlockchain>(sealEngineType);
 
         public static Builder<T> ForTest<T>(string sealEngineType) where T : TestRpcBlockchain, new() =>
-            new(new T { SealEngineType = sealEngineType });
+            new(new T { _overrideSealEngineType = sealEngineType });
 
         public static Builder<T> ForTest<T>(T blockchain) where T : TestRpcBlockchain =>
             new(blockchain);
@@ -111,6 +114,22 @@ namespace Nethermind.JsonRpc.Test.Modules
             public async Task<T> Build(ISpecProvider? specProvider = null, UInt256? initialValues = null)
             {
                 return (T)(await _blockchain.Build(specProvider, initialValues));
+            }
+        }
+
+        private string? _overrideSealEngineType = null;
+
+        protected override void ConfigureContainer(ContainerBuilder builder)
+        {
+            base.ConfigureContainer(builder);
+
+            if (_overrideSealEngineType != null)
+            {
+                builder.RegisterDecorator<ChainSpec>((_ctx, _param, cs) =>
+                {
+                    cs.SealEngineType = _overrideSealEngineType;
+                    return cs;
+                });
             }
         }
 

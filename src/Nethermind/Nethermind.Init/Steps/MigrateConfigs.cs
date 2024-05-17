@@ -14,22 +14,30 @@ namespace Nethermind.Init.Steps
 {
     public class MigrateConfigs : IStep
     {
-        private readonly INethermindApi _api;
+        private readonly IMiningConfig _miningConfig;
+        private readonly IReceiptConfig _receiptConfig;
+        private readonly IBlocksConfig _blocksConfig;
+        private readonly IInitConfig _initConfig;
 
-        public MigrateConfigs(INethermindApi api)
+        public MigrateConfigs(
+            IMiningConfig miningConfig,
+            IReceiptConfig receiptConfig,
+            IBlocksConfig blocksConfig,
+            IInitConfig initConfig
+        )
         {
-            _api = api;
+            _miningConfig = miningConfig;
+            _receiptConfig = receiptConfig;
+            _blocksConfig = blocksConfig;
+            _initConfig = initConfig;
         }
 
         public Task Execute(CancellationToken cancellationToken)
         {
-            IMiningConfig miningConfig = _api.Config<IMiningConfig>();
-            IReceiptConfig receiptConfig = _api.Config<IReceiptConfig>();
+            MigrateInitConfig(_miningConfig, _receiptConfig);
 
-            MigrateInitConfig(miningConfig, receiptConfig);
-
-            var blocksConfig = miningConfig.BlocksConfig;
-            var value = _api.Config<IBlocksConfig>();
+            var blocksConfig = _miningConfig.BlocksConfig;
+            var value = _blocksConfig;
             MigrateBlocksConfig(blocksConfig, value);
 
             return Task.CompletedTask;
@@ -76,15 +84,15 @@ namespace Nethermind.Init.Steps
 
         private void MigrateInitConfig(IMiningConfig miningConfig, IReceiptConfig receiptConfig)
         {
-            if (_api.Config<IInitConfig>().IsMining)
+            if (_initConfig.IsMining)
             {
                 miningConfig.Enabled = true;
             }
-            if (!_api.Config<IInitConfig>().StoreReceipts)
+            if (_initConfig.StoreReceipts)
             {
                 receiptConfig.StoreReceipts = false;
             }
-            if (_api.Config<IInitConfig>().ReceiptsMigration)
+            if (_initConfig.ReceiptsMigration)
             {
                 receiptConfig.ReceiptsMigration = true;
             }

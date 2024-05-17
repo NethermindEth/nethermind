@@ -5,6 +5,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Abi;
 using Nethermind.Api;
 using Nethermind.Blockchain;
@@ -26,6 +27,7 @@ using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.TxPool;
+using Nethermind.Wallet;
 
 namespace Nethermind.Consensus.AuRa.InitializationSteps;
 
@@ -72,7 +74,7 @@ public class StartBlockProducerAuRa
         return onlyWhenNotProcessing;
     }
 
-    public Task<IBlockProducer> BuildProducer(ITxSource? additionalTxSource = null)
+    public IBlockProducer BuildProducer(ITxSource? additionalTxSource = null)
     {
         if (_api.EngineSigner is null) throw new StepDependencyException(nameof(_api.EngineSigner));
         if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
@@ -82,7 +84,7 @@ public class StartBlockProducerAuRa
 
         BlockProducerEnv producerEnv = GetProducerChain(additionalTxSource);
 
-        IGasLimitCalculator gasLimitCalculator = _api.GasLimitCalculator = CreateGasLimitCalculator(_api);
+        _api.AuraGasLimitCalculator = CreateGasLimitCalculator(_api);
 
         IBlockProducer blockProducer = new AuRaBlockProducer(
             producerEnv.TxSource,
@@ -94,12 +96,12 @@ public class StartBlockProducerAuRa
             StepCalculator,
             _api.ReportingValidator,
             _auraConfig,
-            gasLimitCalculator,
+            _api.AuraGasLimitCalculator,
             _api.SpecProvider,
             _api.LogManager,
             _api.ConfigProvider.GetConfig<IBlocksConfig>());
 
-        return Task.FromResult(blockProducer);
+        return blockProducer;
     }
 
     private BlockProcessor CreateBlockProcessor(ReadOnlyTxProcessingEnv changeableTxProcessingEnv)
@@ -305,7 +307,7 @@ public class StartBlockProducerAuRa
                         signer),
                     new EciesCipher(_api.CryptoRandom),
                     signer,
-                    _api.NodeKey,
+                    _api.BaseContainer.ResolveKeyed<ProtectedPrivateKey>(PrivateKeyName.NodeKey),
                     _api.CryptoRandom,
                     _api.LogManager);
 

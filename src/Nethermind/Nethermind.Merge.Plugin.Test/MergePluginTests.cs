@@ -25,7 +25,7 @@ namespace Nethermind.Merge.Plugin.Test;
 public class MergePluginTests
 {
     private MergeConfig _mergeConfig = null!;
-    private NethermindApi _context = null!;
+    private INethermindApi _context = null!;
     private MergePlugin _plugin = null!;
     private CliquePlugin? _consensusPlugin = null;
 
@@ -37,7 +37,6 @@ public class MergePluginTests
         IJsonRpcConfig jsonRpcConfig = new JsonRpcConfig() { Enabled = true, EnabledModules = new[] { ModuleType.Engine } };
 
         _context = Build.ContextWithMocks();
-        _context.SealEngineType = SealEngineType.Clique;
         _context.ConfigProvider.GetConfig<IMergeConfig>().Returns(_mergeConfig);
         _context.ConfigProvider.GetConfig<ISyncConfig>().Returns(new SyncConfig());
         _context.ConfigProvider.GetConfig<IBlocksConfig>().Returns(miningConfig);
@@ -56,16 +55,15 @@ public class MergePluginTests
             _context.TransactionComparerProvider!,
             miningConfig,
             _context.LogManager!);
-        _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
         _context.ChainSpec!.Clique = new CliqueParameters()
         {
             Epoch = CliqueConfig.Default.Epoch,
             Period = CliqueConfig.Default.BlockPeriod
         };
-        _plugin = new MergePlugin();
+        _plugin = new MergePlugin(_context.ChainSpec, _mergeConfig);
 
-        _consensusPlugin = new();
+        _consensusPlugin = new(_context.ChainSpec);
     }
 
     [TearDown]
@@ -96,7 +94,7 @@ public class MergePluginTests
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrowAsync(async () => await _plugin.InitSynchronization());
-        Assert.DoesNotThrowAsync(async () => await _plugin.InitBlockProducer(_consensusPlugin!, null));
+        Assert.DoesNotThrow(() => _plugin.InitBlockProducer(_consensusPlugin!, null));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
         Assert.DoesNotThrowAsync(async () => await _plugin.DisposeAsync());
     }
@@ -111,7 +109,7 @@ public class MergePluginTests
         ISyncConfig syncConfig = _context.Config<ISyncConfig>();
         Assert.IsTrue(syncConfig.NetworkingEnabled);
         Assert.IsTrue(_context.GossipPolicy.CanGossipBlocks);
-        await _plugin.InitBlockProducer(_consensusPlugin!, null);
+        _plugin.InitBlockProducer(_consensusPlugin!, null);
         Assert.IsInstanceOf<MergeBlockProducer>(_context.BlockProducer);
         await _plugin.InitRpcModules();
         _context.RpcModuleProvider!.Received().Register(Arg.Is<IRpcModulePool<IEngineRpcModule>>(m => m is SingletonModulePool<IEngineRpcModule>));

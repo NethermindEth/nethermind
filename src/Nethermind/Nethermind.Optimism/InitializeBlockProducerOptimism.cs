@@ -19,7 +19,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         _api = api;
     }
 
-    protected override Task<IBlockProducer> BuildProducer()
+    protected override IBlockProducer BuildProducer()
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -49,7 +49,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.L1CostHelper,
             _api.LogManager);
 
-        _api.GasLimitCalculator = new OptimismGasLimitCalculator();
         BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
 
         _api.BlockProducer = new OptimismPostMergeBlockProducer(
@@ -65,6 +64,6 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.LogManager,
             _api.Config<IBlocksConfig>());
 
-        return Task.FromResult(_api.BlockProducer);
+        return _api.BlockProducer;
     }
 }

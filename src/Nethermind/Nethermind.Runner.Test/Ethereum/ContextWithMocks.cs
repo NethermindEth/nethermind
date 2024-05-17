@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.IO.Abstractions;
+using Autofac;
 using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
@@ -42,10 +43,11 @@ using Nethermind.TxPool;
 using Nethermind.Wallet;
 using Nethermind.Sockets;
 using Nethermind.Specs;
-using Nethermind.Synchronization.SnapSync;
 using Nethermind.Trie;
 using NSubstitute;
 using Nethermind.Blockchain.Blocks;
+using Nethermind.Core;
+using Nethermind.Core.Timers;
 
 namespace Nethermind.Runner.Test.Ethereum
 {
@@ -53,18 +55,29 @@ namespace Nethermind.Runner.Test.Ethereum
     {
         public static NethermindApi ContextWithMocks()
         {
-            var api = new NethermindApi(Substitute.For<IConfigProvider>(), Substitute.For<IJsonSerializer>(), LimboLogs.Instance,
-                new ChainSpec())
+            var containerBuilder = new ContainerBuilder();
+            containerBuilder.RegisterInstance(Substitute.For<IConfigProvider>()).As<IConfigProvider>();
+            containerBuilder.RegisterInstance(Substitute.For<ILogManager>()).As<ILogManager>();
+            containerBuilder.RegisterInstance(Substitute.For<ISpecProvider>()).As<ISpecProvider>();
+            containerBuilder.RegisterInstance(Substitute.For<IProcessExitSource>()).As<IProcessExitSource>();
+            containerBuilder.RegisterInstance(Substitute.For<IGasLimitCalculator>()).As<IGasLimitCalculator>();
+            containerBuilder.RegisterInstance(Substitute.For<INodeStatsManager>()).As<INodeStatsManager>();
+            containerBuilder.RegisterInstance(Substitute.For<ITimerFactory>()).As<ITimerFactory>();
+            containerBuilder.RegisterInstance(Substitute.For<ITimestamper>()).As<ITimestamper>();
+            containerBuilder.RegisterInstance(Substitute.For<IWallet>()).As<IWallet>();
+            containerBuilder.RegisterInstance(Substitute.For<IFileSystem>()).As<IFileSystem>();
+            containerBuilder.RegisterInstance(Substitute.For<IKeyStore>()).As<IKeyStore>();
+            containerBuilder.RegisterInstance(Substitute.For<IEnode>()).As<IEnode>();
+            containerBuilder.RegisterInstance(new ChainSpec());
+
+            var api = new NethermindApi(containerBuilder.Build())
             {
-                Enode = Substitute.For<IEnode>(),
                 TxPool = Substitute.For<ITxPool>(),
-                Wallet = Substitute.For<IWallet>(),
                 BlockTree = Substitute.For<IBlockTree>(),
                 SyncServer = Substitute.For<ISyncServer>(),
                 DbProvider = TestMemDbProvider.Init(),
                 PeerManager = Substitute.For<IPeerManager>(),
                 PeerPool = Substitute.For<IPeerPool>(),
-                SpecProvider = Substitute.For<ISpecProvider>(),
                 EthereumEcdsa = Substitute.For<IEthereumEcdsa>(),
                 MainBlockProcessor = Substitute.For<IBlockProcessor>(),
                 ReceiptStorage = Substitute.For<IReceiptStorage>(),
@@ -80,13 +93,10 @@ namespace Nethermind.Runner.Test.Ethereum
                 BlockProducer = Substitute.For<IBlockProducer>(),
                 DiscoveryApp = Substitute.For<IDiscoveryApp>(),
                 EngineSigner = Substitute.For<ISigner>(),
-                FileSystem = Substitute.For<IFileSystem>(),
                 FilterManager = Substitute.For<IFilterManager>(),
                 FilterStore = Substitute.For<IFilterStore>(),
                 GrpcServer = Substitute.For<IGrpcServer>(),
                 HeaderValidator = Substitute.For<IHeaderValidator>(),
-                IpResolver = Substitute.For<IIPResolver>(),
-                KeyStore = Substitute.For<IKeyStore>(),
                 LogFinder = Substitute.For<ILogFinder>(),
                 MonitoringService = Substitute.For<IMonitoringService>(),
                 ProtocolsManager = Substitute.For<IProtocolsManager>(),
@@ -100,7 +110,6 @@ namespace Nethermind.Runner.Test.Ethereum
                 TxSender = Substitute.For<ITxSender>(),
                 BlockProcessingQueue = Substitute.For<IBlockProcessingQueue>(),
                 EngineSignerStore = Substitute.For<ISignerStore>(),
-                NodeStatsManager = Substitute.For<INodeStatsManager>(),
                 RpcModuleProvider = Substitute.For<IRpcModuleProvider>(),
                 SyncModeSelector = Substitute.For<ISyncModeSelector>(),
                 SyncPeerPool = Substitute.For<ISyncPeerPool>(),

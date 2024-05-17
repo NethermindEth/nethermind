@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using Nethermind.Api;
+using Nethermind.Consensus;
 using Nethermind.JsonRpc;
+using Nethermind.Mev;
 using NSubstitute;
 using NUnit.Framework;
 
@@ -21,12 +23,15 @@ namespace Nethermind.AccountAbstraction.Test
             IAccountAbstractionConfig accountAbstractionConfig = Substitute.For<IAccountAbstractionConfig>();
             accountAbstractionConfig.Enabled.Returns(true);
             accountAbstractionConfig.EntryPointContractAddresses.Returns("0x0101010101010101010101010101010101010101");
-            _api.Config<IAccountAbstractionConfig>().Returns(accountAbstractionConfig);
             _api.Config<IJsonRpcConfig>().Returns(Substitute.For<IJsonRpcConfig>());
             _api.ForRpc.Returns((Substitute.For<IApiWithNetwork>(), Substitute.For<INethermindApi>()));
             _api.ForProducer.Returns((Substitute.For<IApiWithBlockchain>(), Substitute.For<IApiWithBlockchain>()));
 
-            _accountAbstractionPlugin = new();
+            _accountAbstractionPlugin = new(
+                new MevPlugin(new MevConfig() { Enabled = false }),
+                accountAbstractionConfig,
+                new InitConfig() { IsMining = true },
+                new MiningConfig());
             _accountAbstractionPlugin.Init(_api);
             _accountAbstractionPlugin.InitNetworkProtocol();
         }

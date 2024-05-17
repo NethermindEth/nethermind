@@ -4,6 +4,8 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Blocks;
+using Autofac;
+using Nethermind.Api;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Consensus;
@@ -27,6 +29,7 @@ using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
 using Nethermind.Merge.Plugin.Handlers;
 using Nethermind.Merge.Plugin.Test;
+using Nethermind.Runner.Modules;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs;
 using Nethermind.Specs.ChainSpecStyle;
@@ -94,33 +97,40 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
         public MergeAuRaTestBlockchain(IMergeConfig? mergeConfig = null, IPayloadPreparationService? mockedPayloadPreparationService = null)
             : base(mergeConfig, mockedPayloadPreparationService)
         {
-            SealEngineType = Core.SealEngineType.AuRa;
+        }
+
+        protected override void ConfigureContainer(ContainerBuilder builder)
+        {
+            base.ConfigureContainer(builder);
+
+            builder.RegisterModule(new AuRaPlugin.AuraModule());
+            builder.RegisterInstance(new ConfigProvider()).AsImplementedInterfaces();
+            builder.RegisterInstance(Substitute.For<IProcessExitSource>());
+            builder.RegisterInstance(new ChainSpec()
+            {
+                SealEngineType = Core.SealEngineType.AuRa,
+                AuRa = new()
+                {
+                    WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
+                },
+                Parameters = new()
+            });
         }
 
         protected override IBlockProcessor CreateBlockProcessor()
         {
-            _api = new(new ConfigProvider(), new EthereumJsonSerializer(), LogManager,
-                    new ChainSpec
-                    {
-                        AuRa = new()
-                        {
-                            WithdrawalContractAddress = new("0xbabe2bed00000000000000000000000000000003")
-                        },
-                        Parameters = new()
-                    })
-            {
-                BlockTree = BlockTree,
-                DbProvider = DbProvider,
-                WorldStateManager = WorldStateManager,
-                SpecProvider = SpecProvider,
-                TransactionComparerProvider = TransactionComparerProvider,
-                TxPool = TxPool
-            };
+            _api = Container.Resolve<AuRaNethermindApi>();
 
-            WithdrawalContractFactory withdrawalContractFactory = new(_api.ChainSpec!.AuRa, _api.AbiEncoder);
+            _api.BlockTree = BlockTree;
+            _api.DbProvider = DbProvider;
+            _api.WorldStateManager = WorldStateManager;
+            _api.TransactionComparerProvider = TransactionComparerProvider;
+            _api.TxPool = TxPool;
+
+            WithdrawalContractFactory withdrawalContractFactory = new(((INethermindApi)_api).ChainSpec!.AuRa, _api.AbiEncoder);
             WithdrawalProcessor = new AuraWithdrawalProcessor(
-                    withdrawalContractFactory.Create(TxProcessor),
-                    LogManager
+                withdrawalContractFactory.Create(TxProcessor),
+                LogManager
             );
 
             BlockValidator = CreateBlockValidator();

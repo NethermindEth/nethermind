@@ -1,24 +1,33 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.IO;
+using System.Reflection;
 using System.Threading.Tasks;
+using Autofac;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Blockchain;
 using Nethermind.Serialization.Json;
 using Nethermind.Specs.ChainSpecStyle;
+using Module = Autofac.Module;
 
 namespace Nethermind.AuRa.Test.Contract
 {
     public class TestContractBlockchain : TestBlockchain
     {
-        public ChainSpec ChainSpec { get; set; }
+        private ChainSpec _overrideChainSpec;
 
         protected TestContractBlockchain()
         {
-            SealEngineType = Nethermind.Core.SealEngineType.AuRa;
+        }
+
+        protected override void ConfigureContainer(ContainerBuilder builder)
+        {
+            base.ConfigureContainer(builder);
+            builder.RegisterInstance(_overrideChainSpec);
         }
 
         public static async Task<TTest> ForTest<TTest, TTestClass>(string testSuffix = null) where TTest : TestContractBlockchain, new()
@@ -34,13 +43,16 @@ namespace Nethermind.AuRa.Test.Contract
             }
 
             (ChainSpec ChainSpec, ISpecProvider SpecProvider) provider = GetSpecProvider();
-            TTest test = new() { ChainSpec = provider.ChainSpec };
+            TTest test = new()
+            {
+                _overrideChainSpec = provider.ChainSpec,
+            };
             return (TTest)await test.Build(provider.SpecProvider);
         }
 
         protected override Block GetGenesisBlock() =>
             new GenesisLoader(
-                    ChainSpec,
+                    base.Container.Resolve<ChainSpec>(),
                     SpecProvider,
                     State,
                     TxProcessor)

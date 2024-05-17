@@ -9,7 +9,7 @@ namespace Nethermind.Api.Extensions
 {
     public interface IConsensusWrapperPlugin : INethermindPlugin
     {
-        Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
+        IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
 
         IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner) => baseRunner;
 
@@ -18,6 +18,5 @@ namespace Nethermind.Api.Extensions
         /// </summary>
         int Priority => 0;
 
-        bool Enabled { get; }
     }
 }
