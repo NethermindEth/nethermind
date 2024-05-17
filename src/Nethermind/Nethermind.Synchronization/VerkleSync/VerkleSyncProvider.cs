@@ -14,7 +14,6 @@ using Nethermind.Verkle.Tree;
 using Nethermind.Verkle.Tree.Serializers;
 using Nethermind.Verkle.Tree.Sync;
 using Nethermind.Verkle.Tree.TreeStore;
-using Nethermind.Verkle.Tree.VerkleDb;
 using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Synchronization.VerkleSync;
@@ -96,7 +95,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
             }
 
             _progressTracker.UpdateSubTreePartitionProgress(limitStem, subTrees[^1].Path,
-                startingStem == subTrees[^1].Path);
+                startingStem != subTrees[^1].Path);
             return AddRangeResult.OK;
         }
         finally

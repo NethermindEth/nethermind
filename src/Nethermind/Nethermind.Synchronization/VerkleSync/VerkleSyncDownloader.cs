@@ -23,7 +23,7 @@ public class VerkleSyncDownloader : ISyncDownloader<VerkleSyncBatch>
     public async Task Dispatch(PeerInfo peerInfo, VerkleSyncBatch batch, CancellationToken cancellationToken)
     {
         ISyncPeer peer = peerInfo.SyncPeer;
-
+        Logger.Info($"Dispatching Verkle Sync Batch");
         //TODO: replace with a constant "snap"
         if (peer.TryGetSatelliteProtocol("verkle", out IVerkleSyncPeer? handler))
         {
