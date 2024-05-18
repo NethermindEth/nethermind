@@ -35,10 +35,8 @@ using Nethermind.Network.StaticNodes;
 using Nethermind.Stats.Model;
 using Nethermind.Synchronization;
 using Nethermind.Synchronization.Blocks;
-using Nethermind.Synchronization.LesSync;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
-using Nethermind.Synchronization.Reporting;
 using Nethermind.Synchronization.SnapSync;
 using Nethermind.Synchronization.Trie;
 using Nethermind.TxPool;
@@ -102,8 +100,6 @@ public class InitializeNetwork : IStep
             NetworkDiagTracer.Start(_api.LogManager);
         }
 
-        CanonicalHashTrie cht = new CanonicalHashTrie(_api.DbProvider!.ChtDb);
-
         _api.BetterPeerStrategy = new TotalDifficultyBetterPeerStrategy(_api.LogManager);
 
         int maxPeersCount = _networkConfig.ActivePeersMaxCount;
@@ -144,6 +140,7 @@ public class InitializeNetwork : IStep
 
             _api.Synchronizer ??= new Synchronizer(
                 _api.DbProvider,
+                _api.NodeStorageFactory.WrapKeyValueStore(_api.DbProvider.StateDb),
                 _api.SpecProvider!,
                 _api.BlockTree,
                 _api.ReceiptStorage!,
@@ -178,13 +175,10 @@ public class InitializeNetwork : IStep
             _api.SyncPeerPool,
             _api.SyncModeSelector,
             _api.Config<ISyncConfig>(),
-            _api.WitnessRepository,
             _api.GossipPolicy,
             _api.SpecProvider!,
-            _api.LogManager,
-            cht);
+            _api.LogManager);
 
-        _ = syncServer.BuildCHT();
         _api.DisposeStack.Push(syncServer);
 
         InitDiscovery();
@@ -201,7 +195,7 @@ public class InitializeNetwork : IStep
             }
         });
 
-        if (_syncConfig.SnapSync && !_syncConfig.SnapServingEnabled)
+        if (_syncConfig.SnapSync && _syncConfig.SnapServingEnabled != true)
         {
             SnapCapabilitySwitcher snapCapabilitySwitcher =
                 new(_api.ProtocolsManager, _api.SyncModeSelector, _api.LogManager);
@@ -503,7 +497,7 @@ public class InitializeNetwork : IStep
         PooledTxsRequestor pooledTxsRequestor = new(_api.TxPool!, _api.Config<ITxPoolConfig>());
 
         ISnapServer? snapServer = null;
-        if (_syncConfig.SnapServingEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
             // TODO: Add a proper config for the state persistence depth.
             snapServer = new SnapServer(_api.TrieStore!.AsReadOnly(), _api.DbProvider.CodeDb, new LastNStateRootTracker(_api.BlockTree, 128), _api.LogManager);
@@ -528,14 +522,9 @@ public class InitializeNetwork : IStep
             _api.LogManager,
             _api.TxGossipPolicy);
 
-        if (_syncConfig.SnapServingEnabled)
+        if (_syncConfig.SnapServingEnabled == true)
         {
             _api.ProtocolsManager!.AddSupportedCapability(new Capability(Protocol.Snap, 1));
-        }
-
-        if (_syncConfig.WitnessProtocolEnabled)
-        {
-            _api.ProtocolsManager.AddSupportedCapability(new Capability(Protocol.Wit, 0));
         }
 
         _api.ProtocolValidator = protocolValidator;

@@ -19,7 +19,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x11);
+    public static Address Address { get; } = Address.FromNumber(0x10);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
@@ -29,7 +29,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
     {
         int k = inputData.Length / ItemSize;
-        return 55000L * k * Discount.For(k) / 1000;
+        return 45000L * k * Discount.For(k) / 1000;
     }
 
     private const int ItemSize = 288;
@@ -39,6 +39,15 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
             return (Array.Empty<byte>(), false);
+        }
+
+        for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        {
+            int offset = i * ItemSize;
+            if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
         }
 
         (byte[], bool) result;

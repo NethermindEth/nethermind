@@ -34,6 +34,7 @@ public class DebugBridge : IDebugBridge
     private readonly ISpecProvider _specProvider;
     private readonly ISyncModeSelector _syncModeSelector;
     private readonly IBlockStore _badBlockStore;
+    private readonly IBlockStore _blockStore;
     private readonly Dictionary<string, IDb> _dbMappings;
 
     public DebugBridge(
@@ -67,11 +68,12 @@ public class DebugBridge : IDebugBridge
             {DbNames.State, dbProvider.StateDb},
             {DbNames.Storage, dbProvider.StateDb},
             {DbNames.BlockInfos, blockInfosDb},
-            {DbNames.Blocks, blocksDb},
             {DbNames.Headers, headersDb},
             {DbNames.Metadata, metadataDb},
             {DbNames.Code, codeDb},
         };
+
+        _blockStore = new BlockStore(blocksDb);
 
         IColumnsDb<ReceiptsColumns> receiptsDb = dbProvider.ReceiptsDb ?? throw new ArgumentNullException(nameof(dbProvider.ReceiptsDb));
         foreach (ReceiptsColumns receiptsDbColumnKey in receiptsDb.ColumnKeys)
@@ -128,6 +130,8 @@ public class DebugBridge : IDebugBridge
     public Transaction? GetTransactionFromHash(Hash256 txHash)
     {
         Hash256 blockHash = _receiptStorage.FindBlockHash(txHash);
+        if (blockHash is null)
+            return null;
         SearchResult<Block> searchResult = _blockTree.SearchForBlock(new BlockParameter(blockHash));
         if (searchResult.IsError)
         {
@@ -156,8 +160,6 @@ public class DebugBridge : IDebugBridge
     public IReadOnlyCollection<GethLikeTxTrace> GetBlockTrace(Rlp blockRlp, CancellationToken cancellationToken, GethTraceOptions? gethTraceOptions = null) =>
         _tracer.TraceBlock(blockRlp, gethTraceOptions ?? GethTraceOptions.Default, cancellationToken);
 
-    public byte[] GetBlockRlp(Hash256 blockHash) => _dbMappings[DbNames.Blocks].Get(blockHash);
-
     public byte[]? GetBlockRlp(BlockParameter parameter)
     {
         if (parameter.BlockHash is Hash256 hash)
@@ -172,13 +174,22 @@ public class DebugBridge : IDebugBridge
         return null;
     }
 
-    public Block? GetBlock(BlockParameter param)
-        => _blockTree.FindBlock(param);
+    public byte[] GetBlockRlp(Hash256 blockHash)
+    {
+        BlockHeader? header = _blockTree.FindHeader(blockHash);
+        if (header == null) return null;
+
+        return _blockStore.GetRaw(header.Number, blockHash);
+    }
+
     public byte[] GetBlockRlp(long number)
     {
         Hash256 hash = _blockTree.FindHash(number);
-        return hash is null ? null : _dbMappings[DbNames.Blocks].Get(hash);
+        return hash is null ? null : _blockStore.GetRaw(number, hash);
     }
+
+    public Block? GetBlock(BlockParameter param)
+        => _blockTree.FindBlock(param);
 
     public object GetConfigValue(string category, string name) => _configProvider.GetRawValue(category, name);
 

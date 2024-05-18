@@ -24,11 +24,6 @@ configs = {
         "blockReduced": 1000,
         "multiplierRequirement": 1000
     },
-    "goerli": {
-        "url": "api-goerli.etherscan.io",
-        "blockReduced": 8192,
-        "multiplierRequirement": 30000
-    },
     "gnosis": {
         "url": "https://rpc.gnosischain.com",
         "blockReduced": 8192,

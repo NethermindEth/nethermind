@@ -293,6 +293,17 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void Smoke_test_many_readahead()
+        {
+            _db[new byte[] { 1, 2, 3 }] = new byte[] { 4, 5, 6 };
+            // Attempt to trigger auto dispose iterator on many usage
+            for (int i = 0; i < 1200000; i++)
+            {
+                Assert.That(_db.Get(new byte[] { 1, 2, 3 }, ReadFlags.HintReadAhead), Is.EqualTo(new byte[] { 4, 5, 6 }));
+            }
+        }
+
+        [Test]
         public void Smoke_test_span()
         {
             byte[] key = new byte[] { 1, 2, 3 };

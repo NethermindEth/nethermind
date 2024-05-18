@@ -42,14 +42,14 @@ namespace Nethermind.State
         public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
         {
             _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
         internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
         {
-            _stateProvider = new StateProvider(trieStore, codeDb, logManager, stateTree);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
@@ -150,11 +150,6 @@ namespace Nethermind.State
             _persistentStorageProvider.CommitTrees(blockNumber);
             _stateProvider.CommitTree(blockNumber);
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
-        }
-
-        public void TouchCode(in ValueHash256 codeHash)
-        {
-            _stateProvider.TouchCode(codeHash);
         }
 
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);

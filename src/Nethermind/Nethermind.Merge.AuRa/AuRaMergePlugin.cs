@@ -9,6 +9,8 @@ using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
+using Nethermind.Consensus.Producers;
+using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -44,12 +46,10 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override Task<IBlockProducer> InitBlockProducer(IConsensusPlugin consensusPlugin)
+        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
                 (AuRaNethermindApi)_api,
-                _api.Config<IAuraConfig>(),
-                _api.DisposeStack,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,
@@ -62,7 +62,7 @@ namespace Nethermind.Merge.AuRa
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
 
-            return base.InitBlockProducer(consensusPlugin);
+            return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()

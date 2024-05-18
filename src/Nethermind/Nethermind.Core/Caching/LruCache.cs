@@ -15,12 +15,14 @@ namespace Nethermind.Core.Caching
         private readonly int _maxCapacity;
         private readonly Dictionary<TKey, LinkedListNode<LruCacheItem>> _cacheMap;
         private readonly McsLock _lock = new();
+        private readonly string _name;
         private LinkedListNode<LruCacheItem>? _leastRecentlyUsed;
 
         public LruCache(int maxCapacity, int startCapacity, string name)
         {
             ArgumentOutOfRangeException.ThrowIfLessThan(maxCapacity, 1);
 
+            _name = name;
             _maxCapacity = maxCapacity;
             _cacheMap = typeof(TKey) == typeof(byte[])
                 ? new Dictionary<TKey, LinkedListNode<LruCacheItem>>((IEqualityComparer<TKey>)Bytes.EqualityComparer)
@@ -90,21 +92,19 @@ namespace Nethermind.Core.Caching
                 LinkedListNode<LruCacheItem>.MoveToMostRecent(ref _leastRecentlyUsed, node);
                 return false;
             }
+
+            if (_cacheMap.Count >= _maxCapacity)
+            {
+                Replace(key, val);
+            }
             else
             {
-                if (_cacheMap.Count >= _maxCapacity)
-                {
-                    Replace(key, val);
-                }
-                else
-                {
-                    LinkedListNode<LruCacheItem> newNode = new(new(key, val));
-                    LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
-                    _cacheMap.Add(key, newNode);
-                }
-
-                return true;
+                LinkedListNode<LruCacheItem> newNode = new(new(key, val));
+                LinkedListNode<LruCacheItem>.AddMostRecent(ref _leastRecentlyUsed, newNode);
+                _cacheMap.Add(key, newNode);
             }
+
+            return true;
         }
 
         public bool Delete(TKey key)
@@ -138,7 +138,7 @@ namespace Nethermind.Core.Caching
             using var lockRelease = _lock.Acquire();
 
             int i = 0;
-            KeyValuePair<TKey, TValue>[] array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
+            var array = new KeyValuePair<TKey, TValue>[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = new KeyValuePair<TKey, TValue>(kvp.Key, kvp.Value.Value.Value);
@@ -151,13 +151,21 @@ namespace Nethermind.Core.Caching
         public TValue[] GetValues()
         {
             int i = 0;
-            TValue[] array = new TValue[_cacheMap.Count];
+            var array = new TValue[_cacheMap.Count];
             foreach (KeyValuePair<TKey, LinkedListNode<LruCacheItem>> kvp in _cacheMap)
             {
                 array[i++] = kvp.Value.Value.Value;
             }
 
             return array;
+        }
+
+        public int Size
+        {
+            get
+            {
+                return _cacheMap.Count;
+            }
         }
 
         private void Replace(TKey key, TValue value)
@@ -182,16 +190,10 @@ namespace Nethermind.Core.Caching
             }
         }
 
-        private struct LruCacheItem
+        private struct LruCacheItem(TKey k, TValue v)
         {
-            public LruCacheItem(TKey k, TValue v)
-            {
-                Key = k;
-                Value = v;
-            }
-
-            public readonly TKey Key;
-            public TValue Value;
+            public readonly TKey Key = k;
+            public TValue Value = v;
         }
 
         public long MemorySize => CalculateMemorySize(0, _cacheMap.Count);

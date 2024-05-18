@@ -88,15 +88,17 @@ public class BlockValidator : IBlockValidator
     {
         return ValidateSuggestedBlock(block, out _);
     }
+
     /// <summary>
     /// Suggested block validation runs basic checks that can be executed before going through the expensive EVM processing.
     /// </summary>
     /// <param name="block">A block to validate</param>
     /// <param name="errorMessage">Message detailing a validation failure.</param>
+    /// <param name="validateHashes"></param>
     /// <returns>
     /// <c>true</c> if the <paramref name="block"/> is valid; otherwise, <c>false</c>.
     /// </returns>
-    public bool ValidateSuggestedBlock(Block block, out string? errorMessage)
+    public bool ValidateSuggestedBlock(Block block, out string? errorMessage, bool validateHashes = true)
     {
         IReleaseSpec spec = _specProvider.GetSpec(block.Header);
 
@@ -113,14 +115,14 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!ValidateUnclesHashMatches(block, out Hash256 unclesHash))
+        if (validateHashes && !ValidateUnclesHashMatches(block, out Hash256 unclesHash))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Uncles hash mismatch: expected {block.Header.UnclesHash}, got {unclesHash}");
             errorMessage = BlockErrorMessages.InvalidUnclesHash;
             return false;
         }
 
-        if (!_unclesValidator.Validate(block.Header, block.Uncles))
+        if (block.Uncles.Length > 0 && !_unclesValidator.Validate(block.Header, block.Uncles))
         {
             if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Invalid uncles");
             errorMessage = BlockErrorMessages.InvalidUncle;
@@ -134,15 +136,20 @@ public class BlockValidator : IBlockValidator
             return false;
         }
 
-        if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
+        if (validateHashes)
         {
-            if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
-            errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot, txRoot);
-            return false;
-        }
+            if (!ValidateTxRootMatchesTxs(block, out Hash256 txRoot))
+            {
+                if (_logger.IsDebug) _logger.Debug($"{Invalid(block)} Transaction root hash mismatch: expected {block.Header.TxRoot}, got {txRoot}");
+                errorMessage = BlockErrorMessages.InvalidTxRoot(block.Header.TxRoot!, txRoot);
+                return false;
+            }
 
-        if (!ValidateWithdrawals(block, spec, out errorMessage))
-            return false;
+            if (!ValidateWithdrawals(block, spec, out errorMessage))
+            {
+                return false;
+            }
+        }
 
         return true;
     }
@@ -178,48 +185,48 @@ public class BlockValidator : IBlockValidator
             error = null;
             return true;
         }
-        if (_logger.IsError) _logger.Error($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
-        if (_logger.IsError) _logger.Error($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
+        if (_logger.IsWarn) _logger.Warn($"Processed block {processedBlock.ToString(Block.Format.Short)} is invalid:");
+        if (_logger.IsWarn) _logger.Warn($"- hash: expected {suggestedBlock.Hash}, got {processedBlock.Hash}");
         error = null;
         if (processedBlock.Header.GasUsed != suggestedBlock.Header.GasUsed)
         {
-            if (_logger.IsError) _logger.Error($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
+            if (_logger.IsWarn) _logger.Warn($"- gas used: expected {suggestedBlock.Header.GasUsed}, got {processedBlock.Header.GasUsed} (diff: {processedBlock.Header.GasUsed - suggestedBlock.Header.GasUsed})");
             error = error ?? BlockErrorMessages.HeaderGasUsedMismatch;
         }
 
         if (processedBlock.Header.Bloom != suggestedBlock.Header.Bloom)
         {
-            if (_logger.IsError) _logger.Error($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
+            if (_logger.IsWarn) _logger.Warn($"- bloom: expected {suggestedBlock.Header.Bloom}, got {processedBlock.Header.Bloom}");
             error = error ?? BlockErrorMessages.InvalidLogsBloom;
         }
 
         if (processedBlock.Header.ReceiptsRoot != suggestedBlock.Header.ReceiptsRoot)
         {
-            if (_logger.IsError) _logger.Error($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
+            if (_logger.IsWarn) _logger.Warn($"- receipts root: expected {suggestedBlock.Header.ReceiptsRoot}, got {processedBlock.Header.ReceiptsRoot}");
             error = error ?? BlockErrorMessages.InvalidReceiptsRoot;
         }
 
         if (processedBlock.Header.StateRoot != suggestedBlock.Header.StateRoot)
         {
-            if (_logger.IsError) _logger.Error($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
+            if (_logger.IsWarn) _logger.Warn($"- state root: expected {suggestedBlock.Header.StateRoot}, got {processedBlock.Header.StateRoot}");
             error = error ?? BlockErrorMessages.InvalidStateRoot;
         }
 
         if (processedBlock.Header.BlobGasUsed != suggestedBlock.Header.BlobGasUsed)
         {
-            if (_logger.IsError) _logger.Error($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
+            if (_logger.IsWarn) _logger.Warn($"- blob gas used: expected {suggestedBlock.Header.BlobGasUsed}, got {processedBlock.Header.BlobGasUsed}");
             error = error ?? BlockErrorMessages.HeaderBlobGasMismatch;
         }
 
         if (processedBlock.Header.ExcessBlobGas != suggestedBlock.Header.ExcessBlobGas)
         {
-            if (_logger.IsError) _logger.Error($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
+            if (_logger.IsWarn) _logger.Warn($"- excess blob gas: expected {suggestedBlock.Header.ExcessBlobGas}, got {processedBlock.Header.ExcessBlobGas}");
             error = error ?? BlockErrorMessages.IncorrectExcessBlobGas;
         }
 
         if (processedBlock.Header.ParentBeaconBlockRoot != suggestedBlock.Header.ParentBeaconBlockRoot)
         {
-            if (_logger.IsError) _logger.Error($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
+            if (_logger.IsWarn) _logger.Warn($"- parent beacon block root : expected {suggestedBlock.Header.ParentBeaconBlockRoot}, got {processedBlock.Header.ParentBeaconBlockRoot}");
             error = error ?? BlockErrorMessages.InvalidParentBeaconBlockRoot;
         }
 
@@ -227,13 +234,13 @@ public class BlockValidator : IBlockValidator
         {
             if (receipts[i].Error is not null && receipts[i].GasUsed == 0 && receipts[i].Error == "invalid")
             {
-                if (_logger.IsError) _logger.Error($"- invalid transaction {i}");
+                if (_logger.IsWarn) _logger.Warn($"- invalid transaction {i}");
                 error = error ?? BlockErrorMessages.InvalidTxInBlock(i);
             }
         }
         if (suggestedBlock.ExtraData is not null)
         {
-            if (_logger.IsError) _logger.Error($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
+            if (_logger.IsWarn) _logger.Warn($"- block extra data : {suggestedBlock.ExtraData.ToHexString()}, UTF8: {Encoding.UTF8.GetString(suggestedBlock.ExtraData)}");
         }
         return isValid;
     }

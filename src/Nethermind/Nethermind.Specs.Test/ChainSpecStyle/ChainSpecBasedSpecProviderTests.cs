@@ -184,43 +184,6 @@ public class ChainSpecBasedSpecProviderTests
         //    t => ValidateSlotByTimestamp(t, HoleskySpecProvider.GenesisTimestamp).Should().BeTrue());
     }
 
-    public static IEnumerable<TestCaseData> GoerliActivations
-    {
-        get
-        {
-            yield return new TestCaseData((ForkActivation)0) { TestName = "Genesis" };
-            yield return new TestCaseData((ForkActivation)1) { TestName = "1" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.IstanbulBlockNumber - 1)) { TestName = "Before Istanbul" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.IstanbulBlockNumber) { TestName = "Istanbul" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.BerlinBlockNumber - 1)) { TestName = "Before Berlin" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.BerlinBlockNumber) { TestName = "Berlin" };
-            yield return new TestCaseData((ForkActivation)(GoerliSpecProvider.LondonBlockNumber - 1)) { TestName = "Before London" };
-            yield return new TestCaseData((ForkActivation)GoerliSpecProvider.LondonBlockNumber) { TestName = "London" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp - 1)) { TestName = "Before Shanghai" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 1, GoerliSpecProvider.ShanghaiTimestamp)) { TestName = "Shanghai" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp - 1)) { TestName = "Before Cancun" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp)) { TestName = "Cancun" };
-            yield return new TestCaseData(new ForkActivation(GoerliSpecProvider.LondonBlockNumber + 2, GoerliSpecProvider.CancunTimestamp + 100000000)) { TestName = "Future" };
-        }
-    }
-
-    [TestCaseSource(nameof(GoerliActivations))]
-    public void Goerli_loads_properly(ForkActivation forkActivation)
-    {
-        ChainSpec chainSpec = LoadChainSpecFromChainFolder("goerli");
-        ChainSpecBasedSpecProvider provider = new(chainSpec);
-        GoerliSpecProvider goerli = GoerliSpecProvider.Instance;
-
-        CompareSpecs(goerli, provider, forkActivation);
-        Assert.That(provider.GenesisSpec.Eip1559TransitionBlock, Is.EqualTo(GoerliSpecProvider.LondonBlockNumber));
-        Assert.That(provider.TerminalTotalDifficulty, Is.EqualTo(GoerliSpecProvider.Instance.TerminalTotalDifficulty));
-        Assert.That(provider.ChainId, Is.EqualTo(BlockchainIds.Goerli));
-        Assert.That(provider.NetworkId, Is.EqualTo(BlockchainIds.Goerli));
-
-        GetTransitionTimestamps(chainSpec.Parameters).Should().AllSatisfy(
-            t => ValidateSlotByTimestamp(t, GoerliSpecProvider.BeaconChainGenesisTimestamp).Should().BeTrue());
-    }
-
     public static IEnumerable<TestCaseData> ChiadoActivations
     {
         get
@@ -808,7 +771,7 @@ public class ChainSpecBasedSpecProviderTests
         TestTransitions((ForkActivation)20280L, r => { r.IsEip2028Enabled = true; });
         TestTransitions((ForkActivation)22000L, r => { r.IsEip2200Enabled = true; });
         TestTransitions((ForkActivation)23000L, r => { r.IsEip1283Enabled = r.IsEip1344Enabled = true; });
-        TestTransitions((ForkActivation)24000L, r => { r.IsEip2315Enabled = r.ValidateChainId = r.ValidateReceipts = true; });
+        TestTransitions((ForkActivation)24000L, r => { r.ValidateChainId = r.ValidateReceipts = true; });
         TestTransitions((ForkActivation)29290L, r => { r.IsEip2929Enabled = r.IsEip2565Enabled = true; });
         TestTransitions((ForkActivation)29300L, r => { r.IsEip2930Enabled = true; });
         TestTransitions((ForkActivation)31980L, r => { r.IsEip3198Enabled = true; });

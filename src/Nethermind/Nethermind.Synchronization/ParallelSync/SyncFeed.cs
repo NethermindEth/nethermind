@@ -36,7 +36,7 @@ namespace Nethermind.Synchronization.ParallelSync
 
         public void Activate() => ChangeState(SyncFeedState.Active);
 
-        public void Finish()
+        public virtual void Finish()
         {
             ChangeState(SyncFeedState.Finished);
             GC.Collect(2, GCCollectionMode.Aggressive, true, true);

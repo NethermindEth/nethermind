@@ -40,6 +40,8 @@ namespace Nethermind.Trie
         /// </summary>
         public bool IsFullDbScan { get; }
 
+        public bool IsRangeScan => IsFullDbScan;
+
         ReadFlags ExtraReadFlag => ReadFlags.None;
 
         bool ShouldVisit(in TNodeContext nodeContext, Hash256 nextNode);

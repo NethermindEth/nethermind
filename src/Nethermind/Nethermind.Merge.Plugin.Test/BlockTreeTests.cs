@@ -5,16 +5,15 @@ using System;
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
 using Nethermind.Crypto;
 using Nethermind.Db;
-using Nethermind.Db.Blooms;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Merge.Plugin.Synchronization;
@@ -287,7 +286,7 @@ public partial class BlockTreeTests
                     SyncedTree = _syncedTreeBuilder.TestObject;
                 }
 
-                _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, LimboLogs.Instance);
+                _beaconPivot = new BeaconPivot(new SyncConfig(), new MemDb(), SyncedTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
                 _chainLevelHelper = new ChainLevelHelper(NotSyncedTree, _beaconPivot, new SyncConfig(), LimboLogs.Instance);
                 if (moveBlocksToMainChain)

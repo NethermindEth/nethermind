@@ -16,24 +16,17 @@ namespace Nethermind.JsonRpc
     [JsonDerivedType(typeof(JsonRpcSuccessResponse))]
     [JsonDerivedType(typeof(JsonRpcErrorResponse))]
     [JsonDerivedType(typeof(JsonRpcSubscriptionResponse))]
-    public class JsonRpcResponse : IDisposable
+    public class JsonRpcResponse(Action? action = null) : IDisposable
     {
-        private Action? _disposableAction;
-
-        public JsonRpcResponse(Action? disposableAction = null)
-        {
-            _disposableAction = disposableAction;
-        }
-
         public void AddDisposable(Action disposableAction)
         {
-            if (_disposableAction is null)
+            if (action is null)
             {
-                _disposableAction = disposableAction;
+                action = disposableAction;
             }
             else
             {
-                _disposableAction += disposableAction;
+                action += disposableAction;
             }
         }
 
@@ -52,8 +45,8 @@ namespace Nethermind.JsonRpc
 
         public virtual void Dispose()
         {
-            _disposableAction?.Invoke();
-            _disposableAction = null;
+            action?.Invoke();
+            action = null;
         }
     }
 

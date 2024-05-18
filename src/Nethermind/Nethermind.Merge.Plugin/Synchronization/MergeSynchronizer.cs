@@ -18,6 +18,7 @@ using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.FastBlocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Merge.Plugin.Synchronization;
@@ -40,6 +41,7 @@ public class MergeSynchronizer : Synchronizer
 
     public MergeSynchronizer(
         IDbProvider dbProvider,
+        INodeStorage nodeStorage,
         ISpecProvider specProvider,
         IBlockTree blockTree,
         IReceiptStorage receiptStorage,
@@ -59,6 +61,7 @@ public class MergeSynchronizer : Synchronizer
         ILogManager logManager)
         : base(
             dbProvider,
+            nodeStorage,
             specProvider,
             blockTree,
             receiptStorage,

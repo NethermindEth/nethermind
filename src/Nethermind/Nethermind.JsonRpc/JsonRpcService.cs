@@ -68,11 +68,6 @@ public class JsonRpcService : IJsonRpcService
                 if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
                 return GetErrorResponse(rpcRequest.Method, ErrorCodes.ModuleTimeout, "Timeout", ex.ToString(), rpcRequest.Id);
             }
-            catch (Exception ex)
-            {
-                if (_logger.IsError) _logger.Error($"Error during method execution, request: {rpcRequest}", ex);
-                return GetErrorResponse(rpcRequest.Method, ErrorCodes.InternalError, "Internal error", ex.ToString(), rpcRequest.Id);
-            }
         }
         catch (Exception ex)
         {
@@ -203,6 +198,11 @@ public class JsonRpcService : IJsonRpcService
         {
             return GetErrorResponse(methodName, ErrorCodes.InvalidInput, e.InnerException.Message, e.ToString(), request.Id, returnAction);
         }
+        catch (Exception ex)
+        {
+            if (_logger.IsError) _logger.Error($"Error during method execution, request: {request}", ex);
+            return GetErrorResponse(methodName, ErrorCodes.InternalError, "Internal error", ex.ToString(), request.Id, returnAction);
+        }
         finally
         {
             if (returnImmediately)
@@ -281,14 +281,9 @@ public class JsonRpcService : IJsonRpcService
 
         if (providedParameter.ValueKind == JsonValueKind.Null || (providedParameter.ValueKind == JsonValueKind.String && providedParameter.ValueEquals(ReadOnlySpan<byte>.Empty)))
         {
-            if (providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable)
-            {
-                return null;
-            }
-            else
-            {
-                return Type.Missing;
-            }
+            return providedParameter.ValueKind == JsonValueKind.Null && expectedParameter.IsNullable
+                ? null
+                : Type.Missing;
         }
 
         object? executionParam;
@@ -309,14 +304,9 @@ public class JsonRpcService : IJsonRpcService
             if (providedParameter.ValueKind == JsonValueKind.String)
             {
                 JsonConverter converter = EthereumJsonSerializer.JsonOptions.GetConverter(paramType);
-                if (converter.GetType().FullName.StartsWith("System."))
-                {
-                    executionParam = JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions);
-                }
-                else
-                {
-                    executionParam = providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
-                }
+                executionParam = converter.GetType().FullName.StartsWith("System.")
+                    ? JsonSerializer.Deserialize(providedParameter.GetString(), paramType, EthereumJsonSerializer.JsonOptions)
+                    : providedParameter.Deserialize(paramType, EthereumJsonSerializer.JsonOptions);
             }
             else
             {

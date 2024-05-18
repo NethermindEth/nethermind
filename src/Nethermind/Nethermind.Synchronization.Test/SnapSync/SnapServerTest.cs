@@ -13,6 +13,7 @@ using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Synchronization.SnapSync;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NSubstitute;
 using NUnit.Framework;
@@ -37,19 +38,19 @@ public class SnapServerTest
         StateTree tree = new(store, LimboLogs.Instance);
         SnapServer server = new(store.AsReadOnly(), codeDbServer, stateRootTracker ?? CreateConstantStateRootTracker(true), LimboLogs.Instance);
 
-        IDbProvider dbProviderClient = new DbProvider();
-        var stateDbClient = new MemDb();
-        dbProviderClient.RegisterDb(DbNames.State, stateDbClient);
-        using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
+        MemDb clientStateDb = new();
+        using ProgressTracker progressTracker = new(null!, clientStateDb, LimboLogs.Instance);
 
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        INodeStorage nodeStorage = new NodeStorage(clientStateDb);
+
+        SnapProvider snapProvider = new(progressTracker, new MemDb(), nodeStorage, LimboLogs.Instance);
 
         return new Context
         {
             Server = server,
             SnapProvider = snapProvider,
             Tree = tree,
-            ClientStateDb = stateDbClient
+            ClientStateDb = clientStateDb
         };
     }
 
@@ -215,7 +216,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
         using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         (IOwnedReadOnlyList<IOwnedReadOnlyList<PathWithStorageSlot>> storageSlots, IOwnedReadOnlyList<byte[]> proofs) =
             server.GetStorageRanges(inputStateTree.RootHash, new[] { TestItem.Tree.AccountsWithPaths[0] },
@@ -251,7 +252,7 @@ public class SnapServerTest
         dbProviderClient.RegisterDb(DbNames.Code, new MemDb());
 
         using ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient.CodeDb, new NodeStorage(dbProviderClient.StateDb), LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)
@@ -301,7 +302,7 @@ public class SnapServerTest
         for (int i = 1000; i < 10000; i += 1000)
         {
             Address address = TestItem.GetRandomAddress();
-            StorageTree storageTree = new(store, LimboLogs.Instance);
+            StorageTree storageTree = new(store.GetTrieStore(address.ToAccountPath), LimboLogs.Instance);
             for (int j = 0; j < i; j += 1)
             {
                 storageTree.Set(TestItem.GetRandomKeccak(), TestItem.GetRandomKeccak().Bytes.ToArray());

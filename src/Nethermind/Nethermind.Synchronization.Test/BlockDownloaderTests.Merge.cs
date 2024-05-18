@@ -474,7 +474,6 @@ public partial class BlockDownloaderTests
         }
 
         private BeaconPivot? _beaconPivot;
-        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new SyncConfig(), MetadataDb, BlockTree, LimboLogs.Instance);
 
         private PoSSwitcher? _posSwitcher;
 
@@ -486,6 +485,7 @@ public partial class BlockDownloaderTests
             SpecProvider,
             new ChainSpec(),
             LimboLogs.Instance);
+        public BeaconPivot BeaconPivot => _beaconPivot ??= new(new SyncConfig(), MetadataDb, BlockTree, _posSwitcher!, LimboLogs.Instance);
 
         protected override IBetterPeerStrategy BetterPeerStrategy => _betterPeerStrategy ??=
             new MergeBetterPeerStrategy(new TotalDifficultyBetterPeerStrategy(LimboLogs.Instance), PosSwitcher, BeaconPivot, LimboLogs.Instance);

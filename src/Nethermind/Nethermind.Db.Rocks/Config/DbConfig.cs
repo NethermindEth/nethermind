@@ -24,6 +24,7 @@ public class DbConfig : IDbConfig
     public bool? UseDirectReads { get; set; } = false;
     public bool? UseDirectIoForFlushAndCompactions { get; set; } = false;
     public bool? DisableCompression { get; set; } = false;
+    public bool? UseLz4 { get; set; } = false;
     public ulong? CompactionReadAhead { get; set; } = (ulong)256.KiB();
     public IDictionary<string, string>? AdditionalRocksDbOptions { get; set; }
     public ulong? MaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
@@ -49,6 +50,9 @@ public class DbConfig : IDbConfig
     public int? BloomFilterBitsPerKey { get; set; } = 10;
     public int? UseRibbonFilterStartingFromLevel { get; set; }
     public ulong BytesPerSync { get; set; } = 0;
+    public double? DataBlockIndexUtilRatio { get; set; }
+
+    public ulong BlobTransactionsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;
@@ -151,31 +155,6 @@ public class DbConfig : IDbConfig
     public long? BloomDbMaxBytesPerSec { get; set; }
     public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-    public uint WitnessDbWriteBufferNumber { get; set; } = 4;
-    public ulong WitnessDbBlockCacheSize { get; set; } = 0;
-    public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? WitnessDbMaxOpenFiles { get; set; }
-    public long? WitnessDbMaxBytesPerSec { get; set; }
-    public int? WitnessDbBlockSize { get; set; }
-    public bool? WitnessUseDirectReads { get; set; }
-    public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
-    public ulong? WitnessCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
-
-    // TODO - profile and customize
-    public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong)2.MB();
-    public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;
-    public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 0;
-    public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    public long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    public int? CanonicalHashTrieDbBlockSize { get; set; }
-    public bool? CanonicalHashTrieUseDirectReads { get; set; }
-    public bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
-    public ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
-
     public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint MetadataDbWriteBufferNumber { get; set; } = 4;
     public ulong MetadataDbBlockCacheSize { get; set; } = 0;
@@ -194,19 +173,20 @@ public class DbConfig : IDbConfig
     public bool StateDbCacheIndexAndFilterBlocks { get; set; }
     public int? StateDbMaxOpenFiles { get; set; }
     public long? StateDbMaxBytesPerSec { get; set; }
-    public int? StateDbBlockSize { get; set; } = 4 * 1024;
+    public int? StateDbBlockSize { get; set; } = 32 * 1024;
     public bool? StateDbUseDirectReads { get; set; }
     public bool? StateDbUseDirectIoForFlushAndCompactions { get; set; }
     public ulong? StateDbCompactionReadAhead { get; set; }
     public bool? StateDbDisableCompression { get; set; }
+    public bool? StateDbUseLz4 { get; set; } = true;
     public int StateDbTargetFileSizeMultiplier { get; set; } = 2;
     public bool StateDbUseTwoLevelIndex { get; set; } = true;
     public bool StateDbUseHashIndex { get; set; } = false;
     public ulong? StateDbPrefixExtractorLength { get; set; } = null;
     public bool StateDbAllowMmapReads { get; set; }
     public bool? StateDbVerifyChecksum { get; set; }
-    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 10;
-    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)256.MiB();
+    public double StateDbMaxBytesForLevelMultiplier { get; set; } = 30;
+    public ulong? StateDbMaxBytesForLevelBase { get; set; } = (ulong)350.MiB();
     public ulong? StateDbMaxCompactionBytes { get; set; }
     public int StateDbMinWriteBufferNumberToMerge { get; set; } = 2;
     public ulong? StateDbRowCacheSize { get; set; }
@@ -214,11 +194,12 @@ public class DbConfig : IDbConfig
     public bool StateDbOnlyCompressLastLevel { get; set; } = false;
     public long? StateDbMaxWriteBufferSizeToMaintain { get; set; }
     public bool StateDbUseHashSkipListMemtable { get; set; } = false;
-    public int? StateDbBlockRestartInterval { get; set; }
+    public int? StateDbBlockRestartInterval { get; set; } = 4;
     public double StateDbMemtablePrefixBloomSizeRatio { get; set; } = 0.02;
     public bool StateDbAdviseRandomOnOpen { get; set; }
-    public int? StateDbBloomFilterBitsPerKey { get; set; }
-    public int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
+    public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
+    public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
+    public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

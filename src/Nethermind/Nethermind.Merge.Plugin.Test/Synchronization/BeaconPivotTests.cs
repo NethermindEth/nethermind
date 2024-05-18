@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Test.Builders;
@@ -36,7 +37,7 @@ public class BeaconPivotTests
     [Test]
     public void Beacon_pivot_defaults_to_sync_config_values_when_there_is_no_pivot()
     {
-        IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), Substitute.For<IBlockTree>(), LimboLogs.Instance);
+        IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), Substitute.For<IBlockTree>(), AlwaysPoS.Instance, LimboLogs.Instance);
         pivot.PivotHash.Should().Be(_syncConfig.PivotHashParsed!);
         pivot.PivotNumber.Should().Be(_syncConfig.PivotNumberParsed);
         pivot.PivotDestinationNumber.Should().Be(0);
@@ -49,7 +50,7 @@ public class BeaconPivotTests
         IBlockTree blockTree = Build.A.BlockTree()
             .WithOnlySomeBlocksProcessed(1000, processedBlocks)
             .TestObject;
-        IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, LimboLogs.Instance);
+        IBeaconPivot pivot = new BeaconPivot(_syncConfig, new MemDb(), blockTree, AlwaysPoS.Instance, LimboLogs.Instance);
 
         BlockHeader pivotHeader = blockTree.FindHeader(10, BlockTreeLookupOptions.AllowInvalid)!;
         pivot.EnsurePivot(pivotHeader);

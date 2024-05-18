@@ -17,14 +17,10 @@ using Nethermind.Db;
 using Nethermind.Db.FullPruning;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc.Converters;
-using Nethermind.JsonRpc.Modules.DebugModule;
-using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Trie;
-using Nethermind.Synchronization.Witness;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
@@ -57,29 +53,39 @@ public class InitializeStateDb : IStep
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
 
+        _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
+
+        syncConfig.SnapServingEnabled |= syncConfig.SnapServingEnabled is null
+            && _api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.HalfPath or null
+            && initConfig.StateDbKeyScheme != INodeStorage.KeyScheme.Hash;
+
+        if (_api.NodeStorageFactory.CurrentKeyScheme is INodeStorage.KeyScheme.Hash
+            || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.Hash)
+        {
+            // Special case in case its using hashdb, use a slightly different database configuration.
+            if (_api.DbProvider?.StateDb is ITunableDb tunableDb) tunableDb.Tune(ITunableDb.TuneType.HashDb);
+        }
+
+        if (syncConfig.SnapServingEnabled == true && pruningConfig.PruningBoundary < 128)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Snap serving enabled, but {nameof(pruningConfig.PruningBoundary)} is less than 128. Setting to 128.");
+            pruningConfig.PruningBoundary = 128;
+        }
+
+        if (pruningConfig.PruningBoundary < 64)
+        {
+            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            pruningConfig.PruningBoundary = 64;
+        }
+
         if (syncConfig.DownloadReceiptsInFastSync && !syncConfig.DownloadBodiesInFastSync)
         {
             if (_logger.IsWarn) _logger.Warn($"{nameof(syncConfig.DownloadReceiptsInFastSync)} is selected but {nameof(syncConfig.DownloadBodiesInFastSync)} - enabling bodies to support receipts download.");
             syncConfig.DownloadBodiesInFastSync = true;
         }
 
-        IWitnessCollector witnessCollector;
-        if (syncConfig.WitnessProtocolEnabled)
-        {
-            WitnessCollector witnessCollectorImpl = new(getApi.DbProvider.WitnessDb, _api.LogManager);
-            witnessCollector = setApi.WitnessCollector = witnessCollectorImpl;
-            setApi.WitnessRepository = witnessCollectorImpl.WithPruning(getApi.BlockTree!, getApi.LogManager);
-        }
-        else
-        {
-            witnessCollector = setApi.WitnessCollector = NullWitnessCollector.Instance;
-            setApi.WitnessRepository = NullWitnessCollector.Instance;
-        }
-
-        IKeyValueStore codeDb = getApi.DbProvider.CodeDb
-            .WitnessedBy(witnessCollector);
-
-        IKeyValueStoreWithBatching stateWitnessedBy = getApi.DbProvider.StateDb.WitnessedBy(witnessCollector);
+        IKeyValueStore codeDb = getApi.DbProvider.CodeDb;
+        IKeyValueStoreWithBatching stateDb = getApi.DbProvider.StateDb;
         IPersistenceStrategy persistenceStrategy;
         IPruningStrategy pruningStrategy;
         if (pruningConfig.Mode.IsMemory())
@@ -92,7 +98,12 @@ public class InitializeStateDb : IStep
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
             }
 
-            pruningStrategy = Prune.WhenCacheReaches(pruningConfig.CacheMb.MB()); // TODO: memory hint should define this
+            pruningStrategy = Prune
+                .WhenCacheReaches(pruningConfig.CacheMb.MB())
+                // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
+                // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
+                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
+                .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
         {
@@ -100,14 +111,16 @@ public class InitializeStateDb : IStep
             persistenceStrategy = Persist.EveryBlock;
         }
 
+        INodeStorage mainNodeStorage = _api.NodeStorageFactory.WrapKeyValueStore(stateDb);
+
         TrieStore trieStore = syncConfig.TrieHealing
             ? new HealingTrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager)
             : new TrieStore(
-                stateWitnessedBy,
+                mainNodeStorage,
                 pruningStrategy,
                 persistenceStrategy,
                 getApi.LogManager);
@@ -167,7 +180,7 @@ public class InitializeStateDb : IStep
             worldState.StateRoot = getApi.BlockTree.Head.StateRoot;
         }
 
-        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, trieStore);
+        InitializeFullPruning(pruningConfig, initConfig, _api, stateManager.GlobalStateReader, mainNodeStorage, trieStore);
 
         return Task.CompletedTask;
     }
@@ -182,7 +195,8 @@ public class InitializeStateDb : IStep
         IInitConfig initConfig,
         INethermindApi api,
         IStateReader stateReader,
-        TrieStore trieStore)
+        INodeStorage mainNodeStorage,
+        IPruningTrieStore trieStore)
     {
         IPruningTrigger? CreateAutomaticTrigger(string dbPath)
         {
@@ -212,9 +226,19 @@ public class InitializeStateDb : IStep
                 }
 
                 IDriveInfo? drive = api.FileSystem.GetDriveInfos(pruningDbPath).FirstOrDefault();
-                FullPruner pruner = new(fullPruningDb, api.PruningTrigger, pruningConfig, api.BlockTree!,
-                    stateReader, api.ProcessExit!, ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
-                    drive, trieStore, api.LogManager);
+                FullPruner pruner = new(
+                    fullPruningDb,
+                    api.NodeStorageFactory,
+                    mainNodeStorage,
+                    api.PruningTrigger,
+                    pruningConfig,
+                    api.BlockTree!,
+                    stateReader,
+                    api.ProcessExit!,
+                    ChainSizes.CreateChainSizeInfo(api.ChainSpec.ChainId),
+                    drive,
+                    trieStore,
+                    api.LogManager);
                 api.DisposeStack.Push(pruner);
             }
         }

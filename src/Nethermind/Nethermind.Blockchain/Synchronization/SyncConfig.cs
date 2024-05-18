@@ -48,7 +48,6 @@ namespace Nethermind.Blockchain.Synchronization
             set => _pivotHash = value;
         }
         public int MaxAttemptsToUpdatePivot { get; set; } = int.MaxValue;
-        public bool WitnessProtocolEnabled { get; set; } = false;
         public bool SnapSync { get; set; } = false;
         public int SnapSyncAccountRangePartitionCount { get; set; } = 8;
         public bool FixReceipts { get; set; } = false;
@@ -64,7 +63,8 @@ namespace Nethermind.Blockchain.Synchronization
         public bool ExitOnSynced { get; set; } = false;
         public int ExitOnSyncedWaitTimeSec { get; set; } = 60;
         public int MallocTrimIntervalSec { get; set; } = 300;
-        public bool SnapServingEnabled { get; set; } = false;
+        public bool? SnapServingEnabled { get; set; } = null;
+        public int MultiSyncModeSelectorLoopTimerMs { get; set; } = 1000;
         public bool TrieHealing { get; set; } = true;
 
         public override string ToString()
