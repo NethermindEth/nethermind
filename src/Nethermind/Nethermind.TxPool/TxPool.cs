@@ -755,6 +755,11 @@ namespace Nethermind.TxPool
             _timer!.Enabled = true;
         }
 
+        internal void ResetAddress(Address address)
+        {
+            _accountCache.RemoveAccounts([address]);
+        }
+
         private sealed class AccountCache : IAccountStateProvider
         {
             private readonly IAccountStateProvider _provider;
