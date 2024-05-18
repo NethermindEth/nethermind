@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+
 using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -23,5 +25,6 @@ namespace Nethermind.TxPool
         public UInt256 CurrentPricePerBlobGas { get; }
 
         event EventHandler<BlockReplacementEventArgs> HeadChanged;
+        event EventHandler<IReadOnlyList<Block>>? HeadProcessing;
     }
 }

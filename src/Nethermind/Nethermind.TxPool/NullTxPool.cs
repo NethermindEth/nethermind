@@ -15,6 +15,7 @@ namespace Nethermind.TxPool
         private NullTxPool() { }
 
         public static NullTxPool Instance { get; } = new();
+        public bool IsAcceptingTxs => true;
 
         public int GetPendingTransactionsCount() => 0;
         public int GetPendingBlobTransactionsCount() => 0;
