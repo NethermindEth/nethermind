@@ -6,6 +6,8 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.Linq;
 using System.Text;
+using System.Text.Json.Serialization;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -108,6 +110,9 @@ public class Block
 
     public Hash256? WithdrawalsRoot => Header.WithdrawalsRoot; // do not add setter here
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
+
+    [JsonIgnore]
+    public AddressAsKey[]? AccountChanges { get; internal set; }
 
     public override string ToString() => ToString(Format.Short);
 

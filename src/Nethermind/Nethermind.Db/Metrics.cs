@@ -2,6 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System.ComponentModel;
+using System.Threading;
+
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Db
@@ -21,8 +23,16 @@ namespace Nethermind.Db
         public static long StateTreeReads { get; set; }
 
         [CounterMetric]
+        [Description("Number of State Reader cache hits.")]
+        public static long StateReaderCache => _stateReaderCacheHits;
+        private static long _stateReaderCacheHits;
+        public static void IncrementStateReaderCacheHits() => Interlocked.Increment(ref _stateReaderCacheHits);
+
+        [CounterMetric]
         [Description("Number of State Reader reads.")]
-        public static long StateReaderReads { get; set; }
+        public static long StateReaderReads => _stateReaderReads;
+        private static long _stateReaderReads;
+        public static void IncrementStateReaderReads() => Interlocked.Increment(ref _stateReaderReads);
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]

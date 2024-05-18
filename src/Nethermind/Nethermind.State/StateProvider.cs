@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -796,6 +797,11 @@ namespace Nethermind.State
             public ChangeType ChangeType { get; }
             public Address Address { get; }
             public Account? Account { get; }
+        }
+
+        public AddressAsKey[]? ChangedAddresses()
+        {
+            return _blockCache.Count == 0 ? Array.Empty<AddressAsKey>() : _blockCache.Keys.ToArray();
         }
 
         public void Reset()

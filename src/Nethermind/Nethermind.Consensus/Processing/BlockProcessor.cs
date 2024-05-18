@@ -216,6 +216,9 @@ public partial class BlockProcessor : IBlockProcessor
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
         }
+
+        // Block is valid, copy the account changes as we use the suggested block not the processed one
+        suggestedBlock.AccountChanges = block.AccountChanges;
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -251,6 +254,8 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec);
 
+        // Get the accounts that have been changed
+        block.AccountChanges = _stateProvider.GetAccountChanges();
         if (ShouldComputeStateRoot(block.Header))
         {
             _stateProvider.RecalculateStateRoot();

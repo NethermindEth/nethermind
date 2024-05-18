@@ -236,5 +236,10 @@ namespace Nethermind.State
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
+
+        AddressAsKey[] IWorldState.GetAccountChanges()
+        {
+            return _stateProvider.ChangedAddresses();
+        }
     }
 }
