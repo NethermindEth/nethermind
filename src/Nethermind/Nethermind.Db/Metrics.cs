@@ -16,17 +16,13 @@ namespace Nethermind.Db
 
         [CounterMetric]
         [Description("Number of State Trie cache hits.")]
-        public static long StateTreeCache { get; set; }
+        public static long StateTreeCache => _stateTreeCacheHits;
+        private static long _stateTreeCacheHits;
+        public static void IncrementTreeCacheHits() => Interlocked.Increment(ref _stateTreeCacheHits);
 
         [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads { get; set; }
-
-        [CounterMetric]
-        [Description("Number of State Reader cache hits.")]
-        public static long StateReaderCache => _stateReaderCacheHits;
-        private static long _stateReaderCacheHits;
-        public static void IncrementStateReaderCacheHits() => Interlocked.Increment(ref _stateReaderCacheHits);
 
         [CounterMetric]
         [Description("Number of State Reader reads.")]

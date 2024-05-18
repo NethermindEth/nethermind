@@ -675,7 +675,7 @@ namespace Nethermind.State
             }
             else
             {
-                Metrics.StateTreeCache++;
+                Metrics.IncrementTreeCacheHits();
             }
             return account;
         }
