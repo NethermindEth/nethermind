@@ -166,7 +166,6 @@ static class EmitExtensions
         il.NewArray<byte>();
 
         // get methodInfo of AsSpan from int[] it is a public instance method
-        var ArrToSpanMethod = typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) });
 
         for (int i = 0; i < value.Length; i++)
         {
@@ -176,7 +175,7 @@ static class EmitExtensions
             il.StoreElement<byte>();
         }
 
-        il.Call(ArrToSpanMethod);
+        il.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
 
     }
 }

@@ -179,12 +179,12 @@ namespace Nethermind.Evm
         INVALID = 0xfe,
         SELFDESTRUCT = 0xff,
     }
-    public record struct OpcodeMetadata(int gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush)
+    public record struct OpcodeMetadata(long gasCost, byte additionalBytes, byte stackBehaviorPop, byte stackBehaviorPush)
     {
         /// <summary>
         /// The gas cost.
         /// </summary>
-        public int GasCost { get; } = gasCost;
+        public long GasCost { get; } = gasCost;
 
         /// <summary>
         /// How many following bytes does this instruction have.

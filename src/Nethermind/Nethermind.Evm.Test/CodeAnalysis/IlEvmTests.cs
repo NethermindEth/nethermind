@@ -179,6 +179,21 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .PushSingle(7)
                     .DIV()
                     .Done;
+
+            yield return Prepare.EvmCode
+                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                    .Done;
+
+            yield return Prepare.EvmCode
+                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                    .MLOAD(0)
+                    .Done;
+
+            yield return Prepare.EvmCode
+                    .MSTORE(0, ((UInt256)23).PaddedBytes(32))
+                    .MCOPY(0, 32, 32)
+                    .EQ()
+                    .Done;
         }
 
         [Test, TestCaseSource(nameof(GetBytecodes))]
@@ -188,7 +203,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             {
                 Stack = new UInt256[1024],
                 Header = BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header,
-                GasAvailable = 1000,
+                GasAvailable = 1000000,
                 ProgramCounter = 0,
                 EvmException = EvmExceptionType.None,
                 StopExecution = false

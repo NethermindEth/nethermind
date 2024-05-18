@@ -52,8 +52,9 @@ internal struct ILEvmState
 
     // in case of jumps crossing section boundaries
     public ushort ProgramCounter;
-    public int GasAvailable;
+    public long GasAvailable;
 
     // in case STOP is executed
     public bool StopExecution;
+    public EvmPooledMemory Memory;
 }
