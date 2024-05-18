@@ -249,7 +249,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec);
+        _stateProvider.PostCommit(spec);
 
         if (ShouldComputeStateRoot(block.Header))
         {

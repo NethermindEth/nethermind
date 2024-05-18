@@ -205,6 +205,12 @@ namespace Nethermind.State
             _transientStorageProvider.Commit(tracer);
             _stateProvider.Commit(releaseSpec, tracer, isGenesis);
         }
+        public void PostCommit(IReleaseSpec releaseSpec)
+        {
+            _persistentStorageProvider.PostCommit();
+            _transientStorageProvider.PostCommit();
+            _stateProvider.Commit(releaseSpec, isGenesis: false);
+        }
 
         public Snapshot TakeSnapshot(bool newTransactionStart = false)
         {

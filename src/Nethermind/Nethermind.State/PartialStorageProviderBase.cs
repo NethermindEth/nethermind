@@ -150,6 +150,14 @@ namespace Nethermind.State
             Commit(NullStateTracer.Instance);
         }
 
+        public void PostCommit()
+        {
+            Commit(NullStateTracer.Instance);
+            PostCommitStorages();
+        }
+
+        protected virtual void PostCommitStorages() { }
+
         protected readonly struct ChangeTrace
         {
             public ChangeTrace(byte[]? before, byte[]? after)

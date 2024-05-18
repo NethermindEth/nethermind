@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -25,6 +26,7 @@ namespace Nethermind.State
         private readonly ILogManager? _logManager;
         internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
+        private readonly HashSet<Address> _toUpdateRoots = new();
 
         /// <summary>
         /// EIP-1283
@@ -53,6 +55,7 @@ namespace Nethermind.State
             _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
+            _toUpdateRoots.Clear();
         }
 
         /// <summary>
@@ -179,16 +182,17 @@ namespace Nethermind.State
                 }
             }
 
-            // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
             foreach (Address address in toUpdateRoots)
             {
                 // since the accounts could be empty accounts that are removing (EIP-158)
                 if (_stateProvider.AccountExists(address))
                 {
-                    Hash256 root = RecalculateRootHash(address);
-
-                    // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
-                    _stateProvider.UpdateStorageRoot(address, root);
+                    _toUpdateRoots.Add(address);
+                }
+                else
+                {
+                    _toUpdateRoots.Remove(address);
+                    _storages.Remove(address);
                 }
             }
 
@@ -199,6 +203,75 @@ namespace Nethermind.State
             if (isTracing)
             {
                 ReportChanges(tracer!, trace!);
+            }
+        }
+
+        protected override void PostCommitStorages()
+        {
+            if (_toUpdateRoots.Count == 0)
+            {
+                return;
+            }
+
+            // Is overhead of parallel foreach worth it?
+            if (_toUpdateRoots.Count <= 4)
+            {
+                UpdateRootHashesSingleThread();
+            }
+            else
+            {
+                UpdateRootHashesMultiThread();
+            }
+
+            void UpdateRootHashesSingleThread()
+            {
+                foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
+                {
+                    if (!_toUpdateRoots.Contains(kvp.Key))
+                    {
+                        // Remove the storage tree if it was only read and not updated
+                        _storages.Remove(kvp.Key);
+                        continue;
+                    }
+
+                    StorageTree storageTree = kvp.Value;
+                    storageTree.UpdateRootHash();
+                    _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
+                }
+
+                _toUpdateRoots.Clear();
+            }
+
+            void UpdateRootHashesMultiThread()
+            {
+                // We can recalculate the roots in parallel as they are all independent tries
+                Parallel.ForEach(_storages, kvp =>
+                {
+                    if (!_toUpdateRoots.Contains(kvp.Key))
+                    {
+                        // Wasn't updated don't recalculate; we don't remove here
+                        // in parallel foreach as it would be unsafe on non-concurrent dictionary
+                        return;
+                    }
+                    StorageTree storageTree = kvp.Value;
+                    storageTree.UpdateRootHash();
+                });
+
+                // Update the storage roots in the main thread non in parallel
+                foreach (KeyValuePair<AddressAsKey, StorageTree> kvp in _storages)
+                {
+                    if (!_toUpdateRoots.Contains(kvp.Key))
+                    {
+                        // Remove the storage tree if it was only read and not updated
+                        _storages.Remove(kvp.Key);
+                        continue;
+                    }
+
+                    // Update the storage root for the Account
+                    _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
+                }
+
+                _toUpdateRoots.Clear();
             }
         }
 
@@ -223,13 +296,10 @@ namespace Nethermind.State
         /// <param name="blockNumber">Current block number</param>
         public void CommitTrees(long blockNumber)
         {
-            // _logger.Warn($"Storage block commit {blockNumber}");
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
                 storage.Value.Commit(blockNumber);
             }
-
-            // TODO: maybe I could update storage roots only now?
 
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();
@@ -305,6 +375,7 @@ namespace Nethermind.State
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
             // touched in this block, hence were not zeroed above
             // TODO: how does it work with pruning?
+            _toUpdateRoots.Add(address);
             _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
         }
 
