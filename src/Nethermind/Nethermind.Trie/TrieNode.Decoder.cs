@@ -238,7 +238,7 @@ namespace Nethermind.Trie
                     }
                 }
                 return totalLength;
-            }            
+            }
 
             private static int GetChildrenRlpLengthForBranchRlpParallel(ITrieNodeResolver tree, TreePath rootPath, TrieNode item, ICappedArrayPool? bufferPool)
             {
@@ -277,7 +277,7 @@ namespace Nethermind.Trie
                             local += childNode.Keccak is null ? childNode.FullRlp.Length : Rlp.LengthOfKeccakRlp;
                         }
                     }
-                    
+
                     return local;
                 },
                 local =>
