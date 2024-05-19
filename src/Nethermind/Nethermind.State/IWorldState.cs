@@ -99,10 +99,9 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
 
     /* snapshots */
 
-    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false);
+    void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true);
 
-    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? traver, bool isGenesis = false);
+    void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true);
 
     void CommitTree(long blockNumber);
-    void PostCommit(IReleaseSpec releaseSpec);
 }

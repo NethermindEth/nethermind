@@ -206,7 +206,7 @@ namespace Nethermind.State
             }
         }
 
-        protected override void PostCommitStorages()
+        protected override void CommitStorageRoots()
         {
             if (_toUpdateRoots.Count == 0)
             {
@@ -229,8 +229,7 @@ namespace Nethermind.State
                 {
                     if (!_toUpdateRoots.Contains(kvp.Key))
                     {
-                        // Remove the storage tree if it was only read and not updated
-                        _storages.Remove(kvp.Key);
+                        // Wasn't updated don't recalculate
                         continue;
                     }
 
@@ -238,8 +237,6 @@ namespace Nethermind.State
                     storageTree.UpdateRootHash();
                     _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
                 }
-
-                _toUpdateRoots.Clear();
             }
 
             void UpdateRootHashesMultiThread()
@@ -249,8 +246,7 @@ namespace Nethermind.State
                 {
                     if (!_toUpdateRoots.Contains(kvp.Key))
                     {
-                        // Wasn't updated don't recalculate; we don't remove here
-                        // in parallel foreach as it would be unsafe on non-concurrent dictionary
+                        // Wasn't updated don't recalculate
                         return;
                     }
                     StorageTree storageTree = kvp.Value;
@@ -262,8 +258,6 @@ namespace Nethermind.State
                 {
                     if (!_toUpdateRoots.Contains(kvp.Key))
                     {
-                        // Remove the storage tree if it was only read and not updated
-                        _storages.Remove(kvp.Key);
                         continue;
                     }
 
@@ -271,7 +265,6 @@ namespace Nethermind.State
                     _stateProvider.UpdateStorageRoot(address: kvp.Key, kvp.Value.RootHash);
                 }
 
-                _toUpdateRoots.Clear();
             }
         }
 
@@ -298,9 +291,14 @@ namespace Nethermind.State
         {
             foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
             {
+                if (!_toUpdateRoots.Contains(storage.Key))
+                {
+                    continue;
+                }
                 storage.Value.Commit(blockNumber);
             }
 
+            _toUpdateRoots.Clear();
             // only needed here as there is no control over cached storage size otherwise
             _storages.Reset();
         }
