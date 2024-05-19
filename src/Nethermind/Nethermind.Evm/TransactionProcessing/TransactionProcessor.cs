@@ -153,7 +153,7 @@ namespace Nethermind.Evm.TransactionProcessing
             }
             else if (commit)
             {
-                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: false);
+                WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullStateTracer.Instance, commitStorageRoots: !spec.IsEip658Enabled);
             }
 
             if (tracer.IsTracingReceipt)
