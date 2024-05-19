@@ -510,7 +510,7 @@ namespace Nethermind.Trie
             {
                 ref readonly CappedArray<byte> oldRlp = ref rlp is not null ? ref rlp.Data : ref CappedArray<byte>.Empty;
                 CappedArray<byte> fullRlp = NodeType == NodeType.Branch ?
-                    TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool) :
+                    TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool, isRoot) :
                     RlpEncode(tree, ref path, bufferPool);
 
                 if (fullRlp.IsNotNullOrEmpty)
@@ -536,7 +536,7 @@ namespace Nethermind.Trie
         {
             return NodeType switch
             {
-                NodeType.Branch => TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool),
+                NodeType.Branch => TrieNodeDecoder.RlpEncodeBranch(this, tree, ref path, bufferPool, isRoot: false),
                 NodeType.Extension => TrieNodeDecoder.EncodeExtension(this, tree, ref path, bufferPool),
                 NodeType.Leaf => TrieNodeDecoder.EncodeLeaf(this, bufferPool),
                 _ => ThrowUnhandledNodeType(this)
