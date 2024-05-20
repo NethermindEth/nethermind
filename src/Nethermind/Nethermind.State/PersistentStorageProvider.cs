@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,7 +20,7 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    internal class PersistentStorageProvider : PartialStorageProviderBase
+    internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
         private readonly ITrieStore _trieStore;
         private readonly StateProvider _stateProvider;
@@ -34,6 +35,7 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
+        private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
 
         public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
             : base(logManager)
@@ -52,6 +54,7 @@ namespace Nethermind.State
         public override void Reset()
         {
             base.Reset();
+            _blockCache.Clear();
             _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
@@ -281,6 +284,7 @@ namespace Nethermind.State
             Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
+            _blockCache[change.StorageCell] = change.Value;
         }
 
         /// <summary>
@@ -317,18 +321,24 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-
-            Db.Metrics.StorageTreeReads++;
-
-            if (!storageCell.IsHash)
+            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
+            if (!exists)
             {
-                byte[] value = tree.Get(storageCell.Index);
-                PushToRegistryOnly(storageCell, value);
-                return value;
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+
+                Db.Metrics.StorageTreeReads++;
+
+                value = !storageCell.IsHash ?
+                    tree.Get(storageCell.Index) :
+                    tree.GetArray(storageCell.Hash.Bytes);
+            }
+            else
+            {
+                Db.Metrics.StorageTreeCache++;
             }
 
-            return tree.Get(storageCell.Hash.Bytes);
+            if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
+            return value;
         }
 
         private void PushToRegistryOnly(in StorageCell cell, byte[] value)
@@ -368,6 +378,8 @@ namespace Nethermind.State
         public override void ClearStorage(Address address)
         {
             base.ClearStorage(address);
+            // Bit heavy-handed, but we need to clear all the cache for that address
+            _blockCache.Clear();
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
