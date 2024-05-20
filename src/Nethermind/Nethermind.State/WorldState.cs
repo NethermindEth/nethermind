@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -23,12 +24,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState
+    public class WorldState : IWorldState, IBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly ITrieStore _trieStore;
+        internal BlockCaches BlockCaches { get; }
 
         public Hash256 StateRoot
         {
@@ -40,19 +42,34 @@ namespace Nethermind.State
             }
         }
 
-        public WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
+            : this(trieStore,codeDb, logManager, null, null)
         {
+        }
+
+        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, IBlockCaches? sharedHashes)
+            : this(trieStore, codeDb, logManager, sharedHashes?.Caches)
+        {
+        }
+
+        internal WorldState(
+            ITrieStore trieStore,
+            IKeyValueStore? codeDb,
+            ILogManager? logManager,
+            StateTree? stateTree = null,
+            IStorageTreeFactory? storageTreeFactory = null,
+            BlockCaches? blockCaches = null)
+        {
+            BlockCaches = blockCaches ?? new BlockCaches();
             _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, BlockCaches.StateCache);
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, BlockCaches.StorageCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        internal WorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree stateTree, IStorageTreeFactory storageTreeFactory)
+        internal WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, BlockCaches? blockCaches)
+            : this(trieStore, codeDb, logManager, null, blockCaches: blockCaches)
         {
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory);
-            _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
         public Account GetAccount(Address address)
@@ -228,19 +245,13 @@ namespace Nethermind.State
             Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
         }
 
-        internal void SetNonce(Address address, in UInt256 nonce)
-        {
-            _stateProvider.SetNonce(address, nonce);
-        }
-
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
         }
 
-        ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges()
-        {
-            return _stateProvider.ChangedAddresses();
-        }
+        ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
+
+        public BlockCaches Caches => BlockCaches;
     }
 }

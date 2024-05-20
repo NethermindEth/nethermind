@@ -218,9 +218,11 @@ namespace Nethermind.Init.Steps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
             IWorldState worldState = _api.WorldState!;
 
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, true);
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -229,7 +231,8 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
-                _api.LogManager);
+                _api.LogManager,
+                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory));
         }
 
         // TODO: remove from here - move to consensus?

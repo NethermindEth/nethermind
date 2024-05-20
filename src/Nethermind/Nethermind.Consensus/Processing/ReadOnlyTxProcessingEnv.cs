@@ -36,13 +36,14 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager)
+            ILogManager? logManager,
+            bool shareGlobalHashes = false)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState();
+            StateProvider = worldStateManager.CreateResettableWorldState(shareGlobalHashes ? worldStateManager.GlobalWorldState as IBlockCaches : null);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);

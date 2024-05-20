@@ -2,9 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
-using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -21,7 +19,13 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    internal class StateProvider
+    internal class StateProvider(
+        IScopedTrieStore? trieStore,
+        IKeyValueStore? codeDb,
+        ILogManager? logManager,
+        StateTree? stateTree = null,
+        IDictionary<AddressAsKey, Account>? blockCache = null
+    )
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
@@ -32,22 +36,15 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
-        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
+        private readonly IDictionary<AddressAsKey, Account> _blockCache = blockCache ?? new Dictionary<AddressAsKey, Account>(4_096);
 
         private readonly List<Change> _keptInCache = new();
-        private readonly ILogger _logger;
-        private readonly IKeyValueStore _codeDb;
+        private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+        private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
-
-        public StateProvider(IScopedTrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager, StateTree? stateTree = null)
-        {
-            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _tree = stateTree ?? new StateTree(trieStore, logManager);
-        }
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
@@ -79,44 +76,26 @@ namespace Nethermind.State
             set => _tree.RootHash = value;
         }
 
-        internal readonly StateTree _tree;
+        internal readonly StateTree _tree = stateTree ?? new StateTree(trieStore, logManager);
 
         public bool IsContract(Address address)
         {
             Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                return false;
-            }
-
-            return account.IsContract;
+            return account is not null && account.IsContract;
         }
 
-        public bool AccountExists(Address address)
-        {
-            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
-            {
-                return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
-            }
-
-            return GetAndAddToCache(address) is not null;
-        }
+        public bool AccountExists(Address address) =>
+            _intraTxCache.TryGetValue(address, out Stack<int> value)
+                ? _changes[value.Peek()]!.ChangeType != ChangeType.Delete
+                : GetAndAddToCache(address) is not null;
 
         public bool IsEmptyAccount(Address address)
         {
             Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when checking if empty");
-            }
-
-            return account.IsEmpty;
+            return account?.IsEmpty ?? throw new InvalidOperationException($"Account {address} is null when checking if empty");
         }
 
-        public Account GetAccount(Address address)
-        {
-            return GetThroughCache(address) ?? Account.TotallyEmpty;
-        }
+        public Account GetAccount(Address address) => GetThroughCache(address) ?? Account.TotallyEmpty;
 
         public bool IsDeadAccount(Address address)
         {
@@ -133,12 +112,7 @@ namespace Nethermind.State
         public Hash256 GetStorageRoot(Address address)
         {
             Account? account = GetThroughCache(address);
-            if (account is null)
-            {
-                throw new InvalidOperationException($"Account {address} is null when accessing storage root");
-            }
-
-            return account.StorageRoot;
+            return account is null ? throw new InvalidOperationException($"Account {address} is null when accessing storage root") : account.StorageRoot;
         }
 
         public UInt256 GetBalance(Address address)
@@ -669,16 +643,17 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
-            if (!exists)
-            {
-                Metrics.StateTreeReads++;
-                account = _tree.Get(address);
-            }
-            else
+            AddressAsKey addressAsKey = address;
+            if (_blockCache.TryGetValue(addressAsKey, out Account? account))
             {
                 Metrics.IncrementTreeCacheHits();
             }
+            else
+            {
+                Metrics.StateTreeReads++;
+                _blockCache[addressAsKey] = account = _tree.Get(address);
+            }
+
             return account;
         }
 
