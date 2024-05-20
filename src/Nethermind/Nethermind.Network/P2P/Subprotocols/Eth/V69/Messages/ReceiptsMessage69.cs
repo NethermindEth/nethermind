@@ -3,10 +3,10 @@
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages
 {
-    public class ReceiptsMessage69: Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage
+    public class ReceiptsMessage69 : Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessage
     {
         public ReceiptsMessage69() { }
 
-        public ReceiptsMessage69(long requestId, V63.Messages.ReceiptsMessage ethMessage): base(requestId, ethMessage) { }
+        public ReceiptsMessage69(long requestId, V63.Messages.ReceiptsMessage ethMessage) : base(requestId, ethMessage) { }
     }
 }

@@ -1,4 +1,4 @@
-﻿// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
@@ -8,9 +8,9 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class ReceiptsMessageInnerSerializer69: V63.Messages.ReceiptsMessageSerializer, IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
+public class ReceiptsMessageInnerSerializer69 : V63.Messages.ReceiptsMessageSerializer, IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
 {
-    public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider): base(specProvider) { }
+    public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) : base(specProvider) { }
 
     protected override RlpBehaviors GetEncodingBehavior(TxReceipt txReceipt) =>
         base.GetEncodingBehavior(txReceipt) | RlpBehaviors.Eip7642Messages;

@@ -6,11 +6,11 @@ using Nethermind.Core.Specs;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages
 {
-    public class ReceiptsMessageSerializer69:
+    public class ReceiptsMessageSerializer69 :
         Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer,
         IZeroInnerMessageSerializer<ReceiptsMessage69>
     {
-        public ReceiptsMessageSerializer69(ISpecProvider specProvider): base(new ReceiptsMessageInnerSerializer69(specProvider)) { }
+        public ReceiptsMessageSerializer69(ISpecProvider specProvider) : base(new ReceiptsMessageInnerSerializer69(specProvider)) { }
 
         int IZeroInnerMessageSerializer<ReceiptsMessage69>.GetLength(ReceiptsMessage69 message, out int contentLength) =>
             base.GetLength(message, out contentLength);

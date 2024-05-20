@@ -35,7 +35,6 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
-using GetReceiptsMessage63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
 using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -131,7 +130,7 @@ public class Eth69ProtocolHandlerTests
 
         _session.When(s => s.DeliverMessage(Arg.Any<GetReceiptsMessage66>())).Do(call =>
         {
-            var message = (GetReceiptsMessage66) call[0];
+            var message = (GetReceiptsMessage66)call[0];
             msg.RequestId = message.RequestId;
         });
 
@@ -151,7 +150,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Can_handle_GetReceipts()
     {
-        var msg66 = new GetReceiptsMessage(1111, new (new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
+        var msg66 = new GetReceiptsMessage(1111, new(new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
@@ -161,7 +160,7 @@ public class Eth69ProtocolHandlerTests
     [Test]
     public void Ignores_NewBlock_message()
     {
-        var msg = new NewBlockMessage {TotalDifficulty = 1, Block = Build.A.Block.TestObject};
+        var msg = new NewBlockMessage { TotalDifficulty = 1, Block = Build.A.Block.TestObject };
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg, Eth62MessageCode.NewBlock);
@@ -182,17 +181,17 @@ public class Eth69ProtocolHandlerTests
 
     private void HandleIncomingStatusMessage()
     {
-        var statusMsg = new StatusMessage69 {ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash};
+        var statusMsg = new StatusMessage69 { ProtocolVersion = 69, GenesisHash = _genesisBlock.Hash, BestHash = _genesisBlock.Hash };
 
         IByteBuffer statusPacket = _svc.ZeroSerialize(statusMsg);
         statusPacket.ReadByte();
-        _handler.HandleMessage(new ZeroPacket(statusPacket) {PacketType = 0});
+        _handler.HandleMessage(new ZeroPacket(statusPacket) { PacketType = 0 });
     }
 
-    private void HandleZeroMessage<T>(T msg, int messageCode) where T: MessageBase
+    private void HandleZeroMessage<T>(T msg, int messageCode) where T : MessageBase
     {
         IByteBuffer uOpsPacket = _svc!.ZeroSerialize(msg);
         uOpsPacket.ReadByte();
-        _handler!.HandleMessage(new ZeroPacket(uOpsPacket) {PacketType = (byte) messageCode});
+        _handler!.HandleMessage(new ZeroPacket(uOpsPacket) { PacketType = (byte)messageCode });
     }
 }
