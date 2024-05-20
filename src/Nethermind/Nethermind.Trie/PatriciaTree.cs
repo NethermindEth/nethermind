@@ -345,10 +345,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public void UpdateRootHash()
+        public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool);
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
