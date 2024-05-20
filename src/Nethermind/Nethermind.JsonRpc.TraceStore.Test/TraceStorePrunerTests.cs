@@ -62,7 +62,7 @@ public class TraceStorePrunerTests
         AddNewBlocks(blockTree);
         await Task.Delay(100);
         keys.Skip(3).Select(k => memDb.Get(k)).Should().NotContain((byte[]?)null); // too old were not removed
-        keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b is null); // those were removed
+        keys.Take(3).Select(k => memDb.Get(k)).Should().OnlyContain(b => b == null); // those were removed
 
     }
 }
