@@ -240,7 +240,7 @@ namespace Nethermind.TxPool
 
                 bool CanUseCache(Block block, [NotNullWhen(true)] AddressAsKey[]? accountChanges)
                 {
-                    return accountChanges is null || accountChanges.Length == 0 || block.ParentHash != _lastBlockHash || _lastBlockNumber + 1 != block.Number;
+                    return accountChanges is not null && accountChanges.Length != 0 && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
