@@ -245,7 +245,7 @@ public partial class BlockProcessor : IBlockProcessor
         _beaconBlockRootHandler.ExecuteSystemCall(block, spec);
         _blockhashStore.ApplyHistoryBlockHashes(block.Header);
 
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
@@ -261,7 +261,7 @@ public partial class BlockProcessor : IBlockProcessor
 
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitStorageRoots: true);
 
         if (ShouldComputeStateRoot(block.Header))
         {

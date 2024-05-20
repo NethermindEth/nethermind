@@ -191,16 +191,16 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit();
-            _transientStorageProvider.Commit();
+            _persistentStorageProvider.Commit(commitStorageRoots);
+            _transientStorageProvider.Commit(commitStorageRoots);
             _stateProvider.Commit(releaseSpec, isGenesis);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer);
-            _transientStorageProvider.Commit(tracer);
+            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
+            _transientStorageProvider.Commit(tracer, commitStorageRoots);
             _stateProvider.Commit(releaseSpec, tracer, isGenesis);
         }
 
