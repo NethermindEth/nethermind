@@ -1356,7 +1356,7 @@ namespace Nethermind.Trie
                 ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
                 : TrieStore;
 
-            if (storageAddr != null)
+            if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }

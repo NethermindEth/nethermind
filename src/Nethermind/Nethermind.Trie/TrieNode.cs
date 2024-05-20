@@ -57,7 +57,7 @@ namespace Nethermind.Trie
 
         public Hash256? Keccak { get; internal set; }
 
-        public bool HasRlp => _rlp != null;
+        public bool HasRlp => _rlp is not null;
 
         public ref readonly CappedArray<byte> FullRlp
         {

@@ -475,7 +475,7 @@ namespace Nethermind.Core.Collections
         {
             ISpanEqualityComparer<TKey> comparer = _comparer;
 
-            Debug.Assert(nullableHashcode is null || (comparer.GetHashCode(key)) == nullableHashcode);
+            Debug.Assert(nullableHashcode is null || (comparer.GetHashCode(key)) is nullableHashcode);
 
             int hashcode = nullableHashcode ?? comparer.GetHashCode(key);
 
@@ -801,7 +801,7 @@ namespace Nethermind.Core.Collections
         {
             ISpanEqualityComparer<TKey> comparer = _comparer;
 
-            Debug.Assert(nullableHashcode is null || comparer.GetHashCode(key) == nullableHashcode);
+            Debug.Assert(nullableHashcode is null || comparer.GetHashCode(key) is nullableHashcode);
 
             int hashcode = nullableHashcode ?? comparer.GetHashCode(key);
 

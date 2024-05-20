@@ -108,7 +108,7 @@ namespace Ethereum.Test.Base
 
             if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync();
 
-            if (test.Transaction.ChainId == null)
+            if (test.Transaction.ChainId is null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {
