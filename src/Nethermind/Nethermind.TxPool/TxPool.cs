@@ -211,7 +211,7 @@ namespace Nethermind.TxPool
                         try
                         {
                             AddressAsKey[]? accountChanges = args.Block.AccountChanges;
-                            if (accountChanges is null || accountChanges.Length == 0 || args.Block.ParentHash != _lastBlockHash || _lastBlockNumber + 1 != args.Block.Number)
+                            if (!CanUseCache(args.Block, accountChanges))
                             {
                                 // Not sequential block, reset cache
                                 _accountCache.Reset();
@@ -236,6 +236,11 @@ namespace Nethermind.TxPool
                             if (_logger.IsDebug) _logger.Debug($"TxPool failed to update after block {args.Block.ToString(Block.Format.FullHashAndNumber)} with exception {e}");
                         }
                     }
+                }
+
+                bool CanUseCache(Block block, [NotNullWhen(true)] AddressAsKey[]? accountChanges)
+                {
+                    return accountChanges is null || accountChanges.Length == 0 || block.ParentHash != _lastBlockHash || _lastBlockNumber + 1 != block.Number;
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
