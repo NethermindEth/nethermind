@@ -20,17 +20,17 @@ jobs:
         include:
           - network: "holesky"
             checkpoint-sync-url: "https://holesky.beaconstate.ethstaker.cc/"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "lodestar:chainsafe/lodestar:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "chiado"
             checkpoint-sync-url: "http://139.144.26.89:4000/"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "lodestar:chainsafe/lodestar:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-80gb
           - network: "sepolia"
             checkpoint-sync-url: "https://beaconstate-sepolia.chainsafe.io"
-            cl-client: "lighthouse:sigp/lighthouse:latest"
+            cl-client: "lodestar:chainsafe/lodestar:latest"
             el-client: "nethermind:nethermindeth/nethermind:master"
             agent: sync-agent-160gb
     name: "Run sync of ${{ matrix.network }} testnet"
@@ -40,15 +40,6 @@ jobs:
         uses: actions/checkout@v3
         with:
           clean: true
-
-      - name: Configure settings
-        id: settings
-        run: |
-          echo "BUILD_TIMESTAMP=$(date '+%s')" >> $GITHUB_OUTPUT
-          echo "COMMIT_HASH=$(git describe --always --exclude=* --abbrev=40)" >> $GITHUB_OUTPUT
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v2
 
       - name: Installing requirements
         run: |
@@ -91,29 +82,31 @@ jobs:
         id: wait
         timeout-minutes: 180
         run: |
-          set +e
-          
           declare -A bad_logs
           bad_logs["Corrupt"]=1
           bad_logs["Exception"]=1
-
+      
           declare -A good_logs
           good_logs["Synced Chain Head"]=0
           good_logs["Processed"]=0
-
+      
           declare -A required_count
           required_count["Synced Chain Head"]=20
-          required_count["Processed"]=20
-
+          required_count["Processed"]=20      
+            
           counter=0
           found_bad_log=false
-
-          echo "Starting Docker logs monitoring..."
+      
           docker logs -f sedge-execution-client | while read -r line; do
             echo "$line"
-
-            if $found_bad_log; then
-              ((counter++))
+          
+            if [[ "$line" == *"All done"* ]]; then
+              echo "Unexpected termination detected: $line"
+              exit 1
+            fi
+      
+            if [ "$found_bad_log" = true ]; then
+              counter=$((counter + 1))
               if [ $counter -ge 100 ]; then
                 echo "Exiting after capturing extra logs due to error."
                 exit 1
@@ -121,21 +114,21 @@ jobs:
                 continue
               fi
             fi
-
+      
             for bad_log in "${!bad_logs[@]}"; do
               if [[ "$line" == *"$bad_log"* ]]; then
                 echo "Error: $bad_log found in Docker logs."
                 found_bad_log=true
-                continue 2
+                break
               fi
             done
-
+      
             for good_log in "${!good_logs[@]}"; do
               if [[ "$line" == *"$good_log"* ]]; then
-                ((good_logs["$good_log"]++))
+                good_logs["$good_log"]=$((good_logs["$good_log"]+1))
               fi
             done
-
+      
             # Check if all good logs have reached the required count
             all_reached_required_count=true
             for good_log in "${!good_logs[@]}"; do
@@ -144,30 +137,12 @@ jobs:
                 break
               fi
             done
-
+      
             if $all_reached_required_count; then
               echo "All required logs found."
               exit 0
             fi
           done
-
-          if $found_bad_log; then
-            echo "Found bad log, exiting."
-            exit 1
-          fi
-
-          all_reached_required_count=true
-            for good_log in "${!good_logs[@]}"; do
-              if [[ ${good_logs[$good_log]} -lt ${required_count[$good_log]} ]]; then
-                all_reached_required_count=false
-                break
-              fi
-            done
-
-          if ! $all_reached_required_count; then
-            echo "Not all required logs were found."
-            exit 1
-          fi
           
       - name: Get Consensus Logs
         if: always()

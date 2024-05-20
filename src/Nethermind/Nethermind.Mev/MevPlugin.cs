@@ -133,7 +133,7 @@ public class MevPlugin : IConsensusWrapperPlugin
         return Task.CompletedTask;
     }
 
-    public async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
+    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
         if (!Enabled)
         {
@@ -147,28 +147,28 @@ public class MevPlugin : IConsensusWrapperPlugin
             new(_mevConfig.MaxMergedBundles + megabundleProducerCount + 1);
 
         // Add non-mev block
-        MevBlockProducer.MevBlockProducerInfo standardProducer = await CreateProducer(consensusPlugin);
+        MevBlockProducer.MevBlockProducerInfo standardProducer = CreateProducer(consensusPlugin);
         blockProducers.Add(standardProducer);
 
         // Try blocks with all bundle numbers <= MaxMergedBundles
         for (int bundleLimit = 1; bundleLimit <= _mevConfig.MaxMergedBundles; bundleLimit++)
         {
             BundleSelector bundleSelector = new(BundlePool, bundleLimit);
-            MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, bundleLimit, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
+            MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(consensusPlugin, bundleLimit, new BundleTxSource(bundleSelector, _nethermindApi.Timestamper));
             blockProducers.Add(bundleProducer);
         }
 
         if (megabundleProducerCount > 0)
         {
             MegabundleSelector megabundleSelector = new(BundlePool);
-            MevBlockProducer.MevBlockProducerInfo bundleProducer = await CreateProducer(consensusPlugin, 0, new BundleTxSource(megabundleSelector, _nethermindApi.Timestamper));
+            MevBlockProducer.MevBlockProducerInfo bundleProducer = CreateProducer(consensusPlugin, 0, new BundleTxSource(megabundleSelector, _nethermindApi.Timestamper));
             blockProducers.Add(bundleProducer);
         }
 
         return new MevBlockProducer(_nethermindApi.LogManager, blockProducers.ToArray());
     }
 
-    private async Task<MevBlockProducer.MevBlockProducerInfo> CreateProducer(
+    private MevBlockProducer.MevBlockProducerInfo CreateProducer(
         IBlockProducerFactory consensusPlugin,
         int bundleLimit = 0,
         ITxSource? additionalTxSource = null)
@@ -177,7 +177,7 @@ public class MevPlugin : IConsensusWrapperPlugin
             AlwaysOkBlockProductionCondition.Instance :
             new BundleLimitBlockProductionTrigger(_nethermindApi.BlockTree!, _nethermindApi.Timestamper!, BundlePool, bundleLimit);
 
-        IBlockProducer producer = await consensusPlugin.InitBlockProducer(additionalTxSource);
+        IBlockProducer producer = consensusPlugin.InitBlockProducer(additionalTxSource);
         return new MevBlockProducer.MevBlockProducerInfo(producer, condition, new BeneficiaryTracer());
     }
 

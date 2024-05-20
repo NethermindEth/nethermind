@@ -46,9 +46,9 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            return Task.FromResult((IBlockProducer)null);
+            return null;
         }
 
         public Task InitNetworkProtocol()

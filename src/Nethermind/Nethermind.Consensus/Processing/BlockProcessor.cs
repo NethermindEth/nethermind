@@ -238,7 +238,7 @@ public partial class BlockProcessor : IBlockProcessor
         _beaconBlockRootHandler.ApplyContractStateChanges(block, spec, _stateProvider);
         _blockhashStore.ApplyHistoryBlockHashes(block.Header);
 
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitStorageRoots: false);
 
         TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
@@ -252,7 +252,7 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitStorageRoots: true);
 
         // Get the accounts that have been changed
         block.AccountChanges = _stateProvider.GetAccountChanges();
