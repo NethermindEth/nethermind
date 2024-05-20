@@ -9,10 +9,13 @@ using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
 using Nethermind.Core.Test.Builders;
+using Nethermind.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Int256;
 using Nethermind.Logging;
+using Nethermind.Specs;
+using Nethermind.Specs.Test;
 using Nethermind.State;
 using NSubstitute;
 using NUnit.Framework;
@@ -71,17 +74,26 @@ public class WithdrawalRequestProcessorTests
                 )
                 .TestObject;
 
-        ISpecProvider specProvider = Substitute.For<ISpecProvider>();
-
         IWorldState state = Substitute.For<IWorldState>();
+        state.StateRoot.Returns(new Hash256(Bytes.FromHexString("0x2b4d2dada0e987cf9ad952f7a0f962c371073a2900d42da2778a4f8087d66811")));
         state.AccountExists(spec.Eip7002ContractAddress).Returns(true);
 
-        IVirtualMachine virtualMachine = Substitute.For<IVirtualMachine>();
-
         ILogManager logManager = Substitute.For<ILogManager>();
+        
+
+        ISpecProvider specProvider = MainnetSpecProvider.Instance;
+        IBlockhashProvider blockhashProvider = Substitute.For<IBlockhashProvider>();
+
+        IVirtualMachine virtualMachine = new VirtualMachine(
+            blockhashProvider,
+            specProvider,
+            logManager
+        );
+
+        var ecdsa = new EthereumEcdsa(1, logManager);
 
         WithdrawalRequestsProcessor withdrawalRequestsProcessor = new(
-            new TransactionProcessor(specProvider, state, virtualMachine, logManager)
+            new SystemTxProcessor(spec, state, virtualMachine, ecdsa, logManager.GetClassLogger())
         );
 
         var withdrawalRequest = new WithdrawalRequest()
