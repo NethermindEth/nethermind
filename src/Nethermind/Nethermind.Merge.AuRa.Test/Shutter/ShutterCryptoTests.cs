@@ -12,6 +12,7 @@ using Nethermind.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Core.Test;
+using FluentAssertions;
 
 namespace Nethermind.Merge.AuRa.Test;
 
@@ -134,6 +135,42 @@ class ShutterCryptoTests
         Assert.That(encoded, Is.EqualTo(expected));
     }
 
+    // cryptotests decryption 4
+    [TestCase(
+        "02187977b02f9e6b80fe71e16b5b70570ef2940b8b876b9ded75fc8985bf7682d77fb1267252ba7b50fc6a9ba10bf2069802378c92904a1135d3426a792d0779a7bca89bfb3ceda1ba8c7e44efbf559e0611117944f99876036ceedd7af9cbfcaf09962627cee97096d1922f1e0bfef3d9db625358533a961b6c5d323b7136e2f87cceea36d50dc91c2ae11cc4dfaa28e60dcbb3d8108f82fa3af0f92ec85d0e4a94187b9d65665999566a920fa62a67fafae32ad7f0209b2a41af126fc73a07ac44ef6413e4dd02d0a968c651f14c53fa55875cdd20b349dd09acdd701d24077b7f74873db95a89b10a106dcb1ddb764998749d993d06fa8626de936e53609b4212da39d7944907d356c08b80e0e00201ce1f3e887269f0e71e408c9741a12d1c",
+        "125c6fc733ebb5f14ceb37a57b040485fd6d60a003eb411be0c184e48fa44453fe09f99c2210de6e9a85f7ae7bd47b6a017b2de7cc486870d7805c976df13566cef39d2bbe10e8b3aaa4872224c89bd67b1eb2f3c6f01eea513183cb29f828e1",
+        // "13e185f4714a45250e7b4f16c940b2935d89fd52b719c7c2b50f35d11a1d0f079b67dddf90cbc9322fc2505ce127999b0641b950d4c2929db132dd44cce8e52793c1b82f1541d69db07be3796fefa8e05407c1611c303333b861074a983186f811e16948d3d99fc2cbf9ac07218edf0a7e7e3e9a67b08475f132dad4fd29b01ca0f97f231834c90b06e62ff6c97664eb10d7b895b581b4f69a530fd0e79581211ddec0ac5f562cc68b1e89416d0db5413ec7520352be7d842a210e8ed506a1f3152a0b5c8369404052148fcafdf3f53a2fdbd63cbd90b288ba104ca6561a4f642c65d2bd932c28f8c0c2930108012602166cbefb935dd1d93cd0c94d4d2aa4f91ddc0b8771b3121d7da4ff0bc36b9d989c0b3c3c123fcd27eb3ad17c0a5a3b0d048daef029e0c0760f6e8feb7384fef8f751dd4eb5d5a74fb3e0a958f0dda6f66d3985cf90264424b3330e58f6c2b532049d5e7feafe9a0c1e7293d583d07cf53f414cdbfd967e9ddf91aaa3c1a93599e39e93b8c6425e1b93b4a8c9f3faad9115e0615fd23a9954f405011b04839f1ec34208060d02a46cd18a8c367d572b835b2ab99ab79b45a4d96ac69c2219e706046a2c3c417c878f9ed84c590dae177289fe4ce57c5655c85642803689da460be9c738579e609b57b82a315e825c0d0815d9f9f15fb41ef8dd09bae7bf45df73acc9647c98d0bb263e684be1b6810d2a92448221a8c42053f056e3a2733eaf3b087e22bd11200e1533ade5f7f85cc75bbe6840e8b924d1efe4af2f29408c1d2f665af53729e2e72cce8f2d108ca515fd",
+        "",
+        "5a6d3b31ae1435bacfe58b671e4143bdb9192c70ff1fa67625d9d6f8fdbcb858",
+        "b2090af6cd6ae2f7a16b4331a3328beea23f18c06254ed653145d39fd8484f09"
+    )]
+    public void Can_decrypt_data(string cipherTextHex, string decryptionKeyHex, string expectedGTHex, string expectedSigmaHex, string expectedHex)
+    {
+        EncryptedMessage c = ShutterCrypto.DecodeEncryptedMessage(Convert.FromHexString(cipherTextHex));
+        G1 decryptionKey = new(Convert.FromHexString(decryptionKeyHex));
+
+        // recover sigma
+
+        // todo: change this when shutter swaps to blst
+        // GT p = new(decryptionKey, c.c1);
+        // byte[] gtBytes = p.final_exp().to_bendian();
+
+        // TestContext.WriteLine("GT bytes: " + Convert.ToHexString(gtBytes));
+        // Assert.That(gtBytes.SequenceEqual(Convert.FromHexString(expectedGTHex)));
+
+        // Bytes32 key = ShutterCrypto.Hash2(gtBytes);
+        Bytes32 key = new();
+        Bytes32 sigma = ShutterCrypto.XorBlocks(c.c2, key);
+
+        TestContext.WriteLine("recovered sigma: " + Convert.ToHexString(sigma.Unwrap()));
+        Assert.That(sigma.Unwrap().SequenceEqual(Convert.FromHexString(expectedSigmaHex)));
+
+        byte[] decryptedMessage = ShutterCrypto.Decrypt(c, decryptionKey);
+        TestContext.WriteLine("decrypted msg: " + Convert.ToHexString(decryptedMessage));
+
+        Assert.That(decryptedMessage.SequenceEqual(Convert.FromHexString(expectedHex)));
+    }
+
     internal static EncryptedMessage Encrypt(ReadOnlySpan<byte> msg, G1 identity, G2 eonKey, Bytes32 sigma)
     {
         UInt256 r;
@@ -141,7 +178,7 @@ class ShutterCryptoTests
 
         EncryptedMessage c = new()
         {
-            VersionId = 0x2,
+            VersionId = ShutterCrypto.CryptoVersion,
             c1 = ShutterCrypto.ComputeC1(r),
             c2 = ComputeC2(sigma, r, identity, eonKey),
             c3 = ComputeC3(PadAndSplit(msg), sigma)
@@ -151,15 +188,15 @@ class ShutterCryptoTests
 
     internal static byte[] EncodeEncryptedMessage(EncryptedMessage encryptedMessage)
     {
-        byte[] bytes = new byte[1 + 96 + 32 + (encryptedMessage.c3.Count() * 32)];
+        byte[] bytes = new byte[1 + 192 + 32 + (encryptedMessage.c3.Count() * 32)];
 
         bytes[0] = encryptedMessage.VersionId;
-        encryptedMessage.c1.compress().CopyTo(bytes.AsSpan()[1..]);
-        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 96)..]);
+        encryptedMessage.c1.serialize().CopyTo(bytes.AsSpan()[1..]);
+        encryptedMessage.c2.Unwrap().CopyTo(bytes.AsSpan()[(1 + 192)..]);
 
         foreach ((Bytes32 block, int i) in encryptedMessage.c3.WithIndex())
         {
-            int offset = 1 + 96 + 32 + (32 * i);
+            int offset = 1 + 192 + 32 + (32 * i);
             block.Unwrap().CopyTo(bytes.AsSpan()[offset..]);
         }
 
@@ -168,9 +205,11 @@ class ShutterCryptoTests
 
     private static Bytes32 ComputeC2(Bytes32 sigma, UInt256 r, G1 identity, G2 eonKey)
     {
-        GT p = new(identity, eonKey);
-        GT preimage = ShutterCrypto.GTExp(p, r);
-        Bytes32 key = ShutterCrypto.Hash2(preimage);
+        // todo: change once shutter changes to blst
+        // GT p = new(identity, eonKey);
+        // GT preimage = ShutterCrypto.GTExp(p, r);
+        // Bytes32 key = ShutterCrypto.Hash2(preimage);
+        Bytes32 key = new();
         return ShutterCrypto.XorBlocks(sigma, key);
     }
 

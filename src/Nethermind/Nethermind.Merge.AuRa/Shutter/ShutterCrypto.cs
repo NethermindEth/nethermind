@@ -24,8 +24,8 @@ using GT = Bls.PT;
 
 internal class ShutterCrypto
 {
+    public static readonly byte CryptoVersion = 0x2;
     internal static readonly UInt256 BlsSubgroupOrder = new((byte[])[0x73, 0xed, 0xa7, 0x53, 0x29, 0x9d, 0x7d, 0x48, 0x33, 0x39, 0xd8, 0x08, 0x09, 0xa1, 0xd8, 0x05, 0x53, 0xbd, 0xa4, 0x02, 0xff, 0xfe, 0x5b, 0xfe, 0xff, 0xff, 0xff, 0xff, 0x00, 0x00, 0x00, 0x01], true);
-    internal static readonly byte CryptoVersion = 0x2;
 
     public struct EncryptedMessage
     {
@@ -70,7 +70,7 @@ internal class ShutterCrypto
             throw new Exception("Encrypted message had wrong crypto id.");
         }
 
-        ReadOnlySpan<byte> c3Bytes = bytes[(96 + 32)..];
+        ReadOnlySpan<byte> c3Bytes = bytes[(1 + 192 + 32)..];
         List<Bytes32> c3 = [];
         for (int i = 0; i < c3Bytes.Length / 32; i++)
         {
@@ -80,16 +80,18 @@ internal class ShutterCrypto
         return new()
         {
             VersionId = bytes[0],
-            c1 = new G2(bytes[..96].ToArray()),
-            c2 = new Bytes32(bytes[96..(96 + 32)]),
+            c1 = new G2(bytes[1..(1 + 192)].ToArray()),
+            c2 = new Bytes32(bytes[(1 + 192)..(1 + 192 + 32)]),
             c3 = c3
         };
     }
 
     public static Bytes32 RecoverSigma(EncryptedMessage encryptedMessage, G1 decryptionKey)
     {
-        GT p = new(decryptionKey, encryptedMessage.c1);
-        Bytes32 key = Hash2(p);
+        // todo: change this when shutter swaps to blst
+        // GT p = new(decryptionKey, encryptedMessage.c1);
+        // Bytes32 key = Hash2(p);
+        Bytes32 key = new Bytes32();
         Bytes32 sigma = XorBlocks(encryptedMessage.c2, key);
         return sigma;
     }
