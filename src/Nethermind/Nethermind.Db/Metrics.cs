@@ -1,8 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
 using Nethermind.Core.Attributes;
 
@@ -15,8 +13,16 @@ namespace Nethermind.Db
         public static long CodeDbCache { get; set; }
 
         [CounterMetric]
+        [Description("Number of State Trie cache hits.")]
+        public static long StateTreeCache { get; set; }
+
+        [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of State Reader reads.")]
+        public static long StateReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]
@@ -27,8 +33,16 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
+        [Description("Number of storage trie cache hits.")]
+        public static long StorageTreeCache { get; set; }
+
+        [CounterMetric]
         [Description("Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of storage reader reads.")]
+        public static long StorageReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]
