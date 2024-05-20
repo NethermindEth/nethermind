@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using DotNetty.Buffers;
 using FluentAssertions;
+using Nethermind.Blockchain.Synchronization;
 using Nethermind.Consensus;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,6 +20,8 @@ using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
 using Nethermind.Network.P2P.Subprotocols.Eth;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62;
+using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
@@ -32,6 +35,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using GetReceiptsMessage63 = Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages.GetReceiptsMessage;
 using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -145,13 +149,35 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void Can_handle_get_receipts()
+    public void Can_handle_GetReceipts()
     {
         var msg66 = new GetReceiptsMessage(1111, new (new[] { Keccak.Zero, TestItem.KeccakA }.ToPooledList()));
 
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
-        _session.Received(1).DeliverMessage(Arg.Any<ReceiptsMessage>());
+        _session.Received(1).DeliverMessage(Arg.Any<ReceiptsMessage69>());
+    }
+
+    [Test]
+    public void Ignores_NewBlock_message()
+    {
+        var msg = new NewBlockMessage {TotalDifficulty = 1, Block = Build.A.Block.TestObject};
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth62MessageCode.NewBlock);
+
+        _syncManager.DidNotReceiveWithAnyArgs().AddNewBlock(Arg.Any<Block>(), Arg.Any<ISyncPeer>());
+    }
+
+    [Test]
+    public void Ignores_NewBlockHashes_message()
+    {
+        var msg = new NewBlockHashesMessage((Keccak.MaxValue, 111));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth62MessageCode.NewBlockHashes);
+
+        _syncManager.DidNotReceiveWithAnyArgs().HintBlock(Arg.Any<Hash256>(), Arg.Any<long>(), Arg.Any<ISyncPeer>());
     }
 
     private void HandleIncomingStatusMessage()

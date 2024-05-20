@@ -50,14 +50,14 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
+            case Eth62MessageCode.NewBlockHashes:
+                break;
+            case Eth62MessageCode.NewBlock:
+                break;
             case Eth62MessageCode.Status:
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 base.ReportIn(statusMsg, size);
                 this.Handle(statusMsg);
-                break;
-            case Eth62MessageCode.NewBlockHashes:
-                break;
-            case Eth62MessageCode.NewBlock:
                 break;
             case Eth63MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
