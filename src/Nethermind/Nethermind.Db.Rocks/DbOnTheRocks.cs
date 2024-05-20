@@ -256,14 +256,10 @@ public class DbOnTheRocks : IDb, ITunableDb
             .Reverse()
             .ToList();
 
-        ConcurrentQueue<(FileMetadata metadata, DateTime creationTime)> taskQueues = new(fileMetadatas);
-
         long totalRead = 0;
         Parallel.ForEach(fileMetadatas, (task) =>
         {
-            (FileMetadata metadata, DateTime creationTime) = task;
-
-            string fullPath = Path.Join(basePath, metadata.FileName);
+            string fullPath = Path.Join(basePath, task.metadata.FileName);
             _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
 
             try
