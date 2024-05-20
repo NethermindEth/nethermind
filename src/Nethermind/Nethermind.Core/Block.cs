@@ -7,7 +7,7 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text;
 using System.Text.Json.Serialization;
-
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
 
@@ -112,7 +112,7 @@ public class Block
     public Hash256? ParentBeaconBlockRoot => Header.ParentBeaconBlockRoot; // do not add setter here
 
     [JsonIgnore]
-    public AddressAsKey[]? AccountChanges { get; internal set; }
+    public ArrayPoolList<AddressAsKey>? AccountChanges { get; set; }
 
     public override string ToString() => ToString(Format.Short);
 

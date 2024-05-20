@@ -210,7 +210,7 @@ namespace Nethermind.TxPool
                     {
                         try
                         {
-                            AddressAsKey[]? accountChanges = args.Block.AccountChanges;
+                            ArrayPoolList<AddressAsKey>? accountChanges = args.Block.AccountChanges;
                             if (!CanUseCache(args.Block, accountChanges))
                             {
                                 // Not sequential block, reset cache
@@ -221,6 +221,9 @@ namespace Nethermind.TxPool
                                 // Sequential block, just remove changed accounts from cache
                                 _accountCache.RemoveAccounts(accountChanges);
                             }
+                            args.Block.AccountChanges = null;
+                            accountChanges?.Dispose();
+
                             _lastBlockNumber = args.Block.Number;
                             _lastBlockHash = args.Block.Hash;
 
@@ -238,9 +241,9 @@ namespace Nethermind.TxPool
                     }
                 }
 
-                bool CanUseCache(Block block, [NotNullWhen(true)] AddressAsKey[]? accountChanges)
+                bool CanUseCache(Block block, [NotNullWhen(true)] ArrayPoolList<AddressAsKey>? accountChanges)
                 {
-                    return accountChanges is not null && accountChanges.Length != 0 && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
+                    return accountChanges is not null && block.ParentHash == _lastBlockHash && _lastBlockNumber + 1 == block.Number;
                 }
             }, TaskCreationOptions.LongRunning).ContinueWith(t =>
             {
@@ -762,7 +765,11 @@ namespace Nethermind.TxPool
 
         internal void ResetAddress(Address address)
         {
-            _accountCache.RemoveAccounts([address]);
+            ArrayPoolList<AddressAsKey> arrayPoolList = new(1)
+            {
+                [0] = address
+            };
+            _accountCache.RemoveAccounts(arrayPoolList);
         }
 
         private sealed class AccountCache : IAccountStateProvider
@@ -801,7 +808,7 @@ namespace Nethermind.TxPool
                 return true;
             }
 
-            public void RemoveAccounts(AddressAsKey[] address)
+            public void RemoveAccounts(ArrayPoolList<AddressAsKey> address)
             {
                 Parallel.ForEach(address.GroupBy(a => GetCacheIndex(a.Value)),
                     (n) =>
