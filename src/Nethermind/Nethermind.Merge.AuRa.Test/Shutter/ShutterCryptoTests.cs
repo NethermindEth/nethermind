@@ -89,16 +89,7 @@ class ShutterCryptoTests
         "3834a349678eF446baE07e2AefFC01054184af00383438343834383438343834",
         "02B695A53BC2AB868E02786730030F78FA4CD3A24169966BCE28D6F2B2A73A8DAF9C1C57890CA24680DE84A175F67E4DD00E0FBC7531A017EBD4183E2C66B2726AA16C393A0D44BE40803EC1AFBE9F76BB0FD610E81E64760420008769E81799CB13EF2CFF94E7F4D809F4BC8B38599F940D25AC209A9661ED90A71562F3EC2CF18258DBDFF56ACC2F1A7C4E978C515A288BE09451EEE79B47E551F30F5B632C18FD43434574E0101FF74525CA254C1288AFB615B491A00452BD565F40DED22A8138F684DE2D21C26D2B48A439C3200FB4A172D76DBDE1228542FF3ABBF4EC09F1BFFAE3861F6CD187269FD1983CC9BB25122E37A2C21C33AD9590865B54EAA0B5"
     )]
-    // cryptotests encrpytion 4
-    // [TestCase(
-    //     "5002552d0db819f6b6b95802607f00cc017dcf2b5a0384d105ebf694a3d89c52",
-    //     "",
-    //     "",
-    //     "0097799f34f0470489fa4ea27e7b1ad0431567cda7b8e879d5272cd15a7d1fb97c7d90b73e72171ce2d2ebfbccc986c5104dea15f854c0c49d4cf0a75eca08912522d8ff5cca1c9940e70fec24ba45bacc7354abbab82f496bb8fb607ed4ba401081d51e6481af146e52cc47147c5dab6644f8c19d6701e9ae1d37f58d0ca2cfd134d141dea927d332ff253c08ee1418185629f285c589c8b8a063474adf697316769960026c488e62c3753d00d856be96a6f464eaa4a9074cfb1bd1706411e0",
-    //     "71fabddbccb7ed674fb0b6035809e1296b48d3f21137d2159989d23c8e40a327",
-    //     "0205549ea22448200ce3205a11089045ca5d74a8cab523f80e07b507843c82d6af35de963fbc6d6005b1d836d2a2e81db2171cd4cedab0bafa868d8d83447118a02101ef6fd2f3270c7a5d8a0302aaad0bb5b2d64ae479ad66adcc3fe373f1346c0d6936650d0df3edec2b30dd5a998c5a67957a0188c0d994886f851cf2633bcd60cc2e26c11a998b109a5d11722d8915002cc986b7fcbfd1c4132375024ecd5176356560684d5dd9076ec5f31d29d89fd0c2ec2ca8c1ee420275f0baaf0936e1d457230771ff7276793f67220d24316efd155d5720c658680e34859024de4676b3d083ff1f041451bec371dc80f4885a7fc34edd12704e2e0401590f8205e8ec2fe6a4b9cc421aef1cc305a740a0c5989a0b83b11dee4f60dd80c6b091bf90fc"
-    // )]
-    public void Can_encrypt(string rawTxHex, string senderAddress, string identityPrefixHex, string eonKeyHex, string sigmaHex, string expectedHex)
+    public void Can_encrypt_transaction(string rawTxHex, string senderAddress, string identityPrefixHex, string eonKeyHex, string sigmaHex, string expectedHex)
     {
         byte[] rawTx = Convert.FromHexString(rawTxHex);
         byte[] expected = Convert.FromHexString(expectedHex);
@@ -116,6 +107,30 @@ class ShutterCryptoTests
 
         byte[] encoded = EncodeEncryptedMessage(c);
         TestContext.WriteLine("encrypted tx: " + Convert.ToHexString(encoded));
+        Assert.That(encoded, Is.EqualTo(expected));
+    }
+
+    // cryptotests encryption 4
+    [TestCase(
+        "b2090af6cd6ae2f7a16b4331a3328beea23f18c06254ed653145d39fd8484f09",
+        "1ae8ba18ae8995aaa42a90fcccdbbff7469bcfd21654187466d27d7214f51bab8437e6b559ee5f110bd4ea13c93c94f781f7d2d9",
+        "0f23dd91901e0b29be6b082fc42e5a2b99a8ff7d3b547cd62c57ab761770ba7301563eff95b052381e985a7df962efa60fae52cf83055a415b80b060c6a9c4c0c86a617ef71fe1f31471f411ab9caad3fdf2ba8239acc8935fc4cbd70910190d0619fd855c8c8d5668e14c255fbc17dfb43ba6becb81c124d2b0fa0260c810b2b15c80ff715f2526301188b52e6900b5047b87a30fe80f8801c0a02a0fb6c1e8e807cd28d1caaeeeee10d64dcb1f260cb430c1f06792d1d8e9dced4634bcc9c9",
+        "5a6d3b31ae1435bacfe58b671e4143bdb9192c70ff1fa67625d9d6f8fdbcb858",
+        "02187977b02f9e6b80fe71e16b5b70570ef2940b8b876b9ded75fc8985bf7682d77fb1267252ba7b50fc6a9ba10bf2069802378c92904a1135d3426a792d0779a7bca89bfb3ceda1ba8c7e44efbf559e0611117944f99876036ceedd7af9cbfcaf09962627cee97096d1922f1e0bfef3d9db625358533a961b6c5d323b7136e2f87cceea36d50dc91c2ae11cc4dfaa28e60dcbb3d8108f82fa3af0f92ec85d0e4a94187b9d65665999566a920fa62a67fafae32ad7f0209b2a41af126fc73a07ac44ef6413e4dd02d0a968c651f14c53fa55875cdd20b349dd09acdd701d24077b7f74873db95a89b10a106dcb1ddb764998749d993d06fa8626de936e53609b4212da39d7944907d356c08b80e0e00201ce1f3e887269f0e71e408c9741a12d1c"
+    )]
+    public void Can_encrypt_data(string msgHex, string identityPreimageHex, string eonKeyHex, string sigmaHex, string expectedHex)
+    {
+        byte[] msg = Convert.FromHexString(msgHex);
+        byte[] expected = Convert.FromHexString(expectedHex);
+
+        G1 identity = ShutterCrypto.ComputeIdentity(Convert.FromHexString(identityPreimageHex));
+        G2 eonKey = new(Convert.FromHexString(eonKeyHex));
+        Bytes32 sigma = new(Convert.FromHexString(sigmaHex).AsSpan());
+
+        EncryptedMessage c = Encrypt(msg, identity, eonKey, sigma);
+
+        byte[] encoded = EncodeEncryptedMessage(c);
+        TestContext.WriteLine("encrypted msg: " + Convert.ToHexString(encoded));
         Assert.That(encoded, Is.EqualTo(expected));
     }
 
