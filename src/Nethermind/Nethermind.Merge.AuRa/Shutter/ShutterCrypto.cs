@@ -126,11 +126,22 @@ internal class ShutterCrypto
         // int suffixLength = int.Max((bitLength + 7) / 8, 1);
 
         // todo: is actual implementation correct?
-        return Enumerable.Range(0, n).Select(suffix =>
+        return Enumerable.Range(0, n).Select(x =>
         {
-            Span<byte> preimage = stackalloc byte[36];
+            byte[] suffix = new byte[4];
+            BinaryPrimitives.WriteUInt32BigEndian(suffix, (uint)x);
+            int suffixLength = 4;
+            for (int i = 0; i < 3; i++)
+            {
+                if (suffix[i] != 0)
+                {
+                    break;
+                }
+                suffixLength--;
+            }
+            Span<byte> preimage = stackalloc byte[32 + suffixLength];
             sigma.Unwrap().CopyTo(preimage);
-            BinaryPrimitives.WriteInt32BigEndian(preimage[32..], suffix);
+            suffix.AsSpan()[(4 - suffixLength)..4].CopyTo(preimage[32..]);
             return Hash4(preimage);
         });
     }
@@ -204,7 +215,7 @@ internal class ShutterCrypto
         preimage[0] = 0x3;
         bytes.CopyTo(preimage.AsSpan()[1..]);
         Span<byte> hash = Keccak.Compute(preimage).Bytes;
-        UInt256.Mod(new UInt256(hash), BlsSubgroupOrder, out res);
+        UInt256.Mod(new UInt256(hash, true), BlsSubgroupOrder, out res);
     }
 
     public static Bytes32 Hash4(ReadOnlySpan<byte> bytes)
