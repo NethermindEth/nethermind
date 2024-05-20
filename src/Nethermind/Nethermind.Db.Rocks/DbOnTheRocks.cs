@@ -259,39 +259,34 @@ public class DbOnTheRocks : IDb, ITunableDb
         ConcurrentQueue<(FileMetadata metadata, DateTime creationTime)> taskQueues = new(fileMetadatas);
 
         long totalRead = 0;
-        Task[] tasks = Enumerable.Range(0, Environment.ProcessorCount).Select((_) =>
+        Parallel.ForEach(fileMetadatas, (task) =>
         {
-            return Task.Run(() =>
+            (FileMetadata metadata, DateTime creationTime) = task;
+
+            string fullPath = Path.Join(basePath, metadata.FileName);
+            _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
+
+            try
             {
                 byte[] buffer = new byte[512.KiB()];
-                while (taskQueues.TryDequeue(out (FileMetadata metadata, DateTime creationTime) liveFileMetadata))
+                using FileStream stream = File.OpenRead(fullPath);
+                int readCount = buffer.Length;
+                while (readCount == buffer.Length)
                 {
-                    string fullPath = Path.Join(basePath, liveFileMetadata.metadata.FileName);
-                    _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
-
-                    try
-                    {
-                        using FileStream stream = File.OpenRead(fullPath);
-                        int readCount = buffer.Length;
-                        while (readCount == buffer.Length)
-                        {
-                            readCount = stream.Read(buffer);
-                            Interlocked.Add(ref totalRead, readCount);
-                        }
-                    }
-                    catch (FileNotFoundException)
-                    {
-                        // Happens sometimes. We do nothing here.
-                    }
-                    catch (IOException e)
-                    {
-                        // Something unusual, but nothing noteworthy.
-                        _logger.Warn($"Exception warming up {fullPath} {e}");
-                    }
+                    readCount = stream.Read(buffer);
+                    Interlocked.Add(ref totalRead, readCount);
                 }
-            });
-        }).ToArray();
-        Task.WaitAll(tasks);
+            }
+            catch (FileNotFoundException)
+            {
+                // Happens sometimes. We do nothing here.
+            }
+            catch (IOException e)
+            {
+                // Something unusual, but nothing noteworthy.
+                _logger.Warn($"Exception warming up {fullPath} {e}");
+            }
+        });
     }
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)

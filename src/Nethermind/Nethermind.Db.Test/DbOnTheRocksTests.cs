@@ -134,15 +134,17 @@ namespace Nethermind.Db.Test
         {
             IDbConfig config = new DbConfig();
             config.EnableFileWarmer = true;
-            DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
-            for (int i = 0; i < 1000; i++)
             {
-                db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+                for (int i = 0; i < 1000; i++)
+                {
+                    db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
+                }
             }
-            db.Dispose();
 
-            db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
-            db.Dispose();
+            {
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            }
         }
 
         [Test]
