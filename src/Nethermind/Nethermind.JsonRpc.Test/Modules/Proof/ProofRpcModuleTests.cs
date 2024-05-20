@@ -31,6 +31,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Core.Buffers;
 using Nethermind.State.Tracing;
 using NSubstitute;
+using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Test.Modules.Proof
 {
@@ -46,7 +47,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         private IBlockTree _blockTree = null!;
         private IDbProvider _dbProvider = null!;
         private TestSpecProvider _specProvider = null!;
-        private WorldStateManager _worldStateManager = null!;
+        private PaprikaStateFactory _stateDb = new();
 
         public ProofRpcModuleTests(bool createSystemAccount, bool useNonZeroGasPrice)
         {
@@ -58,8 +59,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public async Task Setup()
         {
             _dbProvider = await TestMemDbProvider.InitAsync();
-            ITrieStore trieStore = new TrieStore(_dbProvider.StateDb, LimboLogs.Instance);
-            WorldState worldState = new WorldState(trieStore, _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState worldState = new WorldState(_stateDb, _dbProvider.CodeDb, LimboLogs.Instance);
             worldState.CreateAccount(TestItem.AddressA, 100000);
             worldState.Commit(London.Instance);
             worldState.CommitTree(0);
@@ -71,9 +71,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 .OfChainLength(10)
                 .TestObject;
 
-            _worldStateManager = new WorldStateManager(worldState, trieStore, _dbProvider, LimboLogs.Instance);
             ProofModuleFactory moduleFactory = new(
-                _worldStateManager,
+                null!, // TODO
+                _stateDb,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 receiptStorage,
@@ -82,6 +82,9 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             _proofRpcModule = moduleFactory.Create();
         }
+
+        [TearDown]
+        public ValueTask TearDown() => _stateDb.DisposeAsync();
 
         [TestCase(true)]
         [TestCase(false)]
@@ -217,7 +220,8 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
             _receiptFinder.FindBlockHash(Arg.Any<Hash256>()).Returns(_blockTree.FindBlock(1)!.Hash);
 
             ProofModuleFactory moduleFactory = new ProofModuleFactory(
-                _worldStateManager,
+                null!,//_worldStateManager, TODO
+                _stateDb,
                 _blockTree,
                 new CompositeBlockPreprocessorStep(new RecoverSignatures(new EthereumEcdsa(TestBlockchainIds.ChainId, LimboLogs.Instance), NullTxPool.Instance, _specProvider, LimboLogs.Instance)),
                 _receiptFinder,
@@ -812,7 +816,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
             for (int i = 0; i < 10000; i++)
             {
-                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray());
+                stateProvider.Set(new StorageCell(TestItem.AddressB, (UInt256)i), i.ToBigEndianByteArray().ToEvmWord());
             }
 
             stateProvider.Commit(MainnetSpecProvider.Instance.GenesisSpec, NullStateTracer.Instance);
@@ -881,7 +885,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
 
         private WorldState CreateInitialState(byte[]? code)
         {
-            WorldState stateProvider = new(new TrieStore(_dbProvider.StateDb, LimboLogs.Instance), _dbProvider.CodeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(_stateDb, _dbProvider.CodeDb, LimboLogs.Instance);
             AddAccount(stateProvider, TestItem.AddressA, 1.Ether());
             AddAccount(stateProvider, TestItem.AddressB, 1.Ether());
 

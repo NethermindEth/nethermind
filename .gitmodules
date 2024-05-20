@@ -4,3 +4,7 @@
 [submodule "src/bench_precompiles"]
 	path = src/bench_precompiles
 	url = https://github.com/shamatar/bench_precompiles.git
+[submodule "src/Paprika"]
+	path = src/Paprika
+	url = https://github.com/NethermindEth/Paprika.git
+	branch = main

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.Logging;
@@ -92,8 +93,9 @@ public class MevPlugin : IConsensusWrapperPlugin
                 var (getFromApi, _) = _nethermindApi!.ForProducer;
 
                 _tracerFactory = new TracerFactory(
+                    getFromApi.DbProvider!.AsReadOnly(false),
+                    getFromApi.StateFactory!,
                     getFromApi.BlockTree!,
-                    getFromApi.WorldStateManager!,
                     getFromApi.BlockPreprocessor!,
                     getFromApi.SpecProvider!,
                     getFromApi.LogManager!,

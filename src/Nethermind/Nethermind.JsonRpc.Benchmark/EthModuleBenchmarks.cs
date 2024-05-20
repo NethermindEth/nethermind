@@ -30,13 +30,13 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
 using BlockTree = Nethermind.Blockchain.BlockTree;
 using Nethermind.Blockchain.Synchronization;
 using Nethermind.Config;
 using Nethermind.Synchronization.ParallelSync;
+using Nethermind.Paprika;
 
 namespace Nethermind.JsonRpc.Benchmark
 {
@@ -45,6 +45,7 @@ namespace Nethermind.JsonRpc.Benchmark
         private IVirtualMachine _virtualMachine;
         private IBlockhashProvider _blockhashProvider;
         private EthRpcModule _ethModule;
+        private PaprikaStateFactory _stateDb;
 
         [GlobalSetup]
         public void GlobalSetup()
@@ -56,16 +57,14 @@ namespace Nethermind.JsonRpc.Benchmark
 
             ISpecProvider specProvider = MainnetSpecProvider.Instance;
             IReleaseSpec spec = MainnetSpecProvider.Instance.GenesisSpec;
-            var trieStore = new TrieStore(stateDb, LimboLogs.Instance);
+            _stateDb = new();
 
-            WorldState stateProvider = new(trieStore, codeDb, LimboLogs.Instance);
+            WorldState stateProvider = new(_stateDb, codeDb, LimboLogs.Instance);
             stateProvider.CreateAccount(Address.Zero, 1000.Ether());
             stateProvider.Commit(spec);
             stateProvider.CommitTree(0);
 
-            WorldStateManager stateManager = new WorldStateManager(stateProvider, trieStore, dbProvider, LimboLogs.Instance);
-
-            StateReader stateReader = new(trieStore, codeDb, LimboLogs.Instance);
+            StateReader stateReader = new(_stateDb, codeDb, LimboLogs.Instance);
 
             ChainLevelInfoRepository chainLevelInfoRepository = new(blockInfoDb);
             BlockTree blockTree = new(
@@ -123,7 +122,8 @@ namespace Nethermind.JsonRpc.Benchmark
 
             BlockchainBridge bridge = new(
                 new ReadOnlyTxProcessingEnv(
-                    stateManager,
+                    null!, // TODO: fix this
+                    _stateDb,
                     new ReadOnlyBlockTree(blockTree),
                     specProvider,
                     LimboLogs.Instance),
@@ -159,6 +159,12 @@ namespace Nethermind.JsonRpc.Benchmark
                 gasPriceOracle,
                 ethSyncingInfo,
                 feeHistoryOracle);
+        }
+
+        [GlobalCleanup]
+        public void GlobalCleanup()
+        {
+            _stateDb?.DisposeAsync().GetAwaiter().GetResult();
         }
 
         [Benchmark]

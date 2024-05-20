@@ -76,8 +76,7 @@ namespace Nethermind.Blockchain
                 {
                     foreach (KeyValuePair<UInt256, byte[]> storage in allocation.Storage)
                     {
-                        _stateProvider.Set(new StorageCell(address, storage.Key),
-                            storage.Value.WithoutLeadingZeros().ToArray());
+                        _stateProvider.Set(new StorageCell(address, storage.Key), storage.Value.ToEvmWord());
                     }
                 }
 

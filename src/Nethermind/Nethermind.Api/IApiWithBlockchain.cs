@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 #nullable enable
+using System;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Filters;
 using Nethermind.Blockchain.FullPruning;
@@ -21,8 +22,6 @@ using Nethermind.Facade.Eth;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Modules.Eth.GasPrice;
 using Nethermind.State;
-using Nethermind.Trie;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 
 namespace Nethermind.Api
@@ -54,18 +53,10 @@ namespace Nethermind.Api
         ISealer? Sealer { get; set; }
         ISealValidator? SealValidator { get; set; }
         ISealEngine SealEngine { get; set; }
-        /// <summary>
-        /// Can be used only for processing blocks, on all other contexts use <see cref="StateReader"/> or <see cref="ChainHeadStateProvider"/>.
-        /// </summary>
-        /// <remarks>
-        /// DO NOT USE OUTSIDE OF PROCESSING BLOCK CONTEXT!
-        /// </remarks>
-        IWorldState? WorldState { get; set; }
+        IStateFactory? StateFactory { get; set; }
         IReadOnlyStateProvider? ChainHeadStateProvider { get; set; }
         IStateReader? StateReader { get; set; }
-        IWorldStateManager? WorldStateManager { get; set; }
         ITransactionProcessor? TransactionProcessor { get; set; }
-        ITrieStore? TrieStore { get; set; }
         ITxSender? TxSender { get; set; }
         INonceManager? NonceManager { get; set; }
         ITxPool? TxPool { get; set; }
@@ -84,6 +75,11 @@ namespace Nethermind.Api
         /// </remarks>
         IBlockFinalizationManager? FinalizationManager { get; set; }
 
+        /// <summary>
+        /// Registers a handler for future <see cref="IBlockFinalizationManager.BlocksFinalized"/> event.
+        /// </summary>
+        void RegisterForBlockFinalized(EventHandler<FinalizeEventArgs> blocksFinalizedHandler);
+
         IGasLimitCalculator? GasLimitCalculator { get; set; }
 
         IBlockProducerEnvFactory? BlockProducerEnvFactory { get; set; }
@@ -95,7 +91,9 @@ namespace Nethermind.Api
         CompositePruningTrigger PruningTrigger { get; }
 
         IBlockProductionPolicy? BlockProductionPolicy { get; set; }
-        INodeStorageFactory NodeStorageFactory { get; set; }
+
+        IWorldState? WorldState { get; set; }
+
         BackgroundTaskScheduler BackgroundTaskScheduler { get; set; }
     }
 }

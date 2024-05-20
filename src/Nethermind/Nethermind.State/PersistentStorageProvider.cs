@@ -5,12 +5,11 @@ using System;
 using System.Collections.Generic;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
-using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Resettables;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
-using Nethermind.Trie.Pruning;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State
 {
@@ -20,29 +19,22 @@ namespace Nethermind.State
     /// </summary>
     internal class PersistentStorageProvider : PartialStorageProviderBase
     {
-        private readonly ITrieStore _trieStore;
-        private readonly StateProvider _stateProvider;
         private readonly ILogManager? _logManager;
-        internal readonly IStorageTreeFactory _storageTreeFactory;
-        private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
+        private readonly IStateOwner _owner;
 
         /// <summary>
         /// EIP-1283
         /// </summary>
-        private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
+        private readonly ResettableDictionary<StorageCell, EvmWord> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
 
-        public PersistentStorageProvider(ITrieStore? trieStore, StateProvider? stateProvider, ILogManager? logManager, IStorageTreeFactory? storageTreeFactory = null)
+        public PersistentStorageProvider(IStateOwner owner, ILogManager? logManager)
             : base(logManager)
         {
-            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _owner = owner;
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-            _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
         }
-
-        public Hash256 StateRoot { get; set; } = null!;
 
         /// <summary>
         /// Reset the storage state
@@ -50,7 +42,6 @@ namespace Nethermind.State
         public override void Reset()
         {
             base.Reset();
-            _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
         }
@@ -60,15 +51,15 @@ namespace Nethermind.State
         /// </summary>
         /// <param name="storageCell">Storage location</param>
         /// <returns>Value at location</returns>
-        protected override ReadOnlySpan<byte> GetCurrentValue(in StorageCell storageCell) =>
-            TryGetCachedValue(storageCell, out byte[]? bytes) ? bytes! : LoadFromTree(storageCell);
+        protected override EvmWord GetCurrentValue(in StorageCell storageCell) =>
+            TryGetCachedValue(storageCell, out EvmWord bytes) ? bytes : LoadFromTree(storageCell);
 
         /// <summary>
         /// Return the original persistent storage value from the storage cell
         /// </summary>
         /// <param name="storageCell"></param>
         /// <returns></returns>
-        public byte[] GetOriginal(in StorageCell storageCell)
+        public EvmWord GetOriginal(in StorageCell storageCell)
         {
             if (!_originalValues.TryGetValue(storageCell, out var value))
             {
@@ -89,6 +80,10 @@ namespace Nethermind.State
             return value;
         }
 
+        protected override void OnCellUpdatePushed(in StorageCell cell)
+        {
+            _owner.State.StorageMightBeSet(cell);
+        }
 
         /// <summary>
         /// Called by Commit
@@ -109,14 +104,14 @@ namespace Nethermind.State
                 throw new InvalidOperationException($"Change after current position ({_currentPosition} + 1) was not null when commiting {nameof(PartialStorageProviderBase)}");
             }
 
-            HashSet<Address> toUpdateRoots = new();
-
             bool isTracing = tracer.IsTracingStorage;
             Dictionary<StorageCell, ChangeTrace>? trace = null;
             if (isTracing)
             {
                 trace = new Dictionary<StorageCell, ChangeTrace>();
             }
+
+            IState state = _owner.State;
 
             for (int i = 0; i <= _currentPosition; i++)
             {
@@ -166,7 +161,7 @@ namespace Nethermind.State
                             _logger.Trace($"  Update {change.StorageCell.Address}_{change.StorageCell.Index} V = {change.Value.ToHexString(true)}");
                         }
 
-                        SaveToTree(toUpdateRoots, change);
+                        SaveToTree(state, change);
 
                         if (isTracing)
                         {
@@ -176,19 +171,6 @@ namespace Nethermind.State
                         break;
                     default:
                         throw new ArgumentOutOfRangeException();
-                }
-            }
-
-            // TODO: it seems that we are unnecessarily recalculating root hashes all the time in storage?
-            foreach (Address address in toUpdateRoots)
-            {
-                // since the accounts could be empty accounts that are removing (EIP-158)
-                if (_stateProvider.AccountExists(address))
-                {
-                    Hash256 root = RecalculateRootHash(address);
-
-                    // _logger.Warn($"Recalculating storage root {address}->{root} ({toUpdateRoots.Count})");
-                    _stateProvider.UpdateStorageRoot(address, root);
                 }
             }
 
@@ -202,68 +184,34 @@ namespace Nethermind.State
             }
         }
 
-        private void SaveToTree(HashSet<Address> toUpdateRoots, Change change)
+        private void SaveToTree(IState state, Change change)
         {
-            if (_originalValues.TryGetValue(change.StorageCell, out byte[] initialValue) &&
-                initialValue.AsSpan().SequenceEqual(change.Value))
+            if (_originalValues.TryGetValue(change.StorageCell, out EvmWord initialValue) &&
+                initialValue == change.Value)
             {
                 // no need to update the tree if the value is the same
                 return;
             }
 
-            StorageTree tree = GetOrCreateStorage(change.StorageCell.Address);
             Db.Metrics.StorageTreeWrites++;
-            toUpdateRoots.Add(change.StorageCell.Address);
-            tree.Set(change.StorageCell.Index, change.Value);
+            state.SetStorage(change.StorageCell, change.Value);
         }
 
-        /// <summary>
-        /// Commit persistent storage trees
-        /// </summary>
-        /// <param name="blockNumber">Current block number</param>
-        public void CommitTrees(long blockNumber)
+        private EvmWord LoadFromTree(in StorageCell storageCell)
         {
-            // _logger.Warn($"Storage block commit {blockNumber}");
-            foreach (KeyValuePair<AddressAsKey, StorageTree> storage in _storages)
-            {
-                storage.Value.Commit(blockNumber);
-            }
-
-            // TODO: maybe I could update storage roots only now?
-
-            // only needed here as there is no control over cached storage size otherwise
-            _storages.Reset();
-        }
-
-        private StorageTree GetOrCreateStorage(Address address)
-        {
-            ref StorageTree? value = ref _storages.GetValueRefOrAddDefault(address, out bool exists);
-            if (!exists)
-            {
-                value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-                return value;
-            }
-
-            return value;
-        }
-
-        private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
-        {
-            StorageTree tree = GetOrCreateStorage(storageCell.Address);
-
             Db.Metrics.StorageTreeReads++;
 
             if (!storageCell.IsHash)
             {
-                byte[] value = tree.Get(storageCell.Index);
+                EvmWord value = _owner.State.GetStorageAt(storageCell);
                 PushToRegistryOnly(storageCell, value);
                 return value;
             }
 
-            return tree.Get(storageCell.Hash.Bytes);
+            return _owner.State.GetStorageAt(storageCell.Address, storageCell.Hash);
         }
 
-        private void PushToRegistryOnly(in StorageCell cell, byte[] value)
+        private void PushToRegistryOnly(in StorageCell cell, EvmWord value)
         {
             StackList<int> stack = SetupRegistry(cell);
             IncrementChangePosition();
@@ -276,42 +224,11 @@ namespace Nethermind.State
         {
             foreach ((StorageCell address, ChangeTrace change) in trace)
             {
-                byte[] before = change.Before;
-                byte[] after = change.After;
-
-                if (!Bytes.AreEqual(before, after))
+                if (change.Before != change.After)
                 {
-                    tracer.ReportStorageChange(address, before, after);
+                    tracer.ReportStorageChange(address, change.Before.AsReadOnlySpan(), change.After.AsReadOnlySpan());
                 }
             }
-        }
-
-        private Hash256 RecalculateRootHash(Address address)
-        {
-            StorageTree storageTree = GetOrCreateStorage(address);
-            storageTree.UpdateRootHash();
-            return storageTree.RootHash;
-        }
-
-        /// <summary>
-        /// Clear all storage at specified address
-        /// </summary>
-        /// <param name="address">Contract address</param>
-        public override void ClearStorage(Address address)
-        {
-            base.ClearStorage(address);
-
-            // here it is important to make sure that we will not reuse the same tree when the contract is revived
-            // by means of CREATE 2 - notice that the cached trie may carry information about items that were not
-            // touched in this block, hence were not zeroed above
-            // TODO: how does it work with pruning?
-            _storages[address] = new StorageTree(_trieStore.GetTrieStore(address.ToAccountPath), Keccak.EmptyTreeHash, _logManager);
-        }
-
-        private class StorageTreeFactory : IStorageTreeFactory
-        {
-            public StorageTree Create(Address address, IScopedTrieStore trieStore, Hash256 storageRoot, Hash256 stateRoot, ILogManager? logManager)
-                => new(trieStore, storageRoot, logManager);
         }
     }
 }

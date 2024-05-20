@@ -5,6 +5,7 @@ using System;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
@@ -24,25 +25,29 @@ namespace Nethermind.Consensus.Processing
         public IVirtualMachine Machine { get; }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
+            IReadOnlyDbProvider readOnlyDbProvider,
+            IStateFactory stateFactory,
             IBlockTree? blockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
-            : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager)
+            : this(readOnlyDbProvider, stateFactory, blockTree?.AsReadOnly(), specProvider, logManager)
         {
         }
 
         public ReadOnlyTxProcessingEnv(
-            IWorldStateManager worldStateManager,
+            IReadOnlyDbProvider readOnlyDbProvider,
+            IStateFactory stateFactory,
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
-            ArgumentNullException.ThrowIfNull(worldStateManager);
+            ArgumentNullException.ThrowIfNull(stateFactory);
 
-            StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState();
+            ReadOnlyDb codeDb = readOnlyDbProvider.CodeDb.AsReadOnly(true);
+
+            StateReader = new StateReader(stateFactory, codeDb, logManager);
+            StateProvider = new WorldState(stateFactory, codeDb, logManager);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);

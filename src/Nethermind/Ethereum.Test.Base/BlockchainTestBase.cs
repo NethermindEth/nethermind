@@ -30,11 +30,11 @@ using Nethermind.Int256;
 using Nethermind.Evm;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.Paprika;
 using Nethermind.Serialization.Rlp;
 using Nethermind.Specs.Forks;
 using Nethermind.Specs.Test;
 using Nethermind.State;
-using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
 
@@ -82,7 +82,7 @@ namespace Ethereum.Test.Base
                 TestContext.WriteLine($"Network after transition: [{test.NetworkAfterTransition.Name}] at {test.TransitionForkActivation}");
             Assert.IsNull(test.LoadFailure, "test data loading failure");
 
-            IDb stateDb = new MemDb();
+            await using PaprikaStateFactory stateDb = new();
             IDb codeDb = new MemDb();
 
             ISpecProvider specProvider;
@@ -133,14 +133,13 @@ namespace Ethereum.Test.Base
 
             IEthereumEcdsa ecdsa = new EthereumEcdsa(specProvider.ChainId, _logManager);
 
-            TrieStore trieStore = new(stateDb, _logManager);
-            IWorldState stateProvider = new WorldState(trieStore, codeDb, _logManager);
+            IWorldState stateProvider = new WorldState(stateDb, codeDb, _logManager);
             IBlockTree blockTree = Build.A.BlockTree()
                 .WithSpecProvider(specProvider)
                 .WithoutSettingHead
                 .TestObject;
             ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(specProvider, blockTree);
-            IStateReader stateReader = new StateReader(trieStore, codeDb, _logManager);
+            IStateReader stateReader = new StateReader(stateDb, codeDb, _logManager);
 
             IReceiptStorage receiptStorage = NullReceiptStorage.Instance;
             IBlockhashProvider blockhashProvider = new BlockhashProvider(blockTree, specProvider, stateProvider, _logManager);
@@ -317,7 +316,7 @@ namespace Ethereum.Test.Base
             {
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Value.Storage)
                 {
-                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value);
+                    stateProvider.Set(new StorageCell(accountState.Key, storageItem.Key), storageItem.Value.ToEvmWord());
                 }
 
                 stateProvider.CreateAccount(accountState.Key, accountState.Value.Balance);
@@ -404,7 +403,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> clearedStorage in clearedStorages)
                 {
-                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key));
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, clearedStorage.Key)).AsReadOnlySpan();
                     if (!value.IsZero())
                     {
                         differences.Add($"{acountAddress} storage[{clearedStorage.Key}] exp: 0x00, actual: {value.ToHexString(true)}");
@@ -413,7 +412,7 @@ namespace Ethereum.Test.Base
 
                 foreach (KeyValuePair<UInt256, byte[]> storageItem in accountState.Storage)
                 {
-                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key));
+                    ReadOnlySpan<byte> value = !stateProvider.AccountExists(acountAddress) ? Bytes.Empty : stateProvider.Get(new StorageCell(acountAddress, storageItem.Key)).AsReadOnlySpan();
                     if (!Bytes.AreEqual(storageItem.Value, value))
                     {
                         differences.Add($"{acountAddress} storage[{storageItem.Key}] exp: {storageItem.Value.ToHexString(true)}, actual: {value.ToHexString(true)}");

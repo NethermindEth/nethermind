@@ -12,6 +12,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.TxPool;
@@ -20,7 +21,8 @@ namespace Nethermind.Consensus.Producers
 {
     public class BlockProducerEnvFactory : IBlockProducerEnvFactory
     {
-        protected readonly IWorldStateManager _worldStateManager;
+        private readonly IReadOnlyDbProvider _apiDbProvider;
+        protected readonly IStateFactory _stateFactory;
         protected readonly IBlockTree _blockTree;
         protected readonly ISpecProvider _specProvider;
         protected readonly IBlockValidator _blockValidator;
@@ -34,8 +36,7 @@ namespace Nethermind.Consensus.Producers
 
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
 
-        public BlockProducerEnvFactory(
-            IWorldStateManager worldStateManager,
+        public BlockProducerEnvFactory(IReadOnlyDbProvider apiDbProvider, IStateFactory stateFactory,
             IBlockTree blockTree,
             ISpecProvider specProvider,
             IBlockValidator blockValidator,
@@ -47,7 +48,8 @@ namespace Nethermind.Consensus.Producers
             IBlocksConfig blocksConfig,
             ILogManager logManager)
         {
-            _worldStateManager = worldStateManager;
+            _apiDbProvider = apiDbProvider;
+            _stateFactory = stateFactory;
             _blockTree = blockTree;
             _specProvider = specProvider;
             _blockValidator = blockValidator;
@@ -67,7 +69,7 @@ namespace Nethermind.Consensus.Producers
             ReadOnlyBlockTree readOnlyBlockTree = _blockTree.AsReadOnly();
 
             ReadOnlyTxProcessingEnv txProcessingEnv =
-                CreateReadonlyTxProcessingEnv(_worldStateManager, readOnlyBlockTree);
+                CreateReadonlyTxProcessingEnv(_stateFactory, readOnlyBlockTree);
 
             BlockProcessor blockProcessor =
                 CreateBlockProcessor(txProcessingEnv,
@@ -101,8 +103,8 @@ namespace Nethermind.Consensus.Producers
             };
         }
 
-        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager, ReadOnlyBlockTree readOnlyBlockTree) =>
-            new(worldStateManager, readOnlyBlockTree, _specProvider, _logManager);
+        protected virtual ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IStateFactory stateFactory, ReadOnlyBlockTree readOnlyBlockTree) =>
+            new(_apiDbProvider, stateFactory, readOnlyBlockTree, _specProvider, _logManager);
 
         protected virtual ITxSource CreateTxSourceForProducer(
             ITxSource? additionalTxSource,

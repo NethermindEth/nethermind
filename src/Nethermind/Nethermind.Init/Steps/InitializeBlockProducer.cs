@@ -10,6 +10,7 @@ using Nethermind.Api.Extensions;
 using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Producers;
+using Nethermind.Db;
 using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Init.Steps
@@ -44,7 +45,8 @@ namespace Nethermind.Init.Steps
         protected virtual IBlockProducer BuildProducer()
         {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
-                _api.WorldStateManager!,
+                _api.DbProvider!.AsReadOnly(true),
+                _api.StateFactory!,
                 _api.BlockTree!,
                 _api.SpecProvider!,
                 _api.BlockValidator!,

@@ -65,7 +65,8 @@ namespace Nethermind.Consensus.Ethash
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
             ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
+                getFromApi.DbProvider!.AsReadOnly(false),
+                getFromApi.StateFactory!,
                 readOnlyBlockTree,
                 getFromApi.SpecProvider,
                 getFromApi.LogManager);

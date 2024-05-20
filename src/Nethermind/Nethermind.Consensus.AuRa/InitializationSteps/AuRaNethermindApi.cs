@@ -11,6 +11,7 @@ using Nethermind.Consensus.AuRa.Validators;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core.Caching;
 using Nethermind.Core.Crypto;
+using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Serialization.Json;
@@ -75,7 +76,7 @@ namespace Nethermind.Consensus.AuRa.InitializationSteps
         }
 
         public ReadOnlyTxProcessingEnv CreateReadOnlyTransactionProcessorSource() =>
-            new ReadOnlyTxProcessingEnv(WorldStateManager!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
+            new ReadOnlyTxProcessingEnv(DbProvider.AsReadOnly(false), StateFactory!, BlockTree!.AsReadOnly(), SpecProvider!, LogManager!);
 
     }
 }

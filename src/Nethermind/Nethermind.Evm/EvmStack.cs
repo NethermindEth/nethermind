@@ -39,6 +39,18 @@ public ref struct EvmStack<TTracing>
 
     private readonly ITxTracer _tracer;
 
+    public void PushWord(Word value)
+    {
+        if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(MemoryMarshal.AsBytes(MemoryMarshal.CreateReadOnlySpan(in value, 1)));
+
+        Unsafe.WriteUnaligned(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize), value);
+
+        if (++Head >= MaxStackSize)
+        {
+            EvmStack.ThrowEvmStackOverflowException();
+        }
+    }
+
     public void PushBytes(scoped ReadOnlySpan<byte> value)
     {
         if (typeof(TTracing) == typeof(IsTracing)) _tracer.ReportStackPush(value);
@@ -172,6 +184,7 @@ public ref struct EvmStack<TTracing>
                 23, 22, 21, 20, 19, 18, 17, 16,
                 15, 14, 13, 12, 11, 10, 9, 8,
                 7, 6, 5, 4, 3, 2, 1, 0);
+
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word data = Unsafe.As<UInt256, Word>(ref Unsafe.AsRef(in value));
@@ -250,6 +263,7 @@ public ref struct EvmStack<TTracing>
                 23, 22, 21, 20, 19, 18, 17, 16,
                 15, 14, 13, 12, 11, 10, 9, 8,
                 7, 6, 5, 4, 3, 2, 1, 0);
+
             if (Avx512Vbmi.VL.IsSupported)
             {
                 Word convert = Avx512Vbmi.VL.PermuteVar32x8(data, shuffle);
@@ -338,6 +352,16 @@ public ref struct EvmStack<TTracing>
         }
 
         return _bytes.Slice(Head * WordSize, WordSize);
+    }
+
+    public Word PopEvmWord()
+    {
+        if (Head-- == 0)
+        {
+            EvmStack.ThrowEvmStackUnderflowException();
+        }
+
+        return Unsafe.ReadUnaligned<Word>(ref Unsafe.Add(ref MemoryMarshal.GetReference(_bytes), Head * WordSize));
     }
 
     public byte PopByte()

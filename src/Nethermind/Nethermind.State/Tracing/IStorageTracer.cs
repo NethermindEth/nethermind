@@ -3,6 +3,8 @@
 
 using System;
 using Nethermind.Core;
+using Nethermind.Core.Extensions;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.State.Tracing
 {
@@ -29,11 +31,30 @@ namespace Nethermind.State.Tracing
         /// <summary>
         /// Reports change of storage slot for key
         /// </summary>
+        /// <param name="key"></param>
+        /// <param name="value"></param>
+        /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
+        void ReportStorageChange(in ReadOnlySpan<byte> key, EvmWord value)
+            => ReportStorageChange(key, value.AsSpan());
+
+        /// <summary>
+        /// Reports change of storage slot for key
+        /// </summary>
         /// <param name="storageCell"></param>
         /// <param name="before"></param>
         /// <param name="after"></param>
         /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
         void ReportStorageChange(in StorageCell storageCell, byte[] before, byte[] after);
+
+        /// <summary>
+        /// Reports change of storage slot for key
+        /// </summary>
+        /// <param name="storageCell"></param>
+        /// <param name="before"></param>
+        /// <param name="after"></param>
+        /// <remarks>Depends on <see cref="IsTracingStorage"/></remarks>
+        void ReportStorageChange(in StorageCell storageCell, ReadOnlySpan<byte> before, ReadOnlySpan<byte> after)
+            => ReportStorageChange(storageCell, before.ToArray(), after.ToArray());
 
         /// <summary>
         /// Reports storage access

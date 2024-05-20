@@ -9,6 +9,7 @@ using Nethermind.Evm.Tracing.GethStyle;
 using Nethermind.Int256;
 using NUnit.Framework;
 using Nethermind.Specs;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm.Test;
 
@@ -154,7 +155,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + 4 * GasCostOf.VeryLow + GasCostOf.SReset), "gas");
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, 0)), Is.EqualTo(EvmWord.Zero), "storage");
     }
 
     [Test]
@@ -334,7 +335,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 3 + GasCostOf.Exp + GasCostOf.ExpByteEip160 + GasCostOf.SReset), "gas");
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, 0)), Is.EqualTo(EvmWord.Zero), "storage");
     }
 
     [Test]
@@ -366,7 +367,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(new byte[] { 0 }), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, 0)), Is.EqualTo(EvmWord.Zero), "storage");
     }
 
     [Test]
@@ -396,7 +397,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 4 + GasCostOf.SReset), "gas");
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, 0)), Is.EqualTo(EvmWord.Zero), "storage");
     }
 
     [Test]
@@ -409,7 +410,7 @@ public class VirtualMachineTests : VirtualMachineTestsBase
             0,
             (byte)Instruction.SSTORE);
         Assert.That(receipt.GasSpent, Is.EqualTo(GasCostOf.Transaction + GasCostOf.VeryLow * 2 + GasCostOf.SReset), "gas");
-        Assert.That(TestState.Get(new StorageCell(Recipient, 0)).ToArray(), Is.EqualTo(BigInteger.Zero.ToBigEndianByteArray()), "storage");
+        Assert.That(TestState.Get(new StorageCell(Recipient, 0)), Is.EqualTo(EvmWord.Zero), "storage");
     }
 
     /// <summary>

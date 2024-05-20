@@ -14,16 +14,16 @@ namespace Nethermind.Blockchain
     /// </summary>
     public class TrieStoreBoundaryWatcher : IDisposable
     {
-        private readonly IWorldStateManager _trieStore;
+        private readonly IStateFactory _stateFactory;
         private readonly IBlockTree _blockTree;
         private readonly ILogger _logger;
 
-        public TrieStoreBoundaryWatcher(IWorldStateManager trieStore, IBlockTree blockTree, ILogManager logManager)
+        public TrieStoreBoundaryWatcher(IStateFactory stateFactory, IBlockTree blockTree, ILogManager logManager)
         {
-            _trieStore = trieStore;
+            _stateFactory = stateFactory;
             _blockTree = blockTree;
             _logger = logManager.GetClassLogger();
-            _trieStore.ReorgBoundaryReached += OnReorgBoundaryReached;
+            _stateFactory.ReorgBoundaryReached += OnReorgBoundaryReached;
         }
 
         private void OnReorgBoundaryReached(object? sender, ReorgBoundaryReached e)
@@ -34,7 +34,7 @@ namespace Nethermind.Blockchain
 
         public void Dispose()
         {
-            _trieStore.ReorgBoundaryReached -= OnReorgBoundaryReached;
+            _stateFactory.ReorgBoundaryReached -= OnReorgBoundaryReached;
         }
     }
 }

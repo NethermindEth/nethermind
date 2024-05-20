@@ -23,6 +23,7 @@ using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Core;
+using Nethermind.Db;
 using Nethermind.Init.Steps;
 using Nethermind.Logging;
 using Nethermind.State;

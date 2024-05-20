@@ -33,7 +33,7 @@ public class BeaconBlockRootHandler : IBeaconBlockRootHandler
         StorageCell tsStorageCell = new(eip4788Account, timestampReduced);
         StorageCell brStorageCell = new(eip4788Account, rootIndex);
 
-        stateProvider.Set(tsStorageCell, Bytes.WithoutLeadingZeros(timestamp.ToBigEndian()).ToArray());
-        stateProvider.Set(brStorageCell, Bytes.WithoutLeadingZeros(parentBeaconBlockRoot.Bytes).ToArray());
+        stateProvider.Set(tsStorageCell, timestamp.ToBigEndian().ToEvmWord());
+        stateProvider.Set(brStorageCell, parentBeaconBlockRoot.Bytes.ToEvmWord());
     }
 }

@@ -13,6 +13,7 @@ using Nethermind.Consensus.Transactions;
 using Nethermind.Consensus.Validators;
 using Nethermind.Consensus.Withdrawals;
 using Nethermind.Core.Specs;
+using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
@@ -27,7 +28,8 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
     private readonly OPL1CostHelper _l1CostHelper;
 
     public OptimismBlockProducerEnvFactory(
-        IWorldStateManager worldStateManager,
+        IReadOnlyDbProvider apiDbProvider,
+        IStateFactory stateFactory,
         ChainSpec chainSpec,
         IBlockTree blockTree,
         ISpecProvider specProvider,
@@ -40,7 +42,7 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         IBlocksConfig blocksConfig,
         OPSpecHelper specHelper,
         OPL1CostHelper l1CostHelper,
-        ILogManager logManager) : base(worldStateManager,
+        ILogManager logManager) : base(apiDbProvider, stateFactory,
         blockTree, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
         txPool, transactionComparerProvider, blocksConfig, logManager)
@@ -51,11 +53,9 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
-    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,
-        ReadOnlyBlockTree readOnlyBlockTree)
+    protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IStateFactory stateFactory, ReadOnlyBlockTree readOnlyBlockTree)
     {
-        ReadOnlyTxProcessingEnv result = new(worldStateManager,
-            readOnlyBlockTree, _specProvider, _logManager);
+        ReadOnlyTxProcessingEnv result = base.CreateReadonlyTxProcessingEnv(stateFactory, readOnlyBlockTree);
         result.TransactionProcessor =
             new OptimismTransactionProcessor(_specProvider, result.StateProvider, result.Machine, _logManager, _l1CostHelper, _specHelper);
 

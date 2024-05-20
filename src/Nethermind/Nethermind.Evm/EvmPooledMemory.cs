@@ -7,9 +7,10 @@ using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
-using System.Runtime.Intrinsics;
+using Nethermind.Core.Extensions;
 using Nethermind.Evm.Tracing;
 using Nethermind.Int256;
+using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Evm;
 
@@ -35,8 +36,20 @@ public struct EvmPooledMemory : IEvmMemory
         // Direct 256bit register copy rather than invoke Memmove
         Unsafe.WriteUnaligned(
             ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset),
-            Unsafe.As<byte, Vector256<byte>>(ref MemoryMarshal.GetReference(word))
+            Unsafe.As<byte, EvmWord>(ref MemoryMarshal.GetReference(word))
         );
+    }
+
+    public void SaveWord(in UInt256 location, EvmWord word)
+    {
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
+        UpdateSize(newLength);
+
+        int offset = (int)location;
+
+        // Direct 256bit register copy rather than invoke Memmove
+        Unsafe.WriteUnaligned(
+            ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), offset), word);
     }
 
     public void SaveByte(in UInt256 location, byte value)
@@ -47,7 +60,7 @@ public struct EvmPooledMemory : IEvmMemory
         _memory![(long)location] = value;
     }
 
-    public void Save(in UInt256 location, Span<byte> value)
+    public void Save(in UInt256 location, ReadOnlySpan<byte> value)
     {
         if (value.Length == 0)
         {
@@ -127,6 +140,14 @@ public struct EvmPooledMemory : IEvmMemory
         UpdateSize(newLength);
 
         return _memory.AsSpan((int)location, WordSize);
+    }
+
+    public EvmWord LoadWord(scoped in UInt256 location)
+    {
+        CheckMemoryAccessViolation(in location, WordSize, out ulong newLength);
+        UpdateSize(newLength);
+
+        return Unsafe.ReadUnaligned<EvmWord>(ref Unsafe.Add(ref MemoryMarshal.GetArrayDataReference(_memory), (int)location));
     }
 
     public Span<byte> LoadSpan(scoped in UInt256 location, scoped in UInt256 length)

@@ -40,7 +40,7 @@ namespace Nethermind.Consensus.Tracing
             }
             catch (Exception)
             {
-                _stateProvider.Reset();
+                _stateProvider.FullReset();
                 throw;
             }
 

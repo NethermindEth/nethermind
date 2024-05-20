@@ -60,23 +60,8 @@ namespace Nethermind.Blockchain.Test.FullPruning
                 PruningDb = (FullPruningDb)DbProvider.StateDb;
                 DriveInfo.AvailableFreeSpace.Returns(long.MaxValue);
                 _chainEstimations.StateSize.Returns((long?)null);
+                FullPruner = new FullTestPruner(PruningDb, PruningTrigger, PruningConfig, BlockTree, StateReader, ProcessExitSource, DriveInfo, chain.StateFactory, _chainEstimations, LogManager);
 
-                NodeStorageFactory nodeStorageFactory = new NodeStorageFactory(INodeStorage.KeyScheme.Current, LimboLogs.Instance);
-                MainNodeStorage = nodeStorageFactory.WrapKeyValueStore(PruningDb);
-
-                FullPruner = new FullTestPruner(
-                    PruningDb,
-                    nodeStorageFactory,
-                    MainNodeStorage,
-                    PruningTrigger,
-                    PruningConfig,
-                    BlockTree,
-                    StateReader,
-                    ProcessExitSource,
-                    DriveInfo,
-                    chain.TrieStore,
-                    _chainEstimations,
-                    LogManager);
                 return chain;
             }
 
