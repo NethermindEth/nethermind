@@ -242,7 +242,7 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     break;
                 }
 
-                buffer = buffer.SliceLeadingWhitespace();
+                buffer = buffer.TrimStart();
             }
 
             // Checks if the deserialization failed

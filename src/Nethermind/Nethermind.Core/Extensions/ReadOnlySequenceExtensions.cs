@@ -10,13 +10,14 @@ public static class ReadOnlySequenceExtensions
 {
     private static readonly byte[] WhitespaceChars = " \t\r\n"u8.ToArray();
 
-    public static ReadOnlySequence<byte> SliceLeadingWhitespace(this ReadOnlySequence<byte> sequence)
+    public static ReadOnlySequence<byte> TrimStart(this ReadOnlySequence<byte> sequence, byte[]? chars = null)
     {
         SequencePosition position = sequence.Start;
+        ReadOnlySpan<byte> charsSpan = chars ?? WhitespaceChars;
         while (sequence.TryGet(ref position, out ReadOnlyMemory<byte> memory))
         {
             ReadOnlySpan<byte> span = memory.Span;
-            int index = span.IndexOfAnyExcept(WhitespaceChars);
+            int index = span.IndexOfAnyExcept(charsSpan);
 
             if (index != 0)
             {

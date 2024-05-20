@@ -18,7 +18,7 @@ public class SequenceTests
         var start = new TestReadOnlySequenceSegment("  "u8.ToArray(), 0, end);
         ReadOnlySequence<byte> sequence = new ReadOnlySequence<byte>(start, 0, end, 5);
 
-        sequence.SliceLeadingWhitespace().ToArray().Should().Equal("abc"u8.ToArray());
+        sequence.TrimStart().ToArray().Should().Equal("abc"u8.ToArray());
     }
 
     private class TestReadOnlySequenceSegment : ReadOnlySequenceSegment<byte>
