@@ -104,4 +104,5 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     void Commit(IReleaseSpec releaseSpec, IWorldStateTracer? tracer, bool isGenesis = false, bool commitStorageRoots = true);
 
     void CommitTree(long blockNumber);
+    AddressAsKey[] GetAccountChanges();
 }
