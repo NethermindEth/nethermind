@@ -255,7 +255,7 @@ namespace Nethermind.Blockchain.FullPruning
 
                 if (originalKeyScheme == INodeStorage.KeyScheme.Hash && targetNodeStorage.Scheme == INodeStorage.KeyScheme.HalfPath)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Converting from Hash key scheme HalfPath");
+                    if (_logger.IsInfo) _logger.Info($"Converting from Hash key scheme to HalfPath key scheme");
 
                     if (_pruningConfig.FullPruningMemoryBudgetMb < 8000)
                     {
