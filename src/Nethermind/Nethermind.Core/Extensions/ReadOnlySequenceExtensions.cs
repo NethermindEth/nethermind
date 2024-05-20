@@ -10,7 +10,7 @@ public static class ReadOnlySequenceExtensions
 {
     private static readonly byte[] WhitespaceChars = " \t\r\n"u8.ToArray();
 
-    public static ReadOnlySequence<byte> SliceToNonWhitespace(this ReadOnlySequence<byte> sequence)
+    public static ReadOnlySequence<byte> SliceLeadingWhitespace(this ReadOnlySequence<byte> sequence)
     {
         SequencePosition position = sequence.Start;
         while (sequence.TryGet(ref position, out ReadOnlyMemory<byte> memory))
