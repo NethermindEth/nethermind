@@ -46,7 +46,7 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
+        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
         {
             _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
                 (AuRaNethermindApi)_api,

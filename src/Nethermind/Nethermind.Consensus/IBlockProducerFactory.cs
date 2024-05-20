@@ -16,5 +16,5 @@ public interface IBlockProducerFactory
     /// <remarks>
     /// Can be called many times, with different parameters, each time should create a new instance. Example usage in MEV plugin.
     /// </remarks>
-    Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null);
+    IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null);
 }

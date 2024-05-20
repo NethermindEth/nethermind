@@ -348,7 +348,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return ValueTask.CompletedTask;
     }
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? additionalTxSource)
+    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? additionalTxSource)
     {
         if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
