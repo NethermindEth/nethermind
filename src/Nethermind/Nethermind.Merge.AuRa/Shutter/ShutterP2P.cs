@@ -96,11 +96,11 @@ public class ShutterP2P
 
                     if (msgQueue.TryDequeue(out var msg))
                     {
-                        ProcessP2PMessage(msg);
                         lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
                         printTime = true;
+                        ProcessP2PMessage(msg);
                     }
-                    else if (delta > 0 && delta % 10 == 0)
+                    else if (delta > 0 && delta % 30 == 0)
                     {
                         if (printTime && _logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta}s)...");
                         printTime = false;

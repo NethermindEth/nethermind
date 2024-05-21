@@ -43,6 +43,11 @@ public class ShutterEonInfo
         BlockHeader header = _readOnlyBlockTree.Head!.Header;
         KeyperSetManagerContract keyperSetManagerContract = new(readOnlyTransactionProcessor, _abiEncoder, KeyperSetManagerContractAddress);
 
+        if ((header.Timestamp - (ulong)DateTimeOffset.Now.ToUnixTimeSeconds()) > 60)
+        {
+            return false;
+        }
+
         long bestSuggestedNumber = _readOnlyBlockTree.FindBestSuggestedHeader()?.Number ?? 0;
         long headNumberOrZero = _readOnlyBlockTree.Head?.Number ?? 0;
         bool isSyncing = bestSuggestedNumber > headNumberOrZero + 8;
