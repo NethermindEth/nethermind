@@ -10,7 +10,7 @@ namespace Nethermind.State;
 
 public class BlockCaches
 {
-    public IDictionary<StorageCell, byte[]> StorageCache { get; } = new NonBlocking.ConcurrentDictionary<StorageCell, byte[]>(Environment.ProcessorCount, 4096);
-    public IDictionary<AddressAsKey, Account> StateCache { get; } = new NonBlocking.ConcurrentDictionary<AddressAsKey, Account>(Environment.ProcessorCount, 4096);
+    public NonBlocking.ConcurrentDictionary<StorageCell, byte[]> StorageCache { get; } = new(Environment.ProcessorCount, 4096);
+    public NonBlocking.ConcurrentDictionary<AddressAsKey, Account> StateCache { get; } = new(Environment.ProcessorCount, 4096);
 }
 

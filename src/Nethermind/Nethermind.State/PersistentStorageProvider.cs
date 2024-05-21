@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -25,7 +24,7 @@ namespace Nethermind.State
         StateProvider? stateProvider,
         ILogManager? logManager,
         IStorageTreeFactory? storageTreeFactory = null,
-        IDictionary<StorageCell, byte[]>? blockCache = null
+        NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? blockCache = null
     ) : PartialStorageProviderBase(logManager)
     {
         private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
@@ -41,7 +40,8 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly IDictionary<StorageCell, byte[]> _blockCache = blockCache ?? new Dictionary<StorageCell, byte[]>(4_096);
+        private readonly NonBlocking.ConcurrentDictionary<StorageCell, byte[]> _blockCache =
+            blockCache ?? new NonBlocking.ConcurrentDictionary<StorageCell, byte[]>(Environment.ProcessorCount, 4_096);
 
         public Hash256 StateRoot { get; set; } = null!;
 
@@ -51,7 +51,11 @@ namespace Nethermind.State
         public override void Reset()
         {
             base.Reset();
-            _blockCache.Clear();
+            if (blockCache is null)
+            {
+                _blockCache.Clear();
+            }
+
             _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
@@ -281,7 +285,10 @@ namespace Nethermind.State
             Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
-            _blockCache[change.StorageCell] = change.Value;
+            if (blockCache is null)
+            {
+                _blockCache[change.StorageCell] = change.Value;
+            }
         }
 
         /// <summary>
