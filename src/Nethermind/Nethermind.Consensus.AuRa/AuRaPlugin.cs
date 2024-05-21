@@ -49,16 +49,6 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
-
         public Task InitSynchronization()
         {
             if (_nethermindApi is not null)
@@ -69,14 +59,14 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)
             {
                 return _blockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
-            return Task.FromResult<IBlockProducer>(null);
+            return null;
         }
 
         public IBlockProducerRunner CreateBlockProducerRunner()

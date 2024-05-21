@@ -236,7 +236,7 @@ public class CliqueBlockProducerRunner : ICliqueBlockProducerRunner, IDisposable
             try
             {
                 Block? block = await _blockProducer.BuildBlock(parentBlock?.Header, token: CancellationToken.None);
-                if (block != null)
+                if (block is not null)
                 {
                     _scheduledBlock = block;
                     _lastProducedBlock = DateTime.UtcNow;

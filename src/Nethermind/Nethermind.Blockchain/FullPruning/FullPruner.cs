@@ -253,6 +253,16 @@ namespace Nethermind.Blockchain.FullPruning
                     targetNodeStorage.Scheme = INodeStorage.KeyScheme.HalfPath;
                 }
 
+                if (originalKeyScheme == INodeStorage.KeyScheme.Hash && targetNodeStorage.Scheme == INodeStorage.KeyScheme.HalfPath)
+                {
+                    if (_logger.IsInfo) _logger.Info($"Converting from Hash key scheme to HalfPath key scheme");
+
+                    if (_pruningConfig.FullPruningMemoryBudgetMb < 8000)
+                    {
+                        if (_logger.IsWarn) _logger.Warn($"Full pruning memory budget is less than 8 GB. Full pruning from Hash to HalfPath require more memory budget for efficient copy. Consider increasing full pruning memory budget to at least 8GB.");
+                    }
+                }
+
                 VisitingOptions visitingOptions = new()
                 {
                     MaxDegreeOfParallelism = _pruningConfig.FullPruningMaxDegreeOfParallelism,

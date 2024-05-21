@@ -1,8 +1,8 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Api.Extensions;
 using Nethermind.EthStats.Configs;
 using Nethermind.Runner.Test.Ethereum;
 using NUnit.Framework;
@@ -14,7 +14,7 @@ public class EthStatsPluginTests
     public IEthStatsConfig StatsConfig { get; private set; } = null!;
     private NethermindApi _context = null!;
 #pragma warning disable NUnit1032
-    private EthStatsPlugin _plugin = null!;
+    private INethermindPlugin _plugin = null!;
 #pragma warning restore NUnit1032
 
     [SetUp]
@@ -32,6 +32,7 @@ public class EthStatsPluginTests
     public void Init_eth_stats_plugin_does_not_throw_exception(bool enabled)
     {
         StatsConfig = new EthStatsConfig() { Enabled = enabled };
+        Assert.DoesNotThrow(() => _plugin.InitRlpDecoders(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.Init(_context));
         Assert.DoesNotThrowAsync(async () => await _plugin.InitNetworkProtocol());
         Assert.DoesNotThrowAsync(async () => await _plugin.InitRpcModules());
