@@ -11,12 +11,12 @@ using GT = Bls.PT;
 
 public class BlsSigner
 {
-    internal static readonly string Cryptosuite = "BLS_SIG_BLS12381G1_XMD:SHA-256_SSWU_RO_NUL_";
+    internal static readonly string Cryptosuite = "BLS_SIG_BLS12381G2_XMD:SHA-256_SSWU_RO_POP_";
     internal static int InputLength = 64;
 
     public static Signature Sign(PrivateKey privateKey, ReadOnlySpan<byte> message)
     {
-        G1 p = new();
+        G2 p = new();
         p.hash_to(message.ToArray(), Cryptosuite);
         p.sign_with(new Bls.SecretKey(privateKey.Bytes, Bls.ByteOrder.LittleEndian));
         Signature s = new()
@@ -28,7 +28,7 @@ public class BlsSigner
 
     public static bool Verify(PublicKey publicKey, Signature signature, ReadOnlySpan<byte> message)
     {
-        G1? sig;
+        G2? sig;
         try
         {
             sig = new(signature.Bytes);
@@ -39,11 +39,11 @@ public class BlsSigner
             return false;
         }
 
-        GT p1 = new(sig.Value, G2.generator());
+        GT p1 = new(sig.Value, G1.generator());
 
-        G1 m = new();
+        G2 m = new();
         m.hash_to(message.ToArray(), Cryptosuite);
-        G2 pk = new(publicKey.Bytes);
+        G1 pk = new(publicKey.Bytes);
         GT p2 = new(m, pk);
 
         return GT.finalverify(p1, p2);
@@ -52,7 +52,7 @@ public class BlsSigner
     public static PublicKey GetPublicKey(PrivateKey privateKey)
     {
         Bls.SecretKey sk = new(privateKey.Bytes, Bls.ByteOrder.LittleEndian);
-        G2 p = new(sk);
+        G1 p = new(sk);
         PublicKey pk = new()
         {
             Bytes = p.compress()
@@ -71,7 +71,7 @@ public class BlsSigner
 
     public struct PublicKey
     {
-        public byte[] Bytes = new byte[96];
+        public byte[] Bytes = new byte[48];
 
         public PublicKey()
         {
@@ -80,7 +80,7 @@ public class BlsSigner
 
     public struct Signature
     {
-        public byte[] Bytes = new byte[48];
+        public byte[] Bytes = new byte[96];
 
         public Signature()
         {
