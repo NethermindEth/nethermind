@@ -43,7 +43,7 @@ namespace Nethermind.Consensus.Processing
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState(shareGlobalHashes ? worldStateManager.GlobalWorldState as IBlockCaches : null);
+            StateProvider = worldStateManager.CreateResettableWorldState(shareGlobalHashes ? worldStateManager.GlobalWorldState as IPreBlockCaches : null);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);

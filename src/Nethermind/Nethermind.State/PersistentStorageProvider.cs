@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -19,18 +20,12 @@ namespace Nethermind.State
     /// Manages persistent storage allowing for snapshotting and restoring
     /// Persists data to ITrieStore
     /// </summary>
-    internal sealed class PersistentStorageProvider(
-        ITrieStore? trieStore,
-        StateProvider? stateProvider,
-        ILogManager? logManager,
-        IStorageTreeFactory? storageTreeFactory = null,
-        NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? blockCache = null
-    ) : PartialStorageProviderBase(logManager)
+    internal sealed class PersistentStorageProvider : PartialStorageProviderBase
     {
-        private readonly ITrieStore _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
-        private readonly StateProvider _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
-        private readonly ILogManager? _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
-        internal readonly IStorageTreeFactory _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
+        private readonly ITrieStore _trieStore;
+        private readonly StateProvider _stateProvider;
+        private readonly ILogManager? _logManager;
+        internal readonly IStorageTreeFactory _storageTreeFactory;
         private readonly ResettableDictionary<AddressAsKey, StorageTree> _storages = new();
         private readonly HashSet<Address> _toUpdateRoots = new();
 
@@ -40,8 +35,32 @@ namespace Nethermind.State
         private readonly ResettableDictionary<StorageCell, byte[]> _originalValues = new();
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
-        private readonly NonBlocking.ConcurrentDictionary<StorageCell, byte[]> _blockCache =
-            blockCache ?? new NonBlocking.ConcurrentDictionary<StorageCell, byte[]>(Environment.ProcessorCount, 4_096);
+        private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
+        private readonly NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+        private Func<StorageCell, byte[]> _loadFromTree;
+
+        /// <summary>
+        /// Manages persistent storage allowing for snapshotting and restoring
+        /// Persists data to ITrieStore
+        /// </summary>
+        public PersistentStorageProvider(ITrieStore? trieStore,
+            StateProvider? stateProvider,
+            ILogManager? logManager,
+            IStorageTreeFactory? storageTreeFactory = null,
+            NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
+        {
+            _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
+            _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
+            _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
+            _storageTreeFactory = storageTreeFactory ?? new StorageTreeFactory();
+            _preBlockCache = preBlockCache;
+            _loadFromTree = storageCell =>
+            {
+                StorageTree tree = GetOrCreateStorage(storageCell.Address);
+                Db.Metrics.StorageTreeReads++;
+                return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
+            };
+        }
 
         public Hash256 StateRoot { get; set; } = null!;
 
@@ -51,11 +70,7 @@ namespace Nethermind.State
         public override void Reset()
         {
             base.Reset();
-            if (blockCache is null)
-            {
-                _blockCache.Clear();
-            }
-
+            _blockCache.Clear();
             _storages.Reset();
             _originalValues.Clear();
             _committedThisRound.Clear();
@@ -285,10 +300,7 @@ namespace Nethermind.State
             Db.Metrics.StorageTreeWrites++;
             toUpdateRoots.Add(change.StorageCell.Address);
             tree.Set(change.StorageCell.Index, change.Value);
-            if (blockCache is null)
-            {
-                _blockCache[change.StorageCell] = change.Value;
-            }
+            _blockCache[change.StorageCell] = change.Value;
         }
 
         /// <summary>
@@ -325,19 +337,16 @@ namespace Nethermind.State
 
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
-            if (_blockCache.TryGetValue(storageCell, out byte[] value))
+            ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
+            if (!exists)
             {
-                Db.Metrics.StorageTreeCache++;
+                value = _preBlockCache is not null
+                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                    : _loadFromTree(storageCell);
             }
             else
             {
-                StorageTree tree = GetOrCreateStorage(storageCell.Address);
-
-                Db.Metrics.StorageTreeReads++;
-
-                _blockCache[storageCell] = value = !storageCell.IsHash
-                    ? tree.Get(storageCell.Index)
-                    : tree.GetArray(storageCell.Hash.Bytes);
+                Db.Metrics.StorageTreeCache++;
             }
 
             if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);

@@ -19,13 +19,7 @@ using Metrics = Nethermind.Db.Metrics;
 
 namespace Nethermind.State
 {
-    internal class StateProvider(
-        IScopedTrieStore? trieStore,
-        IKeyValueStore? codeDb,
-        ILogManager? logManager,
-        StateTree? stateTree = null,
-        IDictionary<AddressAsKey, Account>? blockCache = null
-    )
+    internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
         private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
@@ -36,15 +30,18 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
-        private readonly IDictionary<AddressAsKey, Account> _blockCache = blockCache ?? new Dictionary<AddressAsKey, Account>(4_096);
+        private readonly Dictionary<AddressAsKey, Account> _blockCache =  new(4_096);
+        private readonly NonBlocking.ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
-        private readonly ILogger _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
-        private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+        private readonly ILogger _logger;
+        private readonly IKeyValueStore _codeDb;
 
         private int _capacity = StartCapacity;
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
+        internal readonly StateTree _tree;
+        private Func<AddressAsKey, Account> _getStateFromTrie;
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
@@ -75,8 +72,6 @@ namespace Nethermind.State
             }
             set => _tree.RootHash = value;
         }
-
-        internal readonly StateTree _tree = stateTree ?? new StateTree(trieStore, logManager);
 
         public bool IsContract(Address address)
         {
@@ -641,19 +636,37 @@ namespace Nethermind.State
             }
         }
 
+        public StateProvider(IScopedTrieStore? trieStore,
+            IKeyValueStore? codeDb,
+            ILogManager? logManager,
+            StateTree? stateTree = null,
+            NonBlocking.ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null)
+        {
+            _preBlockCache = preBlockCache;
+            _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
+            _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
+            _tree = stateTree ?? new StateTree(trieStore, logManager);
+            _getStateFromTrie = address =>
+            {
+                Metrics.StateTreeReads++;
+                return _tree.Get(address);
+            };
+        }
+
         private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;
-            if (_blockCache.TryGetValue(addressAsKey, out Account? account))
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
+            if (!exists)
             {
-                Metrics.IncrementTreeCacheHits();
+                account = _preBlockCache is not null
+                    ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
+                    : _getStateFromTrie(addressAsKey);
             }
             else
             {
-                Metrics.StateTreeReads++;
-                _blockCache[addressAsKey] = account = _tree.Get(address);
+                Metrics.IncrementTreeCacheHits();
             }
-
             return account;
         }
 

@@ -15,7 +15,7 @@ public interface IWorldStateManager
     /// Used by read only tasks that need to execute blocks.
     /// </summary>
     /// <returns></returns>
-    IWorldState CreateResettableWorldState(IBlockCaches? sharedHashes = null);
+    IWorldState CreateResettableWorldState(IPreBlockCaches? sharedHashes = null);
 
     event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 }

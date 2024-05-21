@@ -24,13 +24,13 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State
 {
-    public class WorldState : IWorldState, IBlockCaches
+    public class WorldState : IWorldState, IPreBlockCaches
     {
         internal readonly StateProvider _stateProvider;
         internal readonly PersistentStorageProvider _persistentStorageProvider;
         private readonly TransientStorageProvider _transientStorageProvider;
         private readonly ITrieStore _trieStore;
-        internal BlockCaches BlockCaches { get; }
+        private PreBlockCaches PreBlockCaches { get; }
 
         public Hash256 StateRoot
         {
@@ -47,7 +47,7 @@ namespace Nethermind.State
         {
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, IBlockCaches? sharedHashes)
+        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, IPreBlockCaches? sharedHashes)
             : this(trieStore, codeDb, logManager, sharedHashes?.Caches)
         {
         }
@@ -58,16 +58,16 @@ namespace Nethermind.State
             ILogManager? logManager,
             StateTree? stateTree = null,
             IStorageTreeFactory? storageTreeFactory = null,
-            BlockCaches? blockCaches = null)
+            PreBlockCaches? blockCaches = null)
         {
-            BlockCaches = blockCaches ?? new BlockCaches();
+            PreBlockCaches = blockCaches ?? new PreBlockCaches();
             _trieStore = trieStore;
-            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, BlockCaches.StateCache);
-            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, BlockCaches.StorageCache);
+            _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches.StateCache);
+            _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches.StorageCache);
             _transientStorageProvider = new TransientStorageProvider(logManager);
         }
 
-        internal WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, BlockCaches? blockCaches)
+        internal WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? blockCaches)
             : this(trieStore, codeDb, logManager, null, blockCaches: blockCaches)
         {
         }
@@ -252,6 +252,6 @@ namespace Nethermind.State
 
         ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges() => _stateProvider.ChangedAddresses();
 
-        public BlockCaches Caches => BlockCaches;
+        PreBlockCaches IPreBlockCaches.Caches => PreBlockCaches;
     }
 }
