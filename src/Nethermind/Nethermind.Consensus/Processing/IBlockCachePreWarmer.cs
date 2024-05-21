@@ -22,6 +22,7 @@ public interface IBlockCachePreWarmer
 public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
     private readonly ParallelOptions _options = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2) };
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
@@ -29,24 +30,32 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
     {
         if (Environment.ProcessorCount > 2)
         {
-            Parallel.ForEach(suggestedBlock.Transactions, _options, tx =>
-            {
-                ReadOnlyTxProcessingEnv env = _envPool.Get();
-                try
-                {
-                    using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
-                    transactionProcessor.Trace(tx, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
-                }
-                catch (Exception ex)
-                {
-                    if (_logger.IsError) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
-                }
-                finally
-                {
-                    _envPool.Return(env);
-                }
-            });
+            Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot));
         }
+    }
+
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot)
+    {
+        Parallel.ForEach(suggestedBlock.Transactions, _options, tx =>
+        {
+            ReadOnlyTxProcessingEnv env = _envPool.Get();
+            SystemTransaction systemTransaction = _systemTransactionPool.Get();
+            try
+            {
+                tx.CopyTo(systemTransaction);
+                using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
+                transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+            }
+            catch (Exception ex)
+            {
+                if (_logger.IsError) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
+            }
+            finally
+            {
+                _systemTransactionPool.Return(systemTransaction);
+                _envPool.Return(env);
+            }
+        });
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<ReadOnlyTxProcessingEnv>
