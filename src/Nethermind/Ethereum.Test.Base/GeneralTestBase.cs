@@ -101,6 +101,10 @@ namespace Ethereum.Test.Base
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.ExcessBlobGas = test.CurrentExcessBlobGas;
+            if (header.ExcessBlobGas == null && test.Fork is Cancun)
+            {
+                header.ExcessBlobGas = 0;
+            }
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
