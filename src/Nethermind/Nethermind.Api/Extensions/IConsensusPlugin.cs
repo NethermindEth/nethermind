@@ -19,5 +19,7 @@ namespace Nethermind.Api.Extensions
             ILogManager logManager, ChainSpec chainSpec) => new NethermindApi(configProvider, jsonSerializer, logManager, chainSpec);
 
         IBlockProducerRunner CreateBlockProducerRunner();
+
+        IBlockProducerEnvFactory? BuildBlockProducerEnvFactory() => null;
     }
 }

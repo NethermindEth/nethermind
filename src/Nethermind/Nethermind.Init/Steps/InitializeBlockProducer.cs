@@ -28,7 +28,7 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
-                IBlockProducerEnvFactory blockProducerEnvFactory = BuildBlockProducerEnvFactory();
+                IBlockProducerEnvFactory blockProducerEnvFactory =  _api.GetConsensusPlugin()!.BuildBlockProducerEnvFactory() ?? BuildBlockProducerEnvFactory();
                 foreach (IConsensusWrapperPlugin consensusWrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
                 {
                     blockProducerEnvFactory = consensusWrapperPlugin.WrapBlockProducerEnvFactory(blockProducerEnvFactory);

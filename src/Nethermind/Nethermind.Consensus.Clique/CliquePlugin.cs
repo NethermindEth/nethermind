@@ -5,20 +5,12 @@ using System;
 using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
-using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
-using Nethermind.Consensus.Comparers;
-using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Attributes;
-using Nethermind.Db;
 using Nethermind.JsonRpc.Modules;
-using Nethermind.State;
 
 namespace Nethermind.Consensus.Clique
 {
@@ -68,6 +60,23 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
+        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory()
+        {
+            return new BlockProducerEnvFactory(
+                _nethermindApi.WorldStateManager!,
+                _nethermindApi.BlockTree!,
+                _nethermindApi.SpecProvider!,
+                _nethermindApi.BlockValidator!,
+                _nethermindApi.RewardCalculatorSource!,
+                // So it does not have receipt here, but for some reason, by default `BlockProducerEnvFactory` have real receipt store.
+                NullReceiptStorage.Instance,
+                _nethermindApi.BlockPreprocessor,
+                _nethermindApi.TxPool!,
+                _nethermindApi.TransactionComparerProvider!,
+                _nethermindApi.Config<IBlocksConfig>(),
+                _nethermindApi.LogManager);
+        }
+
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
@@ -91,57 +100,12 @@ namespace Nethermind.Consensus.Clique
                 _snapshotManager!,
                 getFromApi.LogManager);
 
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree!.AsReadOnly();
-            ITransactionComparerProvider transactionComparerProvider = getFromApi.TransactionComparerProvider;
-
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
-
-            BlockProcessor producerProcessor = new(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                getFromApi.BlockProducerEnvFactory.TransactionsExecutorFactory.Create(producerEnv),
-                producerEnv.StateProvider,
-                NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, producerEnv.StateProvider),
-                getFromApi.LogManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(producerEnv.StateProvider, getFromApi.LogManager)));
-
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
-
-            OneTimeChainProcessor chainProcessor = new(
-                producerEnv.StateProvider,
-                producerChainProcessor);
-
-            ITxFilterPipeline txFilterPipeline =
-                TxFilterPipelineBuilder.CreateStandardFilteringPipeline(
-                    _nethermindApi.LogManager,
-                    getFromApi.SpecProvider,
-                    _blocksConfig);
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                transactionComparerProvider,
-                getFromApi.LogManager,
-                txFilterPipeline);
-
+            BlockProducerEnv env = _nethermindApi.BlockProducerEnvFactory!.Create(additionalTxSource);
             IGasLimitCalculator gasLimitCalculator = setInApi.GasLimitCalculator = new TargetAdjustedGasLimitCalculator(getFromApi.SpecProvider, _blocksConfig);
-
             CliqueBlockProducer blockProducer = new(
-                additionalTxSource.Then(txPoolTxSource),
-                chainProcessor,
-                producerEnv.StateProvider,
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyTxProcessingEnv.StateProvider,
                 getFromApi.Timestamper,
                 getFromApi.CryptoRandom,
                 _snapshotManager!,
