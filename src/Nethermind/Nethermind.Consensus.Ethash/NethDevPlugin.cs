@@ -112,15 +112,5 @@ namespace Nethermind.Consensus.Ethash
                 _nethermindApi.BlockTree,
                 _nethermindApi.BlockProducer!);
         }
-
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
-            return Task.CompletedTask;
-        }
     }
 }

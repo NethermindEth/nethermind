@@ -168,11 +168,6 @@ namespace Nethermind.Consensus.Clique
             return _blockProducerRunner;
         }
 
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
         public Task InitRpcModules()
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
