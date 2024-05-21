@@ -84,30 +84,26 @@ public class ShutterP2P
         ConnectToPeers(proto, auraConfig.ShutterKeyperP2PAddresses);
 
         long lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-        bool printTime = true;
+        long delta = 0;
+        long oldDelta = 0;
         Task.Run(() =>
         {
             for (; ; )
             {
                 try
                 {
-                    Thread.Sleep(20);
-                    long delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
+                    Thread.Sleep(500);
+                    oldDelta = delta;
+                    delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
 
                     if (msgQueue.TryDequeue(out var msg))
                     {
                         lastMessageProcessed = DateTimeOffset.Now.ToUnixTimeSeconds();
-                        printTime = true;
                         ProcessP2PMessage(msg);
                     }
-                    else if (delta > 0 && delta % (60 * 5) == 0)
+                    else if (delta > 0 && delta % (60 * 5) == 0 && delta != oldDelta)
                     {
-                        if (printTime && _logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
-                        printTime = false;
-                    }
-                    else
-                    {
-                        printTime = true;
+                        if (_logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                     }
                 }
                 catch (Exception e)
