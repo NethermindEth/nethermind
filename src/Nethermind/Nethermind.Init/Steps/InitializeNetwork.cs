@@ -29,6 +29,7 @@ using Nethermind.Network.P2P.Analyzers;
 using Nethermind.Network.P2P.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
+using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 using Nethermind.Network.Rlpx;
 using Nethermind.Network.Rlpx.Handshake;
 using Nethermind.Network.StaticNodes;
@@ -446,7 +447,7 @@ public class InitializeNetwork : IStep
         ReceiptsMessageSerializer receiptsMessageSerializer = new(_api.SpecProvider);
         _api.MessageSerializationService.Register(receiptsMessageSerializer);
         _api.MessageSerializationService.Register(new Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer(receiptsMessageSerializer));
-        _api.MessageSerializationService.Register<Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessage69>(new Network.P2P.Subprotocols.Eth.V69.Messages.ReceiptsMessageSerializer69(_api.SpecProvider));
+        _api.MessageSerializationService.Register<ReceiptsMessage69>(new ReceiptsMessageSerializer69(_api.SpecProvider));
 
         HandshakeService encryptionHandshakeServiceA = new(
             _api.MessageSerializationService,

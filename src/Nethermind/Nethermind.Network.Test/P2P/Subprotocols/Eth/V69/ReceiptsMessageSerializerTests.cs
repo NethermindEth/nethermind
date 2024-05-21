@@ -62,7 +62,7 @@ public class ReceiptsMessageSerializerTests
     [TestCaseSource(nameof(TestData))]
     public void Roundtrip(long requestId, TxReceipt[] receipts, string expected)
     {
-        using ReceiptsMessage69 message = new(requestId, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(requestId, new(new ArrayPoolList<TxReceipt[]>(1)
         {
             receipts
         }));
@@ -79,7 +79,7 @@ public class ReceiptsMessageSerializerTests
     [Test]
     public void IgnoresBloom()
     {
-        using ReceiptsMessage69 message = new(0, new Network.P2P.Subprotocols.Eth.V63.Messages.ReceiptsMessage(new ArrayPoolList<TxReceipt[]>(1)
+        using ReceiptsMessage69 message = new(0, new(new ArrayPoolList<TxReceipt[]>(1)
         {
             new TxReceipt[]
             {
@@ -93,7 +93,7 @@ public class ReceiptsMessageSerializerTests
         message.EthMessage.TxReceipts[0]![0].Bloom = null;
         serializer.Serialize(message).Should().Equal(encoded);
 
-        message.EthMessage.TxReceipts[0]![0].Bloom = new Bloom(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray());
+        message.EthMessage.TxReceipts[0]![0].Bloom = new(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray());
         serializer.Serialize(message).Should().Equal(encoded);
     }
 }

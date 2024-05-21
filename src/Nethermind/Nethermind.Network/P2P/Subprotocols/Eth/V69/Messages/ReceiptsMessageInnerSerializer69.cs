@@ -4,6 +4,7 @@
 using DotNetty.Buffers;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
 using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -26,7 +27,7 @@ public class ReceiptsMessageInnerSerializer69 : V63.Messages.ReceiptsMessageSeri
 
     ReceiptsInnerMessage69 IZeroMessageSerializer<ReceiptsInnerMessage69>.Deserialize(IByteBuffer byteBuffer)
     {
-        V63.Messages.ReceiptsMessage? baseMessage = base.Deserialize(byteBuffer);
-        return new ReceiptsInnerMessage69(baseMessage.TxReceipts);
+        ReceiptsMessage baseMessage = base.Deserialize(byteBuffer);
+        return new(baseMessage.TxReceipts);
     }
 }
