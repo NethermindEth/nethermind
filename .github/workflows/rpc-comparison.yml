@@ -1,4 +1,4 @@
-name: '[JSON-RPC] Compare Nethermind between clients and versions'
+vname: '[JSON-RPC] Compare Nethermind between clients and versions'
 
 on:
   workflow_dispatch:
@@ -99,7 +99,7 @@ jobs:
           "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] log=INFO
+      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ inputs.network || 'mainnet' }}"
@@ -122,7 +122,7 @@ jobs:
           "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] log=INFO
+      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ inputs.network || 'mainnet' }}"
@@ -319,6 +319,11 @@ jobs:
             check_jsonrpc_responding "$url"
             check_chain_head "$url"
           fi
+
+          # Extra wait - nodes need to process a few new blocks - nice to have at least 128 of them after StateHealing
+          # Adding (128 - 32) * 12 seconds (-32 because we always keep 32 blocks to be processed after healing)
+          echo "Waiting for (128 - 32) blocks to be synced
+          sleep 1152
   
   compare:
     name: Compare JSON-RPC responses between clients and versions
@@ -410,21 +415,21 @@ jobs:
                 flood "$TEST" ${compare_to_other_branch_params} --rates 10 50 100 500 1000 --output "$TEST_perf_result" --duration 30 --deep-check | tee -a "$TEST_perf_result.txt"
             done
           else
-            echo "flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt"
-            flood all ${compare_to_other_branch_params} --output equality_result_other --equality | tee output_other_branch.txt
+            echo "flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt"
+            flood all ${compare_to_other_branch_params} --equality | tee output_other_branch.txt
           fi
       
       - name: Compare to INFURA Endpoint
         if: env.compare_to_infura == 'true' && inputs.is_performance_check != true
         run: |
-          echo "flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt"
-          flood all ${compare_to_infura_params} --output equality_result_infura --equality | tee output_infura.txt
+          echo "flood all ${compare_to_infura_params} --equality | tee output_infura.txt"
+          flood all ${compare_to_infura_params} --equality | tee output_infura.txt
       
       - name: Compare to Nethermind Archive Endpoint
         if: env.compare_to_archive == 'true' && inputs.is_performance_check != true
         run: |
-          echo "flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt"
-          flood all ${compare_to_archive_params} --output equality_result_archive --equality | tee output_archive.txt
+          echo "flood all ${compare_to_archive_params} --equality | tee output_archive.txt"
+          flood all ${compare_to_archive_params} --equality | tee output_archive.txt
 
       - name: Generate report
         run: |
