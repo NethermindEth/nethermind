@@ -1,13 +1,14 @@
-// SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
+// SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
 using Nethermind.Core.Specs;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages
 {
     public class ReceiptsMessageSerializer69 :
-        Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.ReceiptsMessageSerializer,
+        ReceiptsMessageSerializer,
         IZeroInnerMessageSerializer<ReceiptsMessage69>
     {
         public ReceiptsMessageSerializer69(ISpecProvider specProvider) : base(new ReceiptsMessageInnerSerializer69(specProvider)) { }
@@ -20,8 +21,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages
 
         ReceiptsMessage69 IZeroMessageSerializer<ReceiptsMessage69>.Deserialize(IByteBuffer byteBuffer)
         {
-            V66.Messages.ReceiptsMessage message = base.Deserialize(byteBuffer);
-            return new ReceiptsMessage69(message.RequestId, message.EthMessage);
+            ReceiptsMessage message = base.Deserialize(byteBuffer);
+            return new(message.RequestId, message.EthMessage);
         }
     }
 }
