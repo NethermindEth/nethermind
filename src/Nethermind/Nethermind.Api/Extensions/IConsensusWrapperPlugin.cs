@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 
 namespace Nethermind.Api.Extensions
@@ -12,6 +13,8 @@ namespace Nethermind.Api.Extensions
         IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource);
 
         IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner) => baseRunner;
+
+        IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory) => blockProducerEnvFactory;
 
         /// <summary>
         /// Priorities for ordering multiple plugin. Only used to determine the wrapping order of block production.

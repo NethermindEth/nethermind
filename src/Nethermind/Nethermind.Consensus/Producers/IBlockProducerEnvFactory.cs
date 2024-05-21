@@ -7,7 +7,7 @@ namespace Nethermind.Consensus.Producers
 {
     public interface IBlockProducerEnvFactory
     {
-        IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; set; }
+        IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; }
         BlockProducerEnv Create(ITxSource? additionalTxSource = null);
     }
 }

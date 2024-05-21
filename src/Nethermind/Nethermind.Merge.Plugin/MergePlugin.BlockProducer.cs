@@ -4,6 +4,7 @@
 using System;
 using System.Threading.Tasks;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -18,6 +19,11 @@ namespace Nethermind.Merge.Plugin
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
             => new(_api.SpecProvider!, _api.SealEngine, _manualTimestamper!, _blocksConfig, _api.LogManager);
+
+        public virtual IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory)
+        {
+            return blockProducerEnvFactory;
+        }
 
         public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
         {

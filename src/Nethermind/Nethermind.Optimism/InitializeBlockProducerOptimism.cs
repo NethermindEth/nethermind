@@ -5,6 +5,7 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Config;
 using Nethermind.Consensus;
+using Nethermind.Consensus.Producers;
 using Nethermind.Core;
 using Nethermind.Init.Steps;
 
@@ -19,7 +20,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         _api = api;
     }
 
-    protected override IBlockProducer BuildProducer()
+    protected override IBlockProducerEnvFactory BuildBlockProducerEnvFactory()
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
@@ -33,7 +34,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         if (_api.L1CostHelper is null) throw new StepDependencyException(nameof(_api.L1CostHelper));
         if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
 
-        _api.BlockProducerEnvFactory = new OptimismBlockProducerEnvFactory(
+        return new OptimismBlockProducerEnvFactory(
             _api.WorldStateManager,
             _api.ChainSpec,
             _api.BlockTree,
@@ -48,9 +49,14 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
             _api.SpecHelper,
             _api.L1CostHelper,
             _api.LogManager);
+    }
+
+    protected override IBlockProducer BuildProducer()
+    {
+        if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
         _api.GasLimitCalculator = new OptimismGasLimitCalculator();
-        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory.Create();
+        BlockProducerEnv producerEnv = _api.BlockProducerEnvFactory!.Create();
 
         _api.BlockProducer = new OptimismPostMergeBlockProducer(
             new OptimismPayloadTxSource(),

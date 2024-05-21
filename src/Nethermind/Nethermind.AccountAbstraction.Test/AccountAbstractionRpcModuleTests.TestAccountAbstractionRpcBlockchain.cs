@@ -110,15 +110,13 @@ namespace Nethermind.AccountAbstraction.Test
                     TxPool,
                     transactionComparerProvider,
                     blocksConfig,
-                    LogManager)
-                {
-                    TransactionsExecutorFactory =
-                        new AABlockProducerTransactionsExecutorFactory(
-                            SpecProvider,
-                            LogManager,
-                            Signer,
-                            EntryPointAddresses)
-                };
+                    LogManager,
+                    new AABlockProducerTransactionsExecutorFactory(
+                                                SpecProvider,
+                                                LogManager,
+                                                Signer,
+                                                EntryPointAddresses)
+                    );
 
                 UserOperationTxSource = new(UserOperationTxBuilder, UserOperationPool, UserOperationSimulator, SpecProvider, State, Signer, LogManager.GetClassLogger());
 

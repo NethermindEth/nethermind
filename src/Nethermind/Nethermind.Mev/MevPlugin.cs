@@ -133,14 +133,18 @@ public class MevPlugin : IConsensusWrapperPlugin
         return Task.CompletedTask;
     }
 
+    public IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory)
+    {
+        return blockProducerEnvFactory.WithTransactionExecutorFactory(
+            new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager));
+    }
+
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
     {
         if (!Enabled)
         {
             throw new InvalidOperationException("Plugin is disabled");
         }
-
-        _nethermindApi.BlockProducerEnvFactory!.TransactionsExecutorFactory = new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
 
         int megabundleProducerCount = _mevConfig.GetTrustedRelayAddresses().Any() ? 1 : 0;
         List<MevBlockProducer.MevBlockProducerInfo> blockProducers =

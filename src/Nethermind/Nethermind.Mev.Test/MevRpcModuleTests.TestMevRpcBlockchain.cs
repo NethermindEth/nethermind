@@ -103,11 +103,8 @@ namespace Nethermind.Mev.Test
                     TxPool,
                     transactionComparerProvider,
                     blocksConfig,
-                    LogManager)
-                {
-                    TransactionsExecutorFactory =
-                        new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager)
-                };
+                    LogManager,
+                    new MevBlockProducerTransactionsExecutorFactory(SpecProvider, LogManager));
 
                 PostMergeBlockProducer CreatePostMergeBlockProducer(ITxSource? txSource = null)
                 {

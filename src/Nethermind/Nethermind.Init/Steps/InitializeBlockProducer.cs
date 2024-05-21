@@ -28,8 +28,14 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
-                _api.BlockProducer = BuildProducer();
+                IBlockProducerEnvFactory blockProducerEnvFactory = BuildBlockProducerEnvFactory();
+                foreach (IConsensusWrapperPlugin consensusWrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                {
+                    blockProducerEnvFactory = consensusWrapperPlugin.WrapBlockProducerEnvFactory(blockProducerEnvFactory);
+                }
 
+                _api.BlockProducerEnvFactory = blockProducerEnvFactory;
+                _api.BlockProducer = BuildProducer();
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
 
                 foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
@@ -41,9 +47,9 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual IBlockProducer BuildProducer()
+        protected virtual IBlockProducerEnvFactory BuildBlockProducerEnvFactory()
         {
-            _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
+            return new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
                 _api.BlockTree!,
                 _api.SpecProvider!,
@@ -55,7 +61,10 @@ namespace Nethermind.Init.Steps
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
+        }
 
+        protected virtual IBlockProducer BuildProducer()
+        {
             if (_api.ChainSpec is null) throw new StepDependencyException(nameof(_api.ChainSpec));
             IConsensusPlugin? consensusPlugin = _api.GetConsensusPlugin();
 

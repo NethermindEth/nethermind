@@ -46,9 +46,9 @@ namespace Nethermind.Merge.AuRa
             }
         }
 
-        public override IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)
+        public override IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory)
         {
-            _api.BlockProducerEnvFactory = new AuRaMergeBlockProducerEnvFactory(
+            return new AuRaMergeBlockProducerEnvFactory(
                 (AuRaNethermindApi)_api,
                 _api.WorldStateManager!,
                 _api.BlockTree!,
@@ -61,8 +61,6 @@ namespace Nethermind.Merge.AuRa
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
                 _api.LogManager);
-
-            return base.InitBlockProducer(consensusPlugin, txSource);
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()
