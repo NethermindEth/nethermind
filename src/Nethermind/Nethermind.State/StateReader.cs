@@ -21,7 +21,6 @@ namespace Nethermind.State
         private readonly McsLock _lock = new();
         private readonly IKeyValueStore _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
         private readonly IStateFactory _factory = factory ?? throw new ArgumentNullException(nameof(factory));
-        private CachedState? _cachedState;
 
         public bool TryGetAccount(Hash256 stateRoot, Address address, out AccountStruct account) => TryGetState(stateRoot, address, out account);
 
@@ -36,13 +35,8 @@ namespace Nethermind.State
             }
             Metrics.StorageTreeReads++;
 
-            using var lockRelease = _lock.Acquire();
-
-            return GetStateUnlocked(stateRoot)
-                .GetStorageAt(new StorageCell(address, index));
+            return _factory.GetStorage(stateRoot, address, index);
         }
-
-        private IReadOnlyState GetReadOnlyState(Hash256 stateRoot) => _factory.GetReadOnly(stateRoot);
 
         public UInt256 GetBalance(Hash256 stateRoot, Address address)
         {
@@ -82,34 +76,7 @@ namespace Nethermind.State
 
             Metrics.StateTreeReads++;
 
-            using var lockRelease = _lock.Acquire();
-
-            return GetStateUnlocked(stateRoot)
-                .TryGet(address, out account);
-        }
-
-        private IReadOnlyState GetStateUnlocked(Hash256 stateRoot)
-        {
-            CachedState? cachedState = _cachedState;
-            if (cachedState is null || cachedState?.StateRoot != stateRoot || cachedState.IsDisposed)
-            {
-                cachedState?.Dispose();
-                cachedState = _cachedState = new CachedState(stateRoot, GetReadOnlyState(stateRoot));
-            }
-            return cachedState.State;
-        }
-
-        private class CachedState(Hash256 stateRoot, IReadOnlyState state) : IDisposable
-        {
-            public readonly Hash256 StateRoot = stateRoot;
-            public IReadOnlyState State = state;
-
-            public bool IsDisposed => State is null;
-
-            public void Dispose()
-            {
-                Interlocked.Exchange(ref State, null)?.Dispose();
-            }
+            return _factory.TryGet(stateRoot, address, out account);
         }
     }
 }

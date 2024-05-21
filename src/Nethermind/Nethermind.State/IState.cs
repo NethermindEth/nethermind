@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Int256;
 using Nethermind.Trie.Pruning;
 using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
@@ -58,9 +59,13 @@ public interface IStateFactory : IAsyncDisposable
 
     IReadOnlyState GetReadOnly(Hash256 stateRoot);
 
+    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+
     bool HasRoot(Hash256 stateRoot);
 
-    event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
+    public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account);
+
+    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index);
 }
 
 public interface IStateOwner

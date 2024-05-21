@@ -20,6 +20,7 @@ using EvmWord = System.Runtime.Intrinsics.Vector256<byte>;
 
 namespace Nethermind.Paprika;
 
+[SkipLocalsInit]
 public class PaprikaStateFactory : IStateFactory
 {
     private readonly ILogger _logger;
@@ -30,6 +31,7 @@ public class PaprikaStateFactory : IStateFactory
 
     private readonly PagedDb _db;
     private readonly Blockchain _blockchain;
+    private readonly IReadOnlyWorldStateAccessor _accessor;
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized;
 
@@ -40,6 +42,8 @@ public class PaprikaStateFactory : IStateFactory
         _blockchain = new Blockchain(_db, merkle);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
+
+        _accessor = _blockchain.BuildReadOnlyAccessor();
 
         _logger = LimboLogs.Instance.GetClassLogger();
     }
@@ -63,6 +67,8 @@ public class PaprikaStateFactory : IStateFactory
         {
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
         };
+
+        _accessor = _blockchain.BuildReadOnlyAccessor();
     }
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
@@ -70,7 +76,22 @@ public class PaprikaStateFactory : IStateFactory
     public IReadOnlyState GetReadOnly(Hash256 stateRoot) =>
         new ReadOnlyState(_blockchain.StartReadOnly(Convert(stateRoot)));
 
-    public bool HasRoot(Hash256 stateRoot) => _blockchain.HasState(Convert(stateRoot));
+    public bool HasRoot(Hash256 stateRoot)
+    {
+        return _accessor.HasState(Convert(stateRoot));
+    }
+
+    public bool TryGet(Hash256 stateRoot, Address address, out AccountStruct account)
+    {
+        return ConvertPaprikaAccount(_accessor.GetAccount(Convert(stateRoot), Convert(address)), out account);
+    }
+
+    public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
+    {
+        Span<byte> bytes = stackalloc byte[32];
+        bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+        return bytes.ToEvmWord();
+    }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached;
 
@@ -120,33 +141,35 @@ public class PaprikaStateFactory : IStateFactory
         // _blockchain.Finalize(Convert(finalizedStateRoot));
     }
 
-    class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
+    private static bool ConvertPaprikaAccount(in PaprikaAccount retrieved, out AccountStruct account)
     {
-        public bool TryGet(Address address, out AccountStruct account)
+        bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
+                                      retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
+        if (retrieved.Balance.IsZero &&
+            retrieved.Nonce.IsZero &&
+            hasEmptyStorageAndCode)
         {
-            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (retrieved.Balance.IsZero &&
-                retrieved.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-            {
-                account = default;
-                return false;
-            }
+            account = default;
+            return false;
+        }
 
-            if (hasEmptyStorageAndCode)
-            {
-                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
-                return true;
-            }
-
-            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
-                Convert(retrieved.CodeHash));
+        if (hasEmptyStorageAndCode)
+        {
+            account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
             return true;
         }
 
-        [SkipLocalsInit]
+        account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
+            Convert(retrieved.CodeHash));
+        return true;
+    }
+
+
+    [SkipLocalsInit]
+    class ReadOnlyState(IReadOnlyWorldState wrapped) : IReadOnlyState
+    {
+        public bool TryGet(Address address, out AccountStruct account) => ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
+
         public EvmWord GetStorageAt(in StorageCell cell)
         {
             Span<byte> bytes = stackalloc byte[32];
@@ -155,7 +178,6 @@ public class PaprikaStateFactory : IStateFactory
             return bytes.ToEvmWord();
         }
 
-        [SkipLocalsInit]
         public EvmWord GetStorageAt(Address address, in ValueHash256 hash)
         {
             Span<byte> bytes = stackalloc byte[32];
@@ -188,26 +210,7 @@ public class PaprikaStateFactory : IStateFactory
 
         public bool TryGet(Address address, out AccountStruct account)
         {
-            PaprikaAccount retrieved = wrapped.GetAccount(Convert(address));
-            bool hasEmptyStorageAndCode = retrieved.CodeHash == PaprikaKeccak.OfAnEmptyString &&
-                                          retrieved.StorageRootHash == PaprikaKeccak.EmptyTreeHash;
-            if (retrieved.Balance.IsZero &&
-                retrieved.Nonce.IsZero &&
-                hasEmptyStorageAndCode)
-            {
-                account = default;
-                return false;
-            }
-
-            if (hasEmptyStorageAndCode)
-            {
-                account = new AccountStruct(retrieved.Nonce, retrieved.Balance);
-                return true;
-            }
-
-            account = new AccountStruct(retrieved.Nonce, retrieved.Balance, Convert(retrieved.StorageRootHash),
-                Convert(retrieved.CodeHash));
-            return true;
+            return ConvertPaprikaAccount(wrapped.GetAccount(Convert(address)), out account);
         }
 
         [SkipLocalsInit]
