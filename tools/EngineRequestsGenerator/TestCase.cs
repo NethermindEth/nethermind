@@ -134,8 +134,29 @@ public enum TestCase
     [TestCaseMetadata("Identity precompile from 128 bytes", "Identity precompile call based on 128-byte source data")]
     IdentityFrom128Bytes,
 
-    // [TestCaseMetadata("Modexp precompile", "Modexp precompile")]
-    // Modexp,
+    [TestCaseMetadata("Modexp min gas, base heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 192 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    ModexpMinGasBaseHeavy,
+
+    [TestCaseMetadata("Modexp min gas, exp heavy", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 8 and exponent equal (603x 1s in binary)")]
+    ModexpMinGasExpHeavy,
+
+    [TestCaseMetadata("Modexp min gas, balanced", "Modexp precompile consuming 200 gas (minimum value), with base and modulo byte size equal 40 and exponent equal 2^25 - 1 (25x 1s in binary)")]
+    ModexpMinGasBalanced,
+
+    [TestCaseMetadata("Modexp 215 gas, exp heavy", "Modexp precompile consuming 215 gas, with base and modulo byte size equal 8 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
+    Modexp215GasExpHeavy,
+
+    // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
+    // Modexp1KGasBaseHeavy,
+
+    // [TestCaseMetadata("Modexp 1k gas, balanced", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 56 and exponent equal 2^62 - 1 (62x 1s in binary)")]
+    // Modexp1KGasBalanced,
+    //
+    // [TestCaseMetadata("Modexp 10k gas, exp heavy", "Modexp precompile consuming 10_500 gas, with base and modulo byte size equal 56 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
+    // Modexp10KGasExpHeavy,
+    //
+    // [TestCaseMetadata("Modexp 135k gas, balanced", "Modexp precompile consuming 135_000 gas, with base and modulo byte size equal 200 and exponent equal 2^648 - 1 (648x 1s in binary, which is max possible exponent value)")]
+    // Modexp135KGasBalanced,
 
     [TestCaseMetadata("Blake2f 1 round", "Blake2f precompile with 1 round of computations")]
     Blake1Round,

@@ -298,6 +298,15 @@ public class TestCaseGenerator
             case TestCase.Blake1MRounds:
             case TestCase.Blake10MRounds:
                 return Blake2.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.ModexpMinGasBaseHeavy:
+            case TestCase.ModexpMinGasExpHeavy:
+            case TestCase.ModexpMinGasBalanced:
+            case TestCase.Modexp215GasExpHeavy:
+            // case TestCase.Modexp1KGasBaseHeavy:
+            // case TestCase.Modexp1KGasBalanced:
+            // case TestCase.Modexp10KGasExpHeavy:
+            // case TestCase.Modexp135KGasBalanced:
+                return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.PointEvaluationZeros:
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
