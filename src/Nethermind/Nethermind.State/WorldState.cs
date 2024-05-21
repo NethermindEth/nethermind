@@ -245,6 +245,12 @@ namespace Nethermind.State
             Restore(new Snapshot(state, new Snapshot.Storage(persistantStorage, transientStorage)));
         }
 
+        // Needed for benchmarks
+        internal void SetNonce(Address address, in UInt256 nonce)
+        {
+            _stateProvider.SetNonce(address, nonce);
+        }
+
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
