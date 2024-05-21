@@ -1763,7 +1763,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             holder.Usage++;
 
             Iterator? oldIterator = Interlocked.Exchange(ref holder.Iterator, iterator);
-            if (oldIterator != null)
+            if (oldIterator is not null)
             {
                 // Well... this is weird. I'll just dispose it.
                 oldIterator.Dispose();
