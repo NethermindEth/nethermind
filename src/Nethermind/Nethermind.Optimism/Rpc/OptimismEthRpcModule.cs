@@ -266,12 +266,12 @@ public class OptimismEthRpcModule : IEthRpcModule
         return _ethRpcModule.eth_getFilterChanges(filterId);
     }
 
-    public ResultWrapper<IEnumerable<FilterLog>> eth_getFilterLogs(UInt256 filterId)
+    public ResultWrapper<IEnumerable<IFilterLog>> eth_getFilterLogs(UInt256 filterId)
     {
         return _ethRpcModule.eth_getFilterLogs(filterId);
     }
 
-    public ResultWrapper<IEnumerable<FilterLog>> eth_getLogs(Filter filter)
+    public ResultWrapper<IEnumerable<IFilterLog>> eth_getLogs(Filter filter)
     {
         return _ethRpcModule.eth_getLogs(filter);
     }
