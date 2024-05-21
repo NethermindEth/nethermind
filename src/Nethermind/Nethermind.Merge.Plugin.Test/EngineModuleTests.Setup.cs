@@ -207,7 +207,8 @@ public partial class EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager);
+                LogManager,
+                new BlockProducerTransactionsExecutorFactory(SpecProvider, LogManager));
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

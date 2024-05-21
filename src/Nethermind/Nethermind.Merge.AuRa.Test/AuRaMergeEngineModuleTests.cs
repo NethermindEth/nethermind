@@ -167,7 +167,8 @@ public class AuRaMergeEngineModuleTests : EngineModuleTests
                 TxPool,
                 transactionComparerProvider,
                 blocksConfig,
-                LogManager);
+                LogManager,
+                new BlockProducerTransactionsExecutorFactory(SpecProvider, LogManager));
 
 
             BlockProducerEnv blockProducerEnv = blockProducerEnvFactory.Create();

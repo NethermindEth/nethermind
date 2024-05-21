@@ -55,7 +55,8 @@ public class MergePluginTests
             _context.TxPool!,
             _context.TransactionComparerProvider!,
             miningConfig,
-            _context.LogManager!);
+            _context.LogManager!,
+            new BlockProducerTransactionsExecutorFactory(_context.SpecProvider!, _context.LogManager));
         _context.ProcessExit = Substitute.For<IProcessExitSource>();
         _context.ChainSpec.SealEngineType = SealEngineType.Clique;
         _context.ChainSpec!.Clique = new CliqueParameters()

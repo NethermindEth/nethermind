@@ -32,7 +32,7 @@ namespace Nethermind.Consensus.Producers
         protected readonly IBlocksConfig _blocksConfig;
         protected readonly ILogManager _logManager;
 
-        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; protected set; }
+        public IBlockTransactionsExecutorFactory TransactionsExecutorFactory { get; }
 
         public BlockProducerEnvFactory(
             IWorldStateManager worldStateManager,
@@ -46,7 +46,7 @@ namespace Nethermind.Consensus.Producers
             ITransactionComparerProvider transactionComparerProvider,
             IBlocksConfig blocksConfig,
             ILogManager logManager,
-            IBlockTransactionsExecutorFactory transactionExecutorFactory = null)
+            IBlockTransactionsExecutorFactory transactionExecutorFactory)
         {
             _worldStateManager = worldStateManager;
             _blockTree = blockTree;
@@ -59,8 +59,7 @@ namespace Nethermind.Consensus.Producers
             _transactionComparerProvider = transactionComparerProvider;
             _blocksConfig = blocksConfig;
             _logManager = logManager;
-
-            TransactionsExecutorFactory = transactionExecutorFactory ?? new BlockProducerTransactionsExecutorFactory(specProvider, logManager);
+            TransactionsExecutorFactory = transactionExecutorFactory;
         }
 
         public virtual BlockProducerEnv Create(ITxSource? additionalTxSource = null)

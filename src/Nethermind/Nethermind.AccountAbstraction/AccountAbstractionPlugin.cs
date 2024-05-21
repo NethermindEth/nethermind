@@ -348,7 +348,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return ValueTask.CompletedTask;
     }
 
-    public IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory)
+    public IBlockTransactionsExecutorFactory? CreateTransactionExecutorFactory()
     {
         // init all relevant objects if not already initted
         foreach (Address entryPoint in _entryPointContractAddresses)
@@ -358,11 +358,11 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
             UserOperationTxBuilder(entryPoint);
         }
 
-        return blockProducerEnvFactory.WithTransactionExecutorFactory(new AABlockProducerTransactionsExecutorFactory(
+        return new AABlockProducerTransactionsExecutorFactory(
             _nethermindApi.SpecProvider!,
             _nethermindApi.LogManager!,
             _nethermindApi.EngineSigner!,
-            _entryPointContractAddresses.ToArray()));
+            _entryPointContractAddresses.ToArray());
     }
 
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? additionalTxSource)

@@ -60,7 +60,8 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory()
+        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory(
+            IBlockTransactionsExecutorFactory transactionsExecutorFactory)
         {
             return new BlockProducerEnvFactory(
                 _nethermindApi.WorldStateManager!,
@@ -74,7 +75,8 @@ namespace Nethermind.Consensus.Clique
                 _nethermindApi.TxPool!,
                 _nethermindApi.TransactionComparerProvider!,
                 _nethermindApi.Config<IBlocksConfig>(),
-                _nethermindApi.LogManager);
+                _nethermindApi.LogManager,
+                transactionsExecutorFactory);
         }
 
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)

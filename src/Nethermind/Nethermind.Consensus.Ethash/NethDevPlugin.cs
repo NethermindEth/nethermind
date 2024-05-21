@@ -40,7 +40,8 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
-        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory()
+        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory(
+            IBlockTransactionsExecutorFactory transactionsExecutorFactory)
         {
             return new NethBlockProducerEnvFactory(
                 _nethermindApi.WorldStateManager!,

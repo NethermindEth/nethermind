@@ -36,7 +36,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
         ITxPool txPool,
         ITransactionComparerProvider transactionComparerProvider,
         IBlocksConfig blocksConfig,
-        ILogManager logManager) : base(
+        ILogManager logManager,
+        IBlockTransactionsExecutorFactory executorFactory) : base(
             worldStateManager,
             blockTree,
             specProvider,
@@ -47,7 +48,8 @@ public class AuRaMergeBlockProducerEnvFactory : BlockProducerEnvFactory
             txPool,
             transactionComparerProvider,
             blocksConfig,
-            logManager)
+            logManager,
+            executorFactory)
     {
         _auraApi = auraApi;
     }

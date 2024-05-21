@@ -43,12 +43,11 @@ public class OptimismBlockProducerEnvFactory : BlockProducerEnvFactory
         ILogManager logManager) : base(worldStateManager,
         blockTree, specProvider, blockValidator,
         rewardCalculatorSource, receiptStorage, blockPreprocessorStep,
-        txPool, transactionComparerProvider, blocksConfig, logManager)
+        txPool, transactionComparerProvider, blocksConfig, logManager, new OptimismTransactionsExecutorFactory(specProvider, logManager))
     {
         _specHelper = specHelper;
         _l1CostHelper = l1CostHelper;
         _chainSpec = chainSpec;
-        TransactionsExecutorFactory = new OptimismTransactionsExecutorFactory(specProvider, logManager);
     }
 
     protected override ReadOnlyTxProcessingEnv CreateReadonlyTxProcessingEnv(IWorldStateManager worldStateManager,

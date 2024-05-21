@@ -133,10 +133,9 @@ public class MevPlugin : IConsensusWrapperPlugin
         return Task.CompletedTask;
     }
 
-    public IBlockProducerEnvFactory WrapBlockProducerEnvFactory(IBlockProducerEnvFactory blockProducerEnvFactory)
+    public IBlockTransactionsExecutorFactory? CreateTransactionExecutorFactory()
     {
-        return blockProducerEnvFactory.WithTransactionExecutorFactory(
-            new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager));
+        return new MevBlockProducerTransactionsExecutorFactory(_nethermindApi.SpecProvider!, _nethermindApi.LogManager);
     }
 
     public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? txSource)

@@ -5,12 +5,9 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Config;
-using Nethermind.Consensus;
-using Nethermind.Consensus.AuRa.Config;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
 using Nethermind.Consensus.Producers;
-using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -60,7 +57,8 @@ namespace Nethermind.Merge.AuRa
                 _api.TxPool!,
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
-                _api.LogManager);
+                _api.LogManager,
+                blockProducerEnvFactory.TransactionsExecutorFactory);
         }
 
         protected override PostMergeBlockProducerFactory CreateBlockProducerFactory()

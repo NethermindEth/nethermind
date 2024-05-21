@@ -20,6 +20,7 @@ namespace Nethermind.Api.Extensions
 
         IBlockProducerRunner CreateBlockProducerRunner();
 
-        IBlockProducerEnvFactory? BuildBlockProducerEnvFactory() => null;
+        IBlockProducerEnvFactory? BuildBlockProducerEnvFactory(
+            IBlockTransactionsExecutorFactory transactionsExecutorFactory) => null;
     }
 }

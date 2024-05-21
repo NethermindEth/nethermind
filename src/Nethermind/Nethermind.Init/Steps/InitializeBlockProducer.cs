@@ -28,12 +28,21 @@ namespace Nethermind.Init.Steps
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
-                IBlockProducerEnvFactory blockProducerEnvFactory = _api.GetConsensusPlugin()!.BuildBlockProducerEnvFactory() ?? BuildBlockProducerEnvFactory();
-                foreach (IConsensusWrapperPlugin consensusWrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                IBlockTransactionsExecutorFactory transactionsExecutorFactory = new BlockProducerTransactionsExecutorFactory(_api.SpecProvider!, _api.LogManager);
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
                 {
-                    blockProducerEnvFactory = consensusWrapperPlugin.WrapBlockProducerEnvFactory(blockProducerEnvFactory);
+                    IBlockTransactionsExecutorFactory? overrideExecutor = wrapperPlugin.CreateTransactionExecutorFactory();
+                    if (overrideExecutor != null)
+                    {
+                        transactionsExecutorFactory = overrideExecutor;
+                    }
                 }
 
+                IBlockProducerEnvFactory blockProducerEnvFactory = _api.GetConsensusPlugin()!.BuildBlockProducerEnvFactory(transactionsExecutorFactory) ?? BuildBlockProducerEnvFactory(transactionsExecutorFactory);
+                foreach (IConsensusWrapperPlugin wrapperPlugin in _api.GetConsensusWrapperPlugins().OrderBy((p) => p.Priority))
+                {
+                    blockProducerEnvFactory = wrapperPlugin.WrapBlockProducerEnvFactory(blockProducerEnvFactory);
+                }
                 _api.BlockProducerEnvFactory = blockProducerEnvFactory;
                 _api.BlockProducer = BuildProducer();
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
@@ -47,7 +56,7 @@ namespace Nethermind.Init.Steps
             return Task.CompletedTask;
         }
 
-        protected virtual IBlockProducerEnvFactory BuildBlockProducerEnvFactory()
+        protected virtual IBlockProducerEnvFactory BuildBlockProducerEnvFactory(IBlockTransactionsExecutorFactory blockTransactionsExecutorFactory)
         {
             return new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
@@ -60,7 +69,8 @@ namespace Nethermind.Init.Steps
                 _api.TxPool!,
                 _api.TransactionComparerProvider!,
                 _api.Config<IBlocksConfig>(),
-                _api.LogManager);
+                _api.LogManager,
+                blockTransactionsExecutorFactory);
         }
 
         protected virtual IBlockProducer BuildProducer()

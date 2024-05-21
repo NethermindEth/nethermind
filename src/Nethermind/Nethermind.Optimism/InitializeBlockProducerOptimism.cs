@@ -20,7 +20,7 @@ public class InitializeBlockProducerOptimism : InitializeBlockProducer
         _api = api;
     }
 
-    protected override IBlockProducerEnvFactory BuildBlockProducerEnvFactory()
+    protected override IBlockProducerEnvFactory BuildBlockProducerEnvFactory(IBlockTransactionsExecutorFactory transactionsExecutorFactory)
     {
         if (_api.DbProvider is null) throw new StepDependencyException(nameof(_api.DbProvider));
         if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));

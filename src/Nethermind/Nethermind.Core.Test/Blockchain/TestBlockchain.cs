@@ -273,7 +273,8 @@ public class TestBlockchain : IDisposable
             TxPool,
             transactionComparerProvider,
             blocksConfig,
-            LogManager);
+            LogManager,
+            new BlockProducerTransactionsExecutorFactory(SpecProvider, LogManager));
 
         BlockProducerEnv env = blockProducerEnvFactory.Create(txPoolTxSource);
         return new TestBlockProducer(
