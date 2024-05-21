@@ -21,22 +21,26 @@ public interface IBlockCachePreWarmer
 public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
+    private readonly ParallelOptions _options = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2) };
 
     public void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot)
     {
-        Parallel.ForEach(suggestedBlock.Transactions, tx =>
+        if (Environment.ProcessorCount > 2)
         {
-            ReadOnlyTxProcessingEnv env = _envPool.Get();
-            try
+            Parallel.ForEach(suggestedBlock.Transactions, _options, tx =>
             {
-                using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
-                transactionProcessor.Trace(tx, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
-            }
-            finally
-            {
-                _envPool.Return(env);
-            }
-        });
+                ReadOnlyTxProcessingEnv env = _envPool.Get();
+                try
+                {
+                    using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
+                    transactionProcessor.Trace(tx, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                }
+                finally
+                {
+                    _envPool.Return(env);
+                }
+            });
+        }
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<ReadOnlyTxProcessingEnv>
