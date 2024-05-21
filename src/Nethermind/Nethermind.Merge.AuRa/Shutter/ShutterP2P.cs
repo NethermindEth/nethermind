@@ -100,9 +100,9 @@ public class ShutterP2P
                         printTime = true;
                         ProcessP2PMessage(msg);
                     }
-                    else if (delta > 0 && delta % 30 == 0)
+                    else if (delta > 0 && delta % (60 * 5) == 0)
                     {
-                        if (printTime && _logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta}s)...");
+                        if (printTime && _logger.IsWarn) _logger.Warn($"Not receiving Shutter messages ({delta / 60}m)...");
                         printTime = false;
                     }
                     else
