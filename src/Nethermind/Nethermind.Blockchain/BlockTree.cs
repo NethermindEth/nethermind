@@ -628,32 +628,6 @@ namespace Nethermind.Blockchain
             return result;
         }
 
-        public BlockHeader? FindLowestCommonAncestor(BlockHeader firstDescendant, BlockHeader secondDescendant,
-            long maxSearchDepth)
-        {
-            if (firstDescendant.Number > secondDescendant.Number)
-            {
-                firstDescendant = GetAncestorAtNumber(firstDescendant, secondDescendant.Number);
-            }
-            else if (secondDescendant.Number > firstDescendant.Number)
-            {
-                secondDescendant = GetAncestorAtNumber(secondDescendant, firstDescendant.Number);
-            }
-
-            long currentSearchDepth = 0;
-            while (
-                firstDescendant is not null
-                && secondDescendant is not null
-                && firstDescendant.Hash != secondDescendant.Hash)
-            {
-                if (currentSearchDepth++ >= maxSearchDepth) return null;
-                firstDescendant = this.FindParentHeader(firstDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-                secondDescendant = this.FindParentHeader(secondDescendant, BlockTreeLookupOptions.TotalDifficultyNotNeeded);
-            }
-
-            return firstDescendant;
-        }
-
         private BlockHeader? GetAncestorAtNumber(BlockHeader header, long number)
         {
             BlockHeader? result = header;
@@ -1279,7 +1253,7 @@ namespace Nethermind.Blockchain
         /// <returns></returns>
         private bool ShouldCache(long number)
         {
-            return number == 0L || Head is null || number >= Head.Number - HeaderStore.CacheSize;
+            return number == 0L || Head is null || number >= Head.Number - BlockStore.CacheSize;
         }
 
         public ChainLevelInfo? FindLevel(long number)

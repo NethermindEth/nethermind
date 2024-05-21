@@ -126,9 +126,10 @@ namespace Nethermind.Core
                 LogEntry logEntry = logEntries[entryIndex];
                 byte[] addressBytes = logEntry.LoggersAddress.Bytes;
                 Set(addressBytes, blockBloom);
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    Hash256 topic = logEntry.Topics[topicIndex];
+                    Hash256 topic = topics[topicIndex];
                     Set(topic.Bytes, blockBloom);
                 }
             }
@@ -148,9 +149,10 @@ namespace Nethermind.Core
         {
             if (Matches(logEntry.LoggersAddress))
             {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    if (!Matches(logEntry.Topics[topicIndex]))
+                    if (!Matches(topics[topicIndex]))
                     {
                         return false;
                     }
@@ -285,9 +287,10 @@ namespace Nethermind.Core
         {
             if (Matches(logEntry.LoggersAddress))
             {
-                for (int topicIndex = 0; topicIndex < logEntry.Topics.Length; topicIndex++)
+                Hash256[] topics = logEntry.Topics;
+                for (int topicIndex = 0; topicIndex < topics.Length; topicIndex++)
                 {
-                    if (!Matches(logEntry.Topics[topicIndex]))
+                    if (!Matches(topics[topicIndex]))
                     {
                         return false;
                     }

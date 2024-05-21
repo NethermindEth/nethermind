@@ -348,7 +348,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
         return ValueTask.CompletedTask;
     }
 
-    public Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory consensusPlugin, IBlockProductionTrigger blockProductionTrigger, ITxSource? additionalTxSource)
+    public IBlockProducer InitBlockProducer(IBlockProducerFactory consensusPlugin, ITxSource? additionalTxSource)
     {
         if (!Enabled) throw new InvalidOperationException("Account Abstraction plugin is disabled");
 
@@ -378,9 +378,7 @@ public class AccountAbstractionPlugin : IConsensusWrapperPlugin
                         $"Account Abstraction Plugin: Miner ({_nethermindApi.EngineSigner!.Address}) Ether balance adequate - {minerBalance / 1.Ether()} Ether");
             }
 
-        IManualBlockProductionTrigger trigger = new BuildBlocksWhenRequested();
-
-        return consensusPlugin.InitBlockProducer(trigger, UserOperationTxSource);
+        return consensusPlugin.InitBlockProducer(UserOperationTxSource);
     }
 
     public bool MevPluginEnabled => _nethermindApi.Config<IMevConfig>().Enabled;

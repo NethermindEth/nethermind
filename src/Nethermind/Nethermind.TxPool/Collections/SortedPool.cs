@@ -527,7 +527,7 @@ namespace Nethermind.TxPool.Collections
         private string GetInfoAboutWorstValues()
         {
             TKey? key = _worstValue.GetValueOrDefault().Value;
-            var isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value != null;
+            var isWorstValueInPool = _cacheMap.TryGetValue(key, out TValue? value) && value is not null;
             return $"Number of items in worstSortedValues: {_worstSortedValues.Count}; IsWorstValueInPool: {isWorstValueInPool}; Worst value: {_worstValue}; GetValue: {_worstValue.GetValueOrDefault()}; Current max in worstSortedValues: {_worstSortedValues.Max};";
         }
 
