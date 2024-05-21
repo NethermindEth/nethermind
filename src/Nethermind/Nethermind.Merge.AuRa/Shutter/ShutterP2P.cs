@@ -21,6 +21,8 @@ using Nethermind.Logging;
 using Nethermind.Consensus.Processing;
 using Nethermind.Evm.Precompiles.Bls;
 using Nethermind.Core.Extensions;
+using Microsoft.Extensions.Logging;
+using ILogger = Nethermind.Logging.ILogger;
 
 namespace Nethermind.Merge.AuRa.Shutter;
 
@@ -51,6 +53,14 @@ public class ShutterP2P
                 ProtocolVersion = auraConfig.ShutterP2PProtocolVersion,
                 AgentVersion = auraConfig.ShutterP2PAgentVersion
             })
+            // .AddLogging(builder =>
+            //     builder.SetMinimumLevel(Microsoft.Extensions.Logging.LogLevel.Trace)
+            //     .AddSimpleConsole(l =>
+            //     {
+            //         l.SingleLine = true;
+            //         l.TimestampFormat = "[HH:mm:ss.FFF]";
+            //     })
+            // )
             .BuildServiceProvider();
 
         IPeerFactory peerFactory = serviceProvider.GetService<IPeerFactory>()!;
