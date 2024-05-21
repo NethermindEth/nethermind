@@ -15,7 +15,6 @@ using System.Text;
 using System.Threading.Tasks;
 using Label = Sigil.Label;
 using static Nethermind.Evm.IL.EmitExtensions;
-using static Nethermind.Evm.Tracing.GethStyle.JavaScript.Log;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
@@ -197,8 +196,7 @@ internal class ILCompiler
                     ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
 
                     // we load the currentSP
-                    method.LoadLocal(currentSP);
-                    method.InitializeObject(typeof(Word));
+                    method.CleanWord(currentSP);
                     method.LoadLocal(currentSP);
 
                     // we load the span of bytes
@@ -207,7 +205,7 @@ internal class ILCompiler
 
                     // we call UInt256 constructor taking a span of bytes and a bool
                     method.LoadLocalAddress(localReadonOnlySpan);
-                    method.LoadConstant(0);
+                    method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
 
                     // we store the UInt256 in the currentSP
@@ -277,16 +275,17 @@ internal class ILCompiler
                     EmitComparaisonUInt256Method(method, uint256R, currentSP, typeof(UInt256).GetMethod("op_Equality", new[] { typeof(UInt256).MakeByRefType(), typeof(UInt256).MakeByRefType() }), uint256A, uint256B);
                     break;
                 case Instruction.ISZERO:
-                    method.CleanWord(currentSP);
-                    method.LoadLocal(currentSP);
+
                     // we load the currentSP
                     method.StackLoadPrevious(currentSP, 1);
-                    method.StackPop(currentSP, 1);
-
-                    // we call the IsZero method on the UInt256
                     method.Call(Word.GetIsZero);
+                    method.StackPop(currentSP, 1);
+                    method.StoreLocal(byte8A);
 
                     // we convert the result to a Uint256 and store it in the currentSP
+                    method.CleanWord(currentSP);
+                    method.LoadLocal(currentSP);
+                    method.LoadLocal(byte8A);
                     method.StoreField(GetFieldInfo<Word>(nameof(Word.Byte0)));
                     method.StackPush(currentSP);
                     break;
@@ -461,7 +460,7 @@ internal class ILCompiler
                     method.StoreLocal(localReadonOnlySpan);
                     // we call UInt256 constructor taking a span of bytes and a bool
                     method.LoadLocalAddress(localReadonOnlySpan);
-                    method.LoadConstant(0);
+                    method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
 
                     method.Call(Word.SetUInt256);
@@ -569,7 +568,7 @@ internal class ILCompiler
                     method.StoreLocal(localReadonOnlySpan);
 
                     method.LoadLocalAddress(localReadonOnlySpan);
-                    method.LoadConstant(0);
+                    method.LoadConstant(BitConverter.IsLittleEndian);
                     method.NewObject(typeof(UInt256), typeof(ReadOnlySpan<byte>).MakeByRefType(), typeof(bool));
 
                     method.Call(Word.SetUInt256);
@@ -761,8 +760,8 @@ internal class ILCompiler
         il.StoreLocal(locals[1]);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(locals[0]);
         il.Call(operation, null);
 
         // convert to conv_i
@@ -772,6 +771,7 @@ internal class ILCompiler
         il.StackPop(currentSP, 2);
 
         // push the result to the stack
+        il.CleanWord(currentSP);
         il.LoadLocal(currentSP);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);
@@ -789,21 +789,22 @@ internal class ILCompiler
         il.StackLoadPrevious(currentSP, 2);
         il.Call(Word.GetUInt256);
         il.StoreLocal(locals[1]);
+        il.StackPop(currentSP, 2);
 
         // incase of custom handling, we branch to the label
         customHandling?.Invoke(il, label, locals);
 
         // invoke op  on the uint256
-        il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(locals[1]);
+        il.LoadLocalAddress(locals[0]);
         il.LoadLocalAddress(uint256R);
         il.Call(operation);
-        il.StackPop(currentSP, 2);
 
         // skip the main handling
         il.MarkLabel(label);
 
         // push the result to the stack
+        il.CleanWord(currentSP);
         il.LoadLocal(currentSP);
         il.LoadLocal(uint256R); // stack: word*, uint256
         il.Call(Word.SetUInt256);

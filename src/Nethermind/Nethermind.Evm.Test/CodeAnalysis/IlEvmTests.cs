@@ -141,8 +141,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             yield return Prepare.EvmCode
                     .Done;
             yield return Prepare.EvmCode
-                    .PushSingle(7)
-                    .ISZERO()
+                    .ISZERO(7)
+                    .ISZERO(7)
+                    .ISZERO(7)
                     .Done;
             yield return Prepare.EvmCode
                     .PushSingle(23)

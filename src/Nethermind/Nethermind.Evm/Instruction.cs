@@ -366,11 +366,6 @@ namespace Nethermind.Evm
                 [Instruction.REVERT] = new(GasCostOf.Base, 0, 2, 0),
                 [Instruction.INVALID] = new(GasCostOf.Base, 0, 0, 0),
                 [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct, 0, 1, 0),
-
-                [Instruction.BEGINSUB] = new(GasCostOf.Base, 0, 0, 0),
-                [Instruction.RETURNSUB] = new(GasCostOf.Base, 0, 0, 0),
-                [Instruction.JUMPSUB] = new(GasCostOf.Base, 0, 1, 0),
-
             }.ToFrozenDictionary();
     }
     public struct OpcodeInfo(ushort pc, Instruction instruction, ReadOnlyMemory<byte>? arguments)
