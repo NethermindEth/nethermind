@@ -10,6 +10,7 @@ using Nethermind.Core.Crypto;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Logging;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -18,10 +19,11 @@ public interface IBlockCachePreWarmer
     void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot);
 }
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ParallelOptions _options = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2) };
+    private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
     public void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot)
     {
@@ -34,6 +36,10 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory) : IB
                 {
                     using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
                     transactionProcessor.Trace(tx, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsError) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
                 }
                 finally
                 {
