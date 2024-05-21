@@ -89,7 +89,9 @@ public class PaprikaStateFactory : IStateFactory
     public EvmWord GetStorage(Hash256 stateRoot, in Address address, in UInt256 index)
     {
         Span<byte> bytes = stackalloc byte[32];
-        bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+        GetKey(index, bytes);
+
+        bytes = _accessor.GetStorage(Convert(stateRoot), Convert(address), new PaprikaKeccak(bytes), bytes);
         return bytes.ToEvmWord();
     }
 
