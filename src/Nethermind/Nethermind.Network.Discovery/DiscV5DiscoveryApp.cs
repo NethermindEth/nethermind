@@ -22,8 +22,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.Net;
 using Nethermind.Core;
 using Nethermind.Api;
-using Lantern.Discv5.WireProtocol.Messages;
-using Nethermind.Core.Collections;
+using System.Collections.Concurrent;
 
 namespace Nethermind.Network.Discovery;
 
@@ -40,19 +39,13 @@ public class Discv5DiscoveryApp : IDiscoveryApp
     private bool logDiscovery = true;
 
     public Discv5DiscoveryApp(SameKeyGenerator privateKeyProvider, IApiWithNetwork api, INetworkConfig networkConfig, IDiscoveryConfig discoveryConfig, SimpleFilePublicKeyDb discoveryDb, ILogManager logManager)
-    {
-        //MessageRequester.Log = (msg) =>
-        //{
-        //    if (logDiscovery) _logger.Warn(msg);
-        //};
+    {        
         _logger = logManager.GetClassLogger();
         _privateKeyProvider = privateKeyProvider;
         _networkConfig = networkConfig;
         _discoveryConfig = discoveryConfig;
         _discoveryDb = discoveryDb;
         _api = api;
-
-        TableConstants.BucketSize = discoveryConfig.BucketSize;
 
         IdentityVerifierV4 identityVerifier = new();
 
@@ -210,29 +203,23 @@ public class Discv5DiscoveryApp : IDiscoveryApp
         _ = DiscoverViaRandomWalk();
     }
 
-    int refreshTime = 30_000;
-
-    Random rnd = new();
     private async Task DiscoverViaRandomWalk()
     {
+        await _discv5Protocol!.InitAsync();
+        _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+
         try
         {
-            await _discv5Protocol!.InitAsync();
-            await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
-
-            _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
 
             byte[] randomNodeId = new byte[32];
             while (!_appShutdownSource.IsCancellationRequested)
-            {               
+            {
+                await GethDiscover(_discv5Protocol.GetActiveNodes.ToArray(), _discv5Protocol.SelfEnr.NodeId, NodeAddedByDiscovery);
+
                 for (int i = 0; i < 3; i++)
                 {
                     rnd.NextBytes(randomNodeId);
-                    (await DiscoverAsync(randomNodeId))?.ToList().ForEach(NodeAddedByDiscovery);;
-                }
-
-                {
-                    (await DiscoverAsync(_discv5Protocol.SelfEnr.NodeId))?.ToList().ForEach(NodeAddedByDiscovery);
+                    await GethDiscover(_discv5Protocol.GetActiveNodes.ToArray(), randomNodeId, NodeAddedByDiscovery);
                 }
 
                 await Task.Delay(refreshTime, _appShutdownSource.Token);
@@ -242,35 +229,100 @@ public class Discv5DiscoveryApp : IDiscoveryApp
         catch (Exception ex)
         {
             _logger.Error($"DiscoverViaRandomWalk exception {ex.Message}.");
-
         }
     }
 
-    private async Task<List<IEnr>> DiscoverAsync(byte[] randomNodeId)
+    SemaphoreSlim s = new(20, 20);
+    private async Task GethDiscover(IEnr[] getAllNodes, byte[] nodeId, Action<IEnr> tryAddNode)
     {
-        HashSet<IEnr> discovered = [];
+        ConcurrentQueue<IEnr> nodesToCheck = new(getAllNodes);
+        HashSet<IEnr> checkedNodes = [];
 
-        for (; ; )
+        while (true)
         {
-            var c = discovered.Count;
-            var nodes = (await _discv5Protocol.DiscoverAsync(randomNodeId))?.ToArray();
-            if (nodes is null)
+            if (!nodesToCheck.TryDequeue(out IEnr? newEntry))
             {
-                break;
+                return;
             }
-            if (nodes.Length == 0)
+            tryAddNode(newEntry);
+
+            if (!checkedNodes.Add(newEntry))
             {
-                break;
+                continue;
             }
-            Console.WriteLine("ITERATE", Convert.ToHexString(randomNodeId.Take(8).ToArray()).ToLower());
-            discovered.AddRange(nodes);
-            if (c == discovered.Count)
+
+            var found = (await _discv5Protocol.SendFindNodeAsync(newEntry, nodeId))?.ToArray() ?? [];
+
+            var toCheck = found.Where(x => !checkedNodes.Contains(x));
+
+            foreach (var node in toCheck)
             {
-                break;
+                nodesToCheck.Enqueue(node);
             }
         }
-        return [.. discovered];
     }
+
+    int refreshTime = 30_000;
+
+    Random rnd = new();
+    //private async Task DiscoverViaRandomWalk()
+    //{
+    //    try
+    //    {
+    //        await _discv5Protocol!.InitAsync();
+    //        await _discv5Protocol.DiscoverAsync(_discv5Protocol.SelfEnr.NodeId);
+
+    //        _logger.Info($"Initially discovered: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+
+    //        byte[] randomNodeId = new byte[32];
+    //        while (!_appShutdownSource.IsCancellationRequested)
+    //        {               
+    //            for (int i = 0; i < 3; i++)
+    //            {
+    //                rnd.NextBytes(randomNodeId);
+    //                (await DiscoverAsync(randomNodeId))?.ToList().ForEach(NodeAddedByDiscovery);;
+    //            }
+
+    //            {
+    //                (await DiscoverAsync(_discv5Protocol.SelfEnr.NodeId))?.ToList().ForEach(NodeAddedByDiscovery);
+    //            }
+
+    //            await Task.Delay(refreshTime, _appShutdownSource.Token);
+    //            _logger.Info($"Refreshed with: {_discv5Protocol.GetActiveNodes.Count()} {_discv5Protocol.GetAllNodes.Count()}.");
+    //        }
+    //    }
+    //    catch (Exception ex)
+    //    {
+    //        _logger.Error($"DiscoverViaRandomWalk exception {ex.Message}.");
+
+    //    }
+    //}
+
+    //private async Task<List<IEnr>> DiscoverAsync(byte[] randomNodeId)
+    //{
+    //    HashSet<IEnr> discovered = [];
+
+    //    for (; ; )
+    //    {
+    //        var c = discovered.Count;
+    //        var nodes = (await _discv5Protocol.DiscoverAsync(randomNodeId))?.ToArray();
+    //        if (nodes is null)
+    //        {
+    //            break;
+    //        }
+    //        if (nodes.Length == 0)
+    //        {
+    //            break;
+    //        }
+    //        Console.WriteLine("ITERATE", Convert.ToHexString(randomNodeId.Take(8).ToArray()).ToLower());
+    //        discovered.AddRange(nodes);
+    //        if (c == discovered.Count)
+    //        {
+    //            break;
+    //        }
+    //    }
+    //    return [.. discovered];
+    //}
 
     //private async Task DiscoverAsync(byte[] nodeId, bool isSelf = false)
     //{
