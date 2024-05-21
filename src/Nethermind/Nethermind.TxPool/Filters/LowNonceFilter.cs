@@ -19,7 +19,7 @@ namespace Nethermind.TxPool.Filters
             _logger = logger;
         }
 
-        public AcceptTxResult Accept(Transaction tx, TxFilteringState state, TxHandlingOptions handlingOptions)
+        public AcceptTxResult Accept(Transaction tx, ref TxFilteringState state, TxHandlingOptions handlingOptions)
         {
             // As we have limited number of transaction that we store in mem pool its fairly easy to fill it up with
             // high-priority garbage transactions. We need to filter them as much as possible to use the tx pool space

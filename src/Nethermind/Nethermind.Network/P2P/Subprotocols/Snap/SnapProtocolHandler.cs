@@ -170,32 +170,27 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
 
         private void Handle(AccountRangeMessage msg, long size)
         {
-            Metrics.SnapAccountRangeReceived++;
             _getAccountRangeRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(StorageRangeMessage msg, long size)
         {
-            Metrics.SnapStorageRangesReceived++;
             _getStorageRangeRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(ByteCodesMessage msg, long size)
         {
-            Metrics.SnapByteCodesReceived++;
             _getByteCodesRequests.Handle(msg.RequestId, msg, size);
         }
 
         private void Handle(TrieNodesMessage msg, long size)
         {
-            Metrics.SnapTrieNodesReceived++;
             _getTrieNodesRequests.Handle(msg.RequestId, msg, size);
         }
 
         private ValueTask<AccountRangeMessage> Handle(GetAccountRangeMessage getAccountRangeMessage, CancellationToken cancellationToken)
         {
             using GetAccountRangeMessage message = getAccountRangeMessage;
-            Metrics.SnapGetAccountRangeReceived++;
             AccountRangeMessage? response = FulfillAccountRangeMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<AccountRangeMessage>(response);
@@ -204,7 +199,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<StorageRangeMessage> Handle(GetStorageRangeMessage getStorageRangesMessage, CancellationToken cancellationToken)
         {
             using GetStorageRangeMessage message = getStorageRangesMessage;
-            Metrics.SnapGetStorageRangesReceived++;
             StorageRangeMessage? response = FulfillStorageRangeMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<StorageRangeMessage>(response);
@@ -213,7 +207,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<ByteCodesMessage> Handle(GetByteCodesMessage getByteCodesMessage, CancellationToken cancellationToken)
         {
             using GetByteCodesMessage message = getByteCodesMessage;
-            Metrics.SnapGetByteCodesReceived++;
             ByteCodesMessage? response = FulfillByteCodesMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<ByteCodesMessage>(response);
@@ -222,7 +215,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
         private ValueTask<TrieNodesMessage> Handle(GetTrieNodesMessage getTrieNodesMessage, CancellationToken cancellationToken)
         {
             using GetTrieNodesMessage message = getTrieNodesMessage;
-            Metrics.SnapGetTrieNodesReceived++;
             TrieNodesMessage? response = FulfillTrieNodesMessage(message, cancellationToken);
             response.RequestId = message.RequestId;
             return new ValueTask<TrieNodesMessage>(response);
@@ -284,8 +276,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     ResponseBytes = bytesLimit
                 }, _getAccountRangeRequests, token));
 
-            Metrics.SnapGetAccountRangeSent++;
-
             return new AccountsAndProofs { PathAndAccounts = response.PathsWithAccounts, Proofs = response.Proofs };
         }
 
@@ -298,8 +288,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     ResponseBytes = bytesLimit
                 }, _getStorageRangeRequests, token));
 
-            Metrics.SnapGetStorageRangesSent++;
-
             return new SlotsAndProofs { PathsAndSlots = response.Slots, Proofs = response.Proofs };
         }
 
@@ -311,8 +299,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Hashes = codeHashes.ToPooledList(),
                     Bytes = bytesLimit,
                 }, _getByteCodesRequests, token));
-
-            Metrics.SnapGetByteCodesSent++;
 
             return response.Codes;
         }
@@ -338,8 +324,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Snap
                     Paths = groups,
                     Bytes = bytesLimit
                 }, _getTrieNodesRequests, token));
-
-            Metrics.SnapGetTrieNodesSent++;
 
             return response.Nodes;
         }

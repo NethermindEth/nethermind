@@ -33,9 +33,9 @@ public class NodesLocator : INodesLocator
         _masterNode = masterNode;
     }
 
-    public async Task LocateNodesAsync(CancellationToken cancellationToken)
+    public Task LocateNodesAsync(CancellationToken cancellationToken)
     {
-        await LocateNodesAsync(null, cancellationToken);
+        return LocateNodesAsync(null, cancellationToken);
     }
 
     public async Task LocateNodesAsync(byte[]? searchedNodeId, CancellationToken cancellationToken)
@@ -59,16 +59,37 @@ public class NodesLocator : INodesLocator
             int attemptsCount = 0;
             while (true)
             {
-                //if searched node is not specified master node is used
-                IEnumerable<Node> closestNodes = searchedNodeId is not null ? _nodeTable.GetClosestNodes(searchedNodeId) : _nodeTable.GetClosestNodes();
-
                 candidatesCount = 0;
-                foreach (Node closestNode in closestNodes.Where(node => !alreadyTriedNodes.Contains(node.IdHash)))
+                if (searchedNodeId is not null)
                 {
-                    tryCandidates[candidatesCount++] = closestNode;
-                    if (candidatesCount > tryCandidates.Length - 1)
+                    foreach (Node closestNode in _nodeTable.GetClosestNodes(searchedNodeId))
                     {
-                        break;
+                        if (alreadyTriedNodes.Contains(closestNode.IdHash))
+                        {
+                            continue;
+                        }
+
+                        tryCandidates[candidatesCount++] = closestNode;
+                        if (candidatesCount > tryCandidates.Length - 1)
+                        {
+                            break;
+                        }
+                    }
+                }
+                else
+                {
+                    foreach (Node closestNode in _nodeTable.GetClosestNodes())
+                    {
+                        if (alreadyTriedNodes.Contains(closestNode.IdHash))
+                        {
+                            continue;
+                        }
+
+                        tryCandidates[candidatesCount++] = closestNode;
+                        if (candidatesCount > tryCandidates.Length - 1)
+                        {
+                            break;
+                        }
                     }
                 }
 
@@ -134,7 +155,14 @@ public class NodesLocator : INodesLocator
                 }
             }
         }
-        int nodesCountAfterDiscovery = _nodeTable.Buckets.Sum(x => x.BondedItemsCount);
+
+        int nodesCountAfterDiscovery = 0;
+        var buckets = _nodeTable.Buckets;
+        for (int i = 0; i < buckets.Length; i++)
+        {
+            nodesCountAfterDiscovery += buckets[i].BondedItemsCount;
+        }
+
         if (_logger.IsDebug) _logger.Debug($"Finished discovery cycle, tried contacting {alreadyTriedNodes.Count} nodes. All nodes count before the process: {nodesCountBeforeDiscovery}, after the process: {nodesCountAfterDiscovery}");
 
         if (_logger.IsTrace)
@@ -172,7 +200,7 @@ public class NodesLocator : INodesLocator
 
     private void LogNodeTable()
     {
-        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.BondedItems.Any());
+        IEnumerable<NodeBucket> nonEmptyBuckets = _nodeTable.Buckets.Where(x => x.AnyBondedItems());
         StringBuilder sb = new();
 
         int length = 0;

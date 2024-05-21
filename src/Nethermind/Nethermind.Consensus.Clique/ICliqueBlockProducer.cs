@@ -6,7 +6,7 @@ using Nethermind.Core.Crypto;
 
 namespace Nethermind.Consensus.Clique
 {
-    public interface ICliqueBlockProducer : IBlockProducer
+    public interface ICliqueBlockProducerRunner : IBlockProducerRunner
     {
         void CastVote(Address signer, bool vote);
         void UncastVote(Address signer);

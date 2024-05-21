@@ -115,21 +115,6 @@ namespace Nethermind.Synchronization.Peers
                 activeContexts.AppendTo(_stringBuilder, "None");
                 _stringBuilder.Append(" | Sleeping: ");
                 sleepingContexts.AppendTo(_stringBuilder, activeContexts.Total != activeContexts.None ? "None" : "All");
-                _stringBuilder.Append(" |");
-
-                isFirst = true;
-                foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
-                {
-                    if (isFirst)
-                    {
-                        isFirst = false;
-                    }
-                    else
-                    {
-                        _stringBuilder.Append(',');
-                    }
-                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,3:P0})");
-                }
 
                 string result = _stringBuilder.ToString();
                 _stringBuilder.Clear();
@@ -150,8 +135,36 @@ namespace Nethermind.Synchronization.Peers
                 contextCounts.Receipts += contexts.HasFlag(AllocationContexts.Receipts) ? 1 : 0;
                 contextCounts.Blocks += contexts.HasFlag(AllocationContexts.Blocks) ? 1 : 0;
                 contextCounts.State += contexts.HasFlag(AllocationContexts.State) ? 1 : 0;
-                contextCounts.Witness += contexts.HasFlag(AllocationContexts.Witness) ? 1 : 0;
                 contextCounts.Snap += contexts.HasFlag(AllocationContexts.Snap) ? 1 : 0;
+            }
+        }
+
+        internal string? MakeDiversityReportForPeers(IEnumerable<PeerInfo> peers, string header)
+        {
+            lock (_writeLock)
+            {
+                IEnumerable<IGrouping<NodeClientType, PeerInfo>> peerGroups = peers.GroupBy(peerInfo => peerInfo.SyncPeer.ClientType);
+                float sum = peerGroups.Sum(x => x.Count());
+
+                _stringBuilder.Append(header);
+
+                bool isFirst = true;
+                foreach (var peerGroup in peerGroups.OrderByDescending(x => x.Count()))
+                {
+                    if (isFirst)
+                    {
+                        isFirst = false;
+                    }
+                    else
+                    {
+                        _stringBuilder.Append(',');
+                    }
+                    _stringBuilder.Append($" {peerGroup.Key} ({peerGroup.Count() / sum,3:P0})");
+                }
+
+                string result = _stringBuilder.ToString();
+                _stringBuilder.Clear();
+                return result;
             }
         }
 
@@ -226,7 +239,6 @@ namespace Nethermind.Synchronization.Peers
             public int Receipts { get; set; }
             public int Blocks { get; set; }
             public int State { get; set; }
-            public int Witness { get; set; }
             public int Snap { get; set; }
             public int Total { get; set; }
 
@@ -245,7 +257,6 @@ namespace Nethermind.Synchronization.Peers
                 if (Receipts > 0) AddComma(sb, ref added).Append(Receipts).Append(" Receipts");
                 if (Blocks > 0) AddComma(sb, ref added).Append(Blocks).Append(" Blocks");
                 if (State > 0) AddComma(sb, ref added).Append(State).Append(" State");
-                if (Witness > 0) AddComma(sb, ref added).Append(Witness).Append(" Witness");
                 if (Snap > 0) AddComma(sb, ref added).Append(Snap).Append(" Snap");
 
                 static StringBuilder AddComma(StringBuilder sb, ref bool itemAdded)

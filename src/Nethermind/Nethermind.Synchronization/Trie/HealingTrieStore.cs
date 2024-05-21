@@ -15,7 +15,7 @@ namespace Nethermind.Synchronization.Trie;
 /// <summary>
 /// Trie store that can recover from network using eth63-eth66 protocol and GetNodeData.
 /// </summary>
-public class HealingTrieStore : TrieStore
+public sealed class HealingTrieStore : TrieStore
 {
     private ITrieNodeRecovery<IReadOnlyList<Hash256>>? _recovery;
 

@@ -49,6 +49,8 @@ jobs:
   verify_correctness_of_setup:
     name: Verify if inputs are correct
     runs-on: ubuntu-latest
+    outputs:
+      custom_machine_type: ${{ steps.compute_machine_type.outputs.custom_machine_type }}
     steps:
       - name: Verify if inputs are correctly applied
         run: |
@@ -65,6 +67,21 @@ jobs:
           IS_PERFORMANCE_CHECK: ${{ inputs.is_performance_check }}
           BRANCH_TO_COMPARE: ${{ inputs.branch_to_compare }}
           COMPARE_WITH: ${{ inputs.compare_with }}
+          
+      - name: Compute Machine Type
+        id: compute_machine_type
+        run: |
+          convert_to_paprika="${{ github.event.inputs.convert_to_paprika }}"
+          is_performance_check="${{ github.event.inputs.is_performance_check }}"
+          machine_type=""
+          if [[ "$convert_to_paprika" == 'true' && "$is_performance_check" == 'true' ]]; then
+            machine_type="g7-premium-16"
+          elif [[ "$convert_to_paprika" == 'true' ]]; then
+            machine_type="g6-standard-8"
+          elif [[ "$is_performance_check" == 'true' ]]; then
+            machine_type="g7-premium-8"
+          fi
+          echo "custom_machine_type=$machine_type" >> $GITHUB_OUTPUT
 
   create_main_node:
     name: Create node from current branch
@@ -79,10 +96,10 @@ jobs:
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000
+      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ github.ref }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ inputs.network || 'mainnet' }}"
@@ -102,10 +119,10 @@ jobs:
           "default_dockerfile_build_type": "release",
           "ssh_keys": "",
           "allowed_ips": "${{ inputs.allowed_ips }}",
-          "custom_machine_type": "${{ (inputs.convert_to_paprika == 'true' && inputs.is_performance_check == 'true' && 'g7-premium-16') || (inputs.convert_to_paprika == 'true' && 'g6-standard-8') || (inputs.is_performance_check == 'true' && 'g7-premium-8') || '' }}"
+          "custom_machine_type": "${{ needs.verify_correctness_of_setup.outputs.custom_machine_type }}"
         }
       non_validator_mode: true
-      additional_nethermind_flags: Pruning.Mode=None JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000
+      additional_nethermind_flags: JsonRpc.EnabledModules=[Eth,Subscribe,Trace,TxPool,Web3,Personal,Proof,Net,Parity,Health,Rpc,Debug,Admin] JsonRpc.Timeout=3600000 log=INFO
       nethermind_repo_ref: ${{ inputs.branch_to_compare }}
       custom_run_id: ${{ github.run_id }}
       network: "${{ inputs.network || 'mainnet' }}"
