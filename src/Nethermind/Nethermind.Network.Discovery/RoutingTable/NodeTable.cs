@@ -171,7 +171,7 @@ public class NodeTable : INodeTable
             {
                 foreach (var item in bucket.BondedItems)
                 {
-                    if (item.Node != null && item.Node.IdHash != idHash)
+                    if (item.Node is not null && item.Node.IdHash != idHash)
                     {
                         _sortedNodes.Add(item.Node);
                     }

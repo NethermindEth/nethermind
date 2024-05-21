@@ -233,6 +233,8 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Solution Items", "Solution 
 		nuget.config = nuget.config
 	EndProjectSection
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Nethermind.Optimism.Test", "Nethermind.Optimism.Test\Nethermind.Optimism.Test.csproj", "{2438958D-46EA-4A7E-B89F-29E069DA0CCA}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|Any CPU = Debug|Any CPU
@@ -623,6 +625,10 @@ Global
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{AD09FBCB-5496-499B-9129-B6D139A65B6F}.Release|Any CPU.Build.0 = Release|Any CPU
+		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{2438958D-46EA-4A7E-B89F-29E069DA0CCA}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

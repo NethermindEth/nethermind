@@ -4,9 +4,7 @@
 using System;
 using System.Diagnostics;
 using System.Threading.Tasks;
-using Nethermind.Api.Extensions;
 using Nethermind.Consensus;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin.BlockProduction;
@@ -17,7 +15,6 @@ namespace Nethermind.Merge.Plugin
     public partial class MergePlugin
     {
         protected PostMergeBlockProducer _postMergeBlockProducer = null!;
-        protected IManualBlockProductionTrigger? _blockProductionTrigger = null;
         protected ManualTimestamper? _manualTimestamper;
 
         protected virtual PostMergeBlockProducerFactory CreateBlockProducerFactory()
@@ -31,7 +28,7 @@ namespace Nethermind.Merge.Plugin
             return _api.BlockProducerEnvFactory.Create();
         }
 
-        public virtual async Task<IBlockProducer> InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, IBlockProductionTrigger blockProductionTrigger, ITxSource? txSource)
+        public virtual IBlockProducer InitBlockProducer(IBlockProducerFactory baseBlockProducerFactory, ITxSource? txSource)
         {
             if (MergeEnabled)
             {
@@ -54,23 +51,31 @@ namespace Nethermind.Merge.Plugin
                 if (_logger.IsInfo) _logger.Info("Starting Merge block producer & sealer");
 
                 IBlockProducer? blockProducer = _mergeBlockProductionPolicy.ShouldInitPreMergeBlockProduction()
-                    ? await baseBlockProducerFactory.InitBlockProducer(blockProductionTrigger, txSource)
+                    ? baseBlockProducerFactory.InitBlockProducer(txSource)
                     : null;
                 _manualTimestamper ??= new ManualTimestamper();
-                _blockProductionTrigger = new BuildBlocksWhenRequested();
-                BlockProducerEnv blockProducerEnv = CreateBlockProducerEnv();
+                BlockProducerEnv blockProducerEnv = _api.BlockProducerEnvFactory.Create();
 
                 _api.SealEngine = new MergeSealEngine(_api.SealEngine, _poSSwitcher, _api.SealValidator, _api.LogManager);
                 _api.Sealer = _api.SealEngine;
-                _postMergeBlockProducer = CreateBlockProducerFactory().Create(
-                    blockProducerEnv,
-                    _blockProductionTrigger
-                );
-
+                _postMergeBlockProducer = CreateBlockProducerFactory().Create(blockProducerEnv);
                 _api.BlockProducer = new MergeBlockProducer(blockProducer, _postMergeBlockProducer, _poSSwitcher);
             }
 
             return _api.BlockProducer!;
+        }
+
+        public IBlockProducerRunner InitBlockProducerRunner(IBlockProducerRunner baseRunner)
+        {
+            if (MergeEnabled)
+            {
+                // The trigger can be different, so need to stop the old block production runner at this point.
+                StandardBlockProducerRunner postMergeRunner = new StandardBlockProducerRunner(
+                    _api.ManualBlockProductionTrigger, _api.BlockTree!, _api.BlockProducer!);
+                return new MergeBlockProducerRunner(baseRunner, postMergeRunner, _poSSwitcher);
+            }
+
+            return baseRunner;
         }
 
         // this looks redundant but Enabled actually comes from IConsensusWrapperPlugin

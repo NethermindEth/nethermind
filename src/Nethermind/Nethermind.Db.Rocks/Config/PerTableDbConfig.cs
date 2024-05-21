@@ -73,6 +73,7 @@ public class PerTableDbConfig
     public int? UseRibbonFilterStartingFromLevel => ReadConfig<int?>(nameof(UseRibbonFilterStartingFromLevel));
     public ulong BytesPerSync => ReadConfig<ulong>(nameof(BytesPerSync));
     public double? DataBlockIndexUtilRatio => ReadConfig<double?>(nameof(DataBlockIndexUtilRatio));
+    public bool EnableFileWarmer => ReadConfig<bool>(nameof(EnableFileWarmer));
 
     private T? ReadConfig<T>(string propertyName)
     {
