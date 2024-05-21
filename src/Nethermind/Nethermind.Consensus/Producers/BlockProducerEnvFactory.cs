@@ -145,7 +145,13 @@ namespace Nethermind.Consensus.Producers
                 receiptStorage,
                 new BlockhashStore(_blockTree, _specProvider, readOnlyTxProcessingEnv.StateProvider),
                 logManager,
-                new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));
+                CreateWithdrawalProcessor(readOnlyTxProcessingEnv));
+
+        protected virtual IWithdrawalProcessor? CreateWithdrawalProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
+        {
+            return new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider,
+                _logManager));
+        }
 
     }
 }

@@ -15,7 +15,7 @@ public static class IBlockProducerEnvFactoryExtensions
 
     private class TransactionExecutorFactoryReplacingBlockProducerEnvFactory(
         IBlockProducerEnvFactory baseFactory,
-        IBlockTransactionsExecutorFactory txFactory): IBlockProducerEnvFactory
+        IBlockTransactionsExecutorFactory txFactory) : IBlockProducerEnvFactory
     {
         public IBlockTransactionsExecutorFactory TransactionsExecutorFactory => txFactory;
 

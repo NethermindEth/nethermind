@@ -6,16 +6,19 @@ using System.Threading.Tasks;
 using Nethermind.Api;
 using Nethermind.Api.Extensions;
 using Nethermind.Blockchain;
-using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
+using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
 using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Transactions;
-using Nethermind.Db;
+using Nethermind.Consensus.Validators;
+using Nethermind.Consensus.Withdrawals;
+using Nethermind.Core.Specs;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.TxPool;
 
 namespace Nethermind.Consensus.Ethash
 {
@@ -37,61 +40,41 @@ namespace Nethermind.Consensus.Ethash
             return Task.CompletedTask;
         }
 
+        public IBlockProducerEnvFactory? BuildBlockProducerEnvFactory()
+        {
+            return new NethBlockProducerEnvFactory(
+                _nethermindApi.WorldStateManager!,
+                _nethermindApi.BlockTree!,
+                _nethermindApi.SpecProvider!,
+                _nethermindApi.BlockValidator!,
+                _nethermindApi.RewardCalculatorSource!,
+                // So it does not have receipt here, but for some reason, by default `BlockProducerEnvFactory` have real receipt store.
+                NullReceiptStorage.Instance,
+                _nethermindApi.BlockPreprocessor,
+                _nethermindApi.TxPool!,
+                _nethermindApi.TransactionComparerProvider!,
+                _nethermindApi.Config<IBlocksConfig>(),
+                _nethermindApi.LogManager);
+        }
+
         public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
-            if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.NethDev)
+            if (_nethermindApi!.SealEngineType != Core.SealEngineType.NethDev)
             {
                 return null;
             }
 
             var (getFromApi, _) = _nethermindApi!.ForProducer;
 
-            ReadOnlyBlockTree readOnlyBlockTree = getFromApi.BlockTree.AsReadOnly();
-
-            ITxFilterPipeline txFilterPipeline = new TxFilterPipelineBuilder(_nethermindApi.LogManager)
-                .WithBaseFeeFilter(getFromApi.SpecProvider)
-                .WithNullTxFilter()
-                .WithMinGasPriceFilter(_nethermindApi.Config<IBlocksConfig>(), getFromApi.SpecProvider)
-                .Build;
-
-            TxPoolTxSource txPoolTxSource = new(
-                getFromApi.TxPool,
-                getFromApi.SpecProvider,
-                getFromApi.TransactionComparerProvider!,
-                getFromApi.LogManager,
-                txFilterPipeline);
-
             ILogger logger = getFromApi.LogManager.GetClassLogger();
             if (logger.IsInfo) logger.Info("Starting Neth Dev block producer & sealer");
 
-            ReadOnlyTxProcessingEnv producerEnv = new(
-                _nethermindApi.WorldStateManager!,
-                readOnlyBlockTree,
-                getFromApi.SpecProvider,
-                getFromApi.LogManager);
-
-            BlockProcessor producerProcessor = new(
-                getFromApi!.SpecProvider,
-                getFromApi!.BlockValidator,
-                NoBlockRewards.Instance,
-                new BlockProcessor.BlockProductionTransactionsExecutor(producerEnv, getFromApi!.SpecProvider, getFromApi.LogManager),
-                producerEnv.StateProvider,
-                NullReceiptStorage.Instance,
-                new BlockhashStore(getFromApi.BlockTree, getFromApi.SpecProvider, producerEnv.StateProvider),
-                getFromApi.LogManager);
-
-            IBlockchainProcessor producerChainProcessor = new BlockchainProcessor(
-                readOnlyBlockTree,
-                producerProcessor,
-                getFromApi.BlockPreprocessor,
-                getFromApi.StateReader,
-                getFromApi.LogManager,
-                BlockchainProcessor.Options.NoReceipts);
+            BlockProducerEnv env = _nethermindApi.BlockProducerEnvFactory.Create(additionalTxSource);
 
             IBlockProducer blockProducer = new DevBlockProducer(
-                additionalTxSource.Then(txPoolTxSource).ServeTxsOneByOne(),
-                producerChainProcessor,
-                producerEnv.StateProvider,
+                env.TxSource,
+                env.ChainProcessor,
+                env.ReadOnlyTxProcessingEnv.StateProvider,
                 getFromApi.BlockTree,
                 getFromApi.Timestamper,
                 getFromApi.SpecProvider,
@@ -122,5 +105,39 @@ namespace Nethermind.Consensus.Ethash
         {
             return Task.CompletedTask;
         }
+
+        private class NethBlockProducerEnvFactory : BlockProducerEnvFactory
+        {
+            public NethBlockProducerEnvFactory(IWorldStateManager worldStateManager, IBlockTree blockTree, ISpecProvider specProvider, IBlockValidator blockValidator, IRewardCalculatorSource rewardCalculatorSource, IReceiptStorage receiptStorage, IBlockPreprocessorStep blockPreprocessorStep, ITxPool txPool, ITransactionComparerProvider transactionComparerProvider, IBlocksConfig blocksConfig, ILogManager logManager, IBlockTransactionsExecutorFactory transactionExecutorFactory = null) : base(worldStateManager, blockTree, specProvider, blockValidator, rewardCalculatorSource, receiptStorage, blockPreprocessorStep, txPool, transactionComparerProvider, blocksConfig, logManager, transactionExecutorFactory)
+            {
+            }
+
+            protected override ITxSource CreateTxSourceForProducer(
+                ITxSource? additionalTxSource,
+                ReadOnlyTxProcessingEnv processingEnv,
+                ITxPool txPool,
+                IBlocksConfig blocksConfig,
+                ITransactionComparerProvider transactionComparerProvider,
+                ILogManager logManager)
+            {
+                TxPoolTxSource txPoolSource = CreateTxPoolTxSource(processingEnv, txPool, blocksConfig, transactionComparerProvider, logManager);
+                return additionalTxSource.Then(txPoolSource).ServeTxsOneByOne();
+            }
+
+            protected override ITxFilterPipeline CreateTxSourceFilter(IBlocksConfig blocksConfig)
+            {
+                return new TxFilterPipelineBuilder(_logManager)
+                    .WithBaseFeeFilter(_specProvider)
+                    .WithNullTxFilter()
+                    .WithMinGasPriceFilter(blocksConfig, _specProvider)
+                    .Build;
+            }
+
+            protected override IWithdrawalProcessor? CreateWithdrawalProcessor(ReadOnlyTxProcessingEnv readOnlyTxProcessingEnv)
+            {
+                return null;
+            }
+        }
+
     }
 }
