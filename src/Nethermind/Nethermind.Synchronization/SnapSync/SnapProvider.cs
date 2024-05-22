@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result;
 
-            if (response.PathAndAccounts.Count == 0 && response.Proofs.Count == 0)
+            if (!response.PathAndAccounts.Any())
             {
                 _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
@@ -59,7 +59,13 @@ namespace Nethermind.Synchronization.SnapSync
             }
             else
             {
-                result = AddAccountRange(request.BlockNumber.Value, request.RootHash, request.StartingHash, response.PathAndAccounts, response.Proofs, hashLimit: request.LimitHash);
+                result = AddAccountRange(
+                    request.BlockNumber.Value,
+                    request.RootHash,
+                    request.StartingHash,
+                    response.PathAndAccounts,
+                    response.Proofs,
+                    hashLimit: request.LimitHash);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -73,8 +79,18 @@ namespace Nethermind.Synchronization.SnapSync
             return result;
         }
 
-        public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, IReadOnlyList<PathWithAccount> accounts, IReadOnlyList<byte[]> proofs = null, in ValueHash256? hashLimit = null!)
+        public AddRangeResult AddAccountRange(
+            long blockNumber,
+            in ValueHash256 expectedRootHash,
+            in ValueHash256 startingHash,
+            IReadOnlyList<PathWithAccount> accounts,
+            IReadOnlyList<byte[]> proofs = null,
+            in ValueHash256? hashLimit = null!)
         {
+            if (!accounts.Any())
+            {
+                return AddRangeResult.OK;
+            }
             ITrieStore store = _trieStorePool.Get();
             try
             {
