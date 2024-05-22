@@ -277,7 +277,7 @@ namespace Nethermind.Synchronization.FastBlocks
             const long maxBatchToProcess = 4;
             while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
             {
-                try
+                using (dependentBatch)
                 {
                     MarkDirty();
                     InsertHeaders(dependentBatch);
@@ -285,10 +285,6 @@ namespace Nethermind.Synchronization.FastBlocks
                     cancellationToken.ThrowIfCancellationRequested();
 
                     processedBatchCount++;
-                }
-                finally
-                {
-                    dependentBatch.Dispose();
                 }
             }
         }
