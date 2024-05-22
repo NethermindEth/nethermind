@@ -100,8 +100,7 @@ namespace Nethermind.Consensus.AuRa.Transactions
                                     return null;
                                 }
                             }
-                            // TODO: Fix deps
-                            catch (Exception)
+                            catch (InvalidCipherTextException)
                             {
                                 // Before we used node key here, now we want to use signer key. So we can move signer to other node.
                                 // But we need to fallback to node key here when we upgrade version.

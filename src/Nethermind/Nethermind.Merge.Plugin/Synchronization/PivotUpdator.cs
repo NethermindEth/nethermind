@@ -76,7 +76,7 @@ public class PivotUpdator
                 long updatedPivotBlockNumber = pivotStream.DecodeLong();
                 Hash256 updatedPivotBlockHash = pivotStream.DecodeKeccak()!;
 
-                if (updatedPivotBlockHash.Bytes.IndexOfAnyExcept((byte)0) == -1)
+                if (updatedPivotBlockHash.IsZero)
                 {
                     return false;
                 }
