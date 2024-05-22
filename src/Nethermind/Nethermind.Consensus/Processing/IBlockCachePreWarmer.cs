@@ -55,8 +55,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
         try
         {
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
-            Parallel.ForEach(suggestedBlock.Transactions, parallelOptions, tx =>
+            Parallel.For(0, suggestedBlock.Transactions.Length, parallelOptions, i =>
             {
+                var tx = suggestedBlock.Transactions[i];
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 //SystemTransaction systemTransaction = new();
