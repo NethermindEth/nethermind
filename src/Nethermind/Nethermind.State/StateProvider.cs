@@ -201,6 +201,7 @@ namespace Nethermind.State
         private void SetNewBalance(Address address, in UInt256 balanceChange, IReleaseSpec releaseSpec, bool isSubtracting, bool isSystemCall = false)
         {
             _needsStateRootUpdate = true;
+            if (isSystemCall && address == Address.SystemUser) return;
 
             Account GetThroughCacheCheckExists()
             {
