@@ -75,8 +75,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
                 finally
                 {
                     _systemTransactionPool.Return(systemTransaction);
-                     env.Reset();
-                     _envPool.Return(env);
+                    env.Reset();
+                    _envPool.Return(env);
                 }
             });
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
