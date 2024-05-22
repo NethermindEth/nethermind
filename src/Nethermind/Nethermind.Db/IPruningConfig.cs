@@ -24,7 +24,7 @@ public interface IPruningConfig : IConfig
             """, DefaultValue = "Hybrid")]
     PruningMode Mode { get; set; }
 
-    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "2048")]
+    [ConfigItem(Description = "The in-memory cache size, in MB. The bigger the cache size, the bigger the disk space savings.", DefaultValue = "1024")]
     long CacheMb { get; set; }
 
     [ConfigItem(

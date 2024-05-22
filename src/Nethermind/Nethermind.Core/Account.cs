@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -9,7 +8,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public class Account : IEquatable<Account>
+    public class Account
     {
         public static readonly Account TotallyEmpty = new();
 
@@ -105,26 +104,6 @@ namespace Nethermind.Core
         }
 
         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
-
-        public bool Equals(Account? other)
-        {
-            if (ReferenceEquals(null, other)) return false;
-            if (ReferenceEquals(this, other)) return true;
-            return Equals(_codeHash, other._codeHash) && Equals(_storageRoot, other._storageRoot) && Nonce.Equals(other.Nonce) && Balance.Equals(other.Balance);
-        }
-
-        public override bool Equals(object? obj)
-        {
-            if (ReferenceEquals(null, obj)) return false;
-            if (ReferenceEquals(this, obj)) return true;
-            if (obj.GetType() != GetType()) return false;
-            return Equals((Account)obj);
-        }
-
-        public override int GetHashCode()
-        {
-            return HashCode.Combine(_codeHash, _storageRoot, Nonce, Balance);
-        }
     }
 
     public readonly struct AccountStruct
