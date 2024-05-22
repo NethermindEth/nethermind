@@ -2,7 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
@@ -10,11 +12,9 @@ using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
-using Nethermind.Db;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State.Tracing;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using Metrics = Nethermind.Db.Metrics;
@@ -24,14 +24,15 @@ namespace Nethermind.State
     internal class StateProvider
     {
         private const int StartCapacity = Resettable.StartCapacity;
-        private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraBlockCache = new();
+        private readonly ResettableDictionary<AddressAsKey, Stack<int>> _intraTxCache = new();
         private readonly ResettableHashSet<AddressAsKey> _committedThisRound = new();
         private readonly HashSet<AddressAsKey> _nullAccountReads = new();
         // Only guarding against hot duplicates so filter doesn't need to be too big
         // Note:
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
-        private readonly LruKeyCache<Hash256AsKey> _codeInsertFilter = new(2048, "Code Insert Filter");
+        private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
+        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -93,7 +94,7 @@ namespace Nethermind.State
 
         public bool AccountExists(Address address)
         {
-            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
+            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
                 return _changes[value.Peek()]!.ChangeType != ChangeType.Delete;
             }
@@ -312,14 +313,6 @@ namespace Nethermind.State
             PushUpdate(address, changedAccount);
         }
 
-        public void TouchCode(in ValueHash256 codeHash)
-        {
-            if (_codeDb is WitnessingStore witnessingStore)
-            {
-                witnessingStore.Touch(codeHash.Bytes);
-            }
-        }
-
         public Hash256 GetCodeHash(Address address)
         {
             Account? account = GetThroughCache(address);
@@ -377,7 +370,7 @@ namespace Nethermind.State
             for (int i = 0; i < _currentPosition - snapshot; i++)
             {
                 Change change = _changes[_currentPosition - i];
-                Stack<int> stack = _intraBlockCache[change!.Address];
+                Stack<int> stack = _intraTxCache[change!.Address];
                 if (stack.Count == 1)
                 {
                     if (change.ChangeType == ChangeType.JustCache)
@@ -403,7 +396,7 @@ namespace Nethermind.State
 
                 if (stack.Count == 0)
                 {
-                    _intraBlockCache.Remove(change.Address);
+                    _intraTxCache.Remove(change.Address);
                 }
             }
 
@@ -412,7 +405,7 @@ namespace Nethermind.State
             {
                 _currentPosition++;
                 _changes[_currentPosition] = kept;
-                _intraBlockCache[kept.Address].Push(_currentPosition);
+                _intraTxCache[kept.Address].Push(_currentPosition);
             }
 
             _keptInCache.Clear();
@@ -518,7 +511,7 @@ namespace Nethermind.State
                     continue;
                 }
 
-                Stack<int> stack = _intraBlockCache[change.Address];
+                Stack<int> stack = _intraTxCache[change.Address];
                 int forAssertion = stack.Pop();
                 if (forAssertion != _currentPosition - i)
                 {
@@ -613,7 +606,7 @@ namespace Nethermind.State
             Resettable<Change>.Reset(ref _changes, ref _capacity, ref _currentPosition, StartCapacity);
             _committedThisRound.Reset();
             _nullAccountReads.Clear();
-            _intraBlockCache.Reset();
+            _intraTxCache.Reset();
 
             if (isTracing)
             {
@@ -681,13 +674,22 @@ namespace Nethermind.State
 
         private Account? GetState(Address address)
         {
-            Metrics.StateTreeReads++;
-            Account? account = _tree.Get(address);
+            ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, address, out bool exists);
+            if (!exists)
+            {
+                Metrics.StateTreeReads++;
+                account = _tree.Get(address);
+            }
+            else
+            {
+                Metrics.IncrementTreeCacheHits();
+            }
             return account;
         }
 
         private void SetState(Address address, Account? account)
         {
+            _blockCache[address] = account;
             _needsStateRootUpdate = true;
             Metrics.StateTreeWrites++;
             _tree.Set(address, account);
@@ -713,7 +715,7 @@ namespace Nethermind.State
 
         private Account? GetThroughCache(Address address)
         {
-            if (_intraBlockCache.TryGetValue(address, out Stack<int> value))
+            if (_intraTxCache.TryGetValue(address, out Stack<int> value))
             {
                 return _changes[value.Peek()]!.Account;
             }
@@ -772,7 +774,7 @@ namespace Nethermind.State
 
         private Stack<int> SetupCache(Address address)
         {
-            ref Stack<int>? value = ref _intraBlockCache.GetValueRefOrAddDefault(address, out bool exists);
+            ref Stack<int>? value = ref _intraTxCache.GetValueRefOrAddDefault(address, out bool exists);
             if (!exists)
             {
                 value = new Stack<int>();
@@ -804,10 +806,29 @@ namespace Nethermind.State
             public Account? Account { get; }
         }
 
+        public ArrayPoolList<AddressAsKey>? ChangedAddresses()
+        {
+            int count = _blockCache.Count;
+            if (count == 0)
+            {
+                return null;
+            }
+            else
+            {
+                ArrayPoolList<AddressAsKey> addresses = new(count);
+                foreach (AddressAsKey address in _blockCache.Keys)
+                {
+                    addresses.Add(address);
+                }
+                return addresses;
+            }
+        }
+
         public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
-            _intraBlockCache.Reset();
+            _blockCache.Clear();
+            _intraTxCache.Reset();
             _committedThisRound.Reset();
             _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;

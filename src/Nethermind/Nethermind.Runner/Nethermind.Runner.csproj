@@ -78,6 +78,7 @@
       <ExcludeFromSingleFile>true</ExcludeFromSingleFile>
     </None>
     <None Remove="keystore\**" />
+    <Content Remove="..\Chains\kovan.json" />
     <None Update="NLog.config">
       <CopyToOutputDirectory>Always</CopyToOutputDirectory>
     </None>
@@ -119,7 +120,7 @@
     </ItemGroup>
   </Target>
 
-  <Target Name="CheckBranchName" AfterTargets="BeforeBuild" >
+  <Target Name="CheckBranchName" AfterTargets="BeforeBuild">
     <Exec Command="git branch --show-current" ConsoleToMSBuild="True" StandardOutputImportance="low">
       <Output PropertyName="BranchName" TaskParameter="ConsoleOutput" />
     </Exec>

@@ -3,6 +3,7 @@
 
 using System.Threading.Tasks;
 using Nethermind.Api;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Services;
 using Nethermind.Config;
 using Nethermind.Consensus.Processing;
@@ -101,7 +102,7 @@ public class InitializeBlockchainOptimism : InitializeBlockchain
             new BlockProcessor.BlockValidationTransactionsExecutor(_api.TransactionProcessor, _api.WorldState),
             _api.WorldState,
             _api.ReceiptStorage,
-            _api.WitnessCollector,
+            new BlockhashStore(_api.BlockTree, _api.SpecProvider, _api.WorldState),
             _api.LogManager,
             _api.SpecHelper,
             contractRewriter);

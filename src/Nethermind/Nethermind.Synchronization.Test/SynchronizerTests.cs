@@ -32,7 +32,6 @@ using Nethermind.Merge.Plugin.Synchronization;
 using Nethermind.Merge.Plugin.Test;
 using Nethermind.Specs.ChainSpecStyle;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Synchronization.Blocks;
 using Nethermind.Synchronization.ParallelSync;
 using Nethermind.Synchronization.Peers;
@@ -413,7 +412,6 @@ namespace Nethermind.Synchronization.Test
                     SyncPeerPool,
                     Synchronizer.SyncModeSelector,
                     syncConfig,
-                    new WitnessCollector(new MemDb(), LimboLogs.Instance),
                     Policy.FullGossip,
                     MainnetSpecProvider.Instance,
                     _logManager);

@@ -30,7 +30,8 @@ namespace Nethermind.Stats.Model
         /// <summary>
         /// Host part of the network node.
         /// </summary>
-        public string Host { get; private set; }
+        public string Host => _host ??= Address?.Address?.MapToIPv4()?.ToString();
+        private string _host;
 
         /// <summary>
         /// Port part of the network node.
@@ -88,15 +89,37 @@ namespace Nethermind.Stats.Model
             SetIPEndPoint(address);
         }
 
+        private static string[] _ports = CreateCommonPortStrings();
+
+        private static string[] CreateCommonPortStrings()
+        {
+            var ports = new string[100];
+            for (int i = 0; ports.Length < 100; i++)
+            {
+                ports[i] = (i + 30300).ToString().PadLeft(5, ' ');
+            }
+
+            return ports;
+        }
+
         private void SetIPEndPoint(IPEndPoint address)
         {
-            Host = address.Address.MapToIPv4().ToString();
             Port = address.Port;
             Address = address;
-            // xxx.xxx.xxx.xxx = 15
-            _paddedHost = Host.PadLeft(15, ' ');
-            // Port are up to 65535 => 5 chars
-            _paddedPort = Port.ToString().PadLeft(5, ' ');
+            _host = null;
+            _paddedHost = null;
+            _paddedPort = null;
+        }
+
+        // xxx.xxx.xxx.xxx = 15
+        private string PaddedHost => _paddedHost ??= Host.PadLeft(15, ' ');
+        private string PaddedPort
+        {
+            get
+            {
+                // Port are up to 65535 => 5 chars
+                return _paddedPort ??= (Port >= 30300 && Port <= 30399) ? _ports[Port - 30300] : Port.ToString().PadLeft(5, ' ');
+            }
         }
 
         private static IPEndPoint GetIPEndPoint(string host, int port)
@@ -130,7 +153,7 @@ namespace Nethermind.Stats.Model
             return format switch
             {
                 Format.Short => $"{Host}:{Port}",
-                Format.AlignedShort => $"{_paddedHost}:{_paddedPort}",
+                Format.AlignedShort => $"{PaddedHost}:{PaddedPort}",
                 Format.Console => $"[Node|{Host}:{Port}|{EthDetails}|{ClientId}]",
                 Format.WithId => $"enode://{Id.ToString(false)}@{Host}:{Port}|{ClientId}",
                 Format.ENode => $"enode://{Id.ToString(false)}@{Host}:{Port}",

@@ -4,6 +4,7 @@
 using System.Collections.Generic;
 using FluentAssertions;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Comparers;
 using Nethermind.Consensus.Processing;
@@ -19,7 +20,6 @@ using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
 using Nethermind.Specs;
 using Nethermind.State;
-using Nethermind.State.Witnesses;
 using Nethermind.Trie.Pruning;
 using Nethermind.TxPool;
 using NUnit.Framework;
@@ -57,7 +57,7 @@ public class ReorgTests
             new TxValidator(specProvider.ChainId),
             LimboLogs.Instance,
             transactionComparerProvider.GetDefaultComparer());
-        BlockhashProvider blockhashProvider = new(_blockTree, LimboLogs.Instance);
+        BlockhashProvider blockhashProvider = new(_blockTree, specProvider, stateProvider, LimboLogs.Instance);
         VirtualMachine virtualMachine = new(
             blockhashProvider,
             specProvider,
@@ -75,7 +75,7 @@ public class ReorgTests
             new BlockProcessor.BlockValidationTransactionsExecutor(transactionProcessor, stateProvider),
             stateProvider,
             NullReceiptStorage.Instance,
-            new WitnessCollector(memDbProvider.StateDb, LimboLogs.Instance),
+            new BlockhashStore(_blockTree, MainnetSpecProvider.Instance, stateProvider),
             LimboLogs.Instance,
             new BeaconBlockRootHandler(transactionProcessor, LimboLogs.Instance));
         _blockchainProcessor = new BlockchainProcessor(

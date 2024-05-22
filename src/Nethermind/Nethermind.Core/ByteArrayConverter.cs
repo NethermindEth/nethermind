@@ -102,7 +102,7 @@ public class ByteArrayConverter : JsonConverter<byte[]>
         const int maxStackLength = 128;
         const int stackLength = 256;
 
-        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingZeros() : 0;
+        int leadingNibbleZeros = skipLeadingZeros ? bytes.CountLeadingNibbleZeros() : 0;
         int length = bytes.Length * 2 - leadingNibbleZeros + 2 + (addQuotations ? 2 : 0);
 
         byte[]? array = null;

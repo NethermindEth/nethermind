@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
 using Nethermind.Consensus.Validators;
@@ -48,7 +49,7 @@ namespace Nethermind.Consensus.Processing
                 transactionsExecutor,
                 StateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(_txEnv.BlockTree, specProvider, StateProvider),
                 logManager,
                 new BeaconBlockRootHandler(_txEnv.TransactionProcessor, logManager));
 

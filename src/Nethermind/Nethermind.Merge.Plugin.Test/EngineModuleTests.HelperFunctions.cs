@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -109,6 +109,8 @@ namespace Nethermind.Merge.Plugin.Test
             blockRequestV3.TryGetBlock(out Block? block);
 
             Snapshot before = chain.State.TakeSnapshot();
+            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
+            blockHashStore.ApplyHistoryBlockHashes(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

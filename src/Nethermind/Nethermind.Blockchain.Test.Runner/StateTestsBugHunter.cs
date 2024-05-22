@@ -32,7 +32,7 @@ namespace Nethermind.Blockchain.Test.Runner
                 Setup(LimboLogs.Instance);
 
                 Console.Write($"{test,-120} ");
-                if (test.LoadFailure != null)
+                if (test.LoadFailure is not null)
                 {
                     WriteRed(test.LoadFailure);
                     testResults.Add(new EthereumTestResult(test.Name, test.ForkName, test.LoadFailure));

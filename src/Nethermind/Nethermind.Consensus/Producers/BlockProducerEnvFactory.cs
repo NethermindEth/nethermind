@@ -3,6 +3,7 @@
 
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
 using Nethermind.Consensus.Comparers;
@@ -142,7 +143,7 @@ namespace Nethermind.Consensus.Producers
                 TransactionsExecutorFactory.Create(readOnlyTxProcessingEnv),
                 readOnlyTxProcessingEnv.StateProvider,
                 receiptStorage,
-                NullWitnessCollector.Instance,
+                new BlockhashStore(_blockTree, _specProvider, readOnlyTxProcessingEnv.StateProvider),
                 logManager,
                 new BeaconBlockRootHandler(readOnlyTxProcessingEnv.TransactionProcessor, logManager),
                 new BlockProductionWithdrawalProcessor(new WithdrawalProcessor(readOnlyTxProcessingEnv.StateProvider, logManager)));

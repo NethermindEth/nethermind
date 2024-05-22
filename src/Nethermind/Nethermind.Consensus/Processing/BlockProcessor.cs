@@ -7,6 +7,8 @@ using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
+using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.BeaconBlockRoot;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Rewards;
@@ -34,13 +36,12 @@ public partial class BlockProcessor : IBlockProcessor
     protected readonly IWorldState _stateProvider;
     private readonly IReceiptStorage _receiptStorage;
     private readonly IReceiptsRootCalculator _receiptsRootCalculator;
-    private readonly IWitnessCollector _witnessCollector;
     private readonly IWithdrawalProcessor _withdrawalProcessor;
     private readonly IBeaconBlockRootHandler _beaconBlockRootHandler;
     private readonly IBlockValidator _blockValidator;
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
-
+    private readonly IBlockhashStore _blockhashStore;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -56,7 +57,7 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
-        IWitnessCollector? witnessCollector,
+        IBlockhashStore? blockHashStore,
         ILogManager? logManager,
         IBeaconBlockRootHandler? beaconBlockRootHandler,
         IWithdrawalProcessor? withdrawalProcessor = null,
@@ -67,16 +68,16 @@ public partial class BlockProcessor : IBlockProcessor
         _blockValidator = blockValidator ?? throw new ArgumentNullException(nameof(blockValidator));
         _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
         _receiptStorage = receiptStorage ?? throw new ArgumentNullException(nameof(receiptStorage));
-        _witnessCollector = witnessCollector ?? throw new ArgumentNullException(nameof(witnessCollector));
         _withdrawalProcessor = withdrawalProcessor ?? new WithdrawalProcessor(stateProvider, logManager);
         _rewardCalculator = rewardCalculator ?? throw new ArgumentNullException(nameof(rewardCalculator));
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _beaconBlockRootHandler = beaconBlockRootHandler ?? throw new ArgumentNullException(nameof(beaconBlockRootHandler));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
+        _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
         ReceiptsTracer = new BlockReceiptsTracer();
     }
 
-    public event EventHandler<BlockProcessedEventArgs> BlockProcessed;
+    public event EventHandler<BlockProcessedEventArgs>? BlockProcessed;
 
     public event EventHandler<TxProcessedEventArgs> TransactionProcessed
     {
@@ -101,7 +102,6 @@ public partial class BlockProcessor : IBlockProcessor
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
         Block[] processedBlocks = new Block[blocksCount];
-        using IDisposable tracker = _witnessCollector.TrackOnThisThread();
         try
         {
             for (int i = 0; i < blocksCount; i++)
@@ -111,7 +111,6 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
                 }
 
-                _witnessCollector.Reset();
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
                 processedBlocks[i] = processedBlock;
 
@@ -120,7 +119,6 @@ public partial class BlockProcessor : IBlockProcessor
 
                 if (notReadOnly)
                 {
-                    _witnessCollector.Persist(processedBlock.Hash!);
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
                 }
 
@@ -221,6 +219,9 @@ public partial class BlockProcessor : IBlockProcessor
             if (_logger.IsWarn) _logger.Warn($"Suggested block TD: {suggestedBlock.TotalDifficulty}, Suggested block IsPostMerge {suggestedBlock.IsPostMerge}, Block TD: {block.TotalDifficulty}, Block IsPostMerge {block.IsPostMerge}");
             throw new InvalidBlockException(suggestedBlock, error);
         }
+
+        // Block is valid, copy the account changes as we use the suggested block not the processed one
+        suggestedBlock.AccountChanges = block.AccountChanges;
     }
 
     private bool ShouldComputeStateRoot(BlockHeader header) =>
@@ -251,8 +252,10 @@ public partial class BlockProcessor : IBlockProcessor
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
 
-        _stateProvider.Commit(spec);
+        _stateProvider.Commit(spec, commitStorageRoots: true);
 
+        // Get the accounts that have been changed
+        block.AccountChanges = _stateProvider.GetAccountChanges();
         if (ShouldComputeStateRoot(block.Header))
         {
             _stateProvider.RecalculateStateRoot();

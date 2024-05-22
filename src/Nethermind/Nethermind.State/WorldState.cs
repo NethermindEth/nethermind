@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -150,11 +151,6 @@ namespace Nethermind.State
             _persistentStorageProvider.StateRoot = _stateProvider.StateRoot;
         }
 
-        public void TouchCode(in ValueHash256 codeHash)
-        {
-            _stateProvider.TouchCode(codeHash);
-        }
-
         public UInt256 GetNonce(Address address) => _stateProvider.GetNonce(address);
 
         public UInt256 GetBalance(Address address) => _stateProvider.GetBalance(address);
@@ -196,16 +192,16 @@ namespace Nethermind.State
             return _trieStore.HasRoot(stateRoot);
         }
 
-        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit();
-            _transientStorageProvider.Commit();
+            _persistentStorageProvider.Commit(commitStorageRoots);
+            _transientStorageProvider.Commit(commitStorageRoots);
             _stateProvider.Commit(releaseSpec, isGenesis);
         }
-        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false)
+        public void Commit(IReleaseSpec releaseSpec, IWorldStateTracer tracer, bool isGenesis = false, bool commitStorageRoots = true)
         {
-            _persistentStorageProvider.Commit(tracer);
-            _transientStorageProvider.Commit(tracer);
+            _persistentStorageProvider.Commit(tracer, commitStorageRoots);
+            _transientStorageProvider.Commit(tracer, commitStorageRoots);
             _stateProvider.Commit(releaseSpec, tracer, isGenesis);
         }
 
@@ -238,6 +234,11 @@ namespace Nethermind.State
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
+        }
+
+        ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges()
+        {
+            return _stateProvider.ChangedAddresses();
         }
     }
 }

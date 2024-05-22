@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.BeaconBlockRoot;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Config;
@@ -74,6 +75,7 @@ public class TestBlockchain : IDisposable
     public IDb StateDb => DbProvider.StateDb;
     public TrieStore TrieStore { get; set; } = null!;
     public IBlockProducer BlockProducer { get; private set; } = null!;
+    public IBlockProducerRunner BlockProducerRunner { get; protected set; } = null!;
     public IDbProvider DbProvider { get; set; } = null!;
     public ISpecProvider SpecProvider { get; set; } = null!;
 
@@ -132,6 +134,12 @@ public class TestBlockchain : IDisposable
             State.CreateAccount(SpecProvider.GenesisSpec.Eip4788ContractAddress!, 1);
         }
 
+        // Eip2935
+        if (specProvider?.GenesisSpec?.IsBlockHashInStateAvailable ?? false)
+        {
+            State.CreateAccount(SpecProvider.GenesisSpec.Eip2935ContractAddress, 1);
+        }
+
         State.CreateAccount(TestItem.AddressA, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressB, (initialValues ?? InitialValue));
         State.CreateAccount(TestItem.AddressC, (initialValues ?? InitialValue));
@@ -168,7 +176,7 @@ public class TestBlockchain : IDisposable
         _trieStoreWatcher = new TrieStoreBoundaryWatcher(WorldStateManager, BlockTree, LogManager);
 
         ReceiptStorage = new InMemoryReceiptStorage(blockTree: BlockTree);
-        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, LogManager), SpecProvider, LogManager);
+        VirtualMachine virtualMachine = new(new BlockhashProvider(BlockTree, SpecProvider, State, LogManager), SpecProvider, LogManager);
         TxProcessor = new TransactionProcessor(SpecProvider, State, virtualMachine, LogManager);
         BlockPreprocessorStep = new RecoverSignatures(EthereumEcdsa, TxPool, SpecProvider, LogManager);
         HeaderValidator = new HeaderValidator(BlockTree, Always.Valid, SpecProvider, LogManager);
@@ -201,13 +209,14 @@ public class TestBlockchain : IDisposable
         TxPoolTxSource txPoolTxSource = CreateTxPoolTxSource();
         ITransactionComparerProvider transactionComparerProvider = new TransactionComparerProvider(SpecProvider, BlockFinder);
         BlockProducer = CreateTestBlockProducer(txPoolTxSource, sealer, transactionComparerProvider);
-        await BlockProducer.Start();
-        Suggester = new ProducedBlockSuggester(BlockTree, BlockProducer);
+        BlockProducerRunner ??= CreateBlockProducerRunner();
+        BlockProducerRunner.Start();
+        Suggester = new ProducedBlockSuggester(BlockTree, BlockProducerRunner);
 
         _resetEvent = new SemaphoreSlim(0);
         _suggestedBlockResetEvent = new ManualResetEvent(true);
         BlockTree.BlockAddedToMain += BlockAddedToMain;
-        BlockProducer.BlockProduced += (s, e) =>
+        BlockProducerRunner.BlockProduced += (s, e) =>
         {
             _suggestedBlockResetEvent.Set();
         };
@@ -277,11 +286,15 @@ public class TestBlockchain : IDisposable
             env.ReadOnlyStateProvider,
             sealer,
             BlockTree,
-            BlockProductionTrigger,
             Timestamper,
             SpecProvider,
             LogManager,
             blocksConfig);
+    }
+
+    protected virtual IBlockProducerRunner CreateBlockProducerRunner()
+    {
+        return new StandardBlockProducerRunner(BlockProductionTrigger, BlockTree, BlockProducer);
     }
 
     public virtual ILogManager LogManager { get; set; } = LimboLogs.Instance;
@@ -353,7 +366,7 @@ public class TestBlockchain : IDisposable
             new BlockProcessor.BlockValidationTransactionsExecutor(TxProcessor, State),
             State,
             ReceiptStorage,
-            NullWitnessCollector.Instance,
+            new BlockhashStore(BlockTree, SpecProvider, State),
             LogManager,
             new BeaconBlockRootHandler(TxProcessor, LogManager));
 
@@ -411,7 +424,7 @@ public class TestBlockchain : IDisposable
 
     public virtual void Dispose()
     {
-        BlockProducer?.StopAsync();
+        BlockProducerRunner?.StopAsync();
         if (DbProvider is not null)
         {
             CodeDb?.Dispose();
