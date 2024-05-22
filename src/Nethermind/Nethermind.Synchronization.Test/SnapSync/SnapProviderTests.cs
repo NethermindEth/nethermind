@@ -23,8 +23,11 @@ public class SnapProviderTests
     [Test]
     public void AddAccountRange_AccountListIsEmpty_ThrowArgumentException()
     {
+        MemDb db = new();
         IDbProvider dbProvider = new DbProvider();
+        dbProvider.RegisterDb(DbNames.State, db);
         using ProgressTracker progressTracker = new(Substitute.For<IBlockTree>(), dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
+        dbProvider.RegisterDb(DbNames.Code, new MemDb());
         SnapProvider sut = new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
 
         Assert.That(
