@@ -47,11 +47,6 @@ namespace Nethermind.State
         {
         }
 
-        public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, IPreBlockCaches? sharedHashes)
-            : this(trieStore, codeDb, logManager, sharedHashes?.Caches)
-        {
-        }
-
         internal WorldState(
             ITrieStore trieStore,
             IKeyValueStore? codeDb,
