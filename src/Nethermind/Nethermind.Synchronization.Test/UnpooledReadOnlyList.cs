@@ -14,12 +14,12 @@ namespace Nethermind.Synchronization.Test;
 /// This is list that does not require disposing and is meant for test purposes.
 /// </summary>
 /// <typeparam name="T"></typeparam>
-internal class UnpooledReadOnlyList<T> : List<T>,IOwnedReadOnlyList<T>
+internal class UnpooledReadOnlyList<T> : List<T>, IOwnedReadOnlyList<T>
 {
     public UnpooledReadOnlyList(IEnumerable<T> enumerable) : base(enumerable)
-    {}
+    { }
     public UnpooledReadOnlyList(IReadOnlyList<T> list) : base(list)
-    {}
+    { }
     public ReadOnlySpan<T> AsSpan()
     {
         return this.AsSpan();
