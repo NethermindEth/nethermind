@@ -92,7 +92,7 @@ public class ShutterP2P
             {
                 try
                 {
-                    Thread.Sleep(500);
+                    Thread.Sleep(20);
                     oldDelta = delta;
                     delta = DateTimeOffset.Now.ToUnixTimeSeconds() - lastMessageProcessed;
 
