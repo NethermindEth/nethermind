@@ -498,8 +498,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
         var codeInfo = new CodeInfo(code);
-        // Start generating the JumpDestinationBitmap in background.
-        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         _state.InsertCode(callCodeOwner, codeHash, code, spec);
@@ -544,13 +543,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
 
             cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo.AnalyseInBackgroundIfRequired();
+
             CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
         {
             Db.Metrics.CodeDbCache++;
-            // need to touch code so that any collectors that track database access are informed
-            worldState.TouchCode(codeHash);
         }
 
         return cachedCodeInfo;
@@ -1993,41 +1992,30 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                         break;
                     }
-                case Instruction.BEGINSUB | Instruction.TLOAD:
+                case Instruction.TLOAD:
                     {
-                        if (spec.TransientStorageEnabled)
+                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
+
+                        Metrics.TloadOpcode++;
+                        gasAvailable -= GasCostOf.TLoad;
+
+                        if (!stack.PopUInt256(out result)) goto StackUnderflow;
+                        storageCell = new(env.ExecutingAccount, result);
+
+                        ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
+                        stack.PushBytes(value);
+
+                        if (typeof(TTracingStorage) == typeof(IsTracing))
                         {
-                            Metrics.TloadOpcode++;
-                            gasAvailable -= GasCostOf.TLoad;
-
-                            if (!stack.PopUInt256(out result)) goto StackUnderflow;
-                            storageCell = new(env.ExecutingAccount, result);
-
-                            ReadOnlySpan<byte> value = _state.GetTransientState(in storageCell);
-                            stack.PushBytes(value);
-
-                            if (typeof(TTracingStorage) == typeof(IsTracing))
-                            {
-                                if (gasAvailable < 0) goto OutOfGas;
-                                _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
-                            }
-
-                            break;
-                        }
-                        else
-                        {
-                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                            // why do we even need the cost of it?
-                            gasAvailable -= GasCostOf.Base;
-
-                            goto InvalidSubroutineEntry;
+                            if (gasAvailable < 0) goto OutOfGas;
+                            _txTracer.LoadOperationTransientStorage(storageCell.Address, result, value);
                         }
 
+                        break;
                     }
-                case Instruction.RETURNSUB | Instruction.TSTORE:
+                case Instruction.TSTORE:
                     {
-                        if (spec.TransientStorageEnabled)
+                        if (!spec.TransientStorageEnabled) goto InvalidInstruction;
                         {
                             Metrics.TstoreOpcode++;
 
@@ -2050,24 +2038,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             break;
                         }
-                        else
-                        {
-                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                            gasAvailable -= GasCostOf.Low;
-
-                            if (vmState.ReturnStackHead == 0)
-                            {
-                                goto InvalidSubroutineReturn;
-                            }
-
-                            programCounter = vmState.ReturnStack[--vmState.ReturnStackHead];
-                            break;
-                        }
                     }
-                case Instruction.JUMPSUB or Instruction.MCOPY:
+                case Instruction.MCOPY:
                     {
-                        if (spec.MCopyIncluded)
+                        if (!spec.MCopyIncluded) goto InvalidInstruction;
                         {
                             Metrics.MCopyOpcode++;
 
@@ -2083,22 +2057,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
                             vmState.Memory.Save(in a, bytes);
                             if (typeof(TTracingInstructions) == typeof(IsTracing)) _txTracer.ReportMemoryChange(a, bytes);
-
-                            break;
-                        }
-                        else
-                        {
-                            if (!spec.SubroutinesEnabled) goto InvalidInstruction;
-
-                            gasAvailable -= GasCostOf.High;
-
-                            if (vmState.ReturnStackHead == EvmStack.ReturnStackSize) goto StackOverflow;
-
-                            vmState.ReturnStack[vmState.ReturnStackHead++] = programCounter;
-
-                            if (!stack.PopUInt256(out UInt256 jumpDest)) goto StackUnderflow;
-                            if (!Jump(jumpDest, ref programCounter, in env, true)) goto InvalidJumpDestination;
-                            programCounter++;
 
                             break;
                         }
@@ -2154,15 +2112,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         goto ReturnFailure;
     StaticCallViolation:
         exceptionType = EvmExceptionType.StaticCallViolation;
-        goto ReturnFailure;
-    InvalidSubroutineEntry:
-        exceptionType = EvmExceptionType.InvalidSubroutineEntry;
-        goto ReturnFailure;
-    InvalidSubroutineReturn:
-        exceptionType = EvmExceptionType.InvalidSubroutineReturn;
-        goto ReturnFailure;
-    StackOverflow:
-        exceptionType = EvmExceptionType.StackOverflow;
         goto ReturnFailure;
     StackUnderflow:
         exceptionType = EvmExceptionType.StackUnderflow;
@@ -2266,6 +2215,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
+        CodeInfo codeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+        codeInfo.AnalyseInBackgroundIfRequired();
+
         if (spec.Use63Over64Rule)
         {
             gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
@@ -2319,7 +2271,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            codeInfo: codeInfo
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2542,6 +2494,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         ExecutionEnvironment callEnv = new
         (
@@ -2817,7 +2770,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         return true;
     }
 
-    private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env, bool isSubroutine = false)
+    private static bool Jump(in UInt256 jumpDest, ref int programCounter, in ExecutionEnvironment env)
     {
         if (jumpDest > int.MaxValue)
         {
@@ -2827,7 +2780,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         }
 
         int jumpDestInt = (int)jumpDest;
-        if (!env.CodeInfo.ValidateJump(jumpDestInt, isSubroutine))
+        if (!env.CodeInfo.ValidateJump(jumpDestInt))
         {
             // https://github.com/NethermindEth/nethermind/issues/140
             // TODO: add a test, validating inside the condition was not covered by existing tests and fails on 61363 Ropsten
