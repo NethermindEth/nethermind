@@ -222,7 +222,9 @@ namespace Nethermind.Init.Steps
 
             IWorldState worldState = _api.WorldState!;
 
-            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, true);
+            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
+            PreBlockCaches? secondCaches = new PreBlockCaches("pre warm");
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, secondCaches);
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -232,7 +234,8 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, (worldState as IPreBlockCaches)?.Caches));
+                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, secondCaches, preBlockCaches)
+            );
         }
 
         // TODO: remove from here - move to consensus?

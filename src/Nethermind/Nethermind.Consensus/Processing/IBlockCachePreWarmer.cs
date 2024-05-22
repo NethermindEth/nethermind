@@ -2,6 +2,10 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Runtime.InteropServices.ComTypes;
+using System.Threading;
 using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
 using Microsoft.FSharp.Collections;
@@ -17,17 +21,17 @@ namespace Nethermind.Consensus.Processing;
 
 public interface IBlockCachePreWarmer
 {
-    void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot);
+    Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken = default);
+    void CompareCaches(Block block);
 }
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager, PreBlockCaches? preBlockCaches = null, PreBlockCaches? mainCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
-    private readonly ParallelOptions _options = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2) };
     private readonly ILogger _logger = logManager.GetClassLogger<BlockCachePreWarmer>();
 
-    public void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot)
+    public Task PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken = default)
     {
         if (preBlockCaches is not null)
         {
@@ -39,34 +43,97 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
             if (Environment.ProcessorCount > 2)
             {
-                Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot));
+                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken), cancellationToken);
             }
+
         }
+
+        return Task.CompletedTask;
     }
 
-    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot)
+    public void CompareCaches(Block block)
     {
-        Parallel.ForEach(suggestedBlock.Transactions, _options, tx =>
+        if (preBlockCaches is not null && mainCaches is not null)
         {
-            ReadOnlyTxProcessingEnv env = _envPool.Get();
-            SystemTransaction systemTransaction = _systemTransactionPool.Get();
-            try
+            int missingAccounts = 0;
+            int differentAccounts = 0;
+            Dictionary<AddressAsKey, (Account, Account)> accountDifferences = new();
+            foreach (KeyValuePair<AddressAsKey, Account> account in mainCaches.StateCache)
             {
-                tx.CopyTo(systemTransaction);
-                using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
-                TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
-                if (_logger.IsDebug) _logger.Debug($"Finished pre-warming cache for tx {tx.Hash} with {result}");
+                if (preBlockCaches.StateCache.TryGetValue(account.Key, out Account? preBlockAccount))
+                {
+                    if (!account.Value.Equals(preBlockAccount))
+                    {
+                        differentAccounts++;
+                        accountDifferences[account.Key] = (account.Value, preBlockAccount);
+                    }
+                }
+                else
+                {
+                    missingAccounts++;
+                }
             }
-            catch (Exception ex)
+
+            int missingSorage = 0;
+            int differentStorage = 0;
+            Dictionary<StorageCell, (byte[], byte[])> storageDifferences = new();
+            foreach (KeyValuePair<StorageCell,byte[]> storage in mainCaches.StorageCache)
             {
-                if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
+                if (preBlockCaches.StorageCache.TryGetValue(storage.Key, out byte[]? preBlockStorage))
+                {
+                    if (!storage.Value.SequenceEqual(preBlockStorage))
+                    {
+                        differentStorage++;
+                        storageDifferences[storage.Key] = (storage.Value, preBlockStorage);
+                    }
+                }
+                else
+                {
+                    missingSorage++;
+                }
             }
-            finally
+
+            _logger.Warn($"For block {block.Number} found {differentAccounts} different Accounts, {missingAccounts} missing Accounts, {differentStorage} different Storages, {missingSorage} missing Storages.");
+        }
+
+        mainCaches?.Clear();
+    }
+
+    private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
+    {
+        try
+        {
+            ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
+            Parallel.ForEach(suggestedBlock.Transactions, parallelOptions, tx =>
             {
-                _systemTransactionPool.Return(systemTransaction);
-                _envPool.Return(env);
-            }
-        });
+                // ReadOnlyTxProcessingEnv env = _envPool.Get();
+                //SystemTransaction systemTransaction = _systemTransactionPool.Get();
+                SystemTransaction systemTransaction = new();
+                ReadOnlyTxProcessingEnv env = envFactory.Create();
+                try
+                {
+                    tx.CopyTo(systemTransaction);
+                    using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
+                    TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                    if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
+                }
+                catch (Exception ex)
+                {
+                    if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
+                }
+                finally
+                {
+                    //_systemTransactionPool.Return(systemTransaction);
+                    // env.Reset();
+                    // _envPool.Return(env);
+                }
+            });
+            _logger.Info($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+        }
+        catch (OperationCanceledException)
+        {
+            _logger.Info($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
+        }
     }
 
     private class ReadOnlyTxProcessingEnvPooledObjectPolicy(ReadOnlyTxProcessingEnvFactory envFactory) : IPooledObjectPolicy<ReadOnlyTxProcessingEnv>

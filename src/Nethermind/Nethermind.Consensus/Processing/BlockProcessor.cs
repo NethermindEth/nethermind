@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -99,7 +100,7 @@ public partial class BlockProcessor : IBlockProcessor
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
-        Hash256 preBlockStateRoot = previousBranchStateRoot;
+        Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -114,9 +115,12 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
-                _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!);
-
+                //using CancellationTokenSource cancellationTokenSource = new();
+                //Task? preWarmTask = _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                //cancellationTokenSource.Cancel();
+                //preWarmTask?.GetAwaiter().GetResult();
+                //_preWarmer?.CompareCaches(processedBlock);
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing

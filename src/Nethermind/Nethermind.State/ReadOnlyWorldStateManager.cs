@@ -35,10 +35,8 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public IWorldState CreateResettableWorldState(IPreBlockCaches? sharedHashes = null)
-    {
-        return new WorldState(_readOnlyTrieStore, _codeDb, _logManager, sharedHashes);
-    }
+    public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null) =>
+        new WorldState(_readOnlyTrieStore, _codeDb, _logManager, sharedHashes);
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

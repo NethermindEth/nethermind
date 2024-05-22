@@ -60,7 +60,7 @@ namespace Nethermind.State
             IStorageTreeFactory? storageTreeFactory = null,
             PreBlockCaches? blockCaches = null)
         {
-            PreBlockCaches = blockCaches ?? new PreBlockCaches();
+            PreBlockCaches = blockCaches ?? new PreBlockCaches("main state");
             _trieStore = trieStore;
             _stateProvider = new StateProvider(trieStore.GetTrieStore(null), codeDb, logManager, stateTree, PreBlockCaches.StateCache);
             _persistentStorageProvider = new PersistentStorageProvider(trieStore, _stateProvider, logManager, storageTreeFactory, PreBlockCaches.StorageCache);

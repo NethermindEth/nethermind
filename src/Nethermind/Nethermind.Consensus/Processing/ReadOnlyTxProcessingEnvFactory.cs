@@ -15,17 +15,17 @@ public class ReadOnlyTxProcessingEnvFactory(
     IReadOnlyBlockTree? readOnlyBlockTree,
     ISpecProvider? specProvider,
     ILogManager? logManager,
-    bool shareGlobalHashes = false)
+    PreBlockCaches? preBlockCaches = null)
 {
     public ReadOnlyTxProcessingEnvFactory(
         IWorldStateManager worldStateManager,
         IBlockTree? blockTree,
         ISpecProvider? specProvider,
         ILogManager? logManager,
-        bool shareGlobalHashes = false)
-        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager, shareGlobalHashes)
+        PreBlockCaches? preBlockCaches = null)
+        : this(worldStateManager, blockTree?.AsReadOnly(), specProvider, logManager, preBlockCaches)
     {
     }
 
-    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, shareGlobalHashes);
+    public ReadOnlyTxProcessingEnv Create() => new(worldStateManager, readOnlyBlockTree, specProvider, logManager, preBlockCaches);
 }

@@ -37,13 +37,13 @@ namespace Nethermind.Consensus.Processing
             IReadOnlyBlockTree? readOnlyBlockTree,
             ISpecProvider? specProvider,
             ILogManager? logManager,
-            bool shareGlobalHashes = false)
+            PreBlockCaches? preBlockCaches = null)
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
 
             StateReader = worldStateManager.GlobalStateReader;
-            StateProvider = worldStateManager.CreateResettableWorldState(shareGlobalHashes ? worldStateManager.GlobalWorldState as IPreBlockCaches : null);
+            StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
 
             BlockTree = readOnlyBlockTree ?? throw new ArgumentNullException(nameof(readOnlyBlockTree));
             BlockhashProvider = new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager);
@@ -53,5 +53,10 @@ namespace Nethermind.Consensus.Processing
         }
 
         public IReadOnlyTransactionProcessor Build(Hash256 stateRoot) => new ReadOnlyTransactionProcessor(TransactionProcessor, StateProvider, stateRoot);
+
+        public void Reset()
+        {
+            StateProvider.Reset();
+        }
     }
 }

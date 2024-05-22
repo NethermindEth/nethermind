@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Runtime.CompilerServices;
 using System.Runtime.Intrinsics;
 using Nethermind.Core.Crypto;
@@ -8,7 +9,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Core
 {
-    public class Account
+    public class Account : IEquatable<Account>
     {
         public static readonly Account TotallyEmpty = new();
 
@@ -104,6 +105,26 @@ namespace Nethermind.Core
         }
 
         public AccountStruct ToStruct() => new(Nonce, Balance, StorageRoot, CodeHash);
+
+        public bool Equals(Account? other)
+        {
+            if (ReferenceEquals(null, other)) return false;
+            if (ReferenceEquals(this, other)) return true;
+            return Equals(_codeHash, other._codeHash) && Equals(_storageRoot, other._storageRoot) && Nonce.Equals(other.Nonce) && Balance.Equals(other.Balance);
+        }
+
+        public override bool Equals(object? obj)
+        {
+            if (ReferenceEquals(null, obj)) return false;
+            if (ReferenceEquals(this, obj)) return true;
+            if (obj.GetType() != GetType()) return false;
+            return Equals((Account)obj);
+        }
+
+        public override int GetHashCode()
+        {
+            return HashCode.Combine(_codeHash, _storageRoot, Nonce, Balance);
+        }
     }
 
     public readonly struct AccountStruct
@@ -154,8 +175,8 @@ namespace Nethermind.Core
                 //
                 // Method Nethermind.Core.AccountStruct:get_IsNull():bool:this (FullOpts)
                 // G_M000_IG01:
-                //        vzeroupper 
-                // 
+                //        vzeroupper
+                //
                 // G_M000_IG02:
                 //        vmovups  ymm0, ymmword ptr [rcx]
                 //        vpor     ymm0, ymm0, ymmword ptr [rcx+0x20]
@@ -164,10 +185,10 @@ namespace Nethermind.Core
                 //        vptest   ymm0, ymm0
                 //        sete     al
                 //        movzx    rax, al
-                // 
+                //
                 // G_M000_IG03:                ;; offset=0x0021
-                //        vzeroupper 
-                //        ret      
+                //        vzeroupper
+                //        ret
                 // ; Total bytes of code: 37
 
                 return (Unsafe.As<UInt256, Vector256<byte>>(ref Unsafe.AsRef(in _balance)) |

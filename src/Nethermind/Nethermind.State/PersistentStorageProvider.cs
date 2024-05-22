@@ -3,6 +3,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
 using Nethermind.Core;
@@ -340,10 +341,16 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
+                // value = _loadFromTree(storageCell);
+                var loadFromTree = _preBlockCache is not null
+                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                    : _loadFromTree(storageCell);
                 value = _loadFromTree(storageCell);
-                // value = _preBlockCache is not null
-                //     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
-                //     : _loadFromTree(storageCell);
+
+                if (!value.SequenceEqual(loadFromTree))
+                {
+
+                }
             }
             else
             {
