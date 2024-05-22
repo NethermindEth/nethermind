@@ -670,7 +670,7 @@ namespace Nethermind.Trie.Pruning
                                     PruneCache();
 
                                     Metrics.PruningTime = sw.ElapsedMilliseconds;
-                                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache/1.MiB()}MB to {MemoryUsedByDirtyCache/1.MiB()}MB");
+                                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
                                 }
                             }
                         }

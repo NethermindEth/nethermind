@@ -43,7 +43,7 @@ namespace Nethermind.State
         }
 
         public WorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
-            : this(trieStore,codeDb, logManager, null, null)
+            : this(trieStore, codeDb, logManager, null, null)
         {
         }
 

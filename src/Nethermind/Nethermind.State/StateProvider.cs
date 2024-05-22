@@ -30,7 +30,7 @@ namespace Nethermind.State
         // False negatives are fine as they will just result in a overwrite set
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
-        private readonly Dictionary<AddressAsKey, Account> _blockCache =  new(4_096);
+        private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
         private readonly NonBlocking.ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
