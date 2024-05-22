@@ -340,9 +340,17 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
+                long priorReads = Db.Metrics.StorageTreeReads;
+
                 value = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
                     : _loadFromTree(storageCell);
+
+                if (Db.Metrics.StorageTreeReads == priorReads)
+                {
+                    // Read from Concurrent Cache
+                    Db.Metrics.StorageTreeCache++;
+                }
             }
             else
             {
@@ -392,7 +400,7 @@ namespace Nethermind.State
             base.ClearStorage(address);
 
             // Bit heavy-handed, but we need to clear all the cache for that address
-            foreach (KeyValuePair<StorageCell,byte[]> pair in _blockCache)
+            foreach (KeyValuePair<StorageCell, byte[]> pair in _blockCache)
             {
                 if (pair.Key.Address == address)
                 {
