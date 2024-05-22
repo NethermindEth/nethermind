@@ -88,9 +88,7 @@ namespace Nethermind.Synchronization.SnapSync
             in ValueHash256? hashLimit = null!)
         {
             if (!accounts.Any())
-            {
-                return AddRangeResult.OK;
-            }
+                throw new ArgumentException("Cannot be empty.",nameof(accounts));
             ITrieStore store = _trieStorePool.Get();
             try
             {
