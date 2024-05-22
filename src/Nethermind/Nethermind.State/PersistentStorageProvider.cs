@@ -37,7 +37,7 @@ namespace Nethermind.State
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
         private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
         private readonly NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
-        private Func<StorageCell, byte[]> _loadFromTree;
+        private readonly Func<StorageCell, byte[]> _loadFromTree;
 
         /// <summary>
         /// Manages persistent storage allowing for snapshotting and restoring
@@ -330,7 +330,6 @@ namespace Nethermind.State
             if (!exists)
             {
                 value = _storageTreeFactory.Create(address, _trieStore.GetTrieStore(address.ToAccountPath), _stateProvider.GetStorageRoot(address), StateRoot, _logManager);
-                return value;
             }
 
             return value;
@@ -341,9 +340,10 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
-                value = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
-                    : _loadFromTree(storageCell);
+                value = _loadFromTree(storageCell);
+                // value = _preBlockCache is not null
+                //     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
+                //     : _loadFromTree(storageCell);
             }
             else
             {

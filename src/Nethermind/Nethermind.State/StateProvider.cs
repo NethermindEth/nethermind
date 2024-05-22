@@ -41,7 +41,7 @@ namespace Nethermind.State
         private Change?[] _changes = new Change?[StartCapacity];
         private int _currentPosition = Resettable.EmptyPosition;
         internal readonly StateTree _tree;
-        private Func<AddressAsKey, Account> _getStateFromTrie;
+        private readonly Func<AddressAsKey, Account> _getStateFromTrie;
 
         public void Accept(ITreeVisitor? visitor, Hash256? stateRoot, VisitingOptions? visitingOptions = null)
         {
@@ -659,9 +659,10 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                account = _preBlockCache is not null
-                    ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
-                    : _getStateFromTrie(addressAsKey);
+                account = _getStateFromTrie(addressAsKey);
+                // account = _preBlockCache is not null
+                //     ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
+                //     : _getStateFromTrie(addressAsKey);
             }
             else
             {

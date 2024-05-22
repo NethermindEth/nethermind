@@ -11,6 +11,7 @@ using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
 using Nethermind.Logging;
+using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
@@ -19,7 +20,7 @@ public interface IBlockCachePreWarmer
     void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot);
 }
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
@@ -28,9 +29,18 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
     public void PreWarmCaches(Block suggestedBlock, Hash256 parentStateRoot)
     {
-        if (Environment.ProcessorCount > 2)
+        if (preBlockCaches is not null)
         {
-            Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot));
+            if (preBlockCaches.StateCache.Count > 0 || preBlockCaches.StorageCache.Count > 0)
+            {
+                _logger.Warn("Cashes are not empty. Clearing them.");
+                preBlockCaches.Clear();
+            }
+
+            if (Environment.ProcessorCount > 2)
+            {
+                Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot));
+            }
         }
     }
 
@@ -44,11 +54,12 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
             {
                 tx.CopyTo(systemTransaction);
                 using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
-                transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                if (_logger.IsDebug) _logger.Debug($"Finished pre-warming cache for tx {tx.Hash} with {result}");
             }
             catch (Exception ex)
             {
-                if (_logger.IsError) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
+                if (_logger.IsDebug) _logger.Error($"Error pre-warming cache {tx.Hash}", ex);
             }
             finally
             {

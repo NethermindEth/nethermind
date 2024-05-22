@@ -232,7 +232,7 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager));
+                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, (worldState as IPreBlockCaches)?.Caches));
         }
 
         // TODO: remove from here - move to consensus?
