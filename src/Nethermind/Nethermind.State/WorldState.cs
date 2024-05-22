@@ -4,6 +4,7 @@
 using System;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
@@ -233,6 +234,11 @@ namespace Nethermind.State
         public void CreateAccountIfNotExists(Address address, in UInt256 balance, in UInt256 nonce = default)
         {
             _stateProvider.CreateAccountIfNotExists(address, balance, nonce);
+        }
+
+        ArrayPoolList<AddressAsKey>? IWorldState.GetAccountChanges()
+        {
+            return _stateProvider.ChangedAddresses();
         }
     }
 }

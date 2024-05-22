@@ -339,13 +339,13 @@ namespace Ethereum.Test.Base
 
         private List<string> RunAssertions(BlockchainTest test, Block headBlock, IWorldState stateProvider)
         {
-            if (test.PostStateRoot != null)
+            if (test.PostStateRoot is not null)
             {
                 return test.PostStateRoot != stateProvider.StateRoot ? new List<string> { "state root mismatch" } : Enumerable.Empty<string>().ToList();
             }
 
             TestBlockHeaderJson testHeaderJson = (test.Blocks?
-                                                     .Where(b => b.BlockHeader != null)
+                                                     .Where(b => b.BlockHeader is not null)
                                                      .SingleOrDefault(b => new Hash256(b.BlockHeader.Hash) == headBlock.Hash)?.BlockHeader) ?? test.GenesisBlockHeader;
             BlockHeader testHeader = JsonToEthereumTest.Convert(testHeaderJson);
             List<string> differences = new();

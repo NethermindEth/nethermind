@@ -119,10 +119,6 @@ namespace Nethermind.HealthChecks
                 .AddInMemoryStorage();
             }
         }
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
 
         public Task InitRpcModules()
         {

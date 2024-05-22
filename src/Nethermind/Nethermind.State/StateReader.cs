@@ -68,7 +68,7 @@ namespace Nethermind.State
                 return false;
             }
 
-            Metrics.StateReaderReads++;
+            Metrics.IncrementStateReaderReads();
             return _state.TryGetStruct(address, out account, stateRoot);
         }
     }

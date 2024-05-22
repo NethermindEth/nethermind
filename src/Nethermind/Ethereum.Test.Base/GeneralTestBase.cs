@@ -101,7 +101,7 @@ namespace Ethereum.Test.Base
             header.WithdrawalsRoot = test.CurrentWithdrawalsRoot;
             header.ParentBeaconBlockRoot = test.CurrentBeaconRoot;
             header.RequestsRoot = test.RequestsRoot;
-            header.ExcessBlobGas = test.CurrentExcessBlobGas;
+            header.ExcessBlobGas = test.CurrentExcessBlobGas ?? (test.Fork is Cancun ? 0ul : null);
             header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(test.Transaction);
 
             Stopwatch stopwatch = Stopwatch.StartNew();
@@ -109,7 +109,7 @@ namespace Ethereum.Test.Base
 
             if (spec is Cancun) KzgPolynomialCommitments.InitializeAsync();
 
-            if (test.Transaction.ChainId == null)
+            if (test.Transaction.ChainId is null)
                 test.Transaction.ChainId = MainnetSpecProvider.Instance.ChainId;
             if (test.ParentBlobGasUsed is not null && test.ParentExcessBlobGas is not null)
             {

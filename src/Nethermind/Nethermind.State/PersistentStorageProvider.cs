@@ -3,8 +3,8 @@
 
 using System;
 using System.Collections.Generic;
-using System.Runtime.InteropServices;
 using System.Threading.Tasks;
+using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
@@ -237,7 +237,7 @@ namespace Nethermind.State
                     }
 
                     StorageTree storageTree = kvp.Value;
-                    storageTree.UpdateRootHash();
+                    storageTree.UpdateRootHash(canBeParallel: true);
                     _stateProvider.UpdateStorageRoot(address: kvp.Key, storageTree.RootHash);
                 }
             }
@@ -253,7 +253,7 @@ namespace Nethermind.State
                         return;
                     }
                     StorageTree storageTree = kvp.Value;
-                    storageTree.UpdateRootHash();
+                    storageTree.UpdateRootHash(canBeParallel: false);
                 });
 
                 // Update the storage roots in the main thread non in parallel

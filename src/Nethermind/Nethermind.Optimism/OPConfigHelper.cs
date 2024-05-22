@@ -19,6 +19,7 @@ public class OPSpecHelper : IOPConfigHelper
         _regolithTimestamp = parameters.RegolithTimestamp;
         _bedrockBlockNumber = parameters.BedrockBlockNumber;
         _canyonTimestamp = parameters.CanyonTimestamp;
+
         L1FeeReceiver = parameters.L1FeeRecipient;
         Create2DeployerCode = parameters.Create2DeployerCode;
         Create2DeployerAddress = parameters.Create2DeployerAddress;

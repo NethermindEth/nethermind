@@ -2,10 +2,13 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
 using Nethermind.Core.Caching;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Resettables;
 using Nethermind.Core.Specs;
@@ -679,7 +682,7 @@ namespace Nethermind.State
             }
             else
             {
-                Metrics.StateTreeCache++;
+                Metrics.IncrementTreeCacheHits();
             }
             return account;
         }
@@ -801,6 +804,24 @@ namespace Nethermind.State
             public ChangeType ChangeType { get; }
             public Address Address { get; }
             public Account? Account { get; }
+        }
+
+        public ArrayPoolList<AddressAsKey>? ChangedAddresses()
+        {
+            int count = _blockCache.Count;
+            if (count == 0)
+            {
+                return null;
+            }
+            else
+            {
+                ArrayPoolList<AddressAsKey> addresses = new(count);
+                foreach (AddressAsKey address in _blockCache.Keys)
+                {
+                    addresses.Add(address);
+                }
+                return addresses;
+            }
         }
 
         public void Reset()
