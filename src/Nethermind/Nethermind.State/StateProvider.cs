@@ -659,9 +659,15 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
+                long priorReads = Metrics.StateTreeReads;
                 account = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
                     : _getStateFromTrie(addressAsKey);
+
+                if (Metrics.StateTreeReads == priorReads)
+                {
+                    Metrics.IncrementTreeCacheHits();
+                }
             }
             else
             {
