@@ -322,7 +322,7 @@ public class InitializeNetwork : IStep
                 DiscoveryNodesDbPath.GetApplicationResourcePath(_api.Config<IInitConfig>().BaseDbPath),
                 _api.LogManager);
 
-            _api.DiscoveryApp = new Discv5DiscoveryApp(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
+            _api.DiscoveryApp = new DiscoveryV5App(privateKeyProvider, _api, _networkConfig, discoveryConfig, discv5DiscoveryDb, _api.LogManager);
             _api.DiscoveryApp.Initialize(_api.NodeKey.PublicKey);
             return;
         }
