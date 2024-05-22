@@ -91,10 +91,13 @@ namespace Nethermind.Init.Steps
                     _api.DbProvider = new DbProvider();
                     _api.DbFactory = new RocksDbFactory(dbConfig, _api.LogManager, initConfig.BaseDbPath);
 
-                    var statePath = Path.Combine(initConfig.BaseDbPath, "state");
+                    string fullStateDbPath = DbOnTheRocks.GetFullDbPath("state", initConfig.BaseDbPath);
+                    if (!Directory.Exists(fullStateDbPath))
+                        Directory.CreateDirectory(fullStateDbPath);
+
                     // Keccak calculation is cpu bound so only use physical cores rather than logical cores
                     var physicalCores = Math.Max(1, RuntimeInformation.GetCpuInfo()?.PhysicalCoreCount ?? Environment.ProcessorCount);
-                    PaprikaStateFactory paprika = new(statePath, paprikaConfig, physicalCores, _api.LogManager);
+                    PaprikaStateFactory paprika = new(fullStateDbPath, paprikaConfig, physicalCores, _api.LogManager);
                     _api.RegisterForBlockFinalized((_, e) =>
                     {
                         foreach (BlockHeader finalized in e.FinalizedBlocks)
