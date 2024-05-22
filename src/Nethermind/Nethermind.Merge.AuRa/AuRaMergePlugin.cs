@@ -9,7 +9,6 @@ using Nethermind.Config;
 using Nethermind.Consensus;
 using Nethermind.Consensus.AuRa.InitializationSteps;
 using Nethermind.Consensus.AuRa.Transactions;
-using Nethermind.Consensus.Producers;
 using Nethermind.Consensus.Transactions;
 using Nethermind.Core;
 using Nethermind.Merge.Plugin;
@@ -75,7 +74,7 @@ namespace Nethermind.Merge.AuRa
 
         protected override IBlockFinalizationManager InitializeMergeFinilizationManager()
         {
-            return new MergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
+            return new AuRaMergeFinalizationManager(_blockFinalizationManager, _api.FinalizationManager, _poSSwitcher);
         }
 
         public bool ShouldRunSteps(INethermindApi api)
