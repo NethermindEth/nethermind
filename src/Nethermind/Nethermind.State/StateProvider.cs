@@ -827,6 +827,7 @@ namespace Nethermind.State
             }
 
             _tree.Commit(blockNumber);
+            _preBlockCache?.Clear();
         }
 
         public static void CommitBranch()
