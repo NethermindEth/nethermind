@@ -333,7 +333,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - name: Install flood
-        run: pip install git+https://github.com/kamilchodola/flood.git
+        run: pip install --force-reinstall --no-deps git+https://github.com/kamilchodola/flood.git
         
       - name: Prepare Comparison Flags
         id: prep_comparison
