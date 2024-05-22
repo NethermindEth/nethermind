@@ -23,7 +23,6 @@ using Nethermind.JsonRpc.Modules.Subscribe;
 using Nethermind.JsonRpc.Modules.Trace;
 using Nethermind.JsonRpc.Modules.TxPool;
 using Nethermind.JsonRpc.Modules.Web3;
-using Nethermind.JsonRpc.Modules.Witness;
 using Nethermind.Logging;
 using Nethermind.Network.Config;
 using Nethermind.JsonRpc.Modules.Rpc;
@@ -93,7 +92,6 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.RewardCalculatorSource);
         StepDependencyException.ThrowIfNull(_api.KeyStore);
         StepDependencyException.ThrowIfNull(_api.PeerPool);
-        StepDependencyException.ThrowIfNull(_api.WitnessRepository);
         StepDependencyException.ThrowIfNull(_api.BadBlocksStore);
 
         ProofModuleFactory proofModuleFactory = new(_api.WorldStateManager, _api.BlockTree, _api.BlockPreprocessor, _api.ReceiptFinder, _api.SpecProvider, _api.LogManager);
@@ -176,9 +174,6 @@ public class RegisterRpcModules : IStep
             _api.SpecProvider,
             _api.PeerManager);
         rpcModuleProvider.RegisterSingle<IParityRpcModule>(parityRpcModule);
-
-        WitnessRpcModule witnessRpcModule = new(_api.WitnessRepository, _api.BlockTree);
-        rpcModuleProvider.RegisterSingle<IWitnessRpcModule>(witnessRpcModule);
 
         StepDependencyException.ThrowIfNull(_api.ReceiptMonitor);
 

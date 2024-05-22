@@ -11,28 +11,45 @@ namespace Nethermind.Optimism.Test;
 public partial class ReceiptDecoderTests
 {
     [TestCaseSource(nameof(DepositTxReceiptsSerializationTestCases))]
-    public void Can_build_correct_block_tree(byte[] rlp, bool includesNonce, bool includesVersion, bool shouldIncludeNonceAndVersionForTxTrie)
+    public void Test_tx_network_form_receipts_properly_encoded_for_trie(byte[] rlp, bool includesNonce, bool includesVersion, bool shouldIncludeNonceAndVersionForTxTrie)
     {
-        OptimismReceiptMessageDecoder decoder = new();
-        OptimismTxReceipt decodedReceipt = decoder.Decode(new RlpStream(rlp), RlpBehaviors.SkipTypedWrapping);
-        Assert.That(decodedReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
-        Assert.That(decodedReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
+        static OptimismTxReceipt TestNetworkEncodingRoundTrip(byte[] rlp, bool includesNonce, bool includesVersion)
+        {
+            OptimismReceiptMessageDecoder decoder = new();
+            OptimismTxReceipt decodedReceipt = decoder.Decode(new RlpStream(rlp), RlpBehaviors.SkipTypedWrapping);
 
-        RlpStream encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
-        decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            RlpStream encodedRlp = new(decoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            decoder.Encode(encodedRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
 
-        Assert.That(rlp, Is.EqualTo(encodedRlp.Data.ToArray()));
+            Assert.Multiple(() =>
+            {
+                Assert.That(decodedReceipt.DepositNonce, includesNonce ? Is.Not.Null : Is.Null);
+                Assert.That(decodedReceipt.DepositReceiptVersion, includesVersion ? Is.Not.Null : Is.Null);
+                Assert.That(rlp, Is.EqualTo(encodedRlp.Data.ToArray()));
+            });
 
-        OptimismReceiptTrieDecoder trieDecoder = new();
-        RlpStream encodedTrieRlp = new(trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
+            return decodedReceipt;
+        }
 
-        trieDecoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
-        encodedTrieRlp.Position = 0;
+        static void TestTrieEncoding(OptimismTxReceipt decodedReceipt, bool shouldIncludeNonceAndVersionForTxTrie)
+        {
+            OptimismReceiptTrieDecoder trieDecoder = new();
+            RlpStream encodedTrieRlp = new(trieDecoder.GetLength(decodedReceipt, RlpBehaviors.SkipTypedWrapping));
 
-        OptimismTxReceipt decodedTrieReceipt = trieDecoder.Decode(encodedTrieRlp, RlpBehaviors.SkipTypedWrapping);
+            trieDecoder.Encode(encodedTrieRlp, decodedReceipt, RlpBehaviors.SkipTypedWrapping);
+            encodedTrieRlp.Position = 0;
 
-        Assert.That(decodedTrieReceipt.DepositNonce, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
-        Assert.That(decodedTrieReceipt.DepositReceiptVersion, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
+            OptimismTxReceipt decodedTrieReceipt = trieDecoder.Decode(encodedTrieRlp, RlpBehaviors.SkipTypedWrapping);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(decodedTrieReceipt.DepositNonce, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
+                Assert.That(decodedTrieReceipt.DepositReceiptVersion, shouldIncludeNonceAndVersionForTxTrie ? Is.Not.Null : Is.Null);
+            });
+        }
+
+        OptimismTxReceipt decodedReceipt = TestNetworkEncodingRoundTrip(rlp, includesNonce, includesVersion);
+        TestTrieEncoding(decodedReceipt, shouldIncludeNonceAndVersionForTxTrie);
     }
 
 

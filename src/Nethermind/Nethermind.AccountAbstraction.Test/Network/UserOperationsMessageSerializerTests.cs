@@ -17,7 +17,7 @@ namespace Nethermind.AccountAbstraction.Test.Network
     public class UserOperationsMessageSerializerTests
     {
         [OneTimeSetUp]
-        public void Setup()
+        public void OneTimeSetUp()
         {
             Rlp.RegisterDecoders(typeof(UserOperationDecoder).Assembly, true);
         }

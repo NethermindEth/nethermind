@@ -427,8 +427,8 @@ namespace Nethermind.Serialization.Rlp
                 ThrowArgumentOutOfRangeException();
             }
 
-            Unsafe.Add(ref MemoryMarshal.GetReference(buffer), position) = 160;
-            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), position + 1)) = hash.ValueHash256;
+            Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position) = 160;
+            Unsafe.As<byte, ValueHash256>(ref Unsafe.Add(ref MemoryMarshal.GetReference(buffer), (nuint)position + 1)) = hash.ValueHash256;
             return newPosition;
 
             [DoesNotReturn]

@@ -30,14 +30,13 @@ public class OptimismBlockProcessor : BlockProcessor
         IBlockProcessor.IBlockTransactionsExecutor? blockTransactionsExecutor,
         IWorldState? stateProvider,
         IReceiptStorage? receiptStorage,
-        IWitnessCollector? witnessCollector,
         IBlockhashStore? blockhashStore,
         ILogManager? logManager,
         IOPConfigHelper opConfigHelper,
         Create2DeployerContractRewriter contractRewriter,
         IWithdrawalProcessor? withdrawalProcessor = null)
         : base(specProvider, blockValidator, rewardCalculator, blockTransactionsExecutor,
-            stateProvider, receiptStorage, witnessCollector, blockhashStore, logManager, withdrawalProcessor, ReceiptsRootCalculator.Instance)
+            stateProvider, receiptStorage, blockhashStore, logManager, withdrawalProcessor, ReceiptsRootCalculator.Instance)
     {
         ArgumentNullException.ThrowIfNull(stateProvider);
         _contractRewriter = contractRewriter;

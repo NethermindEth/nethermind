@@ -48,6 +48,11 @@ public class OPSpecHelper : IOPConfigHelper
         return header.Timestamp >= _ecotoneTimestamp;
     }
 
+    public bool IsEcotone(BlockHeader header)
+    {
+        return header.Timestamp >= _ecotoneTimestamp;
+    }
+
     public string SequencerUrl { get; }
     public Address? Create2DeployerAddress { get; }
     public byte[]? Create2DeployerCode { get; }

@@ -1,9 +1,9 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.Collections.Concurrent;
-using System.Collections.Generic;
 using System.ComponentModel;
+using System.Threading;
+
 using Nethermind.Core.Attributes;
 
 namespace Nethermind.Db
@@ -15,8 +15,20 @@ namespace Nethermind.Db
         public static long CodeDbCache { get; set; }
 
         [CounterMetric]
+        [Description("Number of State Trie cache hits.")]
+        public static long StateTreeCache => _stateTreeCacheHits;
+        private static long _stateTreeCacheHits;
+        public static void IncrementTreeCacheHits() => Interlocked.Increment(ref _stateTreeCacheHits);
+
+        [CounterMetric]
         [Description("Number of State Trie reads.")]
         public static long StateTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of State Reader reads.")]
+        public static long StateReaderReads => _stateReaderReads;
+        private static long _stateReaderReads;
+        public static void IncrementStateReaderReads() => Interlocked.Increment(ref _stateReaderReads);
 
         [CounterMetric]
         [Description("Number of Blocks Trie writes.")]
@@ -27,8 +39,16 @@ namespace Nethermind.Db
         public static int StateDbInPruningWrites;
 
         [CounterMetric]
+        [Description("Number of storage trie cache hits.")]
+        public static long StorageTreeCache { get; set; }
+
+        [CounterMetric]
         [Description("Number of storage trie reads.")]
         public static long StorageTreeReads { get; set; }
+
+        [CounterMetric]
+        [Description("Number of storage reader reads.")]
+        public static long StorageReaderReads { get; set; }
 
         [CounterMetric]
         [Description("Number of storage trie writes.")]

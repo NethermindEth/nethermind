@@ -58,7 +58,7 @@ namespace Nethermind.Runner.Ethereum
             Stop(() => _api.SyncModeSelector?.Stop(), "Stopping session sync mode selector");
             Task discoveryStopTask = Stop(() => _api.DiscoveryApp?.StopAsync(), "Stopping discovery app");
             Task discoveryV5StopTask = Stop(() => _api.DiscoveryV5App?.StopAsync(), "Stopping discovery v5 app");
-            Task blockProducerTask = Stop(() => _api.BlockProducer?.StopAsync(), "Stopping block producer");
+            Task blockProducerTask = Stop(() => _api.BlockProducerRunner?.StopAsync(), "Stopping block producer");
             Task syncPeerPoolTask = Stop(() => _api.SyncPeerPool?.StopAsync(), "Stopping sync peer pool");
             Task peerPoolTask = Stop(() => _api.PeerPool?.StopAsync(), "Stopping peer pool");
             Task peerManagerTask = Stop(() => _api.PeerManager?.StopAsync(), "Stopping peer manager");

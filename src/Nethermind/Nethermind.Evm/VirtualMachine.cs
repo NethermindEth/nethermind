@@ -498,8 +498,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
     public void InsertCode(ReadOnlyMemory<byte> code, Address callCodeOwner, IReleaseSpec spec)
     {
         var codeInfo = new CodeInfo(code);
-        // Start generating the JumpDestinationBitmap in background.
-        ThreadPool.UnsafeQueueUserWorkItem(codeInfo, preferLocal: false);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         Hash256 codeHash = code.Length == 0 ? Keccak.OfAnEmptyString : Keccak.Compute(code.Span);
         _state.InsertCode(callCodeOwner, codeHash, code, spec);
@@ -544,13 +543,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             }
 
             cachedCodeInfo = new CodeInfo(code);
+            cachedCodeInfo.AnalyseInBackgroundIfRequired();
+
             CodeCache.Set(codeHash, cachedCodeInfo);
         }
         else
         {
             Db.Metrics.CodeDbCache++;
-            // need to touch code so that any collectors that track database access are informed
-            worldState.TouchCode(codeHash);
         }
 
         return cachedCodeInfo;
@@ -2216,6 +2215,9 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             !UpdateMemoryCost(vmState, ref gasAvailable, in outputOffset, outputLength) ||
             !UpdateGas(gasExtra, ref gasAvailable)) return EvmExceptionType.OutOfGas;
 
+        CodeInfo codeInfo = GetCachedCodeInfo(_worldState, codeSource, spec);
+        codeInfo.AnalyseInBackgroundIfRequired();
+
         if (spec.Use63Over64Rule)
         {
             gasLimit = UInt256.Min((UInt256)(gasAvailable - gasAvailable / 64), gasLimit);
@@ -2269,7 +2271,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             transferValue: transferValue,
             value: callValue,
             inputData: callData,
-            codeInfo: GetCachedCodeInfo(_worldState, codeSource, spec)
+            codeInfo: codeInfo
         );
         if (typeof(TLogger) == typeof(IsTracing)) _logger.Trace($"Tx call gas {gasLimitUl}");
         if (outputLength == 0)
@@ -2492,6 +2494,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         // pointing to data in this tx and will become invalid
         // for another tx as returned to pool.
         CodeInfo codeInfo = new(initCode);
+        codeInfo.AnalyseInBackgroundIfRequired();
 
         ExecutionEnvironment callEnv = new
         (
