@@ -403,9 +403,9 @@ namespace Nethermind.Synchronization.Test.FastBlocks
         [TestCase(80, 1, 1, true, false)]
         [TestCase(80, 1, 1, true, true)]
         //All empty reponse
-        [TestCase(0, 192, 1, false,false)]
+        [TestCase(0, 192, 1, false, false)]
         //All null reponse
-        [TestCase(0, 192, 1, false,true)]
+        [TestCase(0, 192, 1, false, true)]
         public async Task Can_insert_all_good_headers_from_dependent_batch_with_missing_or_null_headers(int nullIndex, int count, int increment, bool shouldReport, bool useNulls)
         {
             var peerChain = Build.A.BlockTree().OfChainLength(1000).TestObject;
@@ -439,7 +439,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                         c--;
                     }
                 if (!useNulls)
-                    list = list.Where(h=> h != null).ToList();
+                    list = list.Where(h => h != null).ToList();
                 batch.Response = list.ToPooledList();
             }
 

@@ -288,7 +288,7 @@ namespace Nethermind.Synchronization.FastBlocks
                 }
                 finally
                 {
-                    dependentBatch.Dispose();  
+                    dependentBatch.Dispose();
                 }
             }
         }
