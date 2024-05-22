@@ -47,7 +47,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
         try
         {
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
-            Parallel.For(0, suggestedBlock.Transactions.Length, parallelOptions, i =>
+            Parallel.For(1, suggestedBlock.Transactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
                 Transaction tx = suggestedBlock.Transactions[i];
@@ -71,7 +71,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
                     _envPool.Return(env);
                 }
             });
-            
+
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
         catch (OperationCanceledException)
