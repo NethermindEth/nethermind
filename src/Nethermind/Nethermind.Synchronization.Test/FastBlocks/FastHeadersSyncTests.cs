@@ -439,7 +439,7 @@ namespace Nethermind.Synchronization.Test.FastBlocks
                         c--;
                     }
                 if (!useNulls)
-                    list = list.Where(h => h != null).ToList();
+                    list = list.Where(h => h is not null).ToList();
                 batch.Response = list.ToPooledList();
             }
 
