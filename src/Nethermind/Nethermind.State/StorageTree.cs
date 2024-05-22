@@ -19,7 +19,7 @@ namespace Nethermind.State
     {
         private const int LookupSize = 1024;
         private static readonly FrozenDictionary<UInt256, byte[]> Lookup = CreateLookup();
-        private static readonly byte[] _emptyBytes = [0];
+        public static readonly byte[] EmptyBytes = [0];
 
         private static FrozenDictionary<UInt256, byte[]> CreateLookup()
         {
@@ -73,7 +73,7 @@ namespace Nethermind.State
 
             if (value.IsEmpty)
             {
-                return _emptyBytes;
+                return EmptyBytes;
             }
 
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();

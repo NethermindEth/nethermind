@@ -222,9 +222,8 @@ namespace Nethermind.Init.Steps
 
             IWorldState worldState = _api.WorldState!;
 
-            PreBlockCaches? preBlockCaches = (_api.WorldState as IPreBlockCaches)?.Caches;
-            PreBlockCaches? secondCaches = new PreBlockCaches("pre warm");
-            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, secondCaches);
+            PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
+            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches);
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -234,7 +233,7 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, secondCaches, preBlockCaches)
+                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, preBlockCaches)
             );
         }
 

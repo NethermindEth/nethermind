@@ -659,16 +659,9 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                // account = _getStateFromTrie(addressAsKey);
-                Account stateFromTrie = _preBlockCache is not null
+                account = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
                     : _getStateFromTrie(addressAsKey);
-                account = _getStateFromTrie(addressAsKey);
-
-                if (!account.Equals(stateFromTrie))
-                {
-
-                }
             }
             else
             {

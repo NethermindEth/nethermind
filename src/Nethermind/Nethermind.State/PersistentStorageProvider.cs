@@ -341,16 +341,9 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
-                // value = _loadFromTree(storageCell);
-                var loadFromTree = _preBlockCache is not null
+                value = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
                     : _loadFromTree(storageCell);
-                value = _loadFromTree(storageCell);
-
-                if (!value.SequenceEqual(loadFromTree))
-                {
-
-                }
             }
             else
             {
@@ -398,8 +391,15 @@ namespace Nethermind.State
         public override void ClearStorage(Address address)
         {
             base.ClearStorage(address);
+
             // Bit heavy-handed, but we need to clear all the cache for that address
-            _blockCache.Clear();
+            foreach (KeyValuePair<StorageCell,byte[]> pair in _blockCache)
+            {
+                if (pair.Key.Address == address)
+                {
+                    _blockCache[pair.Key] = StorageTree.EmptyBytes;
+                }
+            }
 
             // here it is important to make sure that we will not reuse the same tree when the contract is revived
             // by means of CREATE 2 - notice that the cached trie may carry information about items that were not

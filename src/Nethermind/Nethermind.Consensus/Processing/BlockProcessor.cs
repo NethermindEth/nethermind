@@ -115,12 +115,11 @@ public partial class BlockProcessor : IBlockProcessor
                     if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
-                //using CancellationTokenSource cancellationTokenSource = new();
-                //Task? preWarmTask = _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                using CancellationTokenSource cancellationTokenSource = new();
+                Task? preWarmTask = _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
                 (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
-                //cancellationTokenSource.Cancel();
-                //preWarmTask?.GetAwaiter().GetResult();
-                //_preWarmer?.CompareCaches(processedBlock);
+                cancellationTokenSource.Cancel();
+                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
