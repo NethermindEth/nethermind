@@ -32,7 +32,7 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             // TODO: Check the accounts boundaries and sorting
-            if (!accounts.Any())
+            if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ValueHash256 lastHash = accounts[^1].Path;
 

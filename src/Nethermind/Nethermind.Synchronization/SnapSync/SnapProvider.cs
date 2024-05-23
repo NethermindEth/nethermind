@@ -51,7 +51,7 @@ namespace Nethermind.Synchronization.SnapSync
         {
             AddRangeResult result;
 
-            if (!response.PathAndAccounts.Any())
+            if (response.PathAndAccounts.Count == 0)
             {
                 _logger.Trace($"SNAP - GetAccountRange - requested expired RootHash:{request.RootHash}");
 
@@ -87,7 +87,7 @@ namespace Nethermind.Synchronization.SnapSync
             IReadOnlyList<byte[]> proofs = null,
             in ValueHash256? hashLimit = null!)
         {
-            if (!accounts.Any())
+            if (accounts.Count == 0)
                 throw new ArgumentException("Cannot be empty.", nameof(accounts));
             ITrieStore store = _trieStorePool.Get();
             try
