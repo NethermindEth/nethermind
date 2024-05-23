@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Linq;
 using System.Net;
 using System.Threading;
@@ -19,10 +20,12 @@ using Nethermind.Core.Test.Builders;
 using Nethermind.Core.Timers;
 using Nethermind.Logging;
 using Nethermind.Network.P2P;
+using Nethermind.Network.P2P.Subprotocols;
 using Nethermind.Network.P2P.Subprotocols.Eth;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62;
 using Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63;
+using Nethermind.Network.P2P.Subprotocols.Eth.V66;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69;
@@ -35,6 +38,7 @@ using Nethermind.Synchronization;
 using Nethermind.TxPool;
 using NSubstitute;
 using NUnit.Framework;
+using GetBlockHeadersMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetBlockHeadersMessage;
 using GetReceiptsMessage66 = Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages.GetReceiptsMessage;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
@@ -111,11 +115,63 @@ public class Eth69ProtocolHandlerTests
     }
 
     [Test]
-    public void Can_handle_Status_message()
+    public void Can_handle_status_message()
     {
         HandleIncomingStatusMessage();
 
         _handler.TotalDifficulty.Should().Be(0);
+    }
+
+    [Test] // From Eth62ProtocolHandlerTests
+    [Ignore("Disabled since " + nameof(Eth63ProtocolHandler))]
+    public void Should_fail_on_receiving_request_before_status()
+    {
+        var msg = new GetBlockHeadersMessage66(1111, new()
+        {
+            StartBlockHash = TestItem.KeccakA,
+            MaxHeaders = 3,
+            Skip = 1,
+            Reverse = 1
+        });
+
+        IByteBuffer packet = _svc.ZeroSerialize(msg);
+        packet.ReadByte();
+
+        Action action = () => HandleZeroMessage(msg, Eth62MessageCode.GetBlockHeaders);
+        action.Should().Throw<SubprotocolException>();
+    }
+
+    [Test] // From Eth62ProtocolHandlerTests
+    public void Should_fail_on_receiving_status_message_for_the_second_time()
+    {
+        HandleIncomingStatusMessage();
+        Assert.Throws<SubprotocolException>(HandleIncomingStatusMessage);
+    }
+
+    [Test] // From Eth63ProtocolHandlerTests
+    [Ignore("Disabled since " + nameof(Eth66ProtocolHandler))]
+    public void Should_not_serve_receipts_requests_above_512()
+    {
+        const int count = 513;
+        using var msg = new GetReceiptsMessage66(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
+
+        _session.Received().InitiateDisconnect(Arg.Any<DisconnectReason>(), Arg.Any<string>());
+    }
+
+    [Test] // From Eth63ProtocolHandlerTests
+    public void Should_not_send_receipts_message_larger_than_2MB()
+    {
+        const int count = 512;
+        using var msg = new GetReceiptsMessage66(1111, new(Enumerable.Repeat(Keccak.Zero, count).ToPooledList(count)));
+        _syncManager.GetReceipts(Arg.Any<Hash256>()).Returns(Enumerable.Repeat(Build.A.Receipt.WithAllFieldsFilled.TestObject, count).ToArray());
+
+        HandleIncomingStatusMessage();
+        HandleZeroMessage(msg, Eth63MessageCode.GetReceipts);
+
+        _session.Received().DeliverMessage(Arg.Is<ReceiptsMessage69>(r => r.EthMessage.TxReceipts.Count == 14));
     }
 
     [Test]
@@ -155,6 +211,16 @@ public class Eth69ProtocolHandlerTests
         HandleIncomingStatusMessage();
         HandleZeroMessage(msg66, Eth63MessageCode.GetReceipts);
         _session.Received(1).DeliverMessage(Arg.Any<ReceiptsMessage69>());
+    }
+
+    [Test]
+    public void Should_throw_when_receiving_unrequested_receipts()
+    {
+        var msg66 = new ReceiptsMessage(1111, new(ArrayPoolList<TxReceipt[]>.Empty()));
+
+        HandleIncomingStatusMessage();
+        Action action = () => HandleZeroMessage(msg66, Eth66MessageCode.Receipts);
+        action.Should().Throw<SubprotocolException>();
     }
 
     [Test]
