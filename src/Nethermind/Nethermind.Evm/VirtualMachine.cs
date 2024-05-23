@@ -418,11 +418,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 currentState.GasAvailable -= contractCreationCompleteGas;
                                 if (typeof(TTracingActions) == typeof(IsTracing))
                                 {
-                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost, callCodeOwner, callResult.Output);
+                                    _txTracer.ReportActionEnd(previousState.GasAvailable - codeDepositGasCost - contractCreationCompleteGas, callCodeOwner, callResult.Output);
                                 }
                             }
                             else
                             {
+                                currentState.GasAvailable -= gasAvailableForCodeDeposit;
                                 if (typeof(TTracingActions) == typeof(IsTracing))
                                 {
                                     _txTracer.ReportActionError(EvmExceptionType.OutOfGas);
