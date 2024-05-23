@@ -212,8 +212,8 @@ namespace Nethermind.Evm.Test.CodeAnalysis
             var memory = new EvmPooledMemory();
             var metadata = IlAnalyzer.StripByteCode(bytecode);
             var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
-            var il_result = ctx.Method(iLEvmState, ref memory, ctx.Data);
-            Assert.IsTrue(il_result.EvmException == EvmExceptionType.None);
+            ctx.Method(ref iLEvmState, ref memory, ctx.Data);
+            Assert.IsTrue(iLEvmState.EvmException == EvmExceptionType.None);
         }
 
 

@@ -94,7 +94,7 @@ internal class IlInfo
                         ProgramCounter = (ushort)programCounter,
                     };
 
-                    ilvmState = ctx.Method.Invoke(ilvmState, ref vmState.Memory, ctx.Data);
+                    ctx.Method.Invoke(ref ilvmState, ref vmState.Memory, ctx.Data);
                     gasAvailable = ilvmState.GasAvailable;
                     vmState.DataStack = ilvmState.Stack.ToArray();
                     programCounter = ilvmState.ProgramCounter;

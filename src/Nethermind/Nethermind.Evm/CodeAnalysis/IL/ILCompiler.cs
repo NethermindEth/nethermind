@@ -21,7 +21,7 @@ using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate ILEvmState ExecuteSegment(ILEvmState state, ref EvmPooledMemory memory, byte[][] immediatesData);
+    public delegate void ExecuteSegment(ref ILEvmState state, ref EvmPooledMemory memory, byte[][] immediatesData);
     public class SegmentExecutionCtx {
         public ExecuteSegment Method;
         public byte[][] Data;
@@ -49,16 +49,11 @@ internal class ILCompiler
 
         using Local gasAvailable = method.DeclareLocal(typeof(long));
         using Local programCounter = method.DeclareLocal(typeof(ushort));
-        using Local returnState = method.DeclareLocal(typeof(ILEvmState));
 
         using Local stack = method.DeclareLocal(typeof(Word*));
         using Local currentSP = method.DeclareLocal(typeof(Word*));
 
         const int wordToAlignTo = 32;
-
-        // init ReturnState
-        method.LoadArgument(0);
-        method.StoreLocal(returnState);
 
         // allocate stack
         method.LoadConstant(EvmStack.MaxStackSize * Word.Size + wordToAlignTo);
@@ -126,7 +121,7 @@ internal class ILCompiler
             switch (op.Operation)
             {
                 case Instruction.STOP:
-                    method.LoadLocalAddress(returnState);
+                    method.LoadArgument(0);
                     method.LoadConstant(true);
                     method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.StopExecution)));
                     method.Branch(ret);
@@ -632,7 +627,7 @@ internal class ILCompiler
         method.StoreLocal(uint32A);
 
         // set stack
-        method.LoadLocalAddress(returnState);
+        method.LoadArgument(0);
         method.LoadLocal(stack);
         method.Convert<nuint>();
         method.Call(typeof(nuint).GetMethods().Where(method => method.Name == "op_Explicit" && method.ReturnType == typeof(void*)).FirstOrDefault());
@@ -641,17 +636,17 @@ internal class ILCompiler
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.Stack)));
 
         // set gas available
-        method.LoadLocalAddress(returnState);
+        method.LoadArgument(0);
         method.LoadLocal(gasAvailable);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.GasAvailable)));
 
         // set program counter
-        method.LoadLocalAddress(returnState);
+        method.LoadArgument(0);
         method.LoadLocal(programCounter);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.ProgramCounter)));
 
         // set exception
-        method.LoadLocalAddress(returnState);
+        method.LoadArgument(0);
         method.LoadConstant((int)EvmExceptionType.None);
         method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
 
@@ -717,7 +712,7 @@ internal class ILCompiler
         foreach (var kvp in labels)
         {
             method.MarkLabel(kvp.Value);
-            method.LoadLocalAddress(returnState);
+            method.LoadArgument(0);
             method.LoadConstant((int)kvp.Key);
             method.StoreField(GetFieldInfo(typeof(ILEvmState), nameof(ILEvmState.EvmException)));
             method.Branch(exit);
@@ -725,7 +720,6 @@ internal class ILCompiler
 
         // return
         method.MarkLabel(exit);
-        method.LoadLocal(returnState);
         method.Return();
 
         ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
