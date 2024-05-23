@@ -48,6 +48,8 @@ public interface IReadOnlyState : IDisposable
     /// </summary>
     EvmWord GetStorageAt(Address address, in ValueHash256 hash);
 
+    EvmWord GetStorageAt(in ValueHash256 accountHash, in ValueHash256 hash);
+
     Hash256 StateRoot { get; }
 }
 
@@ -55,8 +57,14 @@ public interface IRawState : IReadOnlyState
 {
     void SetAccount(ValueHash256 hash, Account? account);
     void SetAccountHash(ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
-    void Commit();
+    void SetStorage(in StorageCell cell, EvmWord value);
+    void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue);
+    void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak);
+    void Commit(bool ensureHash);
     void Finalize(uint blockNumber);
+    ValueHash256 RefreshRootHash();
+    ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash);
+    public void Discard();
 }
 
 /// <summary>

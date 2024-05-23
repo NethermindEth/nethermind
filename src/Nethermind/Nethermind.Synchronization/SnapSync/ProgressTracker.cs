@@ -4,7 +4,6 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Diagnostics.CodeAnalysis;
 using System.Linq;
 using System.Text;
 using System.Threading;
@@ -60,6 +59,7 @@ namespace Nethermind.Synchronization.SnapSync
 
         private readonly IStateFactory _stateFactory;
         private IRawState? _rawState;
+        private readonly ReaderWriterLockSlim _commitLock = new();
 
         public ProgressTracker(IBlockTree blockTree, IDb db, IStateFactory stateFactory, ILogManager logManager, int accountRangePartitionCount = 8)
         {
@@ -139,6 +139,16 @@ namespace Nethermind.Synchronization.SnapSync
             return _rawState ??= _stateFactory.GetRaw();
         }
 
+        public void AquireRawStateLock()
+        {
+            _commitLock.EnterWriteLock();
+        }
+
+        public void ReleaseRawStateLock()
+        {
+            _commitLock.ExitWriteLock();
+        }
+
         public void UpdatePivot()
         {
             _pivot.UpdateHeaderForcefully();
@@ -186,6 +196,8 @@ namespace Nethermind.Synchronization.SnapSync
                 bool rangePhaseFinished = IsSnapGetRangesFinished();
                 if (rangePhaseFinished)
                 {
+                    _rawState.Finalize((uint)_pivot.GetPivotHeader().Number);
+
                     _logger.Info("Snap - State Ranges (Phase 1) finished.");
                     FinishRangePhase();
                 }

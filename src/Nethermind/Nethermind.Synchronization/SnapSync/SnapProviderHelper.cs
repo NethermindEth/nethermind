@@ -6,16 +6,16 @@ using System.Collections.Generic;
 using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 using System.Threading;
-using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
-using Nethermind.Serialization.Rlp;
+using Nethermind.Db;
+using Nethermind.Logging;
 using Nethermind.State;
 using Nethermind.State.Snap;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
-using Paprika.RLP;
 using static Nethermind.Core.Extensions.Bytes;
+using Rlp = Nethermind.Serialization.Rlp.Rlp;
 
 namespace Nethermind.Synchronization.SnapSync
 {
@@ -78,39 +78,42 @@ namespace Nethermind.Synchronization.SnapSync
             if (sortedBoundaryList?.Count > 0)
             {
                 Span<byte> path = stackalloc byte[64];
-                FillInHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0], path, 0);
+                FillInAccountHashesOnBoundary(state, firstPath, lastPath, sortedBoundaryList[0], path, 0);
             }
 
             //tree.UpdateRootHash();
-            state.Commit();
-            if (state.StateRoot != expectedRootHash)
+            ValueHash256 newStateRoot = state.RefreshRootHash();
+            if (newStateRoot != expectedRootHash)
             {
+                state.Discard();
                 return (AddRangeResult.DifferentRootHash, true, null, null);
             }
+
+            state.Commit(true);
 
             //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
             //tree.Commit(blockNumber, skipRoot: true, WriteFlags.DisableWAL);
 
             //return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
-            return (AddRangeResult.OK, true, accountsWithStorage, codeHashes);
+            return (AddRangeResult.OK, moreChildrenToRight, accountsWithStorage, codeHashes);
         }
 
         private static bool IsNotInRange(Span<byte> path, int index, Span<byte> firstPath, Span<byte> lastPath)
         {
             Span<byte> currPath = path[..index];
-            if (BytesCompare(firstPath[..index], currPath) == 0 ||
-                BytesCompare(lastPath[..index], currPath) == 0)
+            if (BytesComparer.Compare(firstPath[..index], currPath) == 0 ||
+                BytesComparer.Compare(lastPath[..index], currPath) == 0)
                 return false;
-            return BytesCompare(path, lastPath) > 0 || BytesCompare(path, firstPath) < 0;
+            return BytesComparer.Compare(path, lastPath) > 0 || BytesComparer.Compare(path, firstPath) < 0;
         }
 
-        private static void FillInHashesOnBoundary(IRawState state, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
+        private static void FillInAccountHashesOnBoundary(IRawState state, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
         {
             if (node.IsExtension)
             {
                 node.Key.CopyTo(path.Slice(pathIndex));
-                FillInHashesOnBoundary(state, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, 0), path, pathIndex + node.Key.Length);
+                FillInAccountHashesOnBoundary(state, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, 0), path, pathIndex + node.Key.Length);
             }
             else if (node.IsBranch)
             {
@@ -129,44 +132,45 @@ namespace Nethermind.Synchronization.SnapSync
                     {
                         TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, i);
                         if (childNode is not null)
-                            FillInHashesOnBoundary(state, firstPath, lastPath, childNode, path, pathIndex + 1);
+                            FillInAccountHashesOnBoundary(state, firstPath, lastPath, childNode, path, pathIndex + 1);
                     }
                 }
             }
         }
 
-        private static int BytesCompare(ReadOnlySpan<byte> x, ReadOnlySpan<byte> y)
+        private static void FillInStorageHashesOnBoundary(IRawState state, ValueHash256 accountHash, Span<byte> firstPath, Span<byte> lastPath, TrieNode node, Span<byte> path, int pathIndex)
         {
-            if (Unsafe.AreSame(ref MemoryMarshal.GetReference(x), ref MemoryMarshal.GetReference(y)) &&
-                x.Length == y.Length)
+            if (node.IsExtension)
             {
-                return 0;
+                node.Key.CopyTo(path.Slice(pathIndex));
+                FillInStorageHashesOnBoundary(state, accountHash, firstPath, lastPath, node.GetChild(NullTrieNodeResolver.Instance, 0), path, pathIndex + node.Key.Length);
             }
-
-            if (x.Length == 0)
+            else if (node.IsBranch)
             {
-                return y.Length == 0 ? 0 : 1;
-            }
-
-            for (int i = 0; i < x.Length; i++)
-            {
-                if (y.Length <= i)
+                for (int i = 0; i < 16; i++)
                 {
-                    return -1;
-                }
-
-                int result = x[i].CompareTo(y[i]);
-                if (result != 0)
-                {
-                    return result;
+                    path[pathIndex] = (byte)i;
+                    if (IsNotInRange(path, pathIndex + 1, firstPath, lastPath))
+                    {
+                        if (node.GetChildHashAsValueKeccak(i, out ValueHash256 childHash))
+                        {
+                            state.SetStorageHash(accountHash, Nibbles.ToBytes(path), pathIndex + 1, new Hash256(childHash));
+                        }
+                    }
+                    else
+                    {
+                        TrieNode childNode = node.GetChild(NullTrieNodeResolver.Instance, i);
+                        if (childNode is not null)
+                            FillInStorageHashesOnBoundary(state, accountHash, firstPath, lastPath, childNode, path, pathIndex + 1);
+                    }
                 }
             }
-
-            return y.Length > x.Length ? 1 : 0;
         }
 
         public static (AddRangeResult result, bool moreChildrenToRight) AddStorageRange(
-            StorageTree tree,
+            //StorageTree tree,
+            IRawState state,
+            PathWithAccount account,
             long blockNumber,
             in ValueHash256? startingHash,
             IReadOnlyList<PathWithStorageSlot> slots,
@@ -175,6 +179,9 @@ namespace Nethermind.Synchronization.SnapSync
         )
         {
             // TODO: Check the slots boundaries and sorting
+
+            StorageTree tree = new StorageTree(new TrieStore(new MemDb(), NullLogManager.Instance),
+                NullLogManager.Instance);
 
             ValueHash256 lastHash = slots[^1].Path;
 
@@ -190,19 +197,39 @@ namespace Nethermind.Synchronization.SnapSync
             {
                 PathWithStorageSlot slot = slots[index];
                 Interlocked.Add(ref Metrics.SnapStateSynced, slot.SlotRlpValue.Length);
-                tree.Set(slot.Path, slot.SlotRlpValue, false);
+                //tree.Set(slot.Path, slot.SlotRlpValue, false);
+
+                Rlp.ValueDecoderContext rlpContext = new Rlp.ValueDecoderContext(slot.SlotRlpValue);
+                state.SetStorage(account.Path, slot.Path, rlpContext.DecodeByteArray());
             }
 
-            tree.UpdateRootHash();
+            Span<byte> lastPath = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes(lastHash.BytesAsSpan, lastPath);
+            Span<byte> firstPath = stackalloc byte[64];
+            Nibbles.BytesToNibbleBytes((startingHash ?? slots[0].Path).BytesAsSpan, firstPath);
 
-            if (tree.RootHash != expectedRootHash)
+            if (sortedBoundaryList?.Count > 0)
             {
+                Span<byte> path = stackalloc byte[64];
+                FillInStorageHashesOnBoundary(state, account.Path, firstPath, lastPath, sortedBoundaryList[0], path, 0);
+            }
+
+
+            //tree.UpdateRootHash();
+            //state.RefreshRootHash();
+            //var committedAccount = state.Get(account.Path);
+            ValueHash256 newStorageRoot = state.RecalculateStorageRoot(account.Path);
+
+            if (newStorageRoot != expectedRootHash)
+            {
+                state.Discard();
                 return (AddRangeResult.DifferentRootHash, true);
             }
+            state.Commit(false);
 
-            StitchBoundaries(sortedBoundaryList, tree.TrieStore);
+            //StitchBoundaries(sortedBoundaryList, tree.TrieStore);
 
-            tree.Commit(blockNumber, writeFlags: WriteFlags.DisableWAL);
+            //tree.Commit(blockNumber, writeFlags: WriteFlags.DisableWAL);
 
             return (AddRangeResult.OK, moreChildrenToRight);
         }

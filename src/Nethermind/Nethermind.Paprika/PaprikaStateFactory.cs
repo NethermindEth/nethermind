@@ -1,7 +1,6 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
-using System.ComponentModel.Design;
 using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -34,12 +33,13 @@ public class PaprikaStateFactory : IStateFactory
     private readonly Blockchain _blockchain;
     private readonly Queue<(PaprikaKeccak keccak, uint number)> _poorManFinalizationQueue = new();
     private uint _lastFinalized;
+    private readonly ComputeMerkleBehavior _merkleBehaviour;
 
     public PaprikaStateFactory()
     {
         _db = PagedDb.NativeMemoryDb(64 * 1024);
-        var merkle = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
-        _blockchain = new Blockchain(_db, merkle);
+        _merkleBehaviour = new ComputeMerkleBehavior(ComputeMerkleBehavior.ParallelismNone);
+        _blockchain = new Blockchain(_db, _merkleBehaviour);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
@@ -52,12 +52,12 @@ public class PaprikaStateFactory : IStateFactory
         var stateOptions = new CacheBudget.Options(config.CacheStatePerBlock, config.CacheStateBeyond);
         var merkleOptions = new CacheBudget.Options(config.CacheMerklePerBlock, config.CacheMerkleBeyond);
 
-        _db = PagedDb.MemoryMappedDb(_mainnet, 64, directory, flushToDisk: true);
+        _db = PagedDb.MemoryMappedDb(_sepolia, 64, directory, flushToDisk: true);
 
         var parallelism = config.ParallelMerkle ? physicalCores : ComputeMerkleBehavior.ParallelismNone;
 
-        ComputeMerkleBehavior merkle = new(parallelism);
-        _blockchain = new Blockchain(_db, merkle, _flushFileEvery, stateOptions, merkleOptions);
+        _merkleBehaviour = new(parallelism);
+        _blockchain = new Blockchain(_db, _merkleBehaviour, _flushFileEvery, stateOptions, merkleOptions);
         _blockchain.Flushed += (_, flushed) =>
             ReorgBoundaryReached?.Invoke(this, new ReorgBoundaryReached(flushed.blockNumber));
 
@@ -66,6 +66,8 @@ public class PaprikaStateFactory : IStateFactory
             _logger.Error("Paprika's Flusher task failed and stopped, throwing the following exception", exception);
         };
     }
+
+    public ComputeMerkleBehavior MerkleBehaviour => _merkleBehaviour;
 
     public IState Get(Hash256 stateRoot) => new State(_blockchain.StartNew(Convert(stateRoot)), this);
     public Nethermind.State.IRawState GetRaw() => new RawState(_blockchain.StartRaw(), this);
@@ -183,6 +185,14 @@ public class PaprikaStateFactory : IStateFactory
             return bytes.ToEvmWord();
         }
 
+        [SkipLocalsInit]
+        public EvmWord GetStorageAt(in ValueHash256 accountHash, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            bytes = wrapped.GetStorage(new PaprikaKeccak(accountHash.Bytes), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
+        }
+
         public Hash256 StateRoot => Convert(wrapped.Hash);
 
         public void Dispose() => wrapped.Dispose();
@@ -262,6 +272,14 @@ public class PaprikaStateFactory : IStateFactory
         {
             Span<byte> bytes = stackalloc byte[32];
             bytes = wrapped.GetStorage(Convert(address), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
+        }
+
+        [SkipLocalsInit]
+        public EvmWord GetStorageAt(in ValueHash256 accountHash, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            bytes = wrapped.GetStorage(new PaprikaKeccak(accountHash.Bytes), new PaprikaKeccak(hash.Bytes), bytes);
             return bytes.ToEvmWord();
         }
 
@@ -362,12 +380,27 @@ public class PaprikaStateFactory : IStateFactory
         }
 
         [SkipLocalsInit]
+        public EvmWord GetStorageAt(in ValueHash256 accountHash, in ValueHash256 hash)
+        {
+            Span<byte> bytes = stackalloc byte[32];
+            bytes = _wrapped.GetStorage(new PaprikaKeccak(accountHash.Bytes), new PaprikaKeccak(hash.Bytes), bytes);
+            return bytes.ToEvmWord();
+        }
+
+        [SkipLocalsInit]
         public void SetStorage(in StorageCell cell, EvmWord value)
         {
             Span<byte> key = stackalloc byte[32];
             GetKey(cell.Index, key);
             PaprikaKeccak converted = Convert(cell.Address);
             _wrapped.SetStorage(converted, new PaprikaKeccak(key), value.AsSpan());
+        }
+
+        public void SetStorage(ValueHash256 accountHash, ValueHash256 storageSlotHash, ReadOnlySpan<byte> encodedValue)
+        {
+            PaprikaKeccak addressKey = Convert(accountHash);
+            PaprikaKeccak storageKey = Convert(storageSlotHash);
+            _wrapped.SetStorage(addressKey, storageKey, encodedValue);
         }
 
         public void SetAccount(ValueHash256 hash, Account? account)
@@ -390,12 +423,40 @@ public class PaprikaStateFactory : IStateFactory
         {
             NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
             _wrapped.SetBoundary(path, Convert(keccak));
+            //_factory._logger.Info($"Setting account hash for path {path.ToString()} - {keccak}");
         }
 
-        public void Commit() => _wrapped.Commit();
+        public void SetStorageHash(ValueHash256 accountHash, ReadOnlySpan<byte> keyPath, int targetKeyLength, Hash256 keccak)
+        {
+            NibblePath path = NibblePath.FromKey(keyPath).SliceTo(targetKeyLength);
+            _wrapped.SetBoundary(Convert(accountHash), path, Convert(keccak));
+            //_factory._logger.Info($"Setting storage hash for path {path.ToString()} - {keccak}");
+        }
+
+        public void Commit(bool ensureHash)
+        {
+            _wrapped.Commit(ensureHash);
+        }
+
         public void Finalize(uint blockNumber)
         {
             _wrapped.Finalize(blockNumber);
+        }
+
+        public ValueHash256 RefreshRootHash()
+        {
+            return Convert(_wrapped.RefreshRootHash());
+        }
+
+        public ValueHash256 RecalculateStorageRoot(ValueHash256 accountHash)
+        {
+            PaprikaKeccak account = Convert(accountHash);
+            return Convert(_wrapped.RecalculateStorageRoot(account));
+        }
+
+        public void Discard()
+        {
+            _wrapped.Discard();
         }
 
         public Hash256 StateRoot => Convert(_wrapped.Hash);

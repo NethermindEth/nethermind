@@ -22,19 +22,18 @@ namespace Nethermind.Synchronization.SnapSync
 {
     public class SnapProvider : ISnapProvider
     {
-        private readonly ObjectPool<ITrieStore> _trieStorePool;
+        //private readonly ObjectPool<ITrieStore> _trieStorePool;
         private readonly IDbProvider _dbProvider;
         private readonly ILogManager _logManager;
         private readonly ILogger _logger;
 
         private readonly ProgressTracker _progressTracker;
 
-        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, IStateFactory stateFactory, ILogManager logManager)
+        public SnapProvider(ProgressTracker progressTracker, IDbProvider dbProvider, ILogManager logManager)
         {
             _dbProvider = dbProvider ?? throw new ArgumentNullException(nameof(dbProvider));
             _progressTracker = progressTracker ?? throw new ArgumentNullException(nameof(progressTracker));
-            _trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
-            //_stateFactory = stateFactory;
+            //_trieStorePool = new DefaultObjectPool<ITrieStore>(new TrieStorePoolPolicy(_dbProvider.StateDb, logManager));
 
             _logManager = logManager ?? throw new ArgumentNullException(nameof(logManager));
             _logger = logManager.GetClassLogger<SnapProvider>();
@@ -72,7 +71,9 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddAccountRange(long blockNumber, in ValueHash256 expectedRootHash, in ValueHash256 startingHash, IReadOnlyList<PathWithAccount> accounts, IReadOnlyList<byte[]> proofs = null, in ValueHash256? hashLimit = null!)
         {
-            ITrieStore store = _trieStorePool.Get();
+            //ITrieStore store = _trieStorePool.Get();
+            ITrieStore store = NullTrieStore.Instance;
+            _progressTracker.AquireRawStateLock();
             try
             {
                 StateTree tree = new(store, _logManager);
@@ -95,18 +96,19 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
-                    _logger.Trace($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddAccountRange failed, missing root hash {tree.RootHash} in the proofs, startingHash:{startingHash}");
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
-                    _logger.Trace($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddAccountRange failed, expected {blockNumber}:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
                 }
 
                 return result;
             }
             finally
             {
-                _trieStorePool.Return(store);
+                //_trieStorePool.Return(store);
+                _progressTracker.ReleaseRawStateLock();
             }
         }
 
@@ -165,11 +167,13 @@ namespace Nethermind.Synchronization.SnapSync
 
         public AddRangeResult AddStorageRange(long blockNumber, PathWithAccount pathWithAccount, in ValueHash256 expectedRootHash, in ValueHash256? startingHash, IReadOnlyList<PathWithStorageSlot> slots, IReadOnlyList<byte[]>? proofs = null)
         {
-            ITrieStore store = _trieStorePool.Get();
+            //ITrieStore store = _trieStorePool.Get();
+            ITrieStore store = NullTrieStore.Instance;
             StorageTree tree = new(store, _logManager);
+            _progressTracker.AquireRawStateLock();
             try
             {
-                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(tree, blockNumber, startingHash, slots, expectedRootHash, proofs);
+                (AddRangeResult result, bool moreChildrenToRight) = SnapProviderHelper.AddStorageRange(_progressTracker.GetSyncState(), pathWithAccount, blockNumber, startingHash, slots, expectedRootHash, proofs);
 
                 if (result == AddRangeResult.OK)
                 {
@@ -186,13 +190,13 @@ namespace Nethermind.Synchronization.SnapSync
                 }
                 else if (result == AddRangeResult.MissingRootHashInProofs)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddStorageRange failed, missing root hash {expectedRootHash} in the proofs, startingHash:{startingHash}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
                 else if (result == AddRangeResult.DifferentRootHash)
                 {
-                    _logger.Trace($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
+                    _logger.Info($"SNAP - AddStorageRange failed, expected storage root hash:{expectedRootHash} but was {tree.RootHash}, startingHash:{startingHash}");
 
                     _progressTracker.EnqueueAccountRefresh(pathWithAccount, startingHash);
                 }
@@ -201,14 +205,16 @@ namespace Nethermind.Synchronization.SnapSync
             }
             finally
             {
-                _trieStorePool.Return(store);
+                //_trieStorePool.Return(store);
+                _progressTracker.ReleaseRawStateLock();
             }
         }
 
         public void RefreshAccounts(AccountsToRefreshRequest request, IOwnedReadOnlyList<byte[]> response)
         {
             int respLength = response.Count;
-            ITrieStore store = _trieStorePool.Get();
+            //ITrieStore store = _trieStorePool.Get();
+            ITrieStore store = NullTrieStore.Instance;
             try
             {
                 for (int reqi = 0; reqi < request.Paths.Count; reqi++)
@@ -266,7 +272,7 @@ namespace Nethermind.Synchronization.SnapSync
             finally
             {
                 response.Dispose();
-                _trieStorePool.Return(store);
+                //_trieStorePool.Return(store);
             }
         }
 
