@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text.Json.Serialization;
 using FastEnumUtility;
+using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Proofs;
 
@@ -14,12 +15,13 @@ namespace Nethermind.Core.Verkle;
 
 public class ExecutionWitness
 {
+    public Hash256? StateRoot { get; set; }
     public StemStateDiff[] StateDiff { get; }
     public WitnessVerkleProof? VerkleProof { get; }
 
     public ExecutionWitness()
     {
-        StateDiff = Array.Empty<StemStateDiff>();
+        StateDiff = [];
         VerkleProof = null;
     }
 

@@ -67,8 +67,7 @@ public class StatelessBlockProcessor : BlockProcessor, IBlockProcessor
         IWorldState worldState;
         if (!block.IsGenesis)
         {
-            block.Header.MaybeParent!.TryGetTarget(out BlockHeader maybeParent);
-            Banderwagon stateRoot = Banderwagon.FromBytes(maybeParent!.StateRoot!.Bytes.ToArray())!.Value;
+            Banderwagon stateRoot = Banderwagon.FromBytes(block.ExecutionWitness!.StateRoot!.Bytes.ToArray())!.Value;
             _statelessWorldState.Reset();
             _statelessWorldState.InsertExecutionWitness(block.ExecutionWitness!, stateRoot);
             worldState = _statelessWorldState;
