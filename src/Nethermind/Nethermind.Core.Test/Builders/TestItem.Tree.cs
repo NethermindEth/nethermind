@@ -26,6 +26,8 @@ namespace Nethermind.Core.Test.Builders
             private static readonly Account _account3 = Build.An.Account.WithBalance(3).TestObject;
             private static readonly Account _account4 = Build.An.Account.WithBalance(4).TestObject;
             private static readonly Account _account5 = Build.An.Account.WithBalance(5).TestObject;
+            private static readonly Account _account6 = Build.An.Account.WithBalance(6).TestObject;
+            private static readonly Account _account10 = Build.An.Account.WithBalance(10).TestObject;
 
             public static PathWithAccount[] AccountsWithPaths = new PathWithAccount[]
                 {
@@ -35,37 +37,39 @@ namespace Nethermind.Core.Test.Builders
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), _account3),
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), _account4),
                 new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), _account5),
+                new PathWithAccount(new Hash256("0000000000000000000000000000000000000000000000000000000001123458"), _account6),
                 };
 
             public static PathWithStorageSlot[] SlotsWithPaths = new PathWithStorageSlot[]
             {
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
-                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001101234"), Rlp.Encode(Bytes.FromHexString("0xab12000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001112345"), Rlp.Encode(Bytes.FromHexString("0xab34000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001113456"), Rlp.Encode(Bytes.FromHexString("0xab56000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001114567"), Rlp.Encode(Bytes.FromHexString("0xab78000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123456"), Rlp.Encode(Bytes.FromHexString("0xab90000000000000000000000000000000000000000000000000000000000000")).Bytes),
+                new PathWithStorageSlot(new Hash256("0000000000000000000000000000000000000000000000000000000001123457"), Rlp.Encode(Bytes.FromHexString("0xab9a000000000000000000000000000000000000000000000000000000000000")).Bytes),
             };
 
-            public static StateTree GetStateTree(ITrieStore? store = null)
+            public static Account Account10 => _account10;
+
+            public static StateTree GetStateTree(ITrieStore? store = null, int? maxCount = null)
             {
                 store ??= new TrieStore(new MemDb(), LimboLogs.Instance);
 
                 var stateTree = new StateTree(store, LimboLogs.Instance);
 
-                FillStateTreeWithTestAccounts(stateTree);
+                FillStateTreeWithTestAccounts(stateTree, maxCount);
 
                 return stateTree;
             }
 
-            public static void FillStateTreeWithTestAccounts(StateTree stateTree)
+            public static void FillStateTreeWithTestAccounts(StateTree stateTree, int? maxCount = null)
             {
-                stateTree.Set(AccountsWithPaths[0].Path, AccountsWithPaths[0].Account);
-                stateTree.Set(AccountsWithPaths[1].Path, AccountsWithPaths[1].Account);
-                stateTree.Set(AccountsWithPaths[2].Path, AccountsWithPaths[2].Account);
-                stateTree.Set(AccountsWithPaths[3].Path, AccountsWithPaths[3].Account);
-                stateTree.Set(AccountsWithPaths[4].Path, AccountsWithPaths[4].Account);
-                stateTree.Set(AccountsWithPaths[5].Path, AccountsWithPaths[5].Account);
+                maxCount ??= AccountsWithPaths.Length - 1;
+                for (int i = 0; i < maxCount; i++)
+                {
+                    stateTree.Set(AccountsWithPaths[i].Path, AccountsWithPaths[i].Account);
+                }
                 stateTree.Commit(0);
             }
 
