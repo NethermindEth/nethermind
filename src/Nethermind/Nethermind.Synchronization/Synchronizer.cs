@@ -141,7 +141,7 @@ namespace Nethermind.Synchronization
                 stateFactory,
                 logManager,
                 _syncConfig.SnapSyncAccountRangePartitionCount);
-            //SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
+            SnapProvider = new SnapProvider(progressTracker, dbProvider, logManager);
         }
 
         public virtual void Start()
@@ -274,7 +274,8 @@ namespace Nethermind.Synchronization
 
         private void StartStateSyncComponents()
         {
-            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            //TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, _dbProvider.StateDb, _blockTree, _logManager);
+            TreeSync treeSync = new(SyncMode.StateNodes, _dbProvider.CodeDb, null, _blockTree, _logManager);
             _stateSyncFeed = new StateSyncFeed(treeSync, _logManager);
             SyncDispatcher<StateSyncBatch> stateSyncDispatcher = CreateDispatcher(
                 _stateSyncFeed,

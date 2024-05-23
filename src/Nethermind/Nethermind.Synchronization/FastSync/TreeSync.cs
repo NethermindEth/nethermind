@@ -56,7 +56,7 @@ namespace Nethermind.Synchronization.FastSync
 
         private readonly ILogger _logger;
         private readonly IDb _codeDb;
-        private readonly IDb _stateDb;
+        //private readonly IDb _stateDb;
 
         private readonly IBlockTree _blockTree;
 
@@ -75,11 +75,12 @@ namespace Nethermind.Synchronization.FastSync
         private long _blockNumber;
         private readonly SyncMode _syncMode;
 
+        //public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         public TreeSync(SyncMode syncMode, IDb codeDb, IDb stateDb, IBlockTree blockTree, ILogManager logManager)
         {
             _syncMode = syncMode;
             _codeDb = codeDb ?? throw new ArgumentNullException(nameof(codeDb));
-            _stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
+            //_stateDb = stateDb ?? throw new ArgumentNullException(nameof(stateDb));
             _blockTree = blockTree ?? throw new ArgumentNullException(nameof(blockTree));
 
             _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
@@ -376,7 +377,8 @@ namespace Nethermind.Synchronization.FastSync
             try
             {
                 // it finished downloading
-                rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
+                //rootNodeKeyExists = _stateDb.KeyExists(_rootNode);
+                rootNodeKeyExists = true;
             }
             catch (ObjectDisposedException)
             {
@@ -525,7 +527,8 @@ namespace Nethermind.Synchronization.FastSync
                 lockToTake.EnterReadLock();
                 try
                 {
-                    IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
+                    //IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _stateDb;
+                    IDb dbToCheck = syncItem.NodeDataType == NodeDataType.Code ? _codeDb : _codeDb;
                     Interlocked.Increment(ref _data.DbChecks);
                     bool keyExists = dbToCheck.KeyExists(syncItem.Hash);
 
@@ -626,7 +629,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStateTrieNodes);
-                            _stateDb.Set(syncItem.Hash, data);
+                            //_stateDb.Set(syncItem.Hash, data);
                         }
                         finally
                         {
@@ -664,7 +667,7 @@ namespace Nethermind.Synchronization.FastSync
                         {
                             Interlocked.Add(ref _data.DataSize, data.Length);
                             Interlocked.Increment(ref Metrics.SyncedStorageTrieNodes);
-                            _stateDb.Set(syncItem.Hash, data);
+                            //_stateDb.Set(syncItem.Hash, data);
                         }
                         finally
                         {
@@ -696,7 +699,7 @@ namespace Nethermind.Synchronization.FastSync
             {
                 if (_logger.IsInfo) _logger.Info($"Saving root {syncItem.Hash} of {_branchProgress.CurrentSyncBlock}");
 
-                _stateDb.Flush();
+                //_stateDb.Flush();
                 _codeDb.Flush();
 
                 Interlocked.Exchange(ref _rootSaved, 1);
