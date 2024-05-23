@@ -5,91 +5,91 @@ namespace EngineRequestsGenerator;
 
 public enum TestCase
 {
-    [TestCaseMetadata("Warmup", "warmup")]
+    [TestCaseMetadata("Warmup", "Warmup")]
     Warmup,
 
-    [TestCaseMetadata("ETH transfers", "simple ETH transfers")]
+    [TestCaseMetadata("ETH transfers", "All block gas limit consumed by simple ETH transfers")]
     Transfers,
 
-    [TestCaseMetadata("Tx with big zero data", "single transaction with large extra full of zeros")]
+    [TestCaseMetadata("Tx with big zero data", "Single transaction with large extra data full of zeros")]
     TxDataZero,
 
-    [TestCaseMetadata("Keccak256 from 1 byte", "keccak calculations based on 1-byte source data")]
+    [TestCaseMetadata("Keccak256 from 1 byte", "Keccak calculations based on 1-byte source data")]
     Keccak256From1Byte,
 
-    [TestCaseMetadata("Keccak256 from 8 bytes", "keccak calculations based on 8-byte source data")]
+    [TestCaseMetadata("Keccak256 from 8 bytes", "Keccak calculations based on 8-byte source data")]
     Keccak256From8Bytes,
 
-    [TestCaseMetadata("Keccak256 from 32 bytes", "keccak calculations based on 32-byte source data")]
+    [TestCaseMetadata("Keccak256 from 32 bytes", "Keccak calculations based on 32-byte source data")]
     Keccak256From32Bytes,
 
-    [TestCaseMetadata("Push0", "endlessly pushing zeros to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Push0", "Endlessly pushing zeros to stack (1000 per 1 contract)")]
     Push0,
 
-    [TestCaseMetadata("Push0-Pop", "endlessly pushing zeros to stack, then popping it")]
+    [TestCaseMetadata("Push0-Pop", "Endlessly pushing zeros to stack, then popping it")]
     Push0Pop,
 
-    [TestCaseMetadata("Gas", "endlessly pushing amount of remaining gas to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Gas", "Endlessly pushing amount of remaining gas to stack (1000 per 1 contract)")]
     Gas,
 
-    [TestCaseMetadata("Gas-Pop", "endlessly pushing amount of remaining gas to stack, then popping it")]
+    [TestCaseMetadata("Gas-Pop", "Endlessly pushing amount of remaining gas to stack, then popping it")]
     GasPop,
 
-    [TestCaseMetadata("SelfBalance", "endlessly pushing self balance to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("SelfBalance", "Endlessly pushing self balance to stack (1000 per 1 contract)")]
     SelfBalance,
 
-    [TestCaseMetadata("JumpDest", "block full of JumpDest opcode only")]
+    [TestCaseMetadata("JumpDest", "Block full of JumpDest opcode only")]
     JumpDest,
 
-    [TestCaseMetadata("MSize", "endlessly pushing memory size to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("MSize", "Endlessly pushing memory size to stack (1000 per 1 contract)")]
     MSize,
 
-    [TestCaseMetadata("MStore - zero", "endlessly pushing zero value to memory with offset zero")]
+    [TestCaseMetadata("MStore - zero", "Endlessly pushing zero value to memory with offset zero")]
     MStoreZero,
 
-    [TestCaseMetadata("MStore - random", "endlessly pushing random value to memory with offset zero")]
+    [TestCaseMetadata("MStore - random", "Endlessly pushing random value to memory with offset zero")]
     MStoreRandom,
 
-    [TestCaseMetadata("Caller", "endlessly pushing caller address to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Caller", "Endlessly pushing caller address to stack (1000 per 1 contract)")]
     Caller,
 
-    [TestCaseMetadata("Caller-Pop", "endlessly pushing caller address to stack, then popping it")]
+    [TestCaseMetadata("Caller-Pop", "Endlessly pushing caller address to stack, then popping it")]
     CallerPop,
 
-    [TestCaseMetadata("Address", "endlessly pushing account address to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Address", "Endlessly pushing account address to stack (1000 per 1 contract)")]
     Address,
 
-    [TestCaseMetadata("Origin", "endlessly pushing execution origination address to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Origin", "Endlessly pushing execution origination address to stack (1000 per 1 contract)")]
     Origin,
 
-    [TestCaseMetadata("CoinBase", "endlessly pushing current block's coinbase to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("CoinBase", "Endlessly pushing current block's coinbase to stack (1000 per 1 contract)")]
     CoinBase,
 
-    [TestCaseMetadata("Timestamp", "endlessly pushing current block's timestamp to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Timestamp", "Endlessly pushing current block's timestamp to stack (1000 per 1 contract)")]
     Timestamp,
 
-    [TestCaseMetadata("Number", "endlessly pushing current block's number to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("Number", "Endlessly pushing current block's number to stack (1000 per 1 contract)")]
     Number,
 
-    [TestCaseMetadata("PrevRandao", "endlessly pushing previous block's randao mix to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("PrevRandao", "Endlessly pushing previous block's randao mix to stack (1000 per 1 contract)")]
     PrevRandao,
 
-    [TestCaseMetadata("GasLimit", "endlessly pushing current block's gas limit to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("GasLimit", "Endlessly pushing current block's gas limit to stack (1000 per 1 contract)")]
     GasLimit,
 
-    [TestCaseMetadata("ChainId", "endlessly pushing chain ID to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("ChainId", "Endlessly pushing chain ID to stack (1000 per 1 contract)")]
     ChainId,
 
-    [TestCaseMetadata("BaseFee", "endlessly pushing current base fee to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("BaseFee", "Endlessly pushing current base fee to stack (1000 per 1 contract)")]
     BaseFee,
 
-    [TestCaseMetadata("BlobBaseFee", "endlessly pushing current blob base fee to stack (1000 per 1 contract)")]
+    [TestCaseMetadata("BlobBaseFee", "Endlessly pushing current blob base fee to stack (1000 per 1 contract)")]
     BlobBaseFee,
 
-    [TestCaseMetadata("BlobHash", "endlessly pushing zero as index and BlobHash opcode to stack when there were no blobs (1000 per 1 contract)")]
+    [TestCaseMetadata("BlobHash", "Endlessly pushing zero as index and BlobHash opcode to stack when there were no blobs (1000 per 1 contract)")]
     BlobHashZero,
 
-    [TestCaseMetadata("CodeCopy", "endlessly loading 32-bytes of code to the memory")]
+    [TestCaseMetadata("CodeCopy", "Endlessly loading 32-bytes of code to the memory")]
     CodeCopy,
 
     // [TestCaseMetadata("BalanceNonExisting", "checking balances of non existing accounts")]
