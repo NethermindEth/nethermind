@@ -68,11 +68,11 @@ namespace Nethermind.Consensus.Clique
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi!.SealEngineType != Nethermind.Core.SealEngineType.Clique)
             {
-                return Task.FromResult((IBlockProducer)null);
+                return null;
             }
 
             (IApiWithBlockchain getFromApi, IApiWithBlockchain setInApi) = _nethermindApi!.ForProducer;
@@ -151,7 +151,7 @@ namespace Nethermind.Consensus.Clique
                 _cliqueConfig!,
                 getFromApi.LogManager);
 
-            return Task.FromResult((IBlockProducer)blockProducer);
+            return blockProducer;
         }
 
         public IBlockProducerRunner CreateBlockProducerRunner()
@@ -166,11 +166,6 @@ namespace Nethermind.Consensus.Clique
                 _nethermindApi.LogManager);
             _nethermindApi.DisposeStack.Push(_blockProducerRunner);
             return _blockProducerRunner;
-        }
-
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
         }
 
         public Task InitRpcModules()

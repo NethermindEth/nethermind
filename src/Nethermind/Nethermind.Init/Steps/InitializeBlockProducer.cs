@@ -24,11 +24,11 @@ namespace Nethermind.Init.Steps
             _api = api;
         }
 
-        public async Task Execute(CancellationToken _)
+        public Task Execute(CancellationToken _)
         {
             if (_api.BlockProductionPolicy!.ShouldStartBlockProduction())
             {
-                _api.BlockProducer = await BuildProducer();
+                _api.BlockProducer = BuildProducer();
 
                 _api.BlockProducerRunner = _api.GetConsensusPlugin()!.CreateBlockProducerRunner();
 
@@ -37,9 +37,11 @@ namespace Nethermind.Init.Steps
                     _api.BlockProducerRunner = wrapperPlugin.InitBlockProducerRunner(_api.BlockProducerRunner);
                 }
             }
+
+            return Task.CompletedTask;
         }
 
-        protected virtual async Task<IBlockProducer> BuildProducer()
+        protected virtual IBlockProducer BuildProducer()
         {
             _api.BlockProducerEnvFactory = new BlockProducerEnvFactory(
                 _api.WorldStateManager!,
@@ -66,7 +68,7 @@ namespace Nethermind.Init.Steps
                     blockProducerFactory = new ConsensusWrapperToBlockProducerFactoryAdapter(wrapperPlugin, blockProducerFactory);
                 }
 
-                return await blockProducerFactory.InitBlockProducer();
+                return blockProducerFactory.InitBlockProducer();
             }
             else
             {
@@ -78,7 +80,7 @@ namespace Nethermind.Init.Steps
             IConsensusWrapperPlugin consensusWrapperPlugin,
             IBlockProducerFactory baseBlockProducerFactory) : IBlockProducerFactory
         {
-            public Task<IBlockProducer> InitBlockProducer(ITxSource? additionalTxSource = null)
+            public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
             {
                 return consensusWrapperPlugin.InitBlockProducer(baseBlockProducerFactory, additionalTxSource);
             }

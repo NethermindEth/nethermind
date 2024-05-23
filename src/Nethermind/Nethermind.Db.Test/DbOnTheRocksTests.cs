@@ -130,6 +130,24 @@ namespace Nethermind.Db.Test
         }
 
         [Test]
+        public void CanOpenWithFileWarmer()
+        {
+            IDbConfig config = new DbConfig();
+            config.EnableFileWarmer = true;
+            {
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+                for (int i = 0; i < 1000; i++)
+                {
+                    db[i.ToBigEndianByteArray()] = i.ToBigEndianByteArray();
+                }
+            }
+
+            {
+                using DbOnTheRocks db = new("testFileWarmer", GetRocksDbSettings("testFileWarmer", "FileWarmerTest"), config, LimboLogs.Instance);
+            }
+        }
+
+        [Test]
         public void Corrupted_exception_on_open_would_create_marker()
         {
             IDbConfig config = new DbConfig();

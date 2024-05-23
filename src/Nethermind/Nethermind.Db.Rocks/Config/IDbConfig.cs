@@ -52,6 +52,7 @@ public interface IDbConfig : IConfig
     int? UseRibbonFilterStartingFromLevel { get; set; }
     ulong BytesPerSync { get; set; }
     double? DataBlockIndexUtilRatio { get; set; }
+    bool EnableFileWarmer { get; set; }
 
     ulong BlobTransactionsDbBlockCacheSize { get; set; }
 
@@ -201,6 +202,7 @@ public interface IDbConfig : IConfig
     int? StateDbBloomFilterBitsPerKey { get; set; }
     int? StateDbUseRibbonFilterStartingFromLevel { get; set; }
     double? StateDbDataBlockIndexUtilRatio { get; set; }
+    bool StateDbEnableFileWarmer { get; set; }
     IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     /// <summary>

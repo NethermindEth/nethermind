@@ -241,6 +241,8 @@ public class JsonRpcProcessor : IJsonRpcProcessor
                     yield return deserializationFailureResult.Value;
                     break;
                 }
+
+                buffer = buffer.TrimStart();
             }
 
             // Checks if the deserialization failed

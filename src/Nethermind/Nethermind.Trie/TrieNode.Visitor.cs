@@ -216,7 +216,7 @@ namespace Nethermind.Trie
                             path.AppendMut(0);
                             for (int i = 0; i < 16; i++)
                             {
-                                if (output[i] == null) continue;
+                                if (output[i] is null) continue;
                                 TrieNode child = output[i];
                                 path.SetLast(i);
                                 child.ResolveKey(nodeResolver, ref path, false);
