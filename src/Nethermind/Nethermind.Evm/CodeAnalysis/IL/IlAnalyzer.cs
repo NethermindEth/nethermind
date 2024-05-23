@@ -6,6 +6,7 @@ using System.Collections.Frozen;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 using static System.Net.Mime.MediaTypeNames;
 using static System.Runtime.InteropServices.JavaScript.JSType;
 
@@ -85,11 +86,9 @@ internal static class IlAnalyzer
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        
-
-        FrozenDictionary<ushort, Func<ILEvmState, ILEvmState>> SegmentCode(OpcodeInfo[] codeData)
+        FrozenDictionary<ushort, ExecuteSegment> SegmentCode(OpcodeInfo[] codeData)
         {
-            Dictionary<ushort, Func<ILEvmState, ILEvmState>> opcodeInfos = [];
+            Dictionary<ushort, ExecuteSegment> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
             foreach (var opcode in codeData)

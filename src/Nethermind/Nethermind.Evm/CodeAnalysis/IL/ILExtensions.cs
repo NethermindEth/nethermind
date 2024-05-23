@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Core;
 using Nethermind.Evm.CodeAnalysis.IL;
 using Sigil;
 using System;
@@ -15,9 +16,18 @@ namespace Nethermind.Evm.IL;
 /// </summary>
 static class EmitExtensions
 {
-    public static FieldInfo GetFieldInfo<T>(string name)
+    unsafe static TResult ReinterpretCast<TOriginal, TResult>(TOriginal original)
+        where TOriginal : struct
+        where TResult : struct
     {
-        return typeof(T).GetField(name);
+#pragma warning disable CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+        return *(TResult*)(void*)&original;
+#pragma warning restore CS8500 // This takes the address of, gets the size of, or declares a pointer to a managed type
+    }
+
+    public static FieldInfo GetFieldInfo(Type TypeInstance, string name)
+    {
+        return TypeInstance.GetField(name);
     }
     public static MethodInfo GetPropertyInfo<T>(string name, bool getSetter, out PropertyInfo propInfo)
     {

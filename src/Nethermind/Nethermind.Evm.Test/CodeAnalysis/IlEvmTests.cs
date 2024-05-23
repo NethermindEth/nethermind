@@ -142,7 +142,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                     .Done;
             yield return Prepare.EvmCode
                     .ISZERO(7)
-                    .ISZERO(7)
+                    .ISZERO(0)
                     .ISZERO(7)
                     .Done;
             yield return Prepare.EvmCode
@@ -202,16 +202,17 @@ namespace Nethermind.Evm.Test.CodeAnalysis
         {
             ILEvmState iLEvmState = new ILEvmState
             {
-                Stack = new UInt256[1024],
+                Stack = new byte[1024],
                 Header = BuildBlock(MainnetSpecProvider.CancunActivation, SenderRecipientAndMiner.Default).Header,
                 GasAvailable = 1000000,
                 ProgramCounter = 0,
                 EvmException = EvmExceptionType.None,
                 StopExecution = false
             };
+            var memory = new EvmPooledMemory();
             var function = ILCompiler.CompileSegment("ILEVM_TEST", IlAnalyzer.StripByteCode(bytecode));
-            var il_result = function(iLEvmState);
-            Assert.IsNotNull(il_result);
+            var il_result = function(iLEvmState, ref memory);
+            Assert.IsTrue(il_result.EvmException == EvmExceptionType.None);
         }
 
 

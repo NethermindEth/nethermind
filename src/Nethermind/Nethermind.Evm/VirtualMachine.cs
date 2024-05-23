@@ -821,6 +821,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         ZeroPaddedSpan slice;
         bool isCancelable = _txTracer.IsCancelable;
         uint codeLength = (uint)code.Length;
+        bool shouldStop = false;
         while ((uint)programCounter < codeLength)
         {
 #if DEBUG
@@ -828,8 +829,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 #endif
 
             // try execute as many as possible
-            while ((ilInfo?.TryExecute(vmState, spec, blkCtx.Header, ref programCounter, ref gasAvailable, ref stack))
-                   .GetValueOrDefault(false));
+            while ((ilInfo?.TryExecute(vmState, spec, blkCtx.Header, ref programCounter, ref gasAvailable, ref stack, out shouldStop))
+                   .GetValueOrDefault(false))
+            {
+                if (shouldStop) goto EmptyReturn;
+            }
 
             Instruction instruction = (Instruction)code[programCounter];
 

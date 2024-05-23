@@ -5,6 +5,7 @@ using System.Runtime.CompilerServices;
 using Microsoft.IdentityModel.Tokens;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using static Nethermind.Evm.CodeAnalysis.IL.ILCompiler;
 
 namespace Nethermind.Evm.CodeAnalysis.IL;
 /// <summary>
@@ -35,7 +36,7 @@ internal class IlInfo
     private IlInfo()
     {
         Chunks = FrozenDictionary<ushort, InstructionChunk>.Empty;
-        Segments = FrozenDictionary<ushort, Func<ILEvmState, ILEvmState>>.Empty;
+        Segments = FrozenDictionary<ushort, ExecuteSegment>.Empty;
     }
 
     public IlInfo WithChunks(FrozenDictionary<ushort, InstructionChunk> chunks)
@@ -44,13 +45,13 @@ internal class IlInfo
         return this;
     }
 
-    public IlInfo WithSegments(FrozenDictionary<ushort, Func<ILEvmState, ILEvmState>> segments)
+    public IlInfo WithSegments(FrozenDictionary<ushort, ExecuteSegment> segments)
     {
         Segments = segments;
         return this;
     }
 
-    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, Func<ILEvmState , ILEvmState>> segments)
+    public IlInfo(FrozenDictionary<ushort, InstructionChunk> mappedOpcodes, FrozenDictionary<ushort, ExecuteSegment> segments)
     {
         Chunks = mappedOpcodes;
         Segments = segments;
@@ -58,11 +59,12 @@ internal class IlInfo
 
     // assumes small number of ILed
     public FrozenDictionary<ushort, InstructionChunk> Chunks { get; set; }
-    public FrozenDictionary<ushort, Func<ILEvmState, ILEvmState>> Segments { get; set; }
+    public FrozenDictionary<ushort, ExecuteSegment> Segments { get; set; }
 
-    public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, BlockHeader header, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack)
+    public bool TryExecute<TTracingInstructions>(EvmState vmState, IReleaseSpec spec, BlockHeader header, ref int programCounter, ref long gasAvailable, ref EvmStack<TTracingInstructions> stack, out bool shouldStop)
         where TTracingInstructions : struct, VirtualMachine.IIsTracing
     {
+        shouldStop = false;
         if (programCounter > ushort.MaxValue)
             return false;
 
@@ -79,7 +81,7 @@ internal class IlInfo
                 }
             case ILMode.SubsegmentsCompiling:
                 {
-                    if (Segments.TryGetValue((ushort)programCounter, out Func<ILEvmState, ILEvmState> method) == false)
+                    if (Segments.TryGetValue((ushort)programCounter, out ExecuteSegment method) == false)
                     {
                         return false;
                     }
@@ -87,15 +89,16 @@ internal class IlInfo
                     var ilvmState = new ILEvmState
                     {
                         GasAvailable = (int)gasAvailable,
-                        StackBytes = vmState.DataStack,
+                        Stack = vmState.DataStack,
                         Header = header,
                         ProgramCounter = (ushort)programCounter,
                     };
 
-                    ilvmState = method.Invoke(ilvmState);
+                    ilvmState = method.Invoke(ilvmState, ref vmState.Memory);
                     gasAvailable = ilvmState.GasAvailable;
-                    vmState.DataStack = ilvmState.StackBytes;
+                    vmState.DataStack = ilvmState.Stack.ToArray();
                     programCounter = ilvmState.ProgramCounter;
+                    shouldStop = ilvmState.StopExecution;
                     break;
                 }
         }
