@@ -125,7 +125,7 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 OpcodeInfo opcode = new OpcodeInfo(0, instruction, null);
                 try
                 {
-                    ILCompiler.CompileSegment(name, [opcode]);
+                    ILCompiler.CompileSegment(name, [opcode], []);
                 } catch (Exception e)
                 {
                     notYetImplemented.Add((instruction, e));
@@ -210,8 +210,9 @@ namespace Nethermind.Evm.Test.CodeAnalysis
                 StopExecution = false
             };
             var memory = new EvmPooledMemory();
-            var function = ILCompiler.CompileSegment("ILEVM_TEST", IlAnalyzer.StripByteCode(bytecode));
-            var il_result = function(iLEvmState, ref memory);
+            var metadata = IlAnalyzer.StripByteCode(bytecode);
+            var ctx = ILCompiler.CompileSegment("ILEVM_TEST", metadata.Item1, metadata.Item2);
+            var il_result = ctx.Method(iLEvmState, ref memory, ctx.Data);
             Assert.IsTrue(il_result.EvmException == EvmExceptionType.None);
         }
 

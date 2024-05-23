@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2023 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using Nethermind.Int256;
 using System;
 using System.Collections.Frozen;
 using System.Collections.Generic;
@@ -59,24 +60,26 @@ internal static class IlAnalyzer
         return Task.Run(() => Analysis(codeInfo, mode));
     }
 
-    public static OpcodeInfo[] StripByteCode(ReadOnlySpan<byte> machineCode)
+    public static (OpcodeInfo[], byte[][]) StripByteCode(ReadOnlySpan<byte> machineCode)
     {
         OpcodeInfo[] opcodes = new OpcodeInfo[machineCode.Length];
+        List<byte[]> data = new List<byte[]>();
         int j = 0;
         for (ushort i = 0; i < machineCode.Length; i++, j++)
         {
             Instruction opcode = (Instruction)machineCode[i];
-            byte[] args = null;
+            int? argsIndex = null;
             ushort pc = i;
             if (opcode is > Instruction.PUSH0 and <= Instruction.PUSH32)
             {
                 ushort immediatesCount = opcode - Instruction.PUSH0;
-                args = machineCode.Slice(i + 1, immediatesCount).ToArray();
+                data.Add(machineCode.SliceWithZeroPadding((UInt256)i + 1, immediatesCount, PadDirection.Left).ToArray());
+                argsIndex = data.Count - 1;
                 i += immediatesCount;
             }
-            opcodes[j] = new OpcodeInfo(pc, opcode, args.AsMemory());
+            opcodes[j] = new OpcodeInfo(pc, opcode, argsIndex);
         }
-        return opcodes[..j];
+        return (opcodes[..j], data.ToArray());
     }
 
     /// <summary>
@@ -86,18 +89,18 @@ internal static class IlAnalyzer
     {
         ReadOnlyMemory<byte> machineCode = codeInfo.MachineCode;
 
-        FrozenDictionary<ushort, ExecuteSegment> SegmentCode(OpcodeInfo[] codeData)
+        FrozenDictionary<ushort, SegmentExecutionCtx> SegmentCode((OpcodeInfo[], byte[][]) codeData)
         {
-            Dictionary<ushort, ExecuteSegment> opcodeInfos = [];
+            Dictionary<ushort, SegmentExecutionCtx> opcodeInfos = [];
 
             List<OpcodeInfo> segment = [];
-            foreach (var opcode in codeData)
+            foreach (var opcode in codeData.Item1)
             {
                 if (opcode.Operation.IsStateful())
                 {
                     if (segment.Count > 0)
                     {
-                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray()));
+                        opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
                         segment.Clear();
                     }
                 }
@@ -108,14 +111,14 @@ internal static class IlAnalyzer
             }
             if (segment.Count > 0)
             {
-                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray()));
+                opcodeInfos.Add(segment[0].ProgramCounter, ILCompiler.CompileSegment($"ILEVM_{Guid.NewGuid()}", segment.ToArray(), codeData.Item2));
             }
             return opcodeInfos.ToFrozenDictionary();
         }
 
         FrozenDictionary<ushort, InstructionChunk> CheckPatterns(ReadOnlyMemory<byte> machineCode)
         {
-            var strippedBytecode = StripByteCode(machineCode.Span);
+            var (strippedBytecode, data) = StripByteCode(machineCode.Span);
             var patternFound = new Dictionary<ushort, InstructionChunk>();
             foreach (var (pattern, mapping) in Patterns)
             {

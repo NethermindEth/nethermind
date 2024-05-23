@@ -21,8 +21,12 @@ using Nethermind.Evm.Tracing.GethStyle.Custom.Native.FourByte;
 namespace Nethermind.Evm.CodeAnalysis.IL;
 internal class ILCompiler
 {
-    public delegate ILEvmState ExecuteSegment(ILEvmState state, ref EvmPooledMemory memory);
-    public static ExecuteSegment CompileSegment(string segmentName, OpcodeInfo[] code)
+    public delegate ILEvmState ExecuteSegment(ILEvmState state, ref EvmPooledMemory memory, byte[][] immediatesData);
+    public class SegmentExecutionCtx {
+        public ExecuteSegment Method;
+        public byte[][] Data;
+    }
+    public static SegmentExecutionCtx CompileSegment(string segmentName, OpcodeInfo[] code, byte[][] data)
     {
         // code is optimistic assumes stack underflow and stack overflow to not occure (WE NEED EOF FOR THIS)
         // Note(Ayman) : What stops us from adopting stack analysis from EOF in ILVM?
@@ -187,16 +191,15 @@ internal class ILCompiler
                 case Instruction.PUSH30:
                 case Instruction.PUSH31:
                 case Instruction.PUSH32:
-                    // we create a span of 32 bytes, and we copy the bytes from the arguments to the span
-                    int count = (int)op.Operation - (int)Instruction.PUSH0;
-                    ZeroPaddedSpan bytes = new ZeroPaddedSpan(op.Arguments.Value.Span, 32 - count, PadDirection.Left);
-
                     // we load the currentSP
                     method.CleanWord(currentSP);
                     method.LoadLocal(currentSP);
 
                     // we load the span of bytes
-                    method.LoadArray(bytes.ToArray());
+                    method.LoadArgument(2);
+                    method.LoadConstant(op.Arguments.Value);
+                    method.LoadElement<byte[]>();
+                    method.Call(typeof(ReadOnlySpan<byte>).GetMethod("op_Implicit", new[] { typeof(byte[]) }));
                     method.StoreLocal(localReadonOnlySpan);
 
                     // we call UInt256 constructor taking a span of bytes and a bool
@@ -304,7 +307,7 @@ internal class ILCompiler
                 case Instruction.DUP14:
                 case Instruction.DUP15:
                 case Instruction.DUP16:
-                    count = (int)op.Operation - (int)Instruction.DUP1 + 1;
+                    int count = (int)op.Operation - (int)Instruction.DUP1 + 1;
                     method.LoadLocal(currentSP);
                     method.StackLoadPrevious(currentSP, count);
                     method.LoadObject(typeof(Word));
@@ -725,8 +728,12 @@ internal class ILCompiler
         method.LoadLocal(returnState);
         method.Return();
 
-        ExecuteSegment del = method.CreateDelegate();
-        return del;
+        ExecuteSegment dynEmitedDelegate = method.CreateDelegate();
+        return new SegmentExecutionCtx
+        {
+            Method = dynEmitedDelegate,
+            Data = data
+        };
     }
 
     private static void EmitComparaisonUInt256Method<T>(Emit<T> il, Local uint256R, Local currentSP, MethodInfo operation, params Local[] locals)

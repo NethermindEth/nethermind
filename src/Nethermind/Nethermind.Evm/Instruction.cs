@@ -368,12 +368,12 @@ namespace Nethermind.Evm
                 [Instruction.SELFDESTRUCT] = new(GasCostOf.SelfDestruct, 0, 1, 0),
             }.ToFrozenDictionary();
     }
-    public struct OpcodeInfo(ushort pc, Instruction instruction, ReadOnlyMemory<byte>? arguments)
+    public struct OpcodeInfo(ushort pc, Instruction instruction, int? argumentIndex)
     {
         public OpcodeMetadata? Metadata => OpcodeMetadata.Operations[instruction];
         public Instruction Operation => instruction;
         public ushort ProgramCounter => pc;
-        public ReadOnlyMemory<byte>? Arguments { get; set; } = arguments;
+        public int? Arguments { get; set; } = argumentIndex;
     }
 
     public static class InstructionExtensions
