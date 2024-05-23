@@ -20,6 +20,6 @@ public interface IVerkleSyncProvider
 
     void RetryRequest(VerkleSyncBatch batch);
 
-    bool IsVerkleGetRangesFinished();
+    bool IsGetRangesFinished();
     void UpdatePivot();
 }

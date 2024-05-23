@@ -146,7 +146,7 @@ public class VerkleSyncProvider : IVerkleSyncProvider
         }
     }
 
-    public bool IsVerkleGetRangesFinished() => _progressTracker.IsGetRangesFinished();
+    public bool IsGetRangesFinished() => _progressTracker.IsGetRangesFinished();
 
     public void UpdatePivot()
     {

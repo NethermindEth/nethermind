@@ -182,7 +182,7 @@ public class VerkleSyncFeed : SyncFeed<VerkleSyncBatch?>, IDisposable
         }
     }
 
-    public override bool IsFinished => _syncProvider.IsVerkleGetRangesFinished();
+    public override bool IsFinished => _syncProvider.IsGetRangesFinished();
 
     public void Dispose()
     {
