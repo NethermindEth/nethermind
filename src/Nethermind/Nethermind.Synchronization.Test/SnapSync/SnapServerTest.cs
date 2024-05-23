@@ -45,7 +45,7 @@ public class SnapServerTest
         IStateFactory stateFactory = new PaprikaStateFactory();
         ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
 
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
         return new Context()
         {
@@ -186,7 +186,7 @@ public class SnapServerTest
 
         IStateFactory stateFactory = new PaprikaStateFactory();
         ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
         (IOwnedReadOnlyList<PathWithStorageSlot[]> storageSlots, IOwnedReadOnlyList<byte[]>? proofs) =
             server.GetStorageRanges(InputStateTree.RootHash, new PathWithAccount[] { TestItem.Tree.AccountsWithPaths[0] },
@@ -215,7 +215,7 @@ public class SnapServerTest
 
         IStateFactory stateFactory = new PaprikaStateFactory();
         ProgressTracker progressTracker = new(null!, dbProviderClient.StateDb, stateFactory, LimboLogs.Instance);
-        SnapProvider snapProvider = new(progressTracker, dbProviderClient, stateFactory, LimboLogs.Instance);
+        SnapProvider snapProvider = new(progressTracker, dbProviderClient, LimboLogs.Instance);
 
         Hash256 startRange = Keccak.Zero;
         while (true)

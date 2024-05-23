@@ -28,11 +28,13 @@ namespace Nethermind.Synchronization.Test.SnapSync
     public class RecreateStateFromAccountRangesTests
     {
         private StateTree _inputTree;
+        private StateTree _inputTree_7;
 
         [OneTimeSetUp]
         public void Setup()
         {
-            _inputTree = TestItem.Tree.GetStateTree();
+            _inputTree = TestItem.Tree.GetStateTree(maxCount:6);
+            _inputTree_7 = TestItem.Tree.GetStateTree(maxCount:7);
         }
 
         private byte[][] CreateProofForPath(ReadOnlySpan<byte> path, StateTree tree = null)
@@ -119,8 +121,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
-            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            AddRangeResult result = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..6], firstProof!.Concat(lastProof!).ToArray());
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
@@ -140,14 +142,14 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
-            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths, firstProof!.Concat(lastProof!).ToArray());
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0..6], firstProof!.Concat(lastProof!).ToArray());
 
             IRawState rawState = progressTracker.GetSyncState();
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
             {
                 Account a = state.Get(item.Path);
                 Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
@@ -171,8 +173,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
-            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            var result = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[0].Path, TestItem.Tree.AccountsWithPaths[0..6]);
 
             Assert.That(result, Is.EqualTo(AddRangeResult.OK));
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we don't have the proofs so we persist all nodes
@@ -190,10 +192,11 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
+            IRawState rawState = progressTracker.GetSyncState();
 
             var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
 
@@ -206,6 +209,8 @@ namespace Nethermind.Synchronization.Test.SnapSync
             var result2 = snapProvider.AddAccountRange(1, rootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
             Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
 
+            rawState.Get(TestItem.Tree.AccountsWithPaths[4].Path);
+
             //Assert.That(db.Keys.Count, Is.EqualTo(5));  // we don't persist proof nodes (boundary nodes)
 
             firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
@@ -217,11 +222,106 @@ namespace Nethermind.Synchronization.Test.SnapSync
             //Assert.That(db.Keys.Count, Is.EqualTo(10));  // we persist proof nodes (boundary nodes) via stitching
             //Assert.IsFalse(db.KeyExists(rootHash));
 
-            IRawState rawState = progressTracker.GetSyncState();
+            //IRawState rawState = progressTracker.GetSyncState();
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
+        }
+
+        [Test]
+        public void RecreateAccountStateFromMultipleRange_PivotChange_High()
+        {
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            Hash256 newRootHash = _inputTree_7.RootHash;
+
+            // output state
+            MemDb db = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+
+            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
+            IRawState rawState = progressTracker.GetSyncState();
+
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, _inputTree_7);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes, _inputTree_7);
+
+            var result2 = snapProvider.AddAccountRange(1, newRootHash, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes, _inputTree_7);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[6].Path.Bytes, _inputTree_7);
+
+            var result3 = snapProvider.AddAccountRange(1, newRootHash, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..7], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+
+            rawState.Finalize(1);
+
+            var state = stateFactory.Get(newRootHash);
             foreach (var item in TestItem.Tree.AccountsWithPaths)
+            {
+                Account a = state.Get(item.Path);
+                Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
+                Assert.That(a?.Balance ?? 0, Is.EqualTo(item.Account.Balance));
+            }
+        }
+
+        [Test]
+        public void RecreateAccountStateFromMultipleRange_PivotChange_Low()
+        {
+            Hash256 rootHash = _inputTree.RootHash;   // "0x8c81279168edc449089449bc0f2136fc72c9645642845755633cf259cd97988b"
+            StateTree newPivotTree = TestItem.Tree.GetStateTree();
+            newPivotTree.Set(TestItem.Tree.AccountAddress0, TestItem.Tree.Account10);
+            newPivotTree.Commit(1);
+            Hash256 rootHashNew = newPivotTree.RootHash;
+
+            // output state
+            MemDb db = new();
+            DbProvider dbProvider = new();
+            dbProvider.RegisterDb(DbNames.State, db);
+            IStateFactory stateFactory = new PaprikaStateFactory();
+            ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
+            IRawState rawState = progressTracker.GetSyncState();
+
+            byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
+            byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
+
+            var result1 = snapProvider.AddAccountRange(1, rootHash, Keccak.Zero, TestItem.Tree.AccountsWithPaths[0..2], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.That(result1, Is.EqualTo(AddRangeResult.OK));
+
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, newPivotTree);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[3].Path.Bytes, newPivotTree);
+
+            var result2 = snapProvider.AddAccountRange(1, rootHashNew, TestItem.Tree.AccountsWithPaths[2].Path, TestItem.Tree.AccountsWithPaths[2..4], firstProof!.Concat(lastProof!).ToArray());
+            Assert.That(result2, Is.EqualTo(AddRangeResult.OK));
+
+            firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes, newPivotTree);
+            lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes, newPivotTree);
+
+            var result3 = snapProvider.AddAccountRange(1, rootHashNew, TestItem.Tree.AccountsWithPaths[4].Path, TestItem.Tree.AccountsWithPaths[4..6], firstProof!.Concat(lastProof!).ToArray());
+
+            Assert.That(result3, Is.EqualTo(AddRangeResult.OK));
+
+            rawState.Finalize(1);
+
+            var state = stateFactory.Get(rootHashNew);
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
             {
                 Account a = state.Get(item.Path);
                 Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
@@ -240,7 +340,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -268,7 +368,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
             {
                 Account a = state.Get(item.Path);
                 Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
@@ -287,7 +387,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[4].Path.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[5].Path.Bytes);
@@ -315,7 +415,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             rawState.Finalize(200);
 
             var state = stateFactory.Get(rootHash);
-            foreach (var item in TestItem.Tree.AccountsWithPaths)
+            foreach (var item in TestItem.Tree.AccountsWithPaths[0..6])
             {
                 Account a = state.Get(item.Path);
                 Assert.That((item.Account.IsTotallyEmpty && a is null) || (!item.Account.IsTotallyEmpty && a is not null), Is.True);
@@ -334,7 +434,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[2].Path.Bytes);
@@ -379,7 +479,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
@@ -389,27 +489,27 @@ namespace Nethermind.Synchronization.Test.SnapSync
 
             PathWithAccount[] receiptAccounts = TestItem.Tree.AccountsWithPaths[0..2];
 
-            //bool HasMoreChildren(ValueHash256 limitHash)
-            //{
-            //    (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueHash256> _) =
-            //        SnapProviderHelper.AddAccountRange(newTree, 0, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
-            //    return moreChildrenToRight;
-            //}
+            bool HasMoreChildren(ValueHash256 limitHash)
+            {
+                (AddRangeResult _, bool moreChildrenToRight, IList<PathWithAccount> _, IList<ValueHash256> _) =
+                    SnapProviderHelper.AddAccountRange(progressTracker.GetSyncState(), 1, rootHash, Keccak.Zero, limitHash.ToCommitment(), receiptAccounts, proofs);
+                return moreChildrenToRight;
+            }
 
-            //HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path).Should().BeFalse();
-            //HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeFalse();
-            //HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
-            //HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
+            HasMoreChildren(TestItem.Tree.AccountsWithPaths[1].Path).Should().BeFalse();
+            HasMoreChildren(TestItem.Tree.AccountsWithPaths[2].Path).Should().BeFalse();
+            HasMoreChildren(TestItem.Tree.AccountsWithPaths[3].Path).Should().BeTrue();
+            HasMoreChildren(TestItem.Tree.AccountsWithPaths[4].Path).Should().BeTrue();
 
-            //UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
-            //between2and3 += 5;
+            UInt256 between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[1].Path.Bytes, true);
+            between2and3 += 5;
 
-            //HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+            HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
 
-            //between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
-            //between2and3 -= 1;
+            between2and3 = new UInt256(TestItem.Tree.AccountsWithPaths[2].Path.Bytes, true);
+            between2and3 -= 1;
 
-            //HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
+            HasMoreChildren(new Hash256(between2and3.ToBigEndian())).Should().BeFalse();
         }
 
         [Test]
@@ -434,7 +534,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(ac1.Path.Bytes, tree);
             byte[][] lastProof = CreateProofForPath(ac2.Path.Bytes, tree);
@@ -474,7 +574,7 @@ namespace Nethermind.Synchronization.Test.SnapSync
             dbProvider.RegisterDb(DbNames.State, db);
             IStateFactory stateFactory = new PaprikaStateFactory();
             ProgressTracker progressTracker = new(null, dbProvider.GetDb<IDb>(DbNames.State), stateFactory, LimboLogs.Instance);
-            SnapProvider snapProvider = new(progressTracker, dbProvider, stateFactory, LimboLogs.Instance);
+            SnapProvider snapProvider = new(progressTracker, dbProvider, LimboLogs.Instance);
 
             byte[][] firstProof = CreateProofForPath(Keccak.Zero.Bytes);
             byte[][] lastProof = CreateProofForPath(TestItem.Tree.AccountsWithPaths[1].Path.Bytes);
