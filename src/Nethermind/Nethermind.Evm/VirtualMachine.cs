@@ -408,11 +408,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                             InsertCode(code, callCodeOwner, spec);
 
                             currentState.GasAvailable -= codeDepositGasCost;
+                            gasAvailableForCodeDeposit -= codeDepositGasCost;
 
                             // TODO: check if here we need to deduct gas from currentGas.GasAvailable or gasForCodeDeposit?
                             // Are they even different?
                             long contractCreationCompleteGas = currentState.Env.Witness.AccessForContractCreated(callCodeOwner);
-                            if (currentState.GasAvailable >= contractCreationCompleteGas)
+                            if (gasAvailableForCodeDeposit >= contractCreationCompleteGas)
                             {
                                 currentState.GasAvailable -= contractCreationCompleteGas;
                                 if (typeof(TTracingActions) == typeof(IsTracing))
