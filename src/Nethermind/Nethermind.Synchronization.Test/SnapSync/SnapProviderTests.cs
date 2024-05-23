@@ -4,6 +4,7 @@
 using FluentAssertions;
 using Nethermind.Blockchain;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Db;
 using Nethermind.Logging;
 using Nethermind.State.Snap;
@@ -50,8 +51,8 @@ public class SnapProviderTests
         dbProvider.RegisterDb(DbNames.Code, new MemDb());
         AccountRange accountRange = new(Keccak.Zero, Keccak.Zero, Keccak.MaxValue);
         using AccountsAndProofs accountsAndProofs = new();
-        accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToUnpooledList();
-        accountsAndProofs.Proofs = new List<byte[]> { new byte[] { 0x0 } }.ToUnpooledList();
+        accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToPooledList();
+        accountsAndProofs.Proofs = new List<byte[]> { new byte[] { 0x0 } }.ToPooledList();
 
         SnapProvider sut = new(progressTracker, dbProvider.CodeDb, new NodeStorage(dbProvider.StateDb), LimboLogs.Instance);
 
