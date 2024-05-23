@@ -49,7 +49,7 @@ public class SnapProviderTests
         using ProgressTracker progressTracker = new(Substitute.For<IBlockTree>(), dbProvider.GetDb<IDb>(DbNames.State), LimboLogs.Instance);
         dbProvider.RegisterDb(DbNames.Code, new MemDb());
         AccountRange accountRange = new(Keccak.Zero, Keccak.Zero, Keccak.MaxValue);
-        AccountsAndProofs accountsAndProofs = new();
+        using AccountsAndProofs accountsAndProofs = new();
         accountsAndProofs.PathAndAccounts = new List<PathWithAccount>().ToUnpooledList();
         accountsAndProofs.Proofs = new List<byte[]> { new byte[] { 0x0 } }.ToUnpooledList();
 
