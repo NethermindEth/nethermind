@@ -180,7 +180,7 @@ public class EthSimulateTestsPrecompilesWithRedirection
         //will mock our GetCachedCodeInfo function - it shall be called 3 times if redirect is working, 2 times if not
         SimulateTxExecutor executor = new(chain.Bridge, chain.BlockFinder, new JsonRpcConfig(), new BlocksConfig().SecondsPerSlot);
 
-        Debug.Assert(contractAddress is not null, nameof(contractAddress) + " != null");
+        Debug.Assert(contractAddress is not null, nameof(contractAddress) + " is not null");
         Assert.IsTrue(chain.State.AccountExists(contractAddress));
 
         ResultWrapper<IReadOnlyList<SimulateBlockResult>> result = executor.Execute(payload, BlockParameter.Latest);

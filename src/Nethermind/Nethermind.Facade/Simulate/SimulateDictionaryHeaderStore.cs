@@ -19,8 +19,8 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
     // SyncProgressResolver MaxLookupBack is 256, add 16 wiggle room
     public const int CacheSize = 256 + 16;
 
-    private readonly Dictionary<Hash256, BlockHeader> _headerDict = new();
-    private readonly Dictionary<Hash256, long> _blockNumberDict = new();
+    private readonly Dictionary<Hash256AsKey, BlockHeader> _headerDict = new();
+    private readonly Dictionary<Hash256AsKey, long> _blockNumberDict = new();
 
     public void Insert(BlockHeader header)
     {
@@ -30,12 +30,12 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public BlockHeader? Get(Hash256 blockHash, bool shouldCache = false, long? blockNumber = null)
     {
-        if (blockNumber == null)
+        if (blockNumber is null)
         {
             blockNumber = GetBlockNumber(blockHash);
         }
 
-        if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out var header))
+        if (blockNumber.HasValue && _headerDict.TryGetValue(blockHash, out BlockHeader? header))
         {
             if (shouldCache)
             {
@@ -44,8 +44,8 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
             return header;
         }
 
-        header = readonlyBaseHeaderStore.Get(blockHash, shouldCache, blockNumber);
-        if (header != null && shouldCache)
+        header = readonlyBaseHeaderStore.Get(blockHash, false, blockNumber);
+        if (header is not null && shouldCache)
         {
             Cache(header);
         }
@@ -70,11 +70,6 @@ public class SimulateDictionaryHeaderStore(IHeaderStore readonlyBaseHeaderStore)
 
     public long? GetBlockNumber(Hash256 blockHash)
     {
-        if (_blockNumberDict.TryGetValue(blockHash, out var blockNumber))
-        {
-            return blockNumber;
-        }
-
-        return readonlyBaseHeaderStore.GetBlockNumber(blockHash);
+        return _blockNumberDict.TryGetValue(blockHash, out var blockNumber) ? blockNumber : readonlyBaseHeaderStore.GetBlockNumber(blockHash);
     }
 }

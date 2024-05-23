@@ -15,7 +15,7 @@ using Nethermind.JsonRpc.Data;
 
 namespace Nethermind.JsonRpc.Modules.Eth;
 
-public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong _secondsPerSlot)
+public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder blockFinder, IJsonRpcConfig rpcConfig, ulong? secondsPerSlot = null)
     : ExecutorBase<IReadOnlyList<SimulateBlockResult>, SimulatePayload<TransactionForRpc>,
     SimulatePayload<TransactionWithSourceDetails>>(blockchainBridge, blockFinder, rpcConfig)
 {
@@ -96,6 +96,8 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
                 $"Too many blocks provided, node is configured to simulate up to {_blocksLimit} while {call.BlockStateCalls?.Count} were given",
                 ErrorCodes.InvalidParams);
 
+        secondsPerSlot ??= new BlocksConfig().SecondsPerSlot;
+
         if (call.BlockStateCalls is not null)
         {
             long lastBlockNumber = -1;
@@ -126,8 +128,8 @@ public class SimulateTxExecutor(IBlockchainBridge blockchainBridge, IBlockFinder
 
                 ulong givenTime = blockToSimulate.BlockOverrides.Time ??
                                   (lastBlockTime == 0
-                                      ? header.Timestamp + _secondsPerSlot
-                                      : lastBlockTime + _secondsPerSlot);
+                                      ? header.Timestamp + secondsPerSlot.Value
+                                      : lastBlockTime + secondsPerSlot.Value);
 
                 if (givenTime > lastBlockTime)
                 {
