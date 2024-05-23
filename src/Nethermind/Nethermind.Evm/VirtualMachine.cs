@@ -36,14 +36,16 @@ using System.Collections.Frozen;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
-
+using System.Threading.Tasks;
 using Int256;
+
+using Nethermind.Core.Collections;
 
 public class VirtualMachine : IVirtualMachine
 {
     public const int MaxCallDepth = 1024;
     internal static FrozenDictionary<AddressAsKey, CodeInfo> PrecompileCode { get; } = InitializePrecompiledContracts();
-    internal static LruCache<ValueHash256, CodeInfo> CodeCache { get; } = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
+    internal static CodeLruCache CodeCache { get; } = new();
 
     private readonly static UInt256 P255Int = (UInt256)System.Numerics.BigInteger.Pow(2, 255);
     internal static ref readonly UInt256 P255 => ref P255Int;
@@ -181,6 +183,37 @@ public class VirtualMachine : IVirtualMachine
     public interface IIsTracing { }
     public readonly struct NotTracing : IIsTracing { }
     public readonly struct IsTracing : IIsTracing { }
+
+    internal sealed class CodeLruCache
+    {
+        private const int CacheCount = 16;
+        private const int CacheMax = CacheCount - 1;
+        private readonly LruCache<ValueHash256, CodeInfo>[] _caches;
+
+        public CodeLruCache()
+        {
+            _caches = new LruCache<ValueHash256, CodeInfo>[CacheCount];
+            for (int i = 0; i < _caches.Length; i++)
+            {
+                // Cache per nibble to reduce contention as TxPool is very parallel
+                _caches[i] = new LruCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+            }
+        }
+
+        public CodeInfo Get(in ValueHash256 codeHash)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Get(codeHash);
+        }
+
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Set(codeHash, codeInfo);
+        }
+
+        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+    }
 }
 
 internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : struct, IIsTracing
