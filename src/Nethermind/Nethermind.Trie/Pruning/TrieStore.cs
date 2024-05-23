@@ -649,7 +649,8 @@ namespace Nethermind.Trie.Pruning
                                 Stopwatch sw = Stopwatch.StartNew();
                                 if (_logger.IsDebug) _logger.Debug($"Locked {nameof(TrieStore)} for pruning.");
 
-                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(MemoryUsedByDirtyCache))
+                                long memoryUsedByDirtyCache = MemoryUsedByDirtyCache;
+                                if (!_pruningTaskCancellationTokenSource.IsCancellationRequested && _pruningStrategy.ShouldPrune(memoryUsedByDirtyCache))
                                 {
                                     // Most of the time in memory pruning is on `PrunePersistedRecursively`. So its
                                     // usually faster to just SaveSnapshot causing most of the entry to be persisted.
@@ -667,10 +668,10 @@ namespace Nethermind.Trie.Pruning
                                     SaveSnapshot();
 
                                     PruneCache();
-                                }
 
-                                Metrics.PruningTime = sw.ElapsedMilliseconds;
-                                if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds.");
+                                    Metrics.PruningTime = sw.ElapsedMilliseconds;
+                                    if (_logger.IsInfo) _logger.Info($"Executed memory prune. Took {sw.Elapsed.TotalSeconds:0.##} seconds. From {memoryUsedByDirtyCache / 1.MiB()}MB to {MemoryUsedByDirtyCache / 1.MiB()}MB");
+                                }
                             }
                         }
 
