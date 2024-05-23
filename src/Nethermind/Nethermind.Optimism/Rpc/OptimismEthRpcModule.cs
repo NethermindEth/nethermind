@@ -1,12 +1,14 @@
 // SPDX-FileCopyrightText: 2024 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Crypto;
+using Nethermind.Evm;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
@@ -14,6 +16,7 @@ using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Data;
+using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
 using Nethermind.Serialization.Rlp;
 using Nethermind.State.Proofs;
@@ -21,7 +24,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismEthRpcModule : IEthRpcModule
+public class OptimismEthRpcModule : IOptimismEthRpcModule
 {
     private readonly IEthRpcModule _ethRpcModule;
     private readonly IJsonRpcClient? _sequencerRpcClient;
@@ -121,9 +124,10 @@ public class OptimismEthRpcModule : IEthRpcModule
         return _ethRpcModule.eth_getBlockTransactionCountByNumber(blockParameter);
     }
 
-    public ResultWrapper<ReceiptForRpc[]> eth_getBlockReceipts(BlockParameter blockParameter)
+    public ResultWrapper<OptimismReceiptForRpc?[]> eth_getBlockReceipts(BlockParameter blockParameter)
     {
-        return _ethRpcModule.eth_getBlockReceipts(blockParameter);
+        throw new NotImplementedException();
+        // return _ethRpcModule.eth_getBlockReceipts(blockParameter);
     }
 
     public ResultWrapper<UInt256?> eth_getUncleCountByBlockHash(Hash256 blockHash)
@@ -226,10 +230,22 @@ public class OptimismEthRpcModule : IEthRpcModule
         return _ethRpcModule.eth_getTransactionByBlockNumberAndIndex(blockParameter, positionIndex);
     }
 
-    public Task<ResultWrapper<ReceiptForRpc>> eth_getTransactionReceipt(Hash256 txHashData)
+    public Task<ResultWrapper<OptimismReceiptForRpc?>> eth_getTransactionReceipt(Hash256 txHashData)
     {
-        return _ethRpcModule.eth_getTransactionReceipt(txHashData);
+        (TxReceipt? receipt, TxGasInfo? gasInfo, int logIndexStart) =
+            _blockchainBridge.GetReceiptAndGasInfo(txHashData);
+        if (receipt is null || gasInfo is null)
+        {
+            return Task.FromResult(ResultWrapper<OptimismReceiptForRpc?>.Success(null));
+        }
+
+        // SearchResult<Block> block = _blockFinder.SearchForBlock(new(receipt.BlockHash!));
+        L1GasInfo l1GasInfo = new();
+
+        return Task.FromResult(ResultWrapper<OptimismReceiptForRpc?>.Success(
+            new(txHashData, new OptimismTxReceipt(receipt), gasInfo.Value, l1GasInfo, logIndexStart)));
     }
+
 
     public ResultWrapper<BlockForRpc> eth_getUncleByBlockHashAndIndex(Hash256 blockHashData, UInt256 positionIndex)
     {

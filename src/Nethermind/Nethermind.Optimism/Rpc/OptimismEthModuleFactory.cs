@@ -11,7 +11,7 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Optimism;
 
-public class OptimismEthModuleFactory : ModuleFactoryBase<IEthRpcModule>
+public class OptimismEthModuleFactory : ModuleFactoryBase<IOptimismEthRpcModule>
 {
     private readonly ModuleFactoryBase<IEthRpcModule> _ethModuleFactory;
     private readonly BasicJsonRpcClient? _sequencerRpcClient;
@@ -32,7 +32,7 @@ public class OptimismEthModuleFactory : ModuleFactoryBase<IEthRpcModule>
         _sealer = sealer;
     }
 
-    public override IEthRpcModule Create()
+    public override IOptimismEthRpcModule Create()
     {
         return new OptimismEthRpcModule(_ethModuleFactory.Create(), _sequencerRpcClient, _blockchainBridge,
             _accountStateProvider, _ecdsa, _sealer);

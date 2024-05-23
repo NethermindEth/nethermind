@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Api;
 using Nethermind.Init.Steps;
+using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
@@ -18,15 +19,17 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
     private readonly OptimismNethermindApi _api;
     private readonly ILogger _logger;
     private readonly IOptimismConfig _config;
+    private readonly IJsonRpcConfig _jsonRpcConfig;
 
     public RegisterOptimismRpcModules(INethermindApi api) : base(api)
     {
         _api = (OptimismNethermindApi)api;
         _config = _api.Config<IOptimismConfig>();
         _logger = _api.LogManager.GetClassLogger();
+        _jsonRpcConfig = _api.Config<IJsonRpcConfig>();
     }
 
-    protected override ModuleFactoryBase<IEthRpcModule> CreateEthModuleFactory()
+    protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
@@ -39,15 +42,18 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
             _logger.Warn($"SequencerUrl is not set.");
         }
 
-        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = base.CreateEthModuleFactory();
         BasicJsonRpcClient? sequencerJsonRpcClient = _config.SequencerUrl is null
             ? null
             : new(new Uri(_config.SequencerUrl), _api.EthereumJsonSerializer, _api.LogManager);
+        ModuleFactoryBase<IEthRpcModule> ethModuleFactory = CreateEthModuleFactory();
 
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
         TxSealer sealer = new(txSigner, _api.Timestamper);
 
-        return new OptimismEthModuleFactory(ethModuleFactory, sequencerJsonRpcClient, _api.CreateBlockchainBridge(),
-            _api.WorldState, _api.EthereumEcdsa, sealer);
+        ModuleFactoryBase<IOptimismEthRpcModule> optimismEthModuleFactory = new OptimismEthModuleFactory(
+            ethModuleFactory, sequencerJsonRpcClient, _api.CreateBlockchainBridge(), _api.WorldState, _api.EthereumEcdsa, sealer);
+
+        rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
+            _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
     }
 }
