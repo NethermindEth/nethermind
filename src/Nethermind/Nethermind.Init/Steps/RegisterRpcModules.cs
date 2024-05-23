@@ -73,8 +73,7 @@ public class RegisterRpcModules : IStep
 
         IInitConfig initConfig = _api.Config<IInitConfig>();
         INetworkConfig networkConfig = _api.Config<INetworkConfig>();
-        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
-        ulong SecondsPerSlot = blockConfig.SecondsPerSlot;
+
 
         // lets add threads to support parallel eth_getLogs
         ThreadPool.GetMinThreads(out int workerThreads, out int completionPortThreads);
@@ -227,9 +226,14 @@ public class RegisterRpcModules : IStep
         StepDependencyException.ThrowIfNull(_api.StateReader);
         StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
 
         var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
         _api.DisposeStack.Push(feeHistoryOracle);
+
+        IBlocksConfig blockConfig = _api.Config<IBlocksConfig>();
+        ulong secondsPerSlot = blockConfig.SecondsPerSlot;
+
         return new EthModuleFactory(
             _api.TxPool,
             _api.TxSender,
@@ -243,6 +247,7 @@ public class RegisterRpcModules : IStep
             _api.ReceiptStorage,
             _api.GasPriceOracle,
             _api.EthSyncingInfo,
-            feeHistoryOracle);
+            feeHistoryOracle,
+            secondsPerSlot);
     }
 }

@@ -10,6 +10,7 @@ using Nethermind.Crypto;
 using Nethermind.Facade;
 using Nethermind.Facade.Eth;
 using Nethermind.Facade.Filters;
+using Nethermind.Facade.Proxy.Models.Simulate;
 using Nethermind.Int256;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -183,6 +184,11 @@ public class OptimismEthRpcModule : IEthRpcModule
     public ResultWrapper<string> eth_call(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
     {
         return _ethRpcModule.eth_call(transactionCall, blockParameter);
+    }
+
+    public ResultWrapper<IReadOnlyList<SimulateBlockResult>> eth_simulateV1(SimulatePayload<TransactionForRpc> payload, BlockParameter? blockParameter = null)
+    {
+        return _ethRpcModule.eth_simulateV1(payload, blockParameter);
     }
 
     public ResultWrapper<UInt256?> eth_estimateGas(TransactionForRpc transactionCall, BlockParameter? blockParameter = null)
