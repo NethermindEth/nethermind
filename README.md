@@ -32,8 +32,8 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 
 #### Install using PPA
 
-1. `sudo add-apt-repository ppa:nethermindeth/nethermind` \
-   If command not found: `sudo apt-get install software-properties-common`
+1. `sudo add-apt-repository ppa:nethermindeth/nethermind`
+   - If command not found: `sudo apt-get install software-properties-common`
 2. `sudo apt-get install nethermind`
 3. `nethermind -c mainnet`
 
@@ -43,76 +43,5 @@ Release builds are available on the [Releases page](https://github.com/nethermin
 
 In some cases, [Visual C++ Redistributable](https://aka.ms/vcredist) may need an update:
 
-```
+```sh
 winget install Microsoft.VCRedist.2015+.x64
-```
-
-#### Install using Windows Package Manager
-
-1. `winget install nethermind`
-2. `nethermind -c mainnet`
-
-### On macOS
-
-#### Install using Homebrew
-
-1. `brew tap nethermindeth/nethermind`
-2. `brew install nethermind`
-3. `nethermind -c mainnet`
-
-## Docker image
-
-The official Docker images of Nethermind are available on [Docker Hub](https://hub.docker.com/r/nethermind/nethermind).
-
-### Get the digest of the Docker image
-
-In case of any Docker image need to be updated in the repository, you can update the digest of these images as follows:
-
-```sh
-docker inspect --format='{{index .RepoDigests 0}}' <image_name>
-```
-
-The output should show the image digest, and then you can copy that to the `FROM` tag in the Dockerfile.
-
-## Building from source
-
-### Prerequisites
-
-Install [.NET SDK](https://dotnet.microsoft.com/en-us/download).
-
-### Clone the repository
-
-```sh
-git clone --recursive https://github.com/nethermindeth/nethermind.git
-```
-
-### Build and run
-
-```sh
-cd nethermind/src/Nethermind/Nethermind.Runner
-dotnet run -c release -- -c mainnet
-```
-
-### Test
-
-```sh
-cd nethermind/src/Nethermind
-
-# Run Nethermind tests:
-dotnet test Nethermind.sln -c release
-
-# Run Ethereum Foundation tests:
-dotnet test EthereumTests.sln -c release
-```
-
-## Contributing
-
-BEFORE you start work on a feature or fix, please read and follow our [contribution guide](https://github.com/nethermindeth/nethermind/blob/master/CONTRIBUTING.md) to help avoid any wasted or duplicate effort.
-
-## Security 
-
-If you believe you have found a security vulnerability in our code, please report it to us as described in our [security policy](SECURITY.md).
-
-## License
-
-Nethermind is an open-source software licensed under the [LGPL-3.0](https://github.com/nethermindeth/nethermind/blob/master/LICENSE-LGPL).
