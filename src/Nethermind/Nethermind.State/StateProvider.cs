@@ -818,6 +818,7 @@ namespace Nethermind.State
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();
             _intraTxCache.Reset();
+            _preBlockCache?.Clear();
             _committedThisRound.Reset();
             _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;

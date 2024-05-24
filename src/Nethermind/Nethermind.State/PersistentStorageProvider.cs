@@ -72,6 +72,7 @@ namespace Nethermind.State
             base.Reset();
             _blockCache.Clear();
             _storages.Reset();
+            _preBlockCache?.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();
