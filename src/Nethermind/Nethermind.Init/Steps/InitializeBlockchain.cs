@@ -219,11 +219,13 @@ namespace Nethermind.Init.Steps
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
             if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
-
+            IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
 
             PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
-            ReadOnlyTxProcessingEnvFactory readOnlyTxProcessingEnvFactory = new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches);
+            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
+                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.LogManager, preBlockCaches)
+                : null;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -233,7 +235,7 @@ namespace Nethermind.Init.Steps
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
                 _api.LogManager,
-                preWarmer: new BlockCachePreWarmer(readOnlyTxProcessingEnvFactory, _api.LogManager, preBlockCaches)
+                preWarmer: preWarmer
             );
         }
 

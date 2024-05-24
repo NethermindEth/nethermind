@@ -156,6 +156,7 @@ public partial class BlockProcessor : IBlockProcessor
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
+            _preWarmer?.ClearCaches();
             throw;
         }
     }

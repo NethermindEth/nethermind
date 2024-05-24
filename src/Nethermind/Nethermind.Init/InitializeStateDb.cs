@@ -10,6 +10,7 @@ using Nethermind.Api;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.FullPruning;
 using Nethermind.Blockchain.Synchronization;
+using Nethermind.Config;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -52,6 +53,7 @@ public class InitializeStateDb : IStep
         ISyncConfig syncConfig = getApi.Config<ISyncConfig>();
         IPruningConfig pruningConfig = getApi.Config<IPruningConfig>();
         IInitConfig initConfig = getApi.Config<IInitConfig>();
+        IBlocksConfig blockConfig = getApi.Config<IBlocksConfig>();
 
         _api.NodeStorageFactory.DetectCurrentKeySchemeFrom(getApi.DbProvider.StateDb);
 
@@ -128,7 +130,7 @@ public class InitializeStateDb : IStep
         // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
-        PreBlockCaches preBlockCaches = new();
+        PreBlockCaches? preBlockCaches = blockConfig.PreWarmStateOnBlockProcessing ? new() : null;
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 trieStore,

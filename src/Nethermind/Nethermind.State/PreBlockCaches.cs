@@ -11,6 +11,8 @@ public class PreBlockCaches
     public NonBlocking.ConcurrentDictionary<StorageCell, byte[]> StorageCache { get; } = new(Environment.ProcessorCount, 4096);
     public NonBlocking.ConcurrentDictionary<AddressAsKey, Account> StateCache { get; } = new(Environment.ProcessorCount, 4096);
 
+    public bool IsDirty => StorageCache.Count > 0 || StateCache.Count > 0;
+
     public void Clear()
     {
         StorageCache.Clear();

@@ -26,9 +26,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
     {
         if (preBlockCaches is not null)
         {
-            if (preBlockCaches.StateCache.Count > 0 || preBlockCaches.StorageCache.Count > 0)
+            if (preBlockCaches.IsDirty)
             {
-                _logger.Warn("Cashes are not empty. Clearing them.");
+                if (_logger.IsWarn) _logger.Warn("Cashes are not empty. Clearing them.");
                 preBlockCaches.Clear();
             }
 
@@ -41,6 +41,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
         return Task.CompletedTask;
     }
+
+    public void ClearCaches() => preBlockCaches?.Clear();
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {
