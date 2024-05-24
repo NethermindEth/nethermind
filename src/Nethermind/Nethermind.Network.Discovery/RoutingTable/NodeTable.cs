@@ -128,13 +128,10 @@ public class NodeTable : INodeTable
                     return true;
                 }
             }
-            catch (NullReferenceException)
-            {
-                // TODO: investigate why this happens
-            }
-            finally
+            catch
             {
                 _itemEnumerator.Dispose();
+                throw;
             }
 
             return false;
@@ -142,7 +139,7 @@ public class NodeTable : INodeTable
 
         void IEnumerator.Reset() => throw new NotSupportedException();
 
-        public void Dispose() { }
+        public void Dispose() => _itemEnumerator.Dispose();
 
         public ClosestNodesEnumerator GetEnumerator() => this;
 
