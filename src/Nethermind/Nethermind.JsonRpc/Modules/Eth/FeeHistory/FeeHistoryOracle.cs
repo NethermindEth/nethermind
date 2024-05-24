@@ -52,6 +52,7 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 if (ShouldCache(e.Block))
                 {
                     SaveHistorySearchInfo(e.Block);
+                    TryRunCleanup(_blockTree.Head?.Number ?? 0);
                 }
             });
         }
@@ -190,7 +191,14 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
                 historyInfo = info.ParentHash is null ? null : GetHistorySearchInfo(info.ParentHash, info.BlockNumber - 1);
             }
 
-            long headNumber = _blockTree.Head?.Number ?? 0;
+            TryRunCleanup(_blockTree.Head?.Number ?? 0);
+
+            return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas,
+                gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
+        }
+
+        private void TryRunCleanup(long headNumber)
+        {
             long lastCleanupHeadBlockNumber = _lastCleanupHeadBlockNumber;
             if (lastCleanupHeadBlockNumber != headNumber
                 && _feeHistoryCache.Count > 2 * MaxBlockCount // let's let the cache grow a bit and do less cleanup
@@ -199,9 +207,6 @@ namespace Nethermind.JsonRpc.Modules.Eth.FeeHistory
             {
                 _cleanupTask = Task.Run(CleanupCache);
             }
-
-            return ResultWrapper<FeeHistoryResults>.Success(new(oldestBlockNumber, baseFeePerGas,
-                gasUsedRatio, baseFeePerBlobGas, blobGasUsedRatio, rewards));
         }
 
         private void CleanupCache()
