@@ -136,7 +136,6 @@ namespace Nethermind.Evm.TransactionProcessing
             // Finalize
             if (restore)
             {
-                WorldState.Reset();
                 if (deleteCallerAccount)
                 {
                     WorldState.DeleteAccount(tx.SenderAddress);
@@ -151,6 +150,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     WorldState.Commit(spec);
                 }
 
+                WorldState.Reset();
             }
             else if (commit)
             {
