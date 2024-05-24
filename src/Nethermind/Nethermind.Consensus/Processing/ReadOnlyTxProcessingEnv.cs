@@ -56,7 +56,7 @@ namespace Nethermind.Consensus.Processing
 
         public void Reset()
         {
-            StateProvider.Reset(resetSharedCache: false);
+            StateProvider.Reset();
         }
     }
 }

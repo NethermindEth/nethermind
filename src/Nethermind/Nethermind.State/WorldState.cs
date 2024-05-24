@@ -103,10 +103,10 @@ namespace Nethermind.State
         {
             _transientStorageProvider.Set(storageCell, newValue);
         }
-        public void Reset(bool resetSharedCache = true)
+        public void Reset()
         {
-            _stateProvider.Reset(resetSharedCache);
-            _persistentStorageProvider.Reset(resetSharedCache);
+            _stateProvider.Reset();
+            _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
         }
 

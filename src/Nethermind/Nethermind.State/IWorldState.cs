@@ -54,7 +54,7 @@ public interface IWorldState : IJournal<Snapshot>, IReadOnlyStateProvider
     /// <summary>
     /// Reset all storage
     /// </summary>
-    void Reset(bool resetSharedCache = true);
+    void Reset();
 
     /// <summary>
     /// Creates a restartable snapshot.

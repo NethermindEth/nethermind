@@ -813,12 +813,12 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset(bool resetSharedCache = true)
+        public void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();
             _intraTxCache.Reset();
-            if (resetSharedCache) _preBlockCache?.Clear();
+            _preBlockCache?.Clear();
             _committedThisRound.Reset();
             _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;

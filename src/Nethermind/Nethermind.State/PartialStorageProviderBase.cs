@@ -209,7 +209,7 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public virtual void Reset(bool resetSharedCache = true)
+        public virtual void Reset()
         {
             if (_logger.IsTrace) _logger.Trace("Resetting storage");
 

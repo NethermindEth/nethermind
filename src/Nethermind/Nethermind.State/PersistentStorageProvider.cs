@@ -67,12 +67,12 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public override void Reset(bool resetSharedCache)
+        public override void Reset()
         {
             base.Reset();
             _blockCache.Clear();
             _storages.Reset();
-            if (resetSharedCache) _preBlockCache?.Clear();
+            _preBlockCache?.Clear();
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();
