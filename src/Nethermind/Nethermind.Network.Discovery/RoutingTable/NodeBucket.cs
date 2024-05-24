@@ -81,11 +81,11 @@ public class NodeBucket
 
         public void Dispose()
         {
-            if (_nodeBucket is not null)
+            NodeBucket? nodeBucket = Interlocked.Exchange(ref _nodeBucket, null!);
+            if (nodeBucket is not null)
             {
-                Monitor.Exit(_nodeBucket._nodeBucketLock);
+                Monitor.Exit(nodeBucket._nodeBucketLock);
             }
-            _nodeBucket = null!;
         }
         public BondedItemsEnumerator GetEnumerator() => this;
 

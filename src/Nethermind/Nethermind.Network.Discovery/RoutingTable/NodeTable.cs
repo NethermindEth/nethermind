@@ -128,6 +128,10 @@ public class NodeTable : INodeTable
                     return true;
                 }
             }
+            catch (NullReferenceException)
+            {
+                // TODO: investigate why this happens
+            }
             finally
             {
                 _itemEnumerator.Dispose();
