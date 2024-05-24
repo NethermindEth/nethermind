@@ -76,7 +76,7 @@ public class InitializeStateDb : IStep
 
         if (pruningConfig.PruningBoundary < 64)
         {
-            if (_logger.IsWarn) _logger.Warn($"Prunig boundary must be at least 64. Setting to 64.");
+            if (_logger.IsWarn) _logger.Warn($"Pruning boundary must be at least 64. Setting to 64.");
             pruningConfig.PruningBoundary = 64;
         }
 
@@ -98,6 +98,12 @@ public class InitializeStateDb : IStep
                 PruningTriggerPersistenceStrategy triggerPersistenceStrategy = new((IFullPruningDb)getApi.DbProvider!.StateDb, getApi.BlockTree!, getApi.LogManager);
                 getApi.DisposeStack.Push(triggerPersistenceStrategy);
                 persistenceStrategy = persistenceStrategy.Or(triggerPersistenceStrategy);
+            }
+
+            if ((_api.NodeStorageFactory.CurrentKeyScheme != INodeStorage.KeyScheme.Hash || initConfig.StateDbKeyScheme == INodeStorage.KeyScheme.HalfPath)
+                && pruningConfig.CacheMb > 2000)
+            {
+                if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than 2000MB is not recommended as it may cause long memory pruning time which affect attestation.");
             }
 
             pruningStrategy = Prune
