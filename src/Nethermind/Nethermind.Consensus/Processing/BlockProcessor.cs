@@ -330,7 +330,14 @@ public partial class BlockProcessor : IBlockProcessor
         if (!block.IsGenesis && block.Transactions.Length != 0 && ExecutionTracer.IsTracingAccessWitness)
         {
             var gasWitness = new VerkleExecWitness(NullLogManager.Instance);
-            gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!);
+            var gasAvailable = block.GasLimit - block.GasUsed;
+            var gasBefore = gasAvailable;
+            if (!gasWitness.AccessForGasBeneficiary(block.Header.GasBeneficiary!, ref gasAvailable))
+            {
+                throw new OutOfGasException();
+            }
+
+            block.Header.GasUsed += gasBefore - gasAvailable;
             ExecutionTracer.ReportAccessWitness(gasWitness);
         }
 

@@ -7,7 +7,6 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using System.Threading;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -135,12 +134,17 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
+            var gasAvailable = tx.GasLimit - intrinsicGas;
+
             // declare the execution witness to collect witness and also charge gas
             IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager) : new NoExecWitness();
-            executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero);
+            if (!executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, ref gasAvailable, !tx.Value.IsZero))
+            {
+                ThrowOutOfGasException();
+            }
+
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, executionWitness, effectiveGasPrice);
 
-            long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
@@ -470,9 +474,11 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    var contractCreationInitCost =
-                        env.Witness.AccessForContractCreationInit(env.ExecutingAccount, !tx.Value.IsZero);
-                    if (!UpdateGas(contractCreationInitCost, ref unspentGas)) throw new OutOfGasException();
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas,
+                            !tx.Value.IsZero))
+                    {
+                        ThrowOutOfGasException();
+                    }
 
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
@@ -524,8 +530,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (spec.IsVerkleTreeEipEnabled)
                         {
-                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true,
-                                   ref unspentGas))
+                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, ref unspentGas, true))
                             {
                                 ThrowOutOfGasException();
                             }
@@ -548,8 +553,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         var code = substate.Output.ToArray();
                         VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
 
-                        long contractCreatedGas = env.Witness.AccessForContractCreated(env.ExecutingAccount);
-                        if (!UpdateGas(contractCreatedGas, ref unspentGas))
+                        if (!env.Witness.AccessForContractCreated(env.ExecutingAccount, ref unspentGas))
                         {
                             ThrowOutOfGasException();
                         }
@@ -629,13 +633,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 // we clean any existing storage (in case of a previously called self destruct)
                 if (!spec.IsVerkleTreeEipEnabled) WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
             }
-        }
-
-        private static bool UpdateGas(long gasCost, ref long gasAvailable)
-        {
-            if (gasAvailable < gasCost) return false;
-            gasAvailable -= gasCost;
-            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]

@@ -4,11 +4,11 @@
 using System;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
+using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Witness;
 using Nethermind.Logging;
 using Nethermind.State;
-using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Consensus.Withdrawals;
 
@@ -42,7 +42,14 @@ public class WithdrawalProcessor : IWithdrawalProcessor
             {
                 if (_logger.IsTrace) _logger.Trace($"  {withdrawal.AmountInGwei} GWei to account {withdrawal.Address}");
 
-                witness.AccessCompleteAccount(withdrawal.Address);
+                var gasAvailable = block.GasLimit - block.GasUsed;
+                var gasBefore = gasAvailable;
+                if (!witness.AccessCompleteAccount(withdrawal.Address, ref gasAvailable))
+                {
+                    throw new OutOfGasException();
+                }
+
+                block.Header.GasUsed += gasBefore - gasAvailable;
                 // Consensus clients are using Gwei for withdrawals amount. We need to convert it to Wei before applying state changes https://github.com/ethereum/execution-apis/pull/354
                 if (_stateProvider.AccountExists(withdrawal.Address))
                 {
