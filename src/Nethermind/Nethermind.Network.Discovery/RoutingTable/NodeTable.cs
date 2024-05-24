@@ -105,33 +105,25 @@ public class NodeTable : INodeTable
 
         public bool MoveNext()
         {
-            try
+            while (_count < _bucketSize)
             {
-                while (_count < _bucketSize)
+                if (!_enumeratorSet || !_itemEnumerator.MoveNext())
                 {
-                    if (!_enumeratorSet || !_itemEnumerator.MoveNext())
+                    _itemEnumerator.Dispose();
+                    _bucketIndex++;
+                    if (_bucketIndex >= _buckets.Length)
                     {
-                        _itemEnumerator.Dispose();
-                        _bucketIndex++;
-                        if (_bucketIndex >= _buckets.Length)
-                        {
-                            return false;
-                        }
-
-                        _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
-                        _enumeratorSet = true;
-                        continue;
+                        return false;
                     }
 
-                    Current = _itemEnumerator.Current.Node!;
-                    _count++;
-                    return true;
+                    _itemEnumerator = _buckets[_bucketIndex].BondedItems.GetEnumerator();
+                    _enumeratorSet = true;
+                    continue;
                 }
-            }
-            catch
-            {
-                _itemEnumerator.Dispose();
-                throw;
+
+                Current = _itemEnumerator.Current.Node!;
+                _count++;
+                return true;
             }
 
             return false;
