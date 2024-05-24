@@ -128,15 +128,18 @@ public class InitializeStateDb : IStep
         // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
+        PreBlockCaches preBlockCaches = new();
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
                 trieStore,
                 codeDb,
-                getApi.LogManager)
+                getApi.LogManager,
+                preBlockCaches)
             : new WorldState(
                 trieStore,
                 codeDb,
-                getApi.LogManager);
+                getApi.LogManager,
+                preBlockCaches);
 
         // This is probably the point where a different state implementation would switch.
         IWorldStateManager stateManager = setApi.WorldStateManager = new WorldStateManager(
