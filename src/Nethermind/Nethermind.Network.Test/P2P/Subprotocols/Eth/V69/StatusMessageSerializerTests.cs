@@ -11,7 +11,7 @@ namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 [Parallelizable(ParallelScope.All)]
 public class StatusMessageSerializerTests
 {
-    public static object[] TestData =
+    private static object[] _testData =
     [
         new object[]
         {
@@ -32,7 +32,7 @@ public class StatusMessageSerializerTests
     ];
 
     [Theory]
-    [TestCaseSource(nameof(TestData))]
+    [TestCaseSource(nameof(_testData))]
     public void Roundtrip(StatusMessage69 message, string expected)
     {
         var serializer = new StatusMessageSerializer69();

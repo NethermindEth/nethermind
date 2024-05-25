@@ -25,7 +25,7 @@ public class ReceiptsMessageSerializerTests
         }
     }
 
-    public static object[] TestData =
+    private static object[] _testData =
     [
         new object[]
         {
@@ -59,7 +59,7 @@ public class ReceiptsMessageSerializerTests
     ];
 
     [Theory]
-    [TestCaseSource(nameof(TestData))]
+    [TestCaseSource(nameof(_testData))]
     public void Roundtrip(long requestId, TxReceipt[] receipts, string expected)
     {
         using ReceiptsMessage69 message = new(requestId, new(new ArrayPoolList<TxReceipt[]>(1)
