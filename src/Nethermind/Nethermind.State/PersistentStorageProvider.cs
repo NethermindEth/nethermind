@@ -335,6 +335,11 @@ namespace Nethermind.State
             return value;
         }
 
+        public void WarmUp(in StorageCell storageCell)
+        {
+            LoadFromTree(in storageCell);
+        }
+
         private ReadOnlySpan<byte> LoadFromTree(in StorageCell storageCell)
         {
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);

@@ -470,6 +470,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     if (spec.UseTxAccessLists)
                     {
                         state.WarmUp(tx.AccessList); // eip-2930
+                        WorldState.WarmUp(tx.AccessList);
                     }
 
                     if (spec.UseHotAndColdStorage)
