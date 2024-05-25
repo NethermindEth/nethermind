@@ -1872,6 +1872,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
                         {
+                            // Non contract call, clear return data and push success status
                             _returnDataBuffer = default;
                             stack.PushBytes(StatusCode.SuccessBytes.Span);
                             continue;
@@ -2268,6 +2269,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
         {
+            // Non contract call, no need to construct call frame can just credit balance and return gas
             UpdateGasUp(gasLimitUl, ref gasAvailable);
             if (!_state.AccountExists(target))
             {
