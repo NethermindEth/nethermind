@@ -45,6 +45,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
     private void PreWarmCachesParallel(Block suggestedBlock, Hash256 parentStateRoot, CancellationToken cancellationToken)
     {
+        if (cancellationToken.IsCancellationRequested) return;
+
         try
         {
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
