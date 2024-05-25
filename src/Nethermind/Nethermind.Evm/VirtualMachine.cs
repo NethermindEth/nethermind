@@ -1872,9 +1872,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         }
                         if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
                         {
-                            // Non contract call, clear return data and push success status
-                            _returnDataBuffer = default;
-                            stack.PushBytes(StatusCode.SuccessBytes.Span);
+                            // Non contract call continue rather than constructing a new frame
                             continue;
                         }
 
@@ -2195,11 +2193,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
-            _logger.Trace($"caller {caller}");
-            _logger.Trace($"code source {codeSource}");
-            _logger.Trace($"target {target}");
-            _logger.Trace($"value {callValue}");
-            _logger.Trace($"transfer value {transferValue}");
+            TraceCallDetails(codeSource, ref callValue, ref transferValue, caller, target);
         }
 
         long gasExtra = 0L;
@@ -2270,19 +2264,10 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
         if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
         {
             // Non contract call, no need to construct call frame can just credit balance and return gas
+            _returnDataBuffer = default;
+            stack.PushBytes(StatusCode.SuccessBytes.Span);
             UpdateGasUp(gasLimitUl, ref gasAvailable);
-            if (!_state.AccountExists(target))
-            {
-                _state.CreateAccount(target, transferValue);
-            }
-            else
-            {
-                _state.AddToBalance(target, transferValue, spec);
-            }
-            Metrics.EmptyCalls++;
-
-            returnData = CallResult.BoxedEmpty;
-            return EvmExceptionType.None;
+            return FastCall(spec, out returnData, in transferValue, target);
         }
 
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
@@ -2321,6 +2306,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             isCreateOnPreExistingAccount: false);
 
         return EvmExceptionType.None;
+
+        EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
+        {
+            if (!_state.AccountExists(target))
+            {
+                _state.CreateAccount(target, transferValue);
+            }
+            else
+            {
+                _state.AddToBalance(target, transferValue, spec);
+            }
+            Metrics.EmptyCalls++;
+
+            returnData = CallResult.BoxedEmpty;
+            return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"code source {codeSource}");
+            _logger.Trace($"target {target}");
+            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transfer value {transferValue}");
+        }
     }
 
     [SkipLocalsInit]
