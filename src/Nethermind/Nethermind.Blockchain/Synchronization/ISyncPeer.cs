@@ -13,11 +13,6 @@ using Nethermind.TxPool;
 
 namespace Nethermind.Blockchain.Synchronization
 {
-    public interface IWitnessPeer
-    {
-        Task<Hash256[]> GetBlockWitnessHashes(Hash256 blockHash, CancellationToken token);
-    }
-
     public interface ISyncPeer : ITxPoolPeer, IPeerWithSatelliteProtocol
     {
         Node Node { get; }

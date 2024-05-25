@@ -59,16 +59,15 @@ namespace Nethermind.State
         {
             if (index < LookupSize)
             {
-                return Get(Lookup[index], storageRoot).ToArray();
+                return GetArray(Lookup[index], storageRoot);
             }
 
             Span<byte> key = stackalloc byte[32];
             ComputeKey(index, ref key);
-            return Get(key, storageRoot).ToArray();
-
+            return GetArray(key, storageRoot);
         }
 
-        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
+        public byte[] GetArray(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null)
         {
             ReadOnlySpan<byte> value = base.Get(rawKey, rootHash);
 
@@ -80,6 +79,8 @@ namespace Nethermind.State
             Rlp.ValueDecoderContext rlp = value.AsRlpValueContext();
             return rlp.DecodeByteArray();
         }
+
+        public override ReadOnlySpan<byte> Get(ReadOnlySpan<byte> rawKey, Hash256? rootHash = null) => GetArray(rawKey, rootHash);
 
         [SkipLocalsInit]
         public void Set(in UInt256 index, byte[] value)

@@ -7,8 +7,11 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.IO.Abstractions;
+using System.Linq;
 using System.Reflection;
 using System.Threading;
+using System.Threading.Channels;
+using System.Threading.Tasks;
 using ConcurrentCollections;
 using Nethermind.Config;
 using Nethermind.Core;
@@ -183,6 +186,11 @@ public class DbOnTheRocks : IDb, ITunableDb
                 }
             }
 
+            if (_perTableDbConfig.EnableFileWarmer)
+            {
+                WarmupFile(_fullPath, db);
+            }
+
             return db;
         }
         catch (DllNotFoundException e) when (e.Message.Contains("libdl"))
@@ -200,6 +208,81 @@ public class DbOnTheRocks : IDb, ITunableDb
             throw;
         }
 
+    }
+
+    private void WarmupFile(string basePath, RocksDb db)
+    {
+        long availableMemory = GC.GetGCMemoryInfo().TotalAvailableMemoryBytes;
+        _logger.Info($"Warming up database {Name} assuming {availableMemory} bytes of available memory");
+        List<(FileMetadata metadata, DateTime creationTime)> fileMetadatas = new();
+
+        foreach (LiveFileMetadata liveFileMetadata in db.GetLiveFilesMetadata())
+        {
+            string fullPath = Path.Join(basePath, liveFileMetadata.FileMetadata.FileName);
+            try
+            {
+                DateTime creationTime = File.GetCreationTimeUtc(fullPath);
+                fileMetadatas.Add((liveFileMetadata.FileMetadata, creationTime));
+            }
+            catch (IOException)
+            {
+                // Maybe the file is gone or something. We ignore it.
+            }
+        }
+
+        fileMetadatas.Sort((item1, item2) =>
+        {
+            // Sort them by level so that lower level get priority
+            int levelDiff = item1.metadata.FileLevel - item2.metadata.FileLevel;
+            if (levelDiff != 0) return levelDiff;
+
+            // Otherwise, we pick which file is newest.
+            return item2.creationTime.CompareTo(item1.creationTime);
+        });
+
+        long totalSize = 0;
+        fileMetadatas = fileMetadatas.TakeWhile(metadata =>
+        {
+            availableMemory -= (long)metadata.metadata.FileSize;
+            bool take = availableMemory > 0;
+            if (take)
+            {
+                totalSize += (long)metadata.metadata.FileSize;
+            }
+            return take;
+        })
+            // We reverse them again so that lower level goes last so that it is the freshest.
+            // Not all of the available memory is actually available so we are probably over reading things.
+            .Reverse()
+            .ToList();
+
+        long totalRead = 0;
+        Parallel.ForEach(fileMetadatas, (task) =>
+        {
+            string fullPath = Path.Join(basePath, task.metadata.FileName);
+            _logger.Info($"{(totalRead * 100 / (double)totalSize):00.00}% Warming up file {fullPath}");
+
+            try
+            {
+                byte[] buffer = new byte[512.KiB()];
+                using FileStream stream = File.OpenRead(fullPath);
+                int readCount = buffer.Length;
+                while (readCount == buffer.Length)
+                {
+                    readCount = stream.Read(buffer);
+                    Interlocked.Add(ref totalRead, readCount);
+                }
+            }
+            catch (FileNotFoundException)
+            {
+                // Happens sometimes. We do nothing here.
+            }
+            catch (IOException e)
+            {
+                // Something unusual, but nothing noteworthy.
+                _logger.Warn($"Exception warming up {fullPath} {e}");
+            }
+        });
     }
 
     private void CreateMarkerIfCorrupt(RocksDbSharpException rocksDbException)
@@ -1680,7 +1763,7 @@ public class DbOnTheRocks : IDb, ITunableDb
             holder.Usage++;
 
             Iterator? oldIterator = Interlocked.Exchange(ref holder.Iterator, iterator);
-            if (oldIterator != null)
+            if (oldIterator is not null)
             {
                 // Well... this is weird. I'll just dispose it.
                 oldIterator.Dispose();

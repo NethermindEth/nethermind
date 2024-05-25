@@ -2,11 +2,11 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using System.Collections.Generic;
 using System.Linq;
 using System.Linq.Expressions;
 using System.Threading.Tasks;
 using Nethermind.Blockchain;
+using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -20,10 +20,7 @@ using Nethermind.JsonRpc.Test.Modules;
 using Nethermind.Specs;
 using Nethermind.Specs.Forks;
 using Nethermind.State;
-using Nethermind.Core.Specs;
 using Nethermind.Consensus.BeaconBlockRoot;
-using Nethermind.Consensus.Withdrawals;
-using Nethermind.Core.Test.Blockchain;
 
 namespace Nethermind.Merge.Plugin.Test
 {
@@ -115,6 +112,8 @@ namespace Nethermind.Merge.Plugin.Test
 
             Snapshot before = chain.State.TakeSnapshot();
             _beaconBlockRootHandler.ApplyContractStateChanges(block!, chain.SpecProvider.GenesisSpec, chain.State);
+            var blockHashStore = new BlockhashStore(chain.BlockTree, chain.SpecProvider, chain.State);
+            blockHashStore.ApplyHistoryBlockHashes(block!.Header);
             chain.WithdrawalProcessor?.ProcessWithdrawals(block!, chain.SpecProvider.GenesisSpec);
 
             chain.State.Commit(chain.SpecProvider.GenesisSpec);

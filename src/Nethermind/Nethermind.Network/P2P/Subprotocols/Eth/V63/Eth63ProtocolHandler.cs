@@ -99,14 +99,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected virtual void Handle(ReceiptsMessage msg, long size)
         {
-            Metrics.Eth63ReceiptsReceived++;
             _receiptsRequests.Handle((msg.TxReceipts, size), size);
         }
 
         private async Task<NodeDataMessage> Handle(GetNodeDataMessage msg, CancellationToken cancellationToken)
         {
             using var message = msg;
-            Metrics.Eth63GetNodeDataReceived++;
 
             Stopwatch stopwatch = Stopwatch.StartNew();
             NodeDataMessage response = await FulfillNodeDataRequest(message, cancellationToken);
@@ -130,7 +128,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63
 
         protected virtual void Handle(NodeDataMessage msg, int size)
         {
-            Metrics.Eth63NodeDataReceived++;
             _nodeDataRequests.Handle(msg.Data, size);
         }
 

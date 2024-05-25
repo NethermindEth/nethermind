@@ -56,9 +56,9 @@
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
     },
-    "OP Goerli": {
+    "OP Sepolia": {
       "commandName": "Project",
-      "commandLineArgs": "-c op-goerli -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
+      "commandLineArgs": "-c op-sepolia -dd %NETHERMIND_DATA_DIR% --JsonRpc.UnsecureDevNoRpcAuthentication=true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }
@@ -94,13 +94,6 @@
     "Holesky (archive)": {
       "commandName": "Project",
       "commandLineArgs": "-c holesky_archive -dd .data",
-      "environmentVariables": {
-        "ASPNETCORE_ENVIRONMENT": "Development"
-      }
-    },
-    "Kovan": {
-      "commandName": "Project",
-      "commandLineArgs": "-c kovan -dd .data --JsonRpc.Enabled true",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"
       }

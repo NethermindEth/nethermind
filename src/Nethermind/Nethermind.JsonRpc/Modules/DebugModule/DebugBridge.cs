@@ -177,7 +177,7 @@ public class DebugBridge : IDebugBridge
     public byte[] GetBlockRlp(Hash256 blockHash)
     {
         BlockHeader? header = _blockTree.FindHeader(blockHash);
-        if (header == null) return null;
+        if (header is null) return null;
 
         return _blockStore.GetRaw(header.Number, blockHash);
     }
