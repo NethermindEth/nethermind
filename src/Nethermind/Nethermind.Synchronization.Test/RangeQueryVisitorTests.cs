@@ -136,6 +136,47 @@ public class RangeQueryVisitorTests
         leafCollector.Leafs.Count.Should().Be(3);
     }
 
+
+    [Test]
+    public void RangeFetchPartialLimit_FarProof()
+    {
+
+        string[] paths =
+        [
+            "0x1110000000000000000000000000000000000000000000000000000000000000",
+            "0x1120000000000000000000000000000000000000000000000000000000000000",
+            "0x1130000000000000000000000000000000000000000000000000000000000000",
+            // Query here 0x114...
+            "0x1210000000000000000000000000000000000000000000000000000000000000",
+            "0x1220000000000000000000000000000000000000000000000000000000000000",
+            "0x1230000000000000000000000000000000000000000000000000000000000000",
+            "0x1310000000000000000000000000000000000000000000000000000000000000",
+            "0x1320000000000000000000000000000000000000000000000000000000000000",
+        ];
+
+        var stateTree = new StateTree();
+        var account = TestItem.GenerateRandomAccount();
+        foreach (var path in paths)
+        {
+            stateTree.Set(new Hash256(path), account);
+        }
+        stateTree.Commit(0);
+
+        var startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
+
+        RlpCollector leafCollector = new();
+        using RangeQueryVisitor visitor = new(startHash, Keccak.MaxValue, leafCollector);
+        stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
+        foreach (var leafCollectorLeaf in leafCollector.Leafs)
+        {
+            Console.Out.WriteLine(leafCollectorLeaf.Item1);
+        }
+
+        leafCollector.Leafs.Count.Should().Be(5);
+        visitor.GetProofs().Count.Should().Be(6); // Need to make sure `0x12` is included
+    }
+
+
     [Test]
     public void StorageRangeFetchVisitor()
     {

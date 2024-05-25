@@ -41,7 +41,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     // For determining proofs
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
     private (TreePath, TrieNode)?[] _rightmostNodes = new (TreePath, TrieNode)?[65];
-    private (TreePath, TrieNode)? _leftLeafProof = null;
+    private bool _leftLeafFound = false;
     private TreePath _rightmostLeafPath;
 
     private readonly int _nodeLimit;
@@ -126,29 +126,30 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        if (_leftLeafProof is null) return ArrayPoolList<byte[]>.Empty();
+        if (!_leftLeafFound) return ArrayPoolList<byte[]>.Empty();
 
         HashSet<byte[]> proofs = new();
-        // Note: although nethermind works just fine without left proof if start with zero starting hash,
-        // its out of spec.
-        (TreePath leftmostPath, TrieNode leftmostLeafProof) = _leftLeafProof.Value;
-        proofs.Add(leftmostLeafProof.FullRlp.ToArray());
 
-        for (int i = 64; i >= 0; i--)
+        int i = 0;
+        while (true)
         {
-            if (!_leftmostNodes[i].HasValue) continue;
+            if (!_leftmostNodes[i].HasValue) throw new InvalidOperationException("Incompleted or invalid proof generated");
 
-            (TreePath path, TrieNode node) = _leftmostNodes[i].Value;
-            leftmostPath.TruncateMut(i);
-            if (leftmostPath != path) continue;
-
+            TrieNode node = _leftmostNodes[i].Value.Item2;
             proofs.Add(node.FullRlp.ToArray());
+
+            if (node.IsBranch)
+                i++;
+            else if (node.IsExtension)
+                i += node.Key.Length;
+            else
+                break;
         }
 
         TreePath rightmostPath = _rightmostLeafPath;
         if (rightmostPath.Length != 0)
         {
-            for (int i = 64; i >= 0; i--)
+            for (i = 64; i >= 0; i--)
             {
                 if (!_rightmostNodes[i].HasValue) continue;
 
@@ -175,27 +176,28 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
+        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         TreePath path = ctx.Path.Append(node.Key);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node); // Yes, this is needed. Yes, you can make a special variable like _rightLeafProof.
         if (!ShouldVisit(path))
         {
-            if (!_lastNodeFound) _leftLeafProof = (path, node);
+            if (!_lastNodeFound) _leftLeafFound = true; // Mainly to finalize left proof
             return;
         }
 
-        _leftLeafProof ??= (path, node);
+        _leftLeafFound = true;
 
         if (path.Path.CompareTo(_limitHash) >= 0)
         {
