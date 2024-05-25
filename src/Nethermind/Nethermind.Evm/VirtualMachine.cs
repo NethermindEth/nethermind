@@ -128,7 +128,7 @@ public class VirtualMachine : IVirtualMachine
         }.ToFrozenDictionary();
     }
 
-    internal readonly ref struct CallResult
+    internal readonly struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
@@ -141,6 +141,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult Empty => new(default, null);
+        public static object BoxedEmpty { get; } = Empty;
 
         public CallResult(EvmState stateToExecute)
         {
@@ -1869,6 +1870,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             break;
                         }
+                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                        {
+                            _returnDataBuffer = default;
+                            stack.PushBytes(StatusCode.SuccessBytes.Span);
+                            continue;
+                        }
 
                         goto DataReturn;
                     }
@@ -2256,11 +2263,27 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
-        Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
+        if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
+        {
+            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            if (!_state.AccountExists(target))
+            {
+                _state.CreateAccount(target, transferValue);
+            }
+            else
+            {
+                _state.AddToBalance(target, transferValue, spec);
+            }
+            Metrics.EmptyCalls++;
+
+            returnData = CallResult.BoxedEmpty;
+            return EvmExceptionType.None;
+        }
+
+        Snapshot snapshot = _worldState.TakeSnapshot();
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
