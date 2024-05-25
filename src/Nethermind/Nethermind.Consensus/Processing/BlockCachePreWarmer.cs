@@ -34,7 +34,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
             if (Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
             {
-                // Do not pass cancellation token to the task, we don't want exceptions to be thrown
+                // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
                 return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken));
             }
         }
