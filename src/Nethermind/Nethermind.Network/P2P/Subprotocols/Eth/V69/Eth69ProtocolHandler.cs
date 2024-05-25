@@ -9,8 +9,6 @@ using Nethermind.Consensus.Scheduler;
 using Nethermind.Core;
 using Nethermind.Logging;
 using Nethermind.Network.Contract.P2P;
-using Nethermind.Network.P2P.Subprotocols.Eth.V62;
-using Nethermind.Network.P2P.Subprotocols.Eth.V63;
 using Nethermind.Network.P2P.Subprotocols.Eth.V66.Messages;
 using Nethermind.Network.P2P.Subprotocols.Eth.V68;
 using Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
@@ -50,21 +48,21 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         int size = message.Content.ReadableBytes;
         switch (message.PacketType)
         {
-            case Eth62MessageCode.NewBlockHashes:
+            case Eth69MessageCode.NewBlockHashes:
                 break;
-            case Eth62MessageCode.NewBlock:
+            case Eth69MessageCode.NewBlock:
                 break;
-            case Eth62MessageCode.Status:
+            case Eth69MessageCode.Status:
                 StatusMessage69 statusMsg = Deserialize<StatusMessage69>(message.Content);
                 base.ReportIn(statusMsg, size);
                 this.Handle(statusMsg);
                 break;
-            case Eth63MessageCode.Receipts:
+            case Eth69MessageCode.Receipts:
                 ReceiptsMessage69 receiptsMessage = Deserialize<ReceiptsMessage69>(message.Content);
                 base.ReportIn(receiptsMessage, size);
                 base.Handle(receiptsMessage, size);
                 break;
-            case Eth63MessageCode.GetReceipts:
+            case Eth69MessageCode.GetReceipts:
                 GetReceiptsMessage getReceiptsMessage = Deserialize<GetReceiptsMessage>(message.Content);
                 ReportIn(getReceiptsMessage, size);
                 BackgroundTaskScheduler.ScheduleSyncServe(getReceiptsMessage, this.Handle);
@@ -93,7 +91,6 @@ public class Eth69ProtocolHandler : Eth68ProtocolHandler
         {
             NetworkId = SyncServer.NetworkId,
             ProtocolVersion = ProtocolVersion,
-            TotalDifficulty = head.TotalDifficulty ?? head.Difficulty,
             BestHash = head.Hash!,
             GenesisHash = SyncServer.Genesis.Hash!
         };

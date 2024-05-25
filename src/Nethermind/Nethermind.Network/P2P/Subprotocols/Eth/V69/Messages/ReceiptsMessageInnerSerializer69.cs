@@ -9,7 +9,11 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class ReceiptsMessageInnerSerializer69 : V63.Messages.ReceiptsMessageSerializer, IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
+/// <remarks>
+/// "Inner" serializer here inherits and overrides parts of eth/63 implementation,
+/// while <see cref="ReceiptsMessageSerializer69"/> "wraps" it after, similar to eth/66 version.
+/// </remarks>
+public class ReceiptsMessageInnerSerializer69 : ReceiptsMessageSerializer, IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
 {
     public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) : base(specProvider) { }
 

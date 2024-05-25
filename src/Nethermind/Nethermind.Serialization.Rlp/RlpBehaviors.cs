@@ -31,6 +31,5 @@ public enum RlpBehaviors
     /// </summary>
     InMempoolForm = 64,
     ExcludeHashes = 128,
-    Eip7642Messages = 256,
-    All = AllowExtraBytes | ForSealing | Storage | Eip658Receipts | AllowUnsigned | SkipTypedWrapping | InMempoolForm | ExcludeHashes | Eip7642Messages,
+    Eip7642Messages = 256
 }

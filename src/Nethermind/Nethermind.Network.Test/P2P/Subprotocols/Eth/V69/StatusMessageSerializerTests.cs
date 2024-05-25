@@ -8,7 +8,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 
-[TestFixture, Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.All)]
 public class StatusMessageSerializerTests
 {
     public static object[] TestData =

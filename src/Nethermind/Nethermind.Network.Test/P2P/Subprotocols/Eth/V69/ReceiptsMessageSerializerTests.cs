@@ -14,7 +14,7 @@ using NUnit.Framework;
 
 namespace Nethermind.Network.Test.P2P.Subprotocols.Eth.V69;
 
-[TestFixture, Parallelizable(ParallelScope.All)]
+[Parallelizable(ParallelScope.All)]
 public class ReceiptsMessageSerializerTests
 {
     private class EmptyTxReceipt : TxReceipt
@@ -76,8 +76,8 @@ public class ReceiptsMessageSerializerTests
         );
     }
 
-    [Test]
-    public void IgnoresBloom()
+    [Theory]
+    public void IgnoresBloom([Values(null, 255)] int? length)
     {
         using ReceiptsMessage69 message = new(0, new(new ArrayPoolList<TxReceipt[]>(1)
         {
@@ -90,10 +90,9 @@ public class ReceiptsMessageSerializerTests
         var serializer = new ReceiptsMessageSerializer69(new TestSpecProvider(Prague.Instance));
         byte[] encoded = serializer.Serialize(message);
 
-        message.EthMessage.TxReceipts[0]![0].Bloom = null;
-        serializer.Serialize(message).Should().Equal(encoded);
-
-        message.EthMessage.TxReceipts[0]![0].Bloom = new(Enumerable.Range(0, 255).Select(i => (byte)i).ToArray());
+        message.EthMessage.TxReceipts[0]![0].Bloom = length.HasValue
+            ? new(Enumerable.Range(0, length.Value).Select(i => (byte)i).ToArray())
+            : null;
         serializer.Serialize(message).Should().Equal(encoded);
     }
 }
