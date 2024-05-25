@@ -173,7 +173,7 @@ public class RangeQueryVisitorTests
         }
 
         leafCollector.Leafs.Count.Should().Be(5);
-        visitor.GetProofs().Count.Should().Be(6); // Need to make sure `0x12` is included
+        visitor.GetProofs().Count.Should().Be(6); // Need to make sure `0x11` is included
     }
 
 
