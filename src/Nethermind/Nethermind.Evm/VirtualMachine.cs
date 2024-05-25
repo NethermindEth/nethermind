@@ -128,7 +128,7 @@ public class VirtualMachine : IVirtualMachine
         }.ToFrozenDictionary();
     }
 
-    internal readonly struct CallResult
+    internal readonly ref struct CallResult
     {
         public static CallResult InvalidSubroutineEntry => new(EvmExceptionType.InvalidSubroutineEntry);
         public static CallResult InvalidSubroutineReturn => new(EvmExceptionType.InvalidSubroutineReturn);
@@ -141,7 +141,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult Empty => new(default, null);
-        public static object BoxedEmpty { get; } = Empty;
+        public static object BoxedEmpty { get; } = new object();
 
         public CallResult(EvmState stateToExecute)
         {
@@ -2263,6 +2263,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
+        Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
         if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
@@ -2282,7 +2283,6 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        Snapshot snapshot = _worldState.TakeSnapshot();
         ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
         ExecutionEnvironment callEnv = new
         (
