@@ -43,7 +43,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
     private (TreePath, TrieNode)?[] _rightmostNodes = new (TreePath, TrieNode)?[65];
     private bool _leftLeafFound = false;
-    private TreePath _rightmostLeafPath;
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -147,19 +146,20 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
                 break;
         }
 
-        TreePath rightmostPath = _rightmostLeafPath;
-        if (rightmostPath.Length != 0)
+        i = 0;
+        while (true)
         {
-            for (i = 64; i >= 0; i--)
-            {
-                if (!_rightmostNodes[i].HasValue) continue;
+            Debug.Assert(_rightmostNodes[i].HasValue);
 
-                (TreePath path, TrieNode node) = _rightmostNodes[i].Value;
-                rightmostPath.TruncateMut(i);
-                if (rightmostPath != path) continue;
+            TrieNode node = _rightmostNodes[i].Value.Item2;
+            proofs.Add(node.FullRlp.ToArray());
 
-                proofs.Add(node.FullRlp.ToArray());
-            }
+            if (node.IsBranch)
+                i++;
+            else if (node.IsExtension)
+                i += node.Key.Length;
+            else
+                break;
         }
 
         return proofs.ToPooledList();
@@ -219,8 +219,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     private void CollectNode(in TreePath path, CappedArray<byte> value)
     {
-        _rightmostLeafPath = path;
-
         int encodedSize = _valueCollector.Collect(path.Path, value);
         _currentBytesCount += encodedSize;
         _currentLeafCount++;
