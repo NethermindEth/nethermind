@@ -65,9 +65,9 @@ namespace Nethermind.Synchronization.FastSync
         // concurrent request handling with the read lock.
         private readonly ReaderWriterLockSlim _syncStateLock = new();
         private readonly ConcurrentDictionary<StateSyncBatch, object?> _pendingRequests = new();
-        private Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>> _dependencies = new();
-        private readonly LruKeyCache<StateSyncItem.NodeKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
-        private readonly LruKeyCache<Hash256AsKey> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
+        private Dictionary<StateSyncItem.NodeKeyAsKey, HashSet<DependentItem>> _dependencies = new();
+        private readonly LruKeyCacheLowContention<StateSyncItem.NodeKeyAsKey> _alreadySavedNode = new(AlreadySavedCapacity, "saved nodes");
+        private readonly LruKeyCacheLowContention<Hash256AsKey> _alreadySavedCode = new(AlreadySavedCapacity, "saved nodes");
 
         private BranchProgress _branchProgress;
         private int _hintsToResetRoot;
@@ -698,7 +698,7 @@ namespace Nethermind.Synchronization.FastSync
                     if (_logger.IsError) _logger.Error($"POSSIBLE FAST SYNC CORRUPTION | Dependencies hanging after the root node saved - count: {_dependencies.Count}, first: {_dependencies.Keys.First()}");
                 }
 
-                _dependencies = new Dictionary<StateSyncItem.NodeKey, HashSet<DependentItem>>();
+                _dependencies = new Dictionary<StateSyncItem.NodeKeyAsKey, HashSet<DependentItem>>();
                 // _alreadySaved = new LruKeyCache<Keccak>(AlreadySavedCapacity, "saved nodes");
             }
 
