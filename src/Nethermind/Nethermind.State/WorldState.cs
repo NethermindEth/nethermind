@@ -7,6 +7,7 @@ using System.Runtime.CompilerServices;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Eip2930;
 using Nethermind.Core.Specs;
 using Nethermind.Int256;
 using Nethermind.Logging;
@@ -109,7 +110,20 @@ namespace Nethermind.State
             _persistentStorageProvider.Reset();
             _transientStorageProvider.Reset();
         }
-
+        public void WarmUp(AccessList? accessList)
+        {
+            if (accessList?.IsEmpty == false)
+            {
+                foreach ((Address address, AccessList.StorageKeysEnumerable storages) in accessList)
+                {
+                    _stateProvider.WarmUp(address);
+                    foreach (UInt256 storage in storages)
+                    {
+                        _persistentStorageProvider.WarmUp(new StorageCell(address, storage));
+                    }
+                }
+            }
+        }
         public void ClearStorage(Address address)
         {
             _persistentStorageProvider.ClearStorage(address);

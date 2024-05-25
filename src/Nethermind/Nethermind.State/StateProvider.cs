@@ -653,6 +653,11 @@ namespace Nethermind.State
             };
         }
 
+        public void WarmUp(Address address)
+        {
+            GetState(address);
+        }
+
         private Account? GetState(Address address)
         {
             AddressAsKey addressAsKey = address;

@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using Microsoft.Extensions.ObjectPool;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Specs;
 using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
@@ -60,7 +61,13 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
                 try
                 {
                     tx.CopyTo(systemTransaction);
+
                     using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
+                    IReleaseSpec spec = env.SpecProvider.GetSpec(suggestedBlock.Header);
+                    if (spec.UseTxAccessLists)
+                    {
+                        env.StateProvider.WarmUp(tx.AccessList); // eip-2930
+                    }
                     TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
