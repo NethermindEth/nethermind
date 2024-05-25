@@ -17,6 +17,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Threading;
 using Nethermind.Core;
 using Nethermind.Core.Buffers;
@@ -133,7 +134,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         int i = 0;
         while (true)
         {
-            if (!_leftmostNodes[i].HasValue) throw new InvalidOperationException("Incompleted or invalid proof generated");
+            Debug.Assert(_leftmostNodes[i].HasValue);
 
             TrieNode node = _leftmostNodes[i].Value.Item2;
             proofs.Add(node.FullRlp.ToArray());
@@ -176,21 +177,22 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
-        if (!_leftLeafFound) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
-        TreePath path = ctx.Path.Append(node.Key);
+        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node); // Yes, this is needed. Yes, you can make a special variable like _rightLeafProof.
+
+        TreePath path = ctx.Path.Append(node.Key);
         if (!ShouldVisit(path))
         {
             if (!_lastNodeFound) _leftLeafFound = true; // Mainly to finalize left proof
