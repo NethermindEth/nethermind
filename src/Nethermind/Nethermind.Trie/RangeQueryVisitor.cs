@@ -42,7 +42,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     // For determining proofs
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
     private (TreePath, TrieNode)?[] _rightmostNodes = new (TreePath, TrieNode)?[65];
-    private bool _leftLeafFound = false;
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -126,40 +125,44 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public ArrayPoolList<byte[]> GetProofs()
     {
-        if (!_leftLeafFound) return ArrayPoolList<byte[]>.Empty();
-
         HashSet<byte[]> proofs = new();
 
-        int i = 0;
-        while (true)
+        if (_leftmostNodes[0].HasValue)
         {
-            Debug.Assert(_leftmostNodes[i].HasValue);
+            int i = 0;
+            while (true)
+            {
+                Debug.Assert(_leftmostNodes[i].HasValue);
 
-            TrieNode node = _leftmostNodes[i].Value.Item2;
-            proofs.Add(node.FullRlp.ToArray());
+                TrieNode node = _leftmostNodes[i].Value.Item2;
+                proofs.Add(node.FullRlp.ToArray());
 
-            if (node.IsBranch)
-                i++;
-            else if (node.IsExtension)
-                i += node.Key.Length;
-            else
-                break;
+                if (node.IsBranch)
+                    i++;
+                else if (node.IsExtension)
+                    i += node.Key.Length;
+                else
+                    break;
+            }
         }
 
-        i = 0;
-        while (true)
+        if (_rightmostNodes[0].HasValue)
         {
-            Debug.Assert(_rightmostNodes[i].HasValue);
+            int i = 0;
+            while (true)
+            {
+                Debug.Assert(_rightmostNodes[i].HasValue);
 
-            TrieNode node = _rightmostNodes[i].Value.Item2;
-            proofs.Add(node.FullRlp.ToArray());
+                TrieNode node = _rightmostNodes[i].Value.Item2;
+                proofs.Add(node.FullRlp.ToArray());
 
-            if (node.IsBranch)
-                i++;
-            else if (node.IsExtension)
-                i += node.Key.Length;
-            else
-                break;
+                if (node.IsBranch)
+                    i++;
+                else if (node.IsExtension)
+                    i += node.Key.Length;
+                else
+                    break;
+            }
         }
 
         return proofs.ToPooledList();
@@ -177,29 +180,26 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
-        if (!_leftLeafFound && !_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
         _rightmostNodes[ctx.Path.Length] = (ctx.Path, node); // Yes, this is needed. Yes, you can make a special variable like _rightLeafProof.
 
         TreePath path = ctx.Path.Append(node.Key);
         if (!ShouldVisit(path))
         {
-            if (!_lastNodeFound) _leftLeafFound = true; // Mainly to finalize left proof
             return;
         }
-
-        _leftLeafFound = true;
 
         if (path.Path.CompareTo(_limitHash) >= 0)
         {
