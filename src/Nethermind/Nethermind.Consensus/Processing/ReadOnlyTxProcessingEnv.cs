@@ -22,6 +22,7 @@ namespace Nethermind.Consensus.Processing
         public IBlockTree BlockTree { get; }
         public IBlockhashProvider BlockhashProvider { get; }
         public IVirtualMachine Machine { get; }
+        public ISpecProvider SpecProvider { get; }
 
         public ReadOnlyTxProcessingEnv(
             IWorldStateManager worldStateManager,
@@ -41,7 +42,7 @@ namespace Nethermind.Consensus.Processing
         {
             ArgumentNullException.ThrowIfNull(specProvider);
             ArgumentNullException.ThrowIfNull(worldStateManager);
-
+            SpecProvider = specProvider;
             StateReader = worldStateManager.GlobalStateReader;
             StateProvider = worldStateManager.CreateResettableWorldState(preBlockCaches);
 
