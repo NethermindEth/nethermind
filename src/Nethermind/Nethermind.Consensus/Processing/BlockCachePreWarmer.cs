@@ -34,7 +34,14 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
 
             if (Environment.ProcessorCount > 2)
             {
-                return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken), cancellationToken);
+                try
+                {
+                    return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken), cancellationToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    if (_logger.IsDebug) _logger.Debug($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
+                }
             }
 
         }
