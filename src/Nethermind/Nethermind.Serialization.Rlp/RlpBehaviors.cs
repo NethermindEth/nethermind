@@ -30,6 +30,5 @@ public enum RlpBehaviors
     /// See https://eips.ethereum.org/EIPS/eip-4844#networking
     /// </summary>
     InMempoolForm = 64,
-    ExcludeHashes = 128,
-    Eip7642Messages = 256
+    ExcludeHashes = 128
 }

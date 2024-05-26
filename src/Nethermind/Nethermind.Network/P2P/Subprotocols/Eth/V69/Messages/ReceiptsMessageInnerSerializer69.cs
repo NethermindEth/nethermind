@@ -2,10 +2,8 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using DotNetty.Buffers;
-using Nethermind.Core;
 using Nethermind.Core.Specs;
 using Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages;
-using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
@@ -15,13 +13,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 /// </remarks>
 public class ReceiptsMessageInnerSerializer69 : ReceiptsMessageSerializer, IZeroInnerMessageSerializer<ReceiptsInnerMessage69>
 {
-    public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) : base(specProvider) { }
-
-    protected override RlpBehaviors GetEncodingBehavior(TxReceipt txReceipt) =>
-        base.GetEncodingBehavior(txReceipt) | RlpBehaviors.Eip7642Messages;
-
-    protected override RlpBehaviors GetDecodingBehavior() =>
-        base.GetDecodingBehavior() | RlpBehaviors.Eip7642Messages;
+    public ReceiptsMessageInnerSerializer69(ISpecProvider specProvider) : base(specProvider, new ReceiptMessageDecoder69()) { }
 
     int IZeroInnerMessageSerializer<ReceiptsInnerMessage69>.GetLength(ReceiptsInnerMessage69 message, out int contentLength) =>
         GetLength(message, out contentLength);

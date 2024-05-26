@@ -14,11 +14,17 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
+        private readonly IRlpStreamDecoder<TxReceipt> _decoder;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider)
+        public ReceiptsMessageSerializer(ISpecProvider specProvider): this(specProvider, Rlp.GetStreamDecoder<TxReceipt>())
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+        }
+
+        protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpStreamDecoder<TxReceipt> decoder)
+        {
+            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
+            _decoder = decoder;
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)
@@ -47,7 +53,8 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                         continue;
                     }
 
-                    _decoder.Encode(stream, txReceipt, GetEncodingBehavior(txReceipt));
+                    _decoder.Encode(stream, txReceipt,
+                        _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 }
             }
         }
@@ -72,7 +79,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         public ReceiptsMessage Deserialize(RlpStream rlpStream)
         {
             ArrayPoolList<TxReceipt[]> data = rlpStream.DecodeArrayPoolList(itemContext =>
-                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext, GetDecodingBehavior())));
+                itemContext.DecodeArray(nestedContext => _decoder.Decode(nestedContext)) ?? Array.Empty<TxReceipt>(), true);
             ReceiptsMessage message = new(data);
 
             return message;
@@ -110,20 +117,11 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                 }
                 else
                 {
-                    contentLength += _decoder.GetLength(txReceipt, GetEncodingBehavior(txReceipt));
+                    contentLength += _decoder.GetLength(txReceipt, _specProvider.GetSpec((ForkActivation)txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 }
             }
 
             return contentLength;
         }
-
-        protected virtual RlpBehaviors GetEncodingBehavior(TxReceipt txReceipt)
-        {
-            return _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled
-                ? RlpBehaviors.Eip658Receipts
-                : RlpBehaviors.None;
-        }
-
-        protected virtual RlpBehaviors GetDecodingBehavior() => RlpBehaviors.None;
     }
 }

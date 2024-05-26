@@ -10,6 +10,15 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
     {
         private const int ForkHashLength = 5;
 
+        private readonly bool _includeTd;
+
+        public StatusMessageSerializer(): this(true) { }
+
+        protected StatusMessageSerializer(bool includeTd)
+        {
+            _includeTd = includeTd;
+        }
+
         public void Serialize(IByteBuffer byteBuffer, StatusMessage message)
         {
             int forkIdContentLength = 0;
@@ -27,7 +36,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             rlpStream.Encode(message.ProtocolVersion);
             rlpStream.Encode(message.NetworkId);
 
-            if ((GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+            if (_includeTd)
                 rlpStream.Encode(message.TotalDifficulty);
 
             rlpStream.Encode(message.BestHash);
@@ -58,7 +67,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
                 Rlp.LengthOf(message.GenesisHash) +
                 forkIdSequenceLength;
 
-            if ((GetEncodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+            if (_includeTd)
                 contentLength += Rlp.LengthOf(message.TotalDifficulty);
 
             return Rlp.LengthOfSequence(contentLength);
@@ -73,7 +82,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
             statusMessage.ProtocolVersion = rlpStream.DecodeByte();
             statusMessage.NetworkId = rlpStream.DecodeUInt256();
 
-            if ((GetDecodingBehavior() & RlpBehaviors.Eip7642Messages) != RlpBehaviors.Eip7642Messages)
+            if (_includeTd)
                 statusMessage.TotalDifficulty = rlpStream.DecodeUInt256();
 
             statusMessage.BestHash = rlpStream.DecodeKeccak();
@@ -89,8 +98,5 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
             return statusMessage;
         }
-
-        protected virtual RlpBehaviors GetEncodingBehavior() => RlpBehaviors.None;
-        protected virtual RlpBehaviors GetDecodingBehavior() => RlpBehaviors.None;
     }
 }
