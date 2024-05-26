@@ -31,6 +31,8 @@ using Nethermind.State;
 using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 using NUnit.Framework;
+using Org.BouncyCastle.Utilities;
+using Bytes = Nethermind.Core.Extensions.Bytes;
 
 namespace Nethermind.Synchronization.Test;
 
@@ -150,6 +152,7 @@ public class RangeQueryVisitorTests
             "0x1210000000000000000000000000000000000000000000000000000000000000",
             "0x1220000000000000000000000000000000000000000000000000000000000000",
             "0x1230000000000000000000000000000000000000000000000000000000000000",
+            // Until here 0x1235..
             "0x1310000000000000000000000000000000000000000000000000000000000000",
             "0x1320000000000000000000000000000000000000000000000000000000000000",
         ];
@@ -163,17 +166,33 @@ public class RangeQueryVisitorTests
         stateTree.Commit(0);
 
         var startHash = new Hash256("0x1140000000000000000000000000000000000000000000000000000000000000");
+        var limitHash = new Hash256("0x1235000000000000000000000000000000000000000000000000000000000000");
 
         RlpCollector leafCollector = new();
-        using RangeQueryVisitor visitor = new(startHash, Keccak.MaxValue, leafCollector);
+        using RangeQueryVisitor visitor = new(startHash, limitHash, leafCollector);
         stateTree.Accept(visitor, stateTree.RootHash, CreateVisitingOptions());
-        foreach (var leafCollectorLeaf in leafCollector.Leafs)
-        {
-            Console.Out.WriteLine(leafCollectorLeaf.Item1);
-        }
 
-        leafCollector.Leafs.Count.Should().Be(5);
-        visitor.GetProofs().Count.Should().Be(6); // Need to make sure `0x11` is included
+        leafCollector.Leafs.Count.Should().Be(4);
+
+        ArrayPoolList<byte[]> proofs = visitor.GetProofs();
+        proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
+
+        var proofHashes = proofs.Select((rlp) => Keccak.Compute(rlp)).ToHashSet();
+
+        string[] proofHashStrs =
+        [
+            "0x848936a86befa6693df03877b266a2ccce7e4a65122ca5740a7f5e9d53a56136",
+            "0xa2b09f843c84c34f2444a2cb0d95ba299af66a18581d8ddea8830fbc5802999e",
+            "0x249e8deef5ac40f1e1280b94b137452cb9ab2f2a0b323c5efafff6b3f07c85e3",
+            "0x9f225ad13194e14cb1c8322ddef63a44ffa442cfda5e911b52632caf98f49e46",
+            "0xe380b3732498e98c998d66d1e848f5c0369841905aa343626d73f41e8a67f053",
+            "0x9f225ad13194e14cb1c8322ddef63a44ffa442cfda5e911b52632caf98f49e46"
+        ];
+
+        foreach (var proofHashStr in proofHashStrs)
+        {
+            proofHashes.Contains(new Hash256(Bytes.FromHexString(proofHashStr))).Should().BeTrue();
+        }
     }
 
 
