@@ -267,6 +267,11 @@ public class SnapServer : ISnapServer
         RangeQueryVisitor.ILeafValueCollector valueCollector,
         CancellationToken cancellationToken)
     {
+        if (startingHash.CompareTo(limitHash) > 0)
+        {
+            return (0, ArrayPoolList<byte[]>.Empty(), false);
+        }
+
         PatriciaTree tree = new(_store, _logManager);
         using RangeQueryVisitor visitor = new(startingHash, limitHash, valueCollector, byteLimit, HardResponseNodeLimit, readFlags: _optimizedReadFlags, cancellationToken);
         VisitingOptions opt = new() { ExpectAccounts = false };

@@ -73,6 +73,21 @@ public class SnapServerTest
     }
 
     [Test]
+    public void TestGetAccountRange_InvalidRange()
+    {
+        Context context = CreateContext();
+        TestItem.Tree.FillStateTreeWithTestAccounts(context.Tree);
+
+        (IOwnedReadOnlyList<PathWithAccount> accounts, IOwnedReadOnlyList<byte[]> proofs) =
+            context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
+
+        accounts.Count.Should().Be(0);
+        proofs.Count.Should().Be(0);
+        accounts.Dispose();
+        proofs.Dispose();
+    }
+
+    [Test]
     public void TestNoState()
     {
         Context context = CreateContext(stateRootTracker: CreateConstantStateRootTracker(false));

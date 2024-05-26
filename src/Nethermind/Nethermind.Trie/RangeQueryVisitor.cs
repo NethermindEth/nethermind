@@ -73,6 +73,10 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         else
             _startHash = new TreePath(startHash, 64);
 
+        if (startHash.CompareTo(limitHash) > 0)
+        {
+            throw new InvalidOperationException("limitHash must be after startHash");
+        }
         _cancellationToken = cancellationToken;
         _valueCollector = valueCollector;
         _nodeLimit = nodeLimit;
