@@ -82,7 +82,6 @@ public class SnapServerTest
             context.Server.GetAccountRanges(context.Tree.RootHash, Keccak.MaxValue, Keccak.Zero, 4000, CancellationToken.None);
 
         accounts.Count.Should().Be(0);
-        proofs.Count.Should().Be(0);
         accounts.Dispose();
         proofs.Dispose();
     }

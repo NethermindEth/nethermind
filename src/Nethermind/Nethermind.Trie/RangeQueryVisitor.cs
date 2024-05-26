@@ -73,10 +73,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         else
             _startHash = new TreePath(startHash, 64);
 
-        if (startHash.CompareTo(limitHash) > 0)
-        {
-            throw new InvalidOperationException("limitHash must be after startHash");
-        }
         _cancellationToken = cancellationToken;
         _valueCollector = valueCollector;
         _nodeLimit = nodeLimit;
@@ -141,7 +137,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             int i = 0;
             while (true)
             {
-                Debug.Assert(_leftmostNodes[i].HasValue);
+                if (!_leftmostNodes[i].HasValue) break;
 
                 TrieNode node = _leftmostNodes[i].Value.Item2;
                 proofs.Add(node.FullRlp.ToArray());
@@ -161,7 +157,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             int i = 0;
             while (true)
             {
-                Debug.Assert(_rightmostNodes[i] is not null);
+                if (_rightmostNodes[i] is null) break;
 
                 TrieNode node = null;
                 foreach ((TreePath, TrieNode)? entry in _rightmostNodes[i].Data)
@@ -175,7 +171,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
                     }
                 }
 
-                Debug.Assert(node is not null);
+                if (node is null) break;
 
                 proofs.Add(node.FullRlp.ToArray());
                 if (node.IsBranch)
