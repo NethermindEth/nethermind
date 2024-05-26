@@ -40,7 +40,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     private readonly ILeafValueCollector _valueCollector;
 
     // For determining proofs
-    private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
+    private TrieNode?[] _leftmostNodes = new TrieNode?[65];
 
     // Because we may iterate over the limit, the final right proof may not be of the right value, but it would stop.
     // So we keep two of them for each level, where we try to determine which of the two node is the right one with
@@ -132,14 +132,14 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
         HashSet<byte[]> proofs = new();
 
-        if (_leftmostNodes[0].HasValue)
+        if (_leftmostNodes[0] is not null)
         {
             int i = 0;
             while (true)
             {
-                if (!_leftmostNodes[i].HasValue) break;
+                if (_leftmostNodes[i] is null) break;
 
-                TrieNode node = _leftmostNodes[i].Value.Item2;
+                TrieNode node = _leftmostNodes[i];
                 proofs.Add(node.FullRlp.ToArray());
 
                 if (node.IsBranch)
@@ -198,19 +198,19 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        _leftmostNodes[ctx.Path.Length] ??= node;
         (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
-        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        _leftmostNodes[ctx.Path.Length] ??= node;
         (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
-        if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        _leftmostNodes[ctx.Path.Length] ??= node;
         (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
 
         TreePath path = ctx.Path.Append(node.Key);
@@ -253,7 +253,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         int Collect(in ValueHash256 path, CappedArray<byte> value);
     }
 
-    // Store two item, and roll between them in Data on Add
+    // Store two item, and round robin between them on Add
     private class RollingItem<T>
     {
         public T[] Data { get; } = new T[2];
