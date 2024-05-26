@@ -443,6 +443,7 @@ namespace Nethermind.TxPool.Collections
         {
             if (_cacheMap.Remove(key))
             {
+                _worstSortedValues.Remove(value);
                 UpdateIsFull();
                 _snapshot = null;
                 return true;
