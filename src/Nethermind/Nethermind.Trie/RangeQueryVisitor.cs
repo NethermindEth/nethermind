@@ -41,7 +41,12 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     // For determining proofs
     private (TreePath, TrieNode)?[] _leftmostNodes = new (TreePath, TrieNode)?[65];
-    private (TreePath, TrieNode)?[] _rightmostNodes = new (TreePath, TrieNode)?[65];
+
+    // Because we may iterate over the limit, the final right proof may not be of the right value, but it would stop.
+    // So we keep two of them for each level, where we try to determine which of the two node is the right one with
+    // _rightmostPath.
+    private RollingItem<(TreePath, TrieNode)?>?[] _rightmostNodes = new RollingItem<(TreePath, TrieNode)?>?[65];
+    private TreePath? _rightmostPath = null;
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -146,16 +151,29 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             }
         }
 
-        if (_rightmostNodes[0].HasValue)
+        if (_rightmostPath.HasValue)
         {
+            TreePath rightmostPath = _rightmostPath.Value;
             int i = 0;
             while (true)
             {
-                Debug.Assert(_rightmostNodes[i].HasValue);
+                Debug.Assert(_rightmostNodes[i] is not null);
 
-                TrieNode node = _rightmostNodes[i].Value.Item2;
+                TrieNode node = null;
+                foreach ((TreePath, TrieNode)? entry in _rightmostNodes[i].Data)
+                {
+                    if (!entry.HasValue) continue;
+
+                    (TreePath itemPath, TrieNode n) = entry.Value;
+                    if (rightmostPath.Truncate(itemPath.Length) == itemPath)
+                    {
+                        node = n;
+                    }
+                }
+
+                Debug.Assert(node is not null);
+
                 proofs.Add(node.FullRlp.ToArray());
-
                 if (node.IsBranch)
                     i++;
                 else if (node.IsExtension)
@@ -181,19 +199,19 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
         if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
-        _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
         if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
-        _rightmostNodes[ctx.Path.Length] = (ctx.Path, node);
+        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         if (!_leftmostNodes[ctx.Path.Length].HasValue) _leftmostNodes[ctx.Path.Length] = (ctx.Path, node);
-        _rightmostNodes[ctx.Path.Length] = (ctx.Path, node); // Yes, this is needed. Yes, you can make a special variable like _rightLeafProof.
+        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
 
         TreePath path = ctx.Path.Append(node.Key);
         if (!ShouldVisit(path))
@@ -204,6 +222,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
         if (path.Path.CompareTo(_limitHash) >= 0)
         {
             // This leaf is after or at limitHash. This will cause all further ShouldVisit to return false.
+            // Yes, we do need to include this as part of the response.
             _lastNodeFound = true;
         }
 
@@ -211,6 +230,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
         // We found at least one leaf, don't compare with startHash anymore
         _skipStarthashComparison = true;
+        _rightmostPath = path;
     }
 
     public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
@@ -231,5 +251,18 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public interface ILeafValueCollector
     {
         int Collect(in ValueHash256 path, CappedArray<byte> value);
+    }
+
+    // Store two item, and roll between them in Data on Add
+    private class RollingItem<T>
+    {
+        public T[] Data { get; } = new T[2];
+        private int _idx = 0;
+
+        public void Add(T item)
+        {
+            Data[_idx] = item;
+            _idx = 1 - _idx;
+        }
     }
 }
