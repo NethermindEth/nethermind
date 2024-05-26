@@ -104,11 +104,15 @@ public class InitializeStateDb : IStep
                 if (_logger.IsWarn) _logger.Warn($"Detected {pruningConfig.CacheMb}MB of pruning cache config. Pruning cache more than 2000MB is not recommended as it may cause long memory pruning time which affect attestation.");
             }
 
+            // 8 bytes Node pointer, (LinkedListNode 8 pointer + 8 pointer) + (HashAndTinyPath: 32 bytes for value + 8 bytes for path) + 32 bytes ValueHash256
+            int KeyEntryMemorySize = 8 + (8 + 8) + (32 + 8) + 32; // 96 bytes
+
             pruningStrategy = Prune
                 .WhenCacheReaches(pruningConfig.CacheMb.MB())
                 // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
                 // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
-                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / 48))
+                // With the default 2000MB cache and 0.1 ratio, it can keep track of just over 1M keys.
+                .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / KeyEntryMemorySize))
                 .KeepingLastNState(pruningConfig.PruningBoundary);
         }
         else
