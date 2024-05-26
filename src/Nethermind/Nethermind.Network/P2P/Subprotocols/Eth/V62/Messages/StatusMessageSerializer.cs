@@ -12,7 +12,7 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V62.Messages
 
         private readonly bool _includeTd;
 
-        public StatusMessageSerializer(): this(true) { }
+        public StatusMessageSerializer() : this(true) { }
 
         protected StatusMessageSerializer(bool includeTd)
         {

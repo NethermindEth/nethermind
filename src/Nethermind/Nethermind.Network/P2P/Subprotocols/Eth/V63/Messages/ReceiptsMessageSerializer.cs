@@ -16,15 +16,12 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
         private readonly ISpecProvider _specProvider;
         private readonly IRlpStreamDecoder<TxReceipt> _decoder;
 
-        public ReceiptsMessageSerializer(ISpecProvider specProvider): this(specProvider, Rlp.GetStreamDecoder<TxReceipt>())
-        {
-            _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-        }
+        public ReceiptsMessageSerializer(ISpecProvider specProvider) : this(specProvider, Rlp.GetStreamDecoder<TxReceipt>()) { }
 
         protected ReceiptsMessageSerializer(ISpecProvider specProvider, IRlpStreamDecoder<TxReceipt> decoder)
         {
             _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
-            _decoder = decoder;
+            _decoder = decoder ?? throw new ArgumentNullException(nameof(decoder));
         }
 
         public void Serialize(IByteBuffer byteBuffer, ReceiptsMessage message)

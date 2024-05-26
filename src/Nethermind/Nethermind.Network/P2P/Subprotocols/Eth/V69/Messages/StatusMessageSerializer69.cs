@@ -5,10 +5,11 @@ using DotNetty.Buffers;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V69.Messages;
 
-public class StatusMessageSerializer69 : V62.Messages.StatusMessageSerializer,
+public class StatusMessageSerializer69 :
+    V62.Messages.StatusMessageSerializer,
     IZeroInnerMessageSerializer<StatusMessage69>
 {
-    public StatusMessageSerializer69(): base(includeTd: false) { }
+    public StatusMessageSerializer69() : base(includeTd: false) { }
 
     void IZeroMessageSerializer<StatusMessage69>.Serialize(IByteBuffer byteBuffer, StatusMessage69 message) => base.Serialize(byteBuffer, message);
 
