@@ -41,12 +41,7 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     // For determining proofs
     private TrieNode?[] _leftmostNodes = new TrieNode?[65];
-
-    // Because we may iterate over the limit, the final right proof may not be of the right value, but it would stop.
-    // So we keep two of them for each level, where we try to determine which of the two node is the right one with
-    // _rightmostPath.
-    private RollingItem<(TreePath, TrieNode)?>?[] _rightmostNodes = new RollingItem<(TreePath, TrieNode)?>?[65];
-    private TreePath? _rightmostPath = null;
+    private TrieNode?[] _rightmostNodes = new TrieNode?[65];
 
     private readonly int _nodeLimit;
     private readonly long _byteLimit;
@@ -132,48 +127,21 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     {
         HashSet<byte[]> proofs = new();
 
-        if (_leftmostNodes[0] is not null)
+        AddToProof(_leftmostNodes);
+        AddToProof(_rightmostNodes);
+
+        return proofs.ToPooledList();
+
+        void AddToProof(IReadOnlyList<TrieNode?> boundaryNodes)
         {
             int i = 0;
             while (true)
             {
-                if (_leftmostNodes[i] is null) break;
-
-                TrieNode node = _leftmostNodes[i];
-                proofs.Add(node.FullRlp.ToArray());
-
-                if (node.IsBranch)
-                    i++;
-                else if (node.IsExtension)
-                    i += node.Key.Length;
-                else
-                    break;
-            }
-        }
-
-        if (_rightmostPath.HasValue)
-        {
-            TreePath rightmostPath = _rightmostPath.Value;
-            int i = 0;
-            while (true)
-            {
-                if (_rightmostNodes[i] is null) break;
-
-                TrieNode node = null;
-                foreach ((TreePath, TrieNode)? entry in _rightmostNodes[i].Data)
-                {
-                    if (!entry.HasValue) continue;
-
-                    (TreePath itemPath, TrieNode n) = entry.Value;
-                    if (rightmostPath.Truncate(itemPath.Length) == itemPath)
-                    {
-                        node = n;
-                    }
-                }
-
+                TrieNode node = boundaryNodes[i];
                 if (node is null) break;
 
                 proofs.Add(node.FullRlp.ToArray());
+
                 if (node.IsBranch)
                     i++;
                 else if (node.IsExtension)
@@ -182,8 +150,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
                     break;
             }
         }
-
-        return proofs.ToPooledList();
     }
 
     public void VisitTree(in TreePathContext nodeContext, Hash256 rootHash, TrieVisitContext trieVisitContext)
@@ -199,19 +165,19 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public void VisitBranch(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
-        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
+        _rightmostNodes[ctx.Path.Length] = node;
     }
 
     public void VisitExtension(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
-        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
+        _rightmostNodes[ctx.Path.Length] = node;
     }
 
     public void VisitLeaf(in TreePathContext ctx, TrieNode node, TrieVisitContext trieVisitContext, ReadOnlySpan<byte> value)
     {
         _leftmostNodes[ctx.Path.Length] ??= node;
-        (_rightmostNodes[ctx.Path.Length] ??= new RollingItem<(TreePath, TrieNode)?>()).Add((ctx.Path, node));
+        _rightmostNodes[ctx.Path.Length] = node;
 
         TreePath path = ctx.Path.Append(node.Key);
         if (!ShouldVisit(path))
@@ -219,10 +185,11 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
             return;
         }
 
-        if (path.Path.CompareTo(_limitHash) >= 0)
+        if (path.Path.CompareTo(_limitHash) >= 0 || _cancellationToken.IsCancellationRequested)
         {
             // This leaf is after or at limitHash. This will cause all further ShouldVisit to return false.
             // Yes, we do need to include this as part of the response.
+            // Note: Cancellation must happen at the leaf or the proof may break
             _lastNodeFound = true;
         }
 
@@ -230,7 +197,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
         // We found at least one leaf, don't compare with startHash anymore
         _skipStarthashComparison = true;
-        _rightmostPath = path;
     }
 
     public void VisitCode(in TreePathContext nodeContext, Hash256 codeHash, TrieVisitContext trieVisitContext)
@@ -251,18 +217,5 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
     public interface ILeafValueCollector
     {
         int Collect(in ValueHash256 path, CappedArray<byte> value);
-    }
-
-    // Store two item, and round robin between them on Add
-    private class RollingItem<T>
-    {
-        public T[] Data { get; } = new T[2];
-        private int _idx = 0;
-
-        public void Add(T item)
-        {
-            Data[_idx] = item;
-            _idx = 1 - _idx;
-        }
     }
 }
