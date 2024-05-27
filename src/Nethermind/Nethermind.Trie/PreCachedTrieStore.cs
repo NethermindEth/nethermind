@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie.Pruning;
@@ -9,7 +10,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie;
 
 public class PreCachedTrieStore(ITrieStore inner,
-    NonBlocking.ConcurrentDictionary<(Hash256? address, TreePath path, Hash256 hash), byte[]?> preBlockCache)
+    NonBlocking.ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
     : ITrieStore
 {
     public void Dispose()
@@ -30,8 +31,8 @@ public class PreCachedTrieStore(ITrieStore inner,
 
     public bool IsPersisted(Hash256? address, in TreePath path, in ValueHash256 keccak)
     {
-        byte[]? rlp =preBlockCache.GetOrAdd((address, path, new Hash256(keccak)),
-            key => inner.TryLoadRlp(key.address, in key.path, key.hash));
+        byte[]? rlp = preBlockCache.GetOrAdd(new(address, in path, in keccak),
+            key => inner.TryLoadRlp(key.Address, in key.Path, key.Hash));
 
         return rlp is not null;
     }
@@ -48,7 +49,7 @@ public class PreCachedTrieStore(ITrieStore inner,
 
     public void Set(Hash256? address, in TreePath path, in ValueHash256 keccak, byte[] rlp)
     {
-        preBlockCache[(address, path, new Hash256(keccak))] = rlp;
+        preBlockCache[new(address, in path, in keccak)] = rlp;
         inner.Set(address, in path, in keccak, rlp);
     }
 
@@ -59,12 +60,45 @@ public class PreCachedTrieStore(ITrieStore inner,
     public TrieNode FindCachedOrUnknown(Hash256? address, in TreePath path, Hash256 hash) => inner.FindCachedOrUnknown(address, in path, hash);
 
     public byte[]? LoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd((address, path, hash),
-            key => inner.LoadRlp(key.address, key.path, key.hash, flags));
+        preBlockCache.GetOrAdd(new(address, in path, hash),
+            key => inner.LoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public byte[]? TryLoadRlp(Hash256? address, in TreePath path, Hash256 hash, ReadFlags flags = ReadFlags.None) =>
-        preBlockCache.GetOrAdd((address, path, hash),
-            key => inner.TryLoadRlp(key.address, key.path, key.hash, flags));
+        preBlockCache.GetOrAdd(new(address, in path, hash),
+            key => inner.TryLoadRlp(key.Address, in key.Path, key.Hash, flags));
 
     public INodeStorage.KeyScheme Scheme => inner.Scheme;
+}
+
+public class NodeKey : IEquatable<NodeKey>
+{
+    public readonly Hash256? Address;
+    public readonly TreePath Path;
+    public readonly Hash256 Hash;
+    
+    public NodeKey(Hash256? address, in TreePath path, in ValueHash256 hash)
+    {
+        Address = address;
+        Path = path;
+        Hash = hash.ToCommitment();
+    }
+
+    public NodeKey(Hash256? address, in TreePath path, Hash256 hash)
+    {
+        Address = address;
+        Path = path;
+        Hash = hash;
+    }
+
+    public bool Equals(NodeKey? other) =>
+        other is not null && Address == other.Address && Path.Equals(in other.Path) && Hash.Equals(other.Hash);
+
+    public override bool Equals(object? obj) => obj is NodeKey key && Equals(key);
+
+    public override int GetHashCode()
+    {
+        uint hashCode0 = (uint)Hash.GetHashCode();
+        ulong hashCode1 = ((ulong)(uint)Path.GetHashCode() << 32) | (uint)(Address?.GetHashCode() ?? 1);
+        return (int)BitOperations.Crc32C(hashCode0, hashCode1);
+    }
 }
