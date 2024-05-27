@@ -75,7 +75,6 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("sepolia", "ws://localhost:3000/api")]
-        [TestCase("goerli", "wss://stats.goerli.net/api")]
         [TestCase("mainnet", "wss://ethstats.net/api")]
         [TestCase("poacore", "ws://localhost:3000/api")]
         [TestCase("gnosis", "ws://localhost:3000/api")]
@@ -90,13 +89,11 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("aura ^archive", false)]
-        [TestCase("clique", true)]
         public void Geth_limits_configs_are_correct(string configWildcard, bool useGethLimitsInFastSync)
         {
             Test<ISyncConfig, bool>(configWildcard, c => c.UseGethLimitsInFastBlocks, useGethLimitsInFastSync);
         }
 
-        [TestCase("goerli", "0xbf7e331f7f7c1dd2e05159666b3bf8bc7a8a3a9eb1d518969eab529dd9b88c1a")]
         [TestCase("mainnet", "0xd4e56740f876aef8c010b86a40d5f56745a118d0906a34e69aec8c0db1cb8fa3")]
         [TestCase("poacore", "0x39f02c003dde5b073b3f6e1700fc0b84b4877f6839bb23edadd3d2d82a488634")]
         [TestCase("gnosis", "0x4f1dd23188aab3a76b463e4af801b52b1248ef073c648cbdc4c9333d3da79756")]
@@ -149,8 +146,6 @@ namespace Nethermind.Runner.Test
         [TestCase("mainnet ^archive", 2048000000)]
         [TestCase("volta archive", 768000000)]
         [TestCase("volta ^archive", 768000000)]
-        [TestCase("goerli archive", 768000000)]
-        [TestCase("goerli ^archive", 768000000)]
         [TestCase("gnosis archive", 1024000000)]
         [TestCase("gnosis ^archive", 768000000)]
         [TestCase("poacore archive", 1024000000)]
@@ -204,13 +199,12 @@ namespace Nethermind.Runner.Test
         }
 
         [TestCase("spaceneth", true)]
-        [TestCase("goerli", true)]
         [TestCase("gnosis", true)]
         [TestCase("mainnet", true)]
         [TestCase("sepolia", true)]
         [TestCase("holesky", true)]
         [TestCase("chiado", true)]
-        [TestCase("^spaceneth ^goerli ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
+        [TestCase("^spaceneth ^mainnet ^gnosis ^sepolia ^holesky ^chiado", false)]
         public void Json_defaults_are_correct(string configWildcard, bool jsonEnabled)
         {
             Test<IJsonRpcConfig, bool>(configWildcard, c => c.Enabled, jsonEnabled);
@@ -237,7 +231,6 @@ namespace Nethermind.Runner.Test
 
         [TestCase("archive", false)]
         [TestCase("mainnet.cfg", true)]
-        [TestCase("goerli.cfg", true)]
         [TestCase("sepolia.cfg", true)]
         [TestCase("gnosis.cfg", false)]
         public void Snap_sync_settings_as_expected(string configWildcard, bool enabled)
@@ -245,12 +238,11 @@ namespace Nethermind.Runner.Test
             Test<ISyncConfig, bool>(configWildcard, c => c.SnapSync, enabled);
         }
 
-        [TestCase("^aura ^sepolia ^holesky ^goerli ^mainnet", false)]
+        [TestCase("^aura ^sepolia ^holesky ^mainnet", false)]
         [TestCase("aura ^archive", true)]
         [TestCase("^archive ^spaceneth", true)]
         [TestCase("sepolia ^archive", true)]
         [TestCase("holesky ^archive", true)]
-        [TestCase("goerli ^archive", true)]
         [TestCase("mainnet ^archive", true)]
         public void Stays_on_full_sync(string configWildcard, bool stickToFullSyncAfterFastSync)
         {
@@ -300,13 +292,6 @@ namespace Nethermind.Runner.Test
             Test<IReceiptConfig, bool>(configWildcard, c => c.StoreReceipts, storeReceipts);
         }
 
-        [TestCase("clique")]
-        public void Clique_pivots_divide_by_30000_epoch_length(string configWildcard)
-        {
-            Test<ISyncConfig, int>(configWildcard, c => (int)(c.PivotNumberParsed % 30000L), (s, p) => p.Should().Be(0));
-        }
-
-        [TestCase("goerli", false)]
         [TestCase("mainnet_archive.cfg", true)]
         [TestCase("mainnet.cfg", true)]
         [TestCase("poacore", true)]
@@ -334,20 +319,18 @@ namespace Nethermind.Runner.Test
             Test<IMergeConfig, bool>(configWildcard, c => c.SimulateBlockProduction, false);
         }
 
-        [TestCase("goerli", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("sepolia", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("holesky", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("chiado", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("mainnet", BlobsSupportMode.StorageWithReorgs)]
         [TestCase("gnosis", BlobsSupportMode.StorageWithReorgs)]
-        [TestCase("^goerli ^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
+        [TestCase("^sepolia ^holesky ^chiado ^mainnet ^gnosis", BlobsSupportMode.Disabled)]
         public void Blob_txs_support_is_correct(string configWildcard, BlobsSupportMode blobsSupportMode)
         {
             Test<ITxPoolConfig, BlobsSupportMode>(configWildcard, c => c.BlobsSupport, blobsSupportMode);
         }
 
 
-        [TestCase("goerli", new[] { 16, 16, 16, 16 })]
         [TestCase("mainnet")]
         [TestCase("poacore.cfg", new[] { 16, 16, 16, 16 })]
         [TestCase("poacore_archive.cfg", new[] { 16, 16, 16, 16 })]
@@ -377,11 +360,10 @@ namespace Nethermind.Runner.Test
 
         [TestCase("chiado", 17_000_000L, 5UL)]
         [TestCase("gnosis", 17_000_000L, 5UL)]
-        [TestCase("goerli", 30_000_000L)]
         [TestCase("mainnet", 30_000_000L)]
         [TestCase("sepolia", 30_000_000L)]
         [TestCase("holesky", 30_000_000L)]
-        [TestCase("^chiado ^gnosis ^goerli ^mainnet ^sepolia ^holesky")]
+        [TestCase("^chiado ^gnosis ^mainnet ^sepolia ^holesky")]
         public void Blocks_defaults_are_correct(string configWildcard, long? targetBlockGasLimit = null, ulong secondsPerSlot = 12)
         {
             Test<IBlocksConfig, long?>(configWildcard, c => c.TargetBlockGasLimit, targetBlockGasLimit);
@@ -430,8 +412,6 @@ namespace Nethermind.Runner.Test
 
         protected override IEnumerable<string> Configs { get; } = new HashSet<string>
         {
-            "goerli_archive.cfg",
-            "goerli.cfg",
             "holesky.cfg",
             "holesky_archive.cfg",
             "mainnet_archive.cfg",

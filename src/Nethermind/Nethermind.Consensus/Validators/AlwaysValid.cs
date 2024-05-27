@@ -102,7 +102,7 @@ public class Always : IBlockValidator, ISealValidator, IUnclesValidator, ITxVali
         return _result;
     }
 
-    public bool ValidateSuggestedBlock(Block block, out string? error)
+    public bool ValidateSuggestedBlock(Block block, out string? error, bool validateHashes = true)
     {
         error = null;
         return _result;

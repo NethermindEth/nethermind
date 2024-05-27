@@ -35,7 +35,7 @@ namespace Nethermind.Network
             return protocol switch
             {
                 Protocol.P2P => ValidateP2PProtocol(session, eventArgs),
-                Protocol.Eth or Protocol.Les => ValidateEthProtocol(session, eventArgs),
+                Protocol.Eth => ValidateEthProtocol(session, eventArgs),
                 _ => true,
             };
         }

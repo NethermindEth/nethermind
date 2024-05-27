@@ -43,7 +43,7 @@ jobs:
           awk -i inplace -v n=1 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$arm64_hash'"); } 1' debian/postinst
           awk -i inplace -v n=2 '/hash/ { if (++count == n) sub(/hash.*/, "hash='$x64_hash'"); } 1' debian/postinst
 
-          changelog="nethermind ($version) jammy; urgency=high\n"
+          changelog="nethermind ($version) noble; urgency=high\n"
           changelog+="  * Nethermind v$version\n"
           changelog+=" -- Nethermind <devops@nethermind.io>  $(date -R)"
           echo -e "$changelog" > debian/changelog
@@ -74,8 +74,8 @@ jobs:
           echo ${{ secrets.PPA_COPY_TOKEN }} | base64 --decode > /tmp/lp_credentials
           git clone https://git.launchpad.net/ubuntu-archive-tools
           cd ubuntu-archive-tools
-          for release in "focal" "mantic"; do
-            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s jammy --to-suite=$release nethermind
+          for release in "focal" "mantic" "jammy"; do
+            python3 copy-package -y -b -p nethermindeth --ppa-name=nethermind -s noble --to-suite=$release nethermind
           done
           rm -f /tmp/lp_credentials
 

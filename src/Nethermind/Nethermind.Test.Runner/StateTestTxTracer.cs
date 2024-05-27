@@ -32,7 +32,8 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     public bool IsTracingBlockHash { get; } = false;
     public bool IsTracingAccess { get; } = false;
     public bool IsTracingFees => false;
-    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+    public bool IsTracingLogs => false;
+    public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees || IsTracingLogs;
 
 
     public void MarkAsSuccess(Address recipient, long gasSpent, byte[] output, LogEntry[] logs, Hash256 stateRoot = null)
@@ -48,15 +49,16 @@ public class StateTestTxTracer : ITxTracer, IDisposable
         _trace.Result.GasUsed = gasSpent;
     }
 
-    public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+    public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
     {
+        bool isPostMerge = env.IsPostMerge();
         _gasAlreadySetForCurrentOp = false;
         _traceEntry = new StateTestTxTraceEntry();
         _traceEntry.Pc = pc;
         _traceEntry.Operation = (byte)opcode;
         _traceEntry.OperationName = opcode.GetName(isPostMerge);
         _traceEntry.Gas = gas;
-        _traceEntry.Depth = depth;
+        _traceEntry.Depth = env.GetGethTraceDepth();
         _trace.Entries.Add(_traceEntry);
     }
 
@@ -152,6 +154,10 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     {
     }
 
+    public void ReportLog(LogEntry log)
+    {
+    }
+
     public void SetOperationStorage(Address address, UInt256 storageIndex, ReadOnlySpan<byte> newValue, ReadOnlySpan<byte> currentValue)
     {
     }
@@ -206,6 +212,11 @@ public class StateTestTxTracer : ITxTracer, IDisposable
     }
 
     public void ReportActionError(EvmExceptionType exceptionType)
+    {
+        throw new NotSupportedException();
+    }
+
+    public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
     {
         throw new NotSupportedException();
     }

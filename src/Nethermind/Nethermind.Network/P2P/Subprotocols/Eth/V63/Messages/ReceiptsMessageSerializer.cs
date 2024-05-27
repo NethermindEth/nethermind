@@ -11,11 +11,10 @@ using Nethermind.Serialization.Rlp;
 
 namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
 {
-    // 3% (2GB) allocation of Goerli 3m fast sync that can be improved by implementing ZeroMessageSerializer here
     public class ReceiptsMessageSerializer : IZeroInnerMessageSerializer<ReceiptsMessage>
     {
         private readonly ISpecProvider _specProvider;
-        private readonly ReceiptMessageDecoder _decoder = new();
+        private static readonly IRlpStreamDecoder<TxReceipt> _decoder = Rlp.GetStreamDecoder<TxReceipt>();
 
         public ReceiptsMessageSerializer(ISpecProvider specProvider)
         {
@@ -51,8 +50,6 @@ namespace Nethermind.Network.P2P.Subprotocols.Eth.V63.Messages
                     _decoder.Encode(stream, txReceipt,
                         _specProvider.GetReceiptSpec(txReceipt.BlockNumber).IsEip658Enabled ? RlpBehaviors.Eip658Receipts : RlpBehaviors.None);
                 }
-
-
             }
         }
 

@@ -19,11 +19,11 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0c);
+    public static Address Address { get; } = Address.FromNumber(0x0b);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 600L;
+        return 500L;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
@@ -38,9 +38,6 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
         {
             return (Array.Empty<byte>(), false);
         }
-
-        // Span<byte> inputDataSpan = stackalloc byte[expectedInputLength];
-        // inputData.PrepareEthInput(inputDataSpan);
 
         (byte[], bool) result;
 

@@ -142,7 +142,8 @@ namespace Nethermind.Evm.Test
 
         private static readonly Address to = new Address("0x000000000000000000000000636f6e7472616374");
         private static readonly Address coinbase = new Address("0x4444588443C3a91288c5002483449Aba1054192b");
-        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.Goerli, LimboLogs.Instance);
+        // for testing purposes, particular chain id does not matter. Maybe make random id so it captures the idea that signature should would irrespective of chain
+        private static readonly EthereumEcdsa ethereumEcdsa = new(BlockchainIds.GenericNonRealNetwork, LimboLogs.Instance);
         private static string run(byte[] input)
         {
             long blocknr = 12965000;
@@ -158,7 +159,7 @@ namespace Nethermind.Evm.Test
                     LimboLogs.Instance);
             ISpecProvider specProvider = new TestSpecProvider(London.Instance);
             VirtualMachine virtualMachine = new(
-                    Nethermind.Evm.Test.TestBlockhashProvider.Instance,
+                new TestBlockhashProvider(specProvider),
                     specProvider,
                     LimboLogs.Instance);
             TransactionProcessor transactionProcessor = new TransactionProcessor(
@@ -216,7 +217,19 @@ namespace Nethermind.Evm.Test
         public bool IsTracingBlockHash { get; } = false;
         public bool IsTracingAccess { get; } = false;
         public bool IsTracingFees => false;
-        public bool IsTracing => IsTracingReceipt || IsTracingActions || IsTracingOpLevelStorage || IsTracingMemory || IsTracingInstructions || IsTracingRefunds || IsTracingCode || IsTracingStack || IsTracingBlockHash || IsTracingAccess || IsTracingFees;
+        public bool IsTracingLogs => false;
+        public bool IsTracing => IsTracingReceipt
+                                 || IsTracingActions
+                                 || IsTracingOpLevelStorage
+                                 || IsTracingMemory
+                                 || IsTracingInstructions
+                                 || IsTracingRefunds
+                                 || IsTracingCode
+                                 || IsTracingStack
+                                 || IsTracingBlockHash
+                                 || IsTracingAccess
+                                 || IsTracingFees
+                                 || IsTracingLogs;
 
         public string lastmemline;
 
@@ -228,7 +241,7 @@ namespace Nethermind.Evm.Test
         {
         }
 
-        public void StartOperation(int depth, long gas, Instruction opcode, int pc, bool isPostMerge = false)
+        public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env)
         {
         }
 
@@ -237,6 +250,10 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportOperationRemainingGas(long gas)
+        {
+        }
+
+        public void ReportLog(LogEntry log)
         {
         }
 
@@ -304,7 +321,7 @@ namespace Nethermind.Evm.Test
             throw new NotImplementedException();
         }
 
-        public void ReportAction(long gas, UInt256 value, Address @from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
+        public void ReportAction(long gas, UInt256 value, Address from, Address to, ReadOnlyMemory<byte> input, ExecutionType callType, bool isPrecompileCall = false)
         {
             throw new NotSupportedException();
         }
@@ -315,6 +332,11 @@ namespace Nethermind.Evm.Test
         }
 
         public void ReportActionError(EvmExceptionType exceptionType)
+        {
+            throw new NotSupportedException();
+        }
+
+        public void ReportActionRevert(long gas, ReadOnlyMemory<byte> output)
         {
             throw new NotSupportedException();
         }

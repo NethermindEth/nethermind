@@ -649,7 +649,7 @@ namespace Nethermind.Core.Extensions
         private static string ByteArrayToHexViaLookup32(byte[] bytes, bool withZeroX, bool skipLeadingZeros,
             bool withEip55Checksum)
         {
-            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingZeros(bytes) : 0;
+            int leadingZerosFirstCheck = skipLeadingZeros ? CountLeadingNibbleZeros(bytes) : 0;
             int length = bytes.Length * 2 + (withZeroX ? 2 : 0) - leadingZerosFirstCheck;
             if (skipLeadingZeros && length == (withZeroX ? 2 : 0))
             {
@@ -943,30 +943,78 @@ namespace Nethermind.Core.Extensions
             return result;
         }
 
-        public static int CountLeadingZeros(this ReadOnlySpan<byte> bytes)
+        public static int CountLeadingNibbleZeros(this ReadOnlySpan<byte> bytes)
         {
-            int leadingZeros = 0;
-            for (int i = 0; i < bytes.Length; i++)
+            int firstNonZero = bytes.IndexOfAnyExcept((byte)0);
+            if (firstNonZero < 0)
             {
-                if ((bytes[i] & 0b1111_0000) == 0)
-                {
-                    leadingZeros++;
-                    if ((bytes[i] & 0b1111) == 0)
-                    {
-                        leadingZeros++;
-                    }
-                    else
-                    {
-                        break;
-                    }
-                }
-                else
-                {
-                    break;
-                }
+                return bytes.Length * 2;
+            }
+
+            int leadingZeros = firstNonZero * 2;
+            if ((bytes[firstNonZero] & 0b1111_0000) == 0)
+            {
+                leadingZeros++;
             }
 
             return leadingZeros;
+        }
+
+        public static int CountZeros(this Span<byte> data)
+            => CountZeros((ReadOnlySpan<byte>)data);
+
+        public static int CountZeros(this ReadOnlySpan<byte> data)
+        {
+            int totalZeros = 0;
+            if (Vector512.IsHardwareAccelerated && data.Length >= Vector512<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector512<byte>.Count; i += Vector512<byte>.Count)
+                {
+                    Vector512<byte> dataVector = Unsafe.ReadUnaligned<Vector512<byte>>(ref Unsafe.Add(ref bytes, i));
+                    ulong flags = Vector512.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector256.IsHardwareAccelerated && data.Length >= Vector256<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector256<byte>.Count; i += Vector256<byte>.Count)
+                {
+                    Vector256<byte> dataVector = Unsafe.ReadUnaligned<Vector256<byte>>(ref Unsafe.Add(ref bytes, i));
+                    uint flags = Vector256.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+            if (Vector128.IsHardwareAccelerated && data.Length >= Vector128<byte>.Count)
+            {
+                ref byte bytes = ref MemoryMarshal.GetReference(data);
+                int i = 0;
+                for (; i < data.Length - Vector128<byte>.Count; i += Vector128<byte>.Count)
+                {
+                    Vector128<byte> dataVector = Unsafe.ReadUnaligned<Vector128<byte>>(ref Unsafe.Add(ref MemoryMarshal.GetReference(data), i));
+                    uint flags = Vector128.Equals(dataVector, default).ExtractMostSignificantBits();
+                    totalZeros += BitOperations.PopCount(flags);
+                }
+
+                data = data[i..];
+            }
+
+            for (int i = 0; i < data.Length; i++)
+            {
+                if (data[i] == 0)
+                {
+                    totalZeros++;
+                }
+            }
+
+            return totalZeros;
         }
 
         [DebuggerStepThrough]

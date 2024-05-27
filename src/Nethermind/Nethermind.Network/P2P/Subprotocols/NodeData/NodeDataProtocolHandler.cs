@@ -77,7 +77,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
             case NodeDataMessageCode.GetNodeData:
                 {
                     GetNodeDataMessage getNodeDataMessage = Deserialize<GetNodeDataMessage>(message.Content);
-                    Metrics.GetNodeDataReceived++;
                     ReportIn(getNodeDataMessage, size);
                     _backgroundTaskScheduler.ScheduleSyncServe(getNodeDataMessage, Handle);
                     break;
@@ -85,7 +84,6 @@ public class NodeDataProtocolHandler : ZeroProtocolHandlerBase, INodeDataPeer
             case NodeDataMessageCode.NodeData:
                 {
                     NodeDataMessage nodeDataMessage = Deserialize<NodeDataMessage>(message.Content);
-                    Metrics.NodeDataReceived++;
                     ReportIn(nodeDataMessage, size);
                     Handle(nodeDataMessage, size);
                     break;

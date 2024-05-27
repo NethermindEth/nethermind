@@ -31,6 +31,8 @@ namespace Nethermind.Consensus.AuRa
 
         public string SealEngineType => Core.SealEngineType.AuRa;
 
+        private StartBlockProducerAuRa? _blockProducerStarter;
+
 
         public ValueTask DisposeAsync()
         {
@@ -40,16 +42,10 @@ namespace Nethermind.Consensus.AuRa
         public Task Init(INethermindApi nethermindApi)
         {
             _nethermindApi = nethermindApi as AuRaNethermindApi;
-            return Task.CompletedTask;
-        }
-
-        public Task InitNetworkProtocol()
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task InitRpcModules()
-        {
+            if (_nethermindApi is not null)
+            {
+                _blockProducerStarter = new(_nethermindApi);
+            }
             return Task.CompletedTask;
         }
 
@@ -63,19 +59,23 @@ namespace Nethermind.Consensus.AuRa
             return Task.CompletedTask;
         }
 
-        public Task<IBlockProducer> InitBlockProducer(IBlockProductionTrigger? blockProductionTrigger = null, ITxSource? additionalTxSource = null)
+        public IBlockProducer InitBlockProducer(ITxSource? additionalTxSource = null)
         {
             if (_nethermindApi is not null)
             {
-                StartBlockProducerAuRa blockProducerStarter = new(_nethermindApi);
-                DefaultBlockProductionTrigger ??= blockProducerStarter.CreateTrigger();
-                return blockProducerStarter.BuildProducer(blockProductionTrigger ?? DefaultBlockProductionTrigger, additionalTxSource);
+                return _blockProducerStarter!.BuildProducer(additionalTxSource);
             }
 
-            return Task.FromResult<IBlockProducer>(null);
+            return null;
         }
 
-        public IBlockProductionTrigger? DefaultBlockProductionTrigger { get; private set; }
+        public IBlockProducerRunner CreateBlockProducerRunner()
+        {
+            return new StandardBlockProducerRunner(
+                _blockProducerStarter.CreateTrigger(),
+                _nethermindApi.BlockTree,
+                _nethermindApi.BlockProducer!);
+        }
 
         public INethermindApi CreateApi(IConfigProvider configProvider, IJsonSerializer jsonSerializer,
             ILogManager logManager, ChainSpec chainSpec) => new AuRaNethermindApi(configProvider, jsonSerializer, logManager, chainSpec);

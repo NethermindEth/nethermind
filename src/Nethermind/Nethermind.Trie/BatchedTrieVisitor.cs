@@ -34,9 +34,9 @@ namespace Nethermind.Trie;
 /// the pre-fetched data is wasted read, but overall, it significantly improve throughput.
 ///
 /// The exact minimum size of working set depends on the size of the database, which seems
-/// to increase linearly. For goerli, that seems to be 256MB, and mainnet it seems to be 1Gb. Increasing the working
+/// to increase linearly. For mainnet it seems to be 1Gb. Increasing the working
 /// set decreases reads, however up to a certain point, the time taken for writes is much higher than read, so no
-/// point in increasing memory budget further. For goerli, that seems to be 3GB and for mainnet, that seems to be 8Gb.
+/// point in increasing memory budget further. For mainnet, that seems to be 8Gb.
 /// </summary>
 public class BatchedTrieVisitor<TNodeContext>
     where TNodeContext : struct, INodeContext<TNodeContext>

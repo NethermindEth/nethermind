@@ -51,18 +51,6 @@ namespace Nethermind.Evm.Test
             }
         }
 
-        private class Goerli : Eip1344Tests
-        {
-            protected override long BlockNumber => GoerliSpecProvider.IstanbulBlockNumber;
-            protected override ISpecProvider SpecProvider => GoerliSpecProvider.Instance;
-
-            [Test]
-            public void given_goerli_network_chain_id_opcode_puts_expected_value_onto_the_stack()
-            {
-                Test(SpecProvider.ChainId);
-            }
-        }
-
         private class Mainnet : Eip1344Tests
         {
             protected override long BlockNumber => MainnetSpecProvider.IstanbulBlockNumber;
