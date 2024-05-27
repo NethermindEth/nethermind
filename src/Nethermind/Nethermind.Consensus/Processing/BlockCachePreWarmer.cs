@@ -54,8 +54,8 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
 
-            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
             WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
+            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
 
             if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
         }
