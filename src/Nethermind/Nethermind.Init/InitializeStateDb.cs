@@ -111,7 +111,7 @@ public class InitializeStateDb : IStep
                 .WhenCacheReaches(pruningConfig.CacheMb.MB())
                 // Use of ratio, as the effectiveness highly correlate with the amount of keys per snapshot save which
                 // depends on CacheMb. 0.05 is the minimum where it can keep track the whole snapshot.. most of the time.
-                // With the default 2000MB cache and 0.1 ratio, it can keep track of just over 1M keys.
+                // With the default 1000MB cache and 0.1 ratio, it can keep track of just over 1M keys.
                 .TrackingPastKeys((int)(pruningConfig.CacheMb.MB() * pruningConfig.TrackedPastKeyCountMemoryRatio / KeyEntryMemorySize))
                 .KeepingLastNState(pruningConfig.PruningBoundary);
         }
