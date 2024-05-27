@@ -136,15 +136,22 @@ public class InitializeStateDb : IStep
         // TODO: Needed by node serving. Probably should use `StateReader` instead.
         setApi.TrieStore = trieStore;
 
-        PreBlockCaches? preBlockCaches = blockConfig.PreWarmStateOnBlockProcessing ? new() : null;
+        ITrieStore mainWorldTrieStore = trieStore;
+        PreBlockCaches? preBlockCaches = null;
+        if (blockConfig.PreWarmStateOnBlockProcessing)
+        {
+            preBlockCaches = new PreBlockCaches();
+            mainWorldTrieStore = new PreCachedTrieStore(trieStore, preBlockCaches.RlpCache);
+        }
+
         IWorldState worldState = syncConfig.TrieHealing
             ? new HealingWorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
                 getApi.LogManager,
                 preBlockCaches)
             : new WorldState(
-                trieStore,
+                mainWorldTrieStore,
                 codeDb,
                 getApi.LogManager,
                 preBlockCaches);
@@ -159,7 +166,7 @@ public class InitializeStateDb : IStep
         // TODO: Don't forget this
         TrieStoreBoundaryWatcher trieStoreBoundaryWatcher = new(stateManager, _api.BlockTree!, _api.LogManager);
         getApi.DisposeStack.Push(trieStoreBoundaryWatcher);
-        getApi.DisposeStack.Push(trieStore);
+        getApi.DisposeStack.Push(mainWorldTrieStore);
 
         setApi.WorldState = stateManager.GlobalWorldState;
         setApi.StateReader = stateManager.GlobalStateReader;

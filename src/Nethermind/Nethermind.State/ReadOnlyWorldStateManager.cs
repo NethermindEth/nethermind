@@ -4,6 +4,7 @@
 using System;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -36,7 +37,12 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
     public IStateReader GlobalStateReader { get; }
 
     public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null) =>
-        new WorldState(_readOnlyTrieStore, _codeDb, _logManager, sharedHashes);
+        new WorldState(sharedHashes is not null
+                ? new PreCachedTrieStore(_readOnlyTrieStore, sharedHashes.RlpCache)
+                : _readOnlyTrieStore,
+            _codeDb,
+            _logManager,
+            sharedHashes);
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
