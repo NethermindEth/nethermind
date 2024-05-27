@@ -17,7 +17,7 @@ using Nethermind.State;
 
 namespace Nethermind.Consensus.Processing;
 
-public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
+public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpecProvider specProvider, ILogManager logManager, PreBlockCaches? preBlockCaches = null) : IBlockCachePreWarmer
 {
     private readonly ObjectPool<ReadOnlyTxProcessingEnv> _envPool = new DefaultObjectPool<ReadOnlyTxProcessingEnv>(new ReadOnlyTxProcessingEnvPooledObjectPolicy(envFactory), Environment.ProcessorCount);
     private readonly ObjectPool<SystemTransaction> _systemTransactionPool = new DefaultObjectPool<SystemTransaction>(new DefaultPooledObjectPolicy<SystemTransaction>(), Environment.ProcessorCount);
@@ -52,6 +52,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
         try
         {
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
+            IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
             Parallel.For(0, suggestedBlock.Transactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
@@ -61,9 +62,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ILog
                 try
                 {
                     tx.CopyTo(systemTransaction);
-
                     using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
-                    IReleaseSpec spec = env.SpecProvider.GetSpec(suggestedBlock.Header);
                     if (spec.UseTxAccessLists)
                     {
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
