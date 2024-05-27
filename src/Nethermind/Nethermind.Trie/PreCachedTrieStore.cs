@@ -75,7 +75,7 @@ public class NodeKey : IEquatable<NodeKey>
     public readonly Hash256? Address;
     public readonly TreePath Path;
     public readonly Hash256 Hash;
-    
+
     public NodeKey(Hash256? address, in TreePath path, in ValueHash256 hash)
     {
         Address = address;
