@@ -4,7 +4,9 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -250,6 +252,7 @@ namespace Nethermind.Synchronization.FastBlocks
 
         protected void ClearDependencies()
         {
+            _dependencies.Values.DisposeItems();
             _dependencies.Clear();
             MarkDirty();
         }
@@ -259,7 +262,9 @@ namespace Nethermind.Synchronization.FastBlocks
             HeadersSyncProgressReport.Update(_pivotNumber);
             HeadersSyncProgressReport.MarkEnd();
             ClearDependencies(); // there may be some dependencies from wrong branches
+            _pending.DisposeItems();
             _pending.Clear(); // there may be pending wrong branches
+            _sent.DisposeItems();
             _sent.Clear(); // we my still be waiting for some bad branches
             HeadersSyncQueueReport.Update(0L);
             HeadersSyncQueueReport.MarkEnd();
@@ -270,14 +275,17 @@ namespace Nethermind.Synchronization.FastBlocks
             long? lowest = LowestInsertedBlockHeader?.Number;
             long processedBatchCount = 0;
             const long maxBatchToProcess = 4;
-            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch? dependentBatch))
+            while (lowest.HasValue && processedBatchCount < maxBatchToProcess && _dependencies.TryRemove(lowest.Value - 1, out HeadersSyncBatch dependentBatch))
             {
-                MarkDirty();
-                InsertHeaders(dependentBatch!);
-                lowest = LowestInsertedBlockHeader?.Number;
-                cancellationToken.ThrowIfCancellationRequested();
+                using (dependentBatch)
+                {
+                    MarkDirty();
+                    InsertHeaders(dependentBatch);
+                    lowest = LowestInsertedBlockHeader?.Number;
+                    cancellationToken.ThrowIfCancellationRequested();
 
-                processedBatchCount++;
+                    processedBatchCount++;
+                }
             }
         }
 
@@ -449,7 +457,7 @@ namespace Nethermind.Synchronization.FastBlocks
         private static HeadersSyncBatch BuildDependentBatch(HeadersSyncBatch batch, long addedLast, long addedEarliest)
         {
             HeadersSyncBatch dependentBatch = new();
-            dependentBatch.StartNumber = batch.StartNumber;
+            dependentBatch.StartNumber = addedEarliest;
             int count = (int)(addedLast - addedEarliest + 1);
             dependentBatch.RequestSize = count;
             dependentBatch.MinNumber = batch.MinNumber;
@@ -567,26 +575,30 @@ namespace Nethermind.Synchronization.FastBlocks
                             _pending.Enqueue(batch);
                             throw new InvalidOperationException($"Only one header dependency expected ({batch})");
                         }
-
+                        long lastNumber = -1;
                         for (int j = 0; j < batch.Response.Count; j++)
                         {
                             BlockHeader? current = batch.Response[j];
                             if (current is not null)
                             {
+                                if (lastNumber != -1 && lastNumber < current.Number - 1)
+                                {
+                                    //There is a gap in this response,
+                                    //so we save the whole batch for now,
+                                    //and let the next PrepareRequest() handle the disconnect
+                                    addedEarliest = batch.StartNumber;
+                                    addedLast = batch.EndNumber;
+                                    break;
+                                }
                                 addedEarliest = Math.Min(addedEarliest, current.Number);
                                 addedLast = Math.Max(addedLast, current.Number);
-                            }
-                            else
-                            {
-                                break;
+                                lastNumber = current.Number;
                             }
                         }
-
                         HeadersSyncBatch dependentBatch = BuildDependentBatch(batch, addedLast, addedEarliest);
                         _dependencies[header.Number] = dependentBatch;
                         MarkDirty();
                         if (_logger.IsDebug) _logger.Debug($"{batch} -> DEPENDENCY {dependentBatch}");
-
                         // but we cannot do anything with it yet
                         break;
                     }
@@ -636,6 +648,7 @@ namespace Nethermind.Synchronization.FastBlocks
             {
                 if (added <= 0)
                 {
+                    batch.Response?.Dispose();
                     batch.Response = null;
                     _pending.Enqueue(batch);
                 }
@@ -708,6 +721,18 @@ namespace Nethermind.Synchronization.FastBlocks
         {
             _nextHeaderHash = header.ParentHash!;
             _nextHeaderDiff = (header.TotalDifficulty ?? 0) - header.Difficulty;
+        }
+        private bool _disposed = false;
+        public override void Dispose()
+        {
+            if (!_disposed)
+            {
+                _sent.DisposeItems();
+                _pending.DisposeItems();
+                _dependencies.Values.DisposeItems();
+                base.Dispose();
+                _disposed = true;
+            }
         }
     }
 }
