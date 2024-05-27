@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -36,7 +37,7 @@ namespace Nethermind.State
 
         private readonly ResettableHashSet<StorageCell> _committedThisRound = new();
         private readonly Dictionary<StorageCell, byte[]> _blockCache = new(4_096);
-        private readonly NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
+        private readonly ConcurrentDictionary<StorageCell, byte[]>? _preBlockCache;
         private readonly Func<StorageCell, byte[]> _loadFromTree;
 
         /// <summary>
@@ -47,7 +48,7 @@ namespace Nethermind.State
             StateProvider? stateProvider,
             ILogManager? logManager,
             IStorageTreeFactory? storageTreeFactory = null,
-            NonBlocking.ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
+            ConcurrentDictionary<StorageCell, byte[]>? preBlockCache = null) : base(logManager)
         {
             _trieStore = trieStore ?? throw new ArgumentNullException(nameof(trieStore));
             _stateProvider = stateProvider ?? throw new ArgumentNullException(nameof(stateProvider));
