@@ -202,8 +202,8 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable)
     {
         bool contractNotSameAsBeneficiary = contract != inheritor;
-        if (AccessVersion(contract, ref gasAvailable)) return false;
-        if (AccessCodeSize(contract, ref gasAvailable)) return false;
+        if (!AccessVersion(contract, ref gasAvailable)) return false;
+        if (!AccessCodeSize(contract, ref gasAvailable)) return false;
 
         if (!inheritorExist && !balanceIsZero)
         {
