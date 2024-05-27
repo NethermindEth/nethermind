@@ -141,6 +141,7 @@ public class VirtualMachine : IVirtualMachine
         public static CallResult StackUnderflowException => new(EvmExceptionType.StackUnderflow); // TODO: use these to avoid CALL POP attacks
         public static CallResult InvalidCodeException => new(EvmExceptionType.InvalidCode);
         public static CallResult Empty => new(default, null);
+        public static object BoxedEmpty { get; } = new object();
 
         public CallResult(EvmState stateToExecute)
         {
@@ -1869,6 +1870,11 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         {
                             break;
                         }
+                        if (ReferenceEquals(returnData, CallResult.BoxedEmpty))
+                        {
+                            // Non contract call continue rather than constructing a new frame
+                            continue;
+                        }
 
                         goto DataReturn;
                     }
@@ -2187,11 +2193,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
 
         if (typeof(TLogger) == typeof(IsTracing))
         {
-            _logger.Trace($"caller {caller}");
-            _logger.Trace($"code source {codeSource}");
-            _logger.Trace($"target {target}");
-            _logger.Trace($"value {callValue}");
-            _logger.Trace($"transfer value {transferValue}");
+            TraceCallDetails(codeSource, ref callValue, ref transferValue, caller, target);
         }
 
         long gasExtra = 0L;
@@ -2256,11 +2258,19 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             return EvmExceptionType.None;
         }
 
-        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
-
         Snapshot snapshot = _worldState.TakeSnapshot();
         _state.SubtractFromBalance(caller, transferValue, spec);
 
+        if (codeInfo.IsEmpty && typeof(TTracingInstructions) != typeof(IsTracing) && !_txTracer.IsTracingActions)
+        {
+            // Non contract call, no need to construct call frame can just credit balance and return gas
+            _returnDataBuffer = default;
+            stack.PushBytes(StatusCode.SuccessBytes.Span);
+            UpdateGasUp(gasLimitUl, ref gasAvailable);
+            return FastCall(spec, out returnData, in transferValue, target);
+        }
+
+        ReadOnlyMemory<byte> callData = vmState.Memory.Load(in dataOffset, dataLength);
         ExecutionEnvironment callEnv = new
         (
             txExecutionContext: in env.TxExecutionContext,
@@ -2296,6 +2306,32 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             isCreateOnPreExistingAccount: false);
 
         return EvmExceptionType.None;
+
+        EvmExceptionType FastCall(IReleaseSpec spec, out object returnData, in UInt256 transferValue, Address target)
+        {
+            if (!_state.AccountExists(target))
+            {
+                _state.CreateAccount(target, transferValue);
+            }
+            else
+            {
+                _state.AddToBalance(target, transferValue, spec);
+            }
+            Metrics.EmptyCalls++;
+
+            returnData = CallResult.BoxedEmpty;
+            return EvmExceptionType.None;
+        }
+
+        [MethodImpl(MethodImplOptions.NoInlining)]
+        void TraceCallDetails(Address codeSource, ref UInt256 callValue, ref UInt256 transferValue, Address caller, Address target)
+        {
+            _logger.Trace($"caller {caller}");
+            _logger.Trace($"code source {codeSource}");
+            _logger.Trace($"target {target}");
+            _logger.Trace($"value {callValue}");
+            _logger.Trace($"transfer value {transferValue}");
+        }
     }
 
     [SkipLocalsInit]
