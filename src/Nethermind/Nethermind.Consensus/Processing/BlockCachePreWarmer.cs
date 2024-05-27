@@ -53,21 +53,54 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
         {
             ParallelOptions parallelOptions = new() { MaxDegreeOfParallelism = Math.Max(1, Environment.ProcessorCount - 2), CancellationToken = cancellationToken };
             IReleaseSpec spec = specProvider.GetSpec(suggestedBlock.Header);
-            Parallel.For(0, suggestedBlock.Transactions.Length, parallelOptions, i =>
+
+            WarmupTransactions(parallelOptions, spec, suggestedBlock, parentStateRoot);
+            WarmupWithdrawals(parallelOptions, spec, suggestedBlock, parentStateRoot);
+
+            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
+        }
+        catch (OperationCanceledException)
+        {
+            if (_logger.IsDebug) _logger.Debug($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
+        }
+
+        void WarmupWithdrawals(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
+        {
+            if (spec.WithdrawalsEnabled && block.Withdrawals is not null)
+            {
+                ReadOnlyTxProcessingEnv env = _envPool.Get();
+                try
+                {
+                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
+                    Parallel.For(0, block.Withdrawals.Length, parallelOptions,
+                        i => env.StateProvider.WarmUp(block.Withdrawals[i].Address)
+                    );
+                }
+                finally
+                {
+                    env.Reset();
+                    _envPool.Return(env);
+                }
+            }
+        }
+
+        void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
+        {
+            Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-                Transaction tx = suggestedBlock.Transactions[i];
+                Transaction tx = block.Transactions[i];
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
                 {
                     tx.CopyTo(systemTransaction);
-                    using IReadOnlyTransactionProcessor? transactionProcessor = env.Build(parentStateRoot);
+                    using IReadOnlyTransactionProcessor transactionProcessor = env.Build(stateRoot);
                     if (spec.UseTxAccessLists)
                     {
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
-                    TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(suggestedBlock.Header.Clone()), NullTxTracer.Instance);
+                    TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
                 catch (Exception ex)
@@ -81,12 +114,6 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     _envPool.Return(env);
                 }
             });
-
-            if (_logger.IsDebug) _logger.Debug($"Finished pre-warming caches for block {suggestedBlock.Number}.");
-        }
-        catch (OperationCanceledException)
-        {
-            if (_logger.IsDebug) _logger.Debug($"Pre-warming caches cancelled for block {suggestedBlock.Number}.");
         }
     }
 
