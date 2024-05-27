@@ -135,17 +135,15 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
-            var gasAvailable = tx.GasLimit - intrinsicGas;
 
             // declare the execution witness to collect witness and also charge gas
             IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager, WorldState as VerkleWorldState) : new NoExecWitness();
-            if (!executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, ref gasAvailable, !tx.Value.IsZero))
-            {
-                ThrowOutOfGasException();
-            }
+            long unspentGas = 1_000_000;
+            executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero, ref unspentGas);
 
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, executionWitness, effectiveGasPrice);
 
+            long gasAvailable = tx.GasLimit - intrinsicGas;
             ExecuteEvmCall(tx, header, spec, tracer, opts, gasAvailable, env, out TransactionSubstate? substate, out long spentGas, out byte statusCode);
             PayFees(tx, header, spec, tracer, substate, spentGas, premiumPerGas, statusCode);
 
@@ -475,8 +473,7 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, ref unspentGas,
-                            !tx.Value.IsZero))
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, !tx.Value.IsZero, ref unspentGas))
                     {
                         ThrowOutOfGasException();
                     }
@@ -531,7 +528,7 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (spec.IsVerkleTreeEipEnabled)
                         {
-                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, ref unspentGas, true))
+                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true, ref unspentGas))
                             {
                                 ThrowOutOfGasException();
                             }

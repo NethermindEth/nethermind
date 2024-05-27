@@ -8,7 +8,7 @@ namespace Nethermind.Evm.Witness;
 
 public interface IExecutionWitness
 {
-    bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable, bool isValueTransfer);
+    bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable);
     bool AccessForContractCreated(Address contractAddress, ref long gasAvailable);
 
     /// <summary>
@@ -16,10 +16,10 @@ public interface IExecutionWitness
     /// </summary>
     /// <param name="originAddress"></param>
     /// <param name="destinationAddress"></param>
-    /// <param name="gasAvailable"></param>
     /// <param name="isValueTransfer"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    bool AccessForTransaction(Address originAddress, Address? destinationAddress, ref long gasAvailable, bool isValueTransfer);
+    bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer, ref long gasAvailable);
 
     /// <summary>
     ///     Call for the gas beneficiary.
@@ -39,23 +39,23 @@ public interface IExecutionWitness
     /// </summary>
     /// <param name="address"></param>
     /// <param name="key"></param>
-    /// <param name="gasAvailable"></param>
     /// <param name="isWrite"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    bool AccessForStorage(Address address, UInt256 key, ref long gasAvailable, bool isWrite);
+    bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable);
 
-    bool AccessForCodeProgramCounter(Address address, int programCounter, ref long gasAvailable, bool isWrite);
-    bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, ref long gasAvailable, bool isWrite);
+    bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable);
+    bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable);
 
     /// <summary>
     ///     When the code chunk chunk_id is accessed is accessed
     /// </summary>
     /// <param name="address"></param>
     /// <param name="chunkId"></param>
-    /// <param name="gasAvailable"></param>
     /// <param name="isWrite"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    bool AccessCodeChunk(Address address, UInt256 chunkId, ref long gasAvailable, bool isWrite);
+    bool AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite, ref long gasAvailable);
 
     bool AccessForAbsentAccount(Address address, ref long gasAvailable);
 
@@ -68,6 +68,6 @@ public interface IExecutionWitness
     /// <returns></returns>
     bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false);
 
-    bool AccessForSelfDestruct(Address contract, Address inheritor, ref long gasAvailable, bool balanceIsZero, bool inheritorExist);
+    bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable);
     byte[][] GetAccessedKeys();
 }
