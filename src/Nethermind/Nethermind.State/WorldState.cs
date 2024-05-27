@@ -124,6 +124,8 @@ namespace Nethermind.State
                 }
             }
         }
+
+        public void WarmUp(Address address) => _stateProvider.WarmUp(address);
         public void ClearStorage(Address address)
         {
             _persistentStorageProvider.ClearStorage(address);
