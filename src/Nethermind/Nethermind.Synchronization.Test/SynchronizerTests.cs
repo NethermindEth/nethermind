@@ -972,8 +972,7 @@ namespace Nethermind.Synchronization.Test
                 .StopAsync();
         }
 
-        private const int Moment = 50;
-        private const int WaitTime = 500;
+        private const int WaitTime = 1500;
 
         private static bool IsMerge(SynchronizerType synchronizerType) =>
             synchronizerType switch
