@@ -1,5 +1,6 @@
 using System;
 using System.Diagnostics;
+using Nethermind.Core.Collections;
 using Nethermind.Core.Crypto;
 using Nethermind.Verkle.Curve;
 using Nethermind.Verkle.Fields.FrEElement;
@@ -34,6 +35,29 @@ namespace Nethermind.Core.Verkle
                 return Zeros[index];
             }
             return Constants.BasisG[index] * value;
+        }
+
+        public static Banderwagon MultiScalarMul(Span<(FrE, int)> pair)
+        {
+            if (pair.Length == 1)
+            {
+                Banderwagon accumulator = Banderwagon.Identity;
+                foreach ((FrE, int) valueTuple in pair)
+                {
+                    accumulator += ScalarMul(valueTuple.Item1, valueTuple.Item2);
+                }
+                return accumulator;
+            }
+
+            using var values = new ArrayPoolList<FrE>(pair.Length);
+            using var wagons = new ArrayPoolList<Banderwagon>(pair.Length);
+            foreach ((FrE, int) valueTuple in pair)
+            {
+                values.Add(valueTuple.Item1);
+                wagons.Add(Constants.BasisG[valueTuple.Item2]);
+            }
+
+            return Banderwagon.MultiScalarMul(wagons.AsSpan(), values.AsSpan());
         }
     }
 

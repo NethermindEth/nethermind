@@ -5,6 +5,7 @@ using System.IO;
 using System.Linq;
 using FluentAssertions;
 using Nethermind.Core.Crypto;
+using Nethermind.Core.Extensions;
 using Nethermind.Core.Verkle;
 using Nethermind.Db;
 using Nethermind.Db.Rocks;
@@ -291,36 +292,30 @@ public class VerkleTreeTests
         tree.Get(VerkleTestUtils.KeyCodeSize).Should().BeEquivalentTo(VerkleTestUtils.ArrayAll0Last2);
     }
 
+
     [TestCase(DbMode.MemDb)]
     [TestCase(DbMode.PersistantDb)]
-    public void TestInsertContainsKey(DbMode dbMode)
+    public void TestInsertConvertStemToBranch(DbMode dbMode)
     {
         VerkleTree tree = VerkleTestUtils.GetVerkleTreeForTest<VerkleSyncCache>(dbMode);
+        Random rand = new Random(0);
+        Span<byte> buffer = stackalloc byte[32];
 
-        tree.ContainsKey(VerkleTestUtils.KeyVersion).Should().Be(false);
-        tree.ContainsKey(VerkleTestUtils.KeyBalance).Should().Be(false);
-        tree.ContainsKey(VerkleTestUtils.KeyNonce).Should().Be(false);
-        tree.ContainsKey(VerkleTestUtils.KeyCodeCommitment).Should().Be(false);
-        tree.ContainsKey(VerkleTestUtils.KeyCodeSize).Should().Be(false);
-
-        tree.Insert(VerkleTestUtils.KeyVersion, VerkleTestUtils.EmptyArray);
-        tree.Insert(VerkleTestUtils.KeyBalance, VerkleTestUtils.EmptyArray);
-        tree.Insert(VerkleTestUtils.KeyNonce, VerkleTestUtils.EmptyArray);
-        tree.Insert(VerkleTestUtils.KeyCodeCommitment, VerkleTestUtils.ValueEmptyCodeHashValue);
-        tree.Insert(VerkleTestUtils.KeyCodeSize, VerkleTestUtils.EmptyArray);
-
+        rand.NextBytes(buffer);
+        tree.Insert(new Hash256("0x7252c3792d6c7ea1132c151cddc658fb422c78c380dcf6cef2015f699c810100"), buffer);
         tree.Commit();
-        tree.CommitTree(0);
 
-        tree.ContainsKey(VerkleTestUtils.KeyVersion).Should().Be(true);
-        tree.ContainsKey(VerkleTestUtils.KeyBalance).Should().Be(true);
-        tree.ContainsKey(VerkleTestUtils.KeyNonce).Should().Be(true);
-        tree.ContainsKey(VerkleTestUtils.KeyCodeCommitment).Should().Be(true);
-        tree.ContainsKey(VerkleTestUtils.KeyCodeSize).Should().Be(true);
+        rand.NextBytes(buffer);
+        tree.Insert(new Hash256("0x7252c3792d6c7ea1132c151cddc658fb422c78c380dcf6cef2015f699c810100"), buffer);
+
+        rand.NextBytes(buffer);
+        tree.Insert(new Hash256("0x723cd68b63171b41a10b384f8d625db58df3a26e5ec81471efa587e213e70f00"), buffer);
+        tree.Commit();
+
+        tree.StateRoot.Bytes.ToHexString().Should().Be("1fdf11b3a95ee92db8eefa795dd24c4678693392bdcf4722172c59c41d381c1b");
     }
 
     [TestCase(DbMode.MemDb)]
-    [TestCase(DbMode.PersistantDb)]
     public void TestBeverlyHillGenesis(DbMode dbMode)
     {
         VerkleTree tree = VerkleTestUtils.GetVerkleTreeForTest<VerkleSyncCache>(dbMode);

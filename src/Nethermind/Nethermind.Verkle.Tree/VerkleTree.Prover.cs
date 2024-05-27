@@ -63,6 +63,21 @@ public partial class VerkleTree
         return new ExecutionWitness(stemStateDiffList, proof);
     }
 
+    public void UpdateWithPostStateValues(ExecutionWitness executionWitness)
+    {
+        executionWitness.StateDiff.ForEach(stateDiff =>
+        {
+            byte[] key = new byte[32];
+            Array.Copy(stateDiff.Stem.Bytes, key, stateDiff.Stem.Bytes.Length);
+
+            stateDiff.SuffixDiffs.ForEach(suffixDiffs =>
+            {
+                key[31] = suffixDiffs.Suffix;
+                suffixDiffs.NewValue = Get(key);
+            });
+        });
+    }
+
     public VerkleProof CreateVerkleProof(byte[][] keys, out Banderwagon rootPoint)
     {
         if (keys.Length == 0)
