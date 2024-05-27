@@ -104,8 +104,10 @@ public class SnapServer : ISnapServer
                 default:
                     try
                     {
-                        Hash256 storagePath = new Hash256(ValueKeccak.Zero);
-                        requestedPath[0].CopyTo(storagePath.Bytes); // One of the hive tests does not have complete 32 byte for storage path for some reason.
+                        Hash256 storagePath = new Hash256(
+                            requestedPath[0].Length == Hash256.Size
+                                ? requestedPath[0]
+                                : requestedPath[0].PadRight(Hash256.Size));
                         Account? account = GetAccountByPath(tree, rootHash, requestedPath[0]);
                         if (account is not null)
                         {

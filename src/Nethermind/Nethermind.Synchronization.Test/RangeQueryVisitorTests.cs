@@ -174,7 +174,7 @@ public class RangeQueryVisitorTests
 
         leafCollector.Leafs.Count.Should().Be(4);
 
-        ArrayPoolList<byte[]> proofs = visitor.GetProofs();
+        using ArrayPoolList<byte[]> proofs = visitor.GetProofs();
         proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
 
         var proofHashes = proofs.Select((rlp) => Keccak.Compute(rlp)).ToHashSet();
