@@ -49,11 +49,19 @@ jobs:
           original_tag=${{ github.event.inputs.tag || '$branch' }}
           tag=$(echo "$original_tag" | sed 's/\//-/g') # replace '/' with '-' in tag name
           build_timestamp=$(date '+%s')
+          short_sha=$(echo "${GITHUB_SHA}" | cut -c1-7)
+          
+          if [[ "$branch" == "master" && "${{ github.event_name }}" == "push" ]]; then
+            extra_tag="-t nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:master-${short_sha}"
+          else
+            extra_tag=""
+          fi
+          
           echo "Building image with tag $tag"
 
           docker buildx build --platform=linux/amd64,linux/arm64 \
             -f ${{ github.event.inputs.dockerfile || 'Dockerfile' }} \
-            -t "nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:$tag" \
+            -t "nethermindeth/${{ github.event.inputs.image-name || 'nethermind' }}:$tag" $extra_tag \
             --build-arg BUILD_CONFIG=${{ github.event.inputs.build-config || 'release' }} \
             --build-arg BUILD_TIMESTAMP=$build_timestamp \
             --build-arg CI=$CI \
