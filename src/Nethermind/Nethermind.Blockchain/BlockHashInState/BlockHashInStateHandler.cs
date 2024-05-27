@@ -41,7 +41,7 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
 
 
         var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance, stateProvider as VerkleWorldState);
-        long gasAvailable = 1_000_000;
+        long gasAvailable = 1_000_000; // we don't want to charge gas here yet
         blockHashWitness.AccessCompleteAccount(eip2935Account, ref gasAvailable);
         blockHashWitness.AccessForStorage(eip2935Account, blockIndex, true, ref gasAvailable);
         blockTracer.ReportAccessWitness(blockHashWitness);

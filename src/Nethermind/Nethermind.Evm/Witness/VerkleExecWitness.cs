@@ -274,21 +274,24 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
 
-        if (!_accessedLeaves.Contains(key)) _accessedLeaves.Add(key);
-        if (!_accessedSubtrees.Contains(key.Bytes[..31].ToArray())) _accessedSubtrees.Add(key.Bytes[..31].ToArray());
+        _accessedLeaves.Add(key);
+        _accessedSubtrees.Add(key.Bytes[..31].ToArray());
 
         if (!isWrite) return true;
 
         requiredGas = 0;
         if (!_modifiedLeaves.Contains(key)) requiredGas += GasCostOf.WitnessChunkWrite;
-        if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchWrite;
-        if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
+        if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray()))
+        {
+            requiredGas += GasCostOf.WitnessBranchWrite;
+            if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
+        }
 
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
 
-        if (!_modifiedLeaves.Contains(key)) _modifiedLeaves.Add(key);
-        if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray())) _modifiedSubtrees.Add(key.Bytes[..31].ToArray());
+        _modifiedLeaves.Add(key);
+        _modifiedSubtrees.Add(key.Bytes[..31].ToArray());
 
         return true;
     }
