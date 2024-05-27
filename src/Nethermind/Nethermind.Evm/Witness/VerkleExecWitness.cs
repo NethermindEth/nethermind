@@ -12,10 +12,11 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Witness;
 
-public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
+public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleWorldState) : IExecutionWitness
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -25,6 +26,8 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     private readonly JournalSet<Hash256> _modifiedLeaves = new();
     private readonly JournalSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
 
+    private readonly VerkleWorldState _verkleWorldState =
+        verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
 
     public bool AccessForContractCreationInit(Address contractAddress, ref long gasAvailable, bool isValueTransfer)
     {

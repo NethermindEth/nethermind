@@ -95,6 +95,11 @@ public class VerkleWorldState : IWorldState
         _storageProvider = new VerkleStorageProvider(_tree, logManager);
     }
 
+    public bool ValuePresentInTree(Hash256 key)
+    {
+        return _tree.ContainsKey(key);
+    }
+
     public bool IsContract(Address address)
     {
         Account? account = GetThroughCache(address);

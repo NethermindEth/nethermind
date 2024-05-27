@@ -7,6 +7,7 @@ using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Threading;
 
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -137,7 +138,7 @@ namespace Nethermind.Evm.TransactionProcessing
             var gasAvailable = tx.GasLimit - intrinsicGas;
 
             // declare the execution witness to collect witness and also charge gas
-            IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager) : new NoExecWitness();
+            IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager, WorldState as VerkleWorldState) : new NoExecWitness();
             if (!executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, ref gasAvailable, !tx.Value.IsZero))
             {
                 ThrowOutOfGasException();

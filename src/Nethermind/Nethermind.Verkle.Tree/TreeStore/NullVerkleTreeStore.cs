@@ -55,6 +55,11 @@ public class NullVerkleTreeStore : IVerkleTreeStore
         return null;
     }
 
+    public bool HasLeaf(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
+    {
+        return false;
+    }
+
     public InternalNode? GetInternalNode(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
     {
         return null;

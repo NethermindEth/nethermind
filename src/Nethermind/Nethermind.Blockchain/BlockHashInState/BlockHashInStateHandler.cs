@@ -1,16 +1,17 @@
 // SPDX-FileCopyrightText:2023 Demerzel Solutions Limited
 // SPDX-License-Identifier:LGPL-3.0-only
 
+using System;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
 using Nethermind.Core.Specs;
-using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.Witness;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
+using Nethermind.Verkle.Tree.Utils;
 
 namespace Nethermind.Blockchain.BlockHashInState;
 
@@ -39,20 +40,9 @@ public class BlockHashInStateHandler : IBlockHashInStateHandler
         stateProvider.Set(blockHashStoreCell, parentBlockHash.Bytes.WithoutLeadingZeros().ToArray());
 
 
-        var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance);
-        var gasAvailable = blockHeader.GasLimit - blockHeader.GasUsed;
-        var gasBefore = gasAvailable;
-        if (!blockHashWitness.AccessCompleteAccount(eip2935Account, ref gasAvailable))
-        {
-            throw new OutOfGasException();
-        }
-
-        if (!blockHashWitness.AccessForStorage(eip2935Account, blockIndex, ref gasAvailable, true))
-        {
-            throw new OutOfGasException();
-        }
-
-        blockHeader.GasUsed += gasBefore - gasAvailable;
+        var blockHashWitness = new VerkleExecWitness(NullLogManager.Instance, stateProvider as VerkleWorldState);
+        blockHashWitness.AccessCompleteAccount(eip2935Account);
+        blockHashWitness.AccessForStorage(eip2935Account, blockIndex, true);
         blockTracer.ReportAccessWitness(blockHashWitness);
     }
 }
