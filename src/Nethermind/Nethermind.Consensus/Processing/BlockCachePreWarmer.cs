@@ -101,6 +101,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
                     TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
+                    env.StateProvider.Commit(spec);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
                 catch (Exception ex)
