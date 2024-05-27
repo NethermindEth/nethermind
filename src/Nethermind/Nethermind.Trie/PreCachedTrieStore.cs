@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Numerics;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
@@ -10,7 +11,7 @@ using Nethermind.Trie.Pruning;
 namespace Nethermind.Trie;
 
 public class PreCachedTrieStore(ITrieStore inner,
-    NonBlocking.ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
+    ConcurrentDictionary<NodeKey, byte[]?> preBlockCache)
     : ITrieStore
 {
     public void Dispose()

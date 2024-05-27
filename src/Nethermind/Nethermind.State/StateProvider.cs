@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using Nethermind.Core;
@@ -31,7 +32,7 @@ namespace Nethermind.State
         // False positives would be problematic as the code _must_ be persisted
         private readonly LruKeyCacheNonConcurrent<Hash256AsKey> _codeInsertFilter = new(1_024, "Code Insert Filter");
         private readonly Dictionary<AddressAsKey, Account> _blockCache = new(4_096);
-        private readonly NonBlocking.ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
+        private readonly ConcurrentDictionary<AddressAsKey, Account>? _preBlockCache;
 
         private readonly List<Change> _keptInCache = new();
         private readonly ILogger _logger;
@@ -640,7 +641,7 @@ namespace Nethermind.State
             IKeyValueStore? codeDb,
             ILogManager? logManager,
             StateTree? stateTree = null,
-            NonBlocking.ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null)
+            ConcurrentDictionary<AddressAsKey, Account>? preBlockCache = null)
         {
             _preBlockCache = preBlockCache;
             _logger = logManager?.GetClassLogger<StateProvider>() ?? throw new ArgumentNullException(nameof(logManager));
