@@ -7,7 +7,7 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
 
-public class NoExecWitness: IExecutionWitness
+public class NoExecWitness : IExecutionWitness
 {
     public bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable) =>
         true;

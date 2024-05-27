@@ -528,12 +528,12 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (spec.IsVerkleTreeEipEnabled)
                         {
-                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true, ref unspentGas))
+                            if (!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true, ref unspentGas))
                             {
                                 ThrowOutOfGasException();
                             }
                         }
-                        else if(spec.ChargeForTopLevelCreate)
+                        else if (spec.ChargeForTopLevelCreate)
                         {
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
                             if (unspentGas < codeDepositGasCost)

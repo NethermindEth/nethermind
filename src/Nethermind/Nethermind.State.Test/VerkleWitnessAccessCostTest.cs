@@ -131,7 +131,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForContractCreationInitWithAllValueIsPresent()
     {
@@ -200,7 +200,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForContractCreatedWithAllValueIsPresent()
     {
@@ -221,7 +221,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForGasBeneficiary()
     {
@@ -291,7 +291,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForCodeHash()
     {
@@ -304,7 +304,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForStorage()
     {
@@ -349,7 +349,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
-    
+
     [Test]
     public void TestAccessForCodeProgramCounter()
     {
@@ -373,7 +373,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessChunkWrite
                            + GasCostOf.WitnessBranchWrite
                            + GasCostOf.WitnessChunkFill;
-                           
+
 
         long actualGas = witness.AccessForCodeProgramCounter(TestItem.AddressA, 0, true);
 
@@ -390,7 +390,7 @@ public class VerkleWitnessAccessCostTest
                            + GasCostOf.WitnessBranchRead
                            + GasCostOf.WitnessChunkWrite
                            + GasCostOf.WitnessBranchWrite;
-                           
+
 
         long actualGas = witness.AccessForCodeProgramCounter(TestItem.AddressA, 0, true);
 
@@ -578,7 +578,7 @@ public class VerkleWitnessAccessCostTest
 
         Assert.That(actualGas, Is.EqualTo(expectedGas));
     }
- 
+
     [Test]
     public void TestAccessForSelfDestructWithEqualAddressesAndBalanceZero()
     {

@@ -614,12 +614,12 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
             switch (opCode)
             {
                 case Instruction.BALANCE:
-                {
-                    var gasBefore = gasAvailable;
-                    result = vmState.Env.Witness.AccessForBalance(address, ref gasAvailable);
-                    witnessGasCharged = gasBefore != gasAvailable;
-                    break;
-                }
+                    {
+                        var gasBefore = gasAvailable;
+                        result = vmState.Env.Witness.AccessForBalance(address, ref gasAvailable);
+                        witnessGasCharged = gasBefore != gasAvailable;
+                        break;
+                    }
                 case Instruction.EXTCODESIZE:
                 case Instruction.EXTCODECOPY:
                 case Instruction.CALL:
@@ -649,13 +649,13 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                         break;
                     }
                 case Instruction.EXTCODEHASH:
-                {
-                    var gasBefore = gasAvailable;
-                    result = vmState.Env.Witness.AccessForCodeHash(address, ref gasAvailable);
-                    witnessGasCharged = gasBefore != gasAvailable;
+                    {
+                        var gasBefore = gasAvailable;
+                        result = vmState.Env.Witness.AccessForCodeHash(address, ref gasAvailable);
+                        witnessGasCharged = gasBefore != gasAvailable;
 
-                    break;
-                }
+                        break;
+                    }
             }
 
             // we still use the UseHotAndColdStorage costs - we should be removing the Cold costs as it's being replaced
@@ -1912,7 +1912,7 @@ internal sealed class VirtualMachine<TLogger> : IVirtualMachine where TLogger : 
                                 if (!env.Witness.AccessForCodeProgramCounter(vmState.To,
                                         programCounterInt + 1, false, ref gasAvailable))
                                 {
-                                    goto OutOfGas;    
+                                    goto OutOfGas;
                                 }
                             }
                         }
