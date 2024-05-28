@@ -35,6 +35,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _calls = new(trackAllValues: true);
+    [Description("Number of calls to other contracts on thread.")]
     public static long ThreadLocalCalls => _calls.Value;
     public static void IncrementCalls() => _calls.Value++;
 
@@ -53,6 +54,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _sLoadOpcode = new(trackAllValues: true);
+    [Description("Number of SLOAD opcodes executed on thread.")]
     public static long ThreadLocalSLoadOpcode => _sLoadOpcode.Value;
     public static void IncrementSLoadOpcode() => _sLoadOpcode.Value++;
 
@@ -71,6 +73,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _sStoreOpcode = new(trackAllValues: true);
+    [Description("Number of SSTORE opcodes executed on thread.")]
     public static long ThreadLocalSStoreOpcode => _sStoreOpcode.Value;
     public static void IncrementSStoreOpcode() => _sStoreOpcode.Value++;
 
@@ -128,6 +131,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _emptyCalls = new(trackAllValues: true);
+    [Description("Number of calls made to addresses without code on thread.")]
     public static long ThreadLocalEmptyCalls => _emptyCalls.Value;
     public static void IncrementEmptyCalls() => _emptyCalls.Value++;
 
@@ -146,6 +150,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _creates = new(trackAllValues: true);
+    [Description("Number of contract create calls on thread.")]
     public static long ThreadLocalCreates => _creates.Value;
     public static void IncrementCreates() => _creates.Value++;
 
@@ -163,6 +168,7 @@ public class Metrics
         }
     }
     private static ThreadLocal<long> _contractsAnalysed = new(trackAllValues: true);
+    [Description("Number of contracts' code analysed for jump destinations on thread.")]
     public static long ThreadLocalContractsAnalysed => _contractsAnalysed.Value;
     public static void IncrementContractsAnalysed() => _contractsAnalysed.Value++;
 
