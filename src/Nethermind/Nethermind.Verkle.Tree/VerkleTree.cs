@@ -111,6 +111,23 @@ public partial class VerkleTree(IVerkleTreeStore verkleStateStore, ILogManager l
         _leafUpdateCache[stem.ToArray()] = leafUpdateDelta;
     }
 
+    public void UpdateTreeFromStateDiff(in ReadOnlySpan<byte> stem, IEnumerable<SuffixStateDiff> leafIndexValueMap)
+    {
+        var present = _leafUpdateCache.TryGetValue(stem, out LeafUpdateDelta leafUpdateDelta);
+        if (!present) leafUpdateDelta = new LeafUpdateDelta();
+
+        Span<byte> key = new byte[32];
+        stem.CopyTo(key);
+        foreach (SuffixStateDiff leaf in leafIndexValueMap)
+        {
+            if(leaf.NewValue is null) continue;
+            key[31] = leaf.Suffix;
+            leafUpdateDelta.UpdateDelta(UpdateLeafAndGetDelta(new Hash256(key.ToArray()), leaf.NewValue), key[31]);
+        }
+
+        _leafUpdateCache[stem.ToArray()] = leafUpdateDelta;
+    }
+
     public void InsertStemBatch(Stem stem, IEnumerable<LeafInSubTree> leafIndexValueMap)
     {
         InsertStemBatch(stem.BytesAsSpan, leafIndexValueMap);

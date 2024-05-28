@@ -152,7 +152,7 @@ public partial class VerkleTree
             InsertStemBatchStateless(stemStateDiff.Stem, stemStateDiff.SuffixDiffs);
 
         // TODO: is it okay that we dont support commit for stateless execution
-        // CommitTree(0);
+        CommitTree(0);
         return true;
     }
 
