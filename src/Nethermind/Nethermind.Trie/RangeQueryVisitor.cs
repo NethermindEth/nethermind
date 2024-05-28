@@ -77,12 +77,6 @@ public class RangeQueryVisitor : ITreeVisitor<TreePathContext>, IDisposable
 
     private bool ShouldVisit(in TreePath path)
     {
-        if (_cancellationToken.IsCancellationRequested)
-        {
-            StoppedEarly = true;
-            return false;
-        }
-
         if (_lastNodeFound)
         {
             StoppedEarly = true;
