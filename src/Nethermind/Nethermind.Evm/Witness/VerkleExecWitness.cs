@@ -269,39 +269,41 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private bool AccessKey(Hash256 key, ref long gasAvailable, bool isWrite = false, bool leafExist = false)
     {
         long requiredGas = 0;
-        if (!_accessedLeaves.Contains(key))
+        // TODO: do we need a SpanHashSet so that we can at least use the span to do the `Contains` check?
+        byte[] subTreeStem = key.Bytes[..31].ToArray();
+        bool wasPreviouslyNotAccessed = !_accessedLeaves.Contains(key);
+        if (wasPreviouslyNotAccessed)
         {
             requiredGas += GasCostOf.WitnessChunkRead;
             // if key is already in `_accessedLeaves`, then checking `_accessedSubtrees` will be redundant
-            if (!_accessedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchRead;
+            if (!_accessedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchRead;
         }
-
 
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
 
         _accessedLeaves.Add(key);
-        _accessedSubtrees.Add(key.Bytes[..31].ToArray());
+        _accessedSubtrees.Add(subTreeStem);
 
         if (!isWrite) return true;
 
         requiredGas = 0;
-        if (!_modifiedLeaves.Contains(key))
+        // if `wasPreviouslyNotAccessed = true`, this implies that _modifiedLeaves.Contains(key) = false
+        if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
         {
             requiredGas += GasCostOf.WitnessChunkWrite;
             // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
             if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
 
             // if key is already in `_modifiedLeaves`, then checking `_modifiedSubtrees` will be redundant
-            if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchWrite;
+            if (!_modifiedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchWrite;
         }
-
 
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
 
         _modifiedLeaves.Add(key);
-        _modifiedSubtrees.Add(key.Bytes[..31].ToArray());
+        _modifiedSubtrees.Add(subTreeStem);
 
         return true;
     }
