@@ -800,7 +800,7 @@ namespace Nethermind.TxPool
                 }
                 else
                 {
-                    Db.Metrics.IncrementTreeCacheHits();
+                    Db.Metrics.IncrementStateTreeCacheHits();
                 }
 
                 return true;

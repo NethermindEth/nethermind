@@ -649,7 +649,7 @@ namespace Nethermind.State
             _tree = stateTree ?? new StateTree(trieStore, logManager);
             _getStateFromTrie = address =>
             {
-                Metrics.StateTreeReads++;
+                Metrics.IncrementStateTreeReads();
                 return _tree.Get(address);
             };
         }
@@ -665,19 +665,19 @@ namespace Nethermind.State
             ref Account? account = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, addressAsKey, out bool exists);
             if (!exists)
             {
-                long priorReads = Metrics.StateTreeReads;
+                long priorReads = Metrics.ThreadLocalStateTreeReads;
                 account = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(addressAsKey, _getStateFromTrie)
                     : _getStateFromTrie(addressAsKey);
 
-                if (Metrics.StateTreeReads == priorReads)
+                if (Metrics.ThreadLocalStateTreeReads == priorReads)
                 {
-                    Metrics.IncrementTreeCacheHits();
+                    Metrics.IncrementStateTreeCacheHits();
                 }
             }
             else
             {
-                Metrics.IncrementTreeCacheHits();
+                Metrics.IncrementStateTreeCacheHits();
             }
             return account;
         }

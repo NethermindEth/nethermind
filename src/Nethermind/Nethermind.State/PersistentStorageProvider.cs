@@ -58,7 +58,7 @@ namespace Nethermind.State
             _loadFromTree = storageCell =>
             {
                 StorageTree tree = GetOrCreateStorage(storageCell.Address);
-                Db.Metrics.StorageTreeReads++;
+                Db.Metrics.IncrementStorageTreeReads();
                 return !storageCell.IsHash ? tree.Get(storageCell.Index) : tree.GetArray(storageCell.Hash.Bytes);
             };
         }
@@ -346,21 +346,21 @@ namespace Nethermind.State
             ref byte[]? value = ref CollectionsMarshal.GetValueRefOrAddDefault(_blockCache, storageCell, out bool exists);
             if (!exists)
             {
-                long priorReads = Db.Metrics.StorageTreeReads;
+                long priorReads = Db.Metrics.ThreadLocalStorageTreeReads;
 
                 value = _preBlockCache is not null
                     ? _preBlockCache.GetOrAdd(storageCell, _loadFromTree)
                     : _loadFromTree(storageCell);
 
-                if (Db.Metrics.StorageTreeReads == priorReads)
+                if (Db.Metrics.ThreadLocalStorageTreeReads == priorReads)
                 {
                     // Read from Concurrent Cache
-                    Db.Metrics.StorageTreeCache++;
+                    Db.Metrics.IncrementStorageTreeCache();
                 }
             }
             else
             {
-                Db.Metrics.StorageTreeCache++;
+                Db.Metrics.IncrementStorageTreeCache();
             }
 
             if (!storageCell.IsHash) PushToRegistryOnly(storageCell, value);
