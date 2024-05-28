@@ -276,7 +276,7 @@ namespace Nethermind.Trie.Pruning
 
         // Track some of the persisted path hash. Used to be able to remove keys when it is replaced.
         // If null, disable removing key.
-        private LruCache<HashAndTinyPath, ValueHash256>? _pastPathHash;
+        private LruCacheLowObject<HashAndTinyPath, ValueHash256>? _pastPathHash;
 
         // Track ALL of the recently re-committed persisted nodes. This is so that we don't accidentally remove
         // recommitted persisted nodes (which will not get re-persisted).
@@ -795,10 +795,11 @@ namespace Nethermind.Trie.Pruning
                 if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                    if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                    Hash256? hash = key.addr == default ? null : key.addr.ToCommitment();
+                    if (CanRemove(hash, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
                         Metrics.RemovedNodeCount++;
-                        writeBatch.Remove(key.addr, fullPath, prevHash);
+                        writeBatch.Remove(hash, fullPath, prevHash);
                     }
                 }
             }
@@ -1320,41 +1321,33 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
-            public readonly Hash256? addr = hash;
+            public readonly ValueHash256 addr = hash ?? default;
             public readonly TinyTreePath path = path;
 
             public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                Hash256? address = addr;
-                var addressHash = 0;
-                if (address is not null)
-                {
-                    addressHash = address.ValueHash256.GetHashCode();
-                }
+                var addressHash = addr.GetHashCode();
                 return path.GetHashCode() ^ addressHash;
             }
         }
 
+        [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPathAndHash(Hash256? hash, in TinyTreePath path, in ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
         {
-            public readonly Hash256? hash = hash;
+            public readonly ValueHash256 hash = hash ?? default;
             public readonly TinyTreePath path = path;
             public readonly ValueHash256 valueHash = valueHash;
 
-            public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
+            public bool Equals(HashAndTinyPathAndHash other) => hash.Equals(in other.hash) && path.Equals(in other.path) && valueHash.Equals(in other.valueHash);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                var hashHash = 0;
-                if (hash is not null)
-                {
-                    hashHash = hash.ValueHash256.GetHashCode();
-                }
-
+                var hashHash = hash.GetHashCode();
                 return valueHash.GetChainedHashCode((uint)path.GetHashCode()) ^ hashHash;
             }
         }

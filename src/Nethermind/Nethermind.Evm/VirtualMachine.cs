@@ -189,15 +189,15 @@ public class VirtualMachine : IVirtualMachine
     {
         private const int CacheCount = 16;
         private const int CacheMax = CacheCount - 1;
-        private readonly LruCache<ValueHash256, CodeInfo>[] _caches;
+        private readonly LruCacheLowObject<ValueHash256, CodeInfo>[] _caches;
 
         public CodeLruCache()
         {
-            _caches = new LruCache<ValueHash256, CodeInfo>[CacheCount];
+            _caches = new LruCacheLowObject<ValueHash256, CodeInfo>[CacheCount];
             for (int i = 0; i < _caches.Length; i++)
             {
                 // Cache per nibble to reduce contention as TxPool is very parallel
-                _caches[i] = new LruCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+                _caches[i] = new LruCacheLowObject<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
             }
         }
 
