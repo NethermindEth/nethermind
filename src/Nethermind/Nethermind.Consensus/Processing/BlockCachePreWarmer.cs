@@ -12,6 +12,7 @@ using Nethermind.Core.Threading;
 using Nethermind.Evm;
 using Nethermind.Evm.Tracing;
 using Nethermind.Evm.TransactionProcessing;
+using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.State;
 
@@ -104,7 +105,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
                     for (int j = 0; j <= i; j++)
                     {
-                        env.StateProvider.IncrementNonce(blockTransactions[j].SenderAddress!);
+                        Address senderAddress = blockTransactions[j].SenderAddress!;
+                        env.StateProvider.CreateAccountIfNotExists(senderAddress, UInt256.Zero);
+                        env.StateProvider.IncrementNonce(senderAddress!);
                     }
 
                     TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
