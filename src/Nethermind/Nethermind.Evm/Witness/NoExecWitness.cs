@@ -7,36 +7,38 @@ using Nethermind.Int256;
 
 namespace Nethermind.Evm.Witness;
 
-public class NoExecWitness: IExecutionWitness
+public class NoExecWitness : IExecutionWitness
 {
-    public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer) => 0;
+    public bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable) =>
+        true;
 
-    public long AccessForContractCreated(Address contractAddress)=> 0;
+    public bool AccessForContractCreated(Address contractAddress, ref long gasAvailable) => true;
 
-    public long AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer) => 0;
+    public bool AccessForTransaction(Address originAddress, Address? destinationAddress,
+        bool isValueTransfer, ref long gasAvailable) => true;
 
-    public long AccessForGasBeneficiary(Address gasBeneficiary) => 0;
+    public bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable) => true;
 
-    public long AccessForCodeOpCodes(Address caller) => 0;
+    public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable) => true;
 
-    public long AccessForBalance(Address address, bool isWrite = false) => 0;
+    public bool AccessForBalance(Address address, ref long gasAvailable, bool isWrite = false) => true;
 
-    public long AccessForCodeHash(Address address) => 0;
+    public bool AccessForCodeHash(Address address, ref long gasAvailable) => true;
 
-    public long AccessForStorage(Address address, UInt256 key, bool isWrite) => 0;
+    public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable) => true;
 
-    public long AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite) => 0;
+    public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable) =>
+        true;
 
-    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite,
-        ref long unspentGas) => true;
+    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable) => true;
 
-    public long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite) => 0;
+    public bool AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite, ref long gasAvailable) => true;
 
-    public long AccessForAbsentAccount(Address address) => 0;
+    public bool AccessForAbsentAccount(Address address, ref long gasAvailable) => true;
 
-    public long AccessCompleteAccount(Address address, bool isWrite = false) => 0;
+    public bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false) => true;
 
-    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist) => 0;
-
+    public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero,
+        bool inheritorExist, ref long gasAvailable) => true;
     public byte[][] GetAccessedKeys() => Array.Empty<byte[]>();
 }

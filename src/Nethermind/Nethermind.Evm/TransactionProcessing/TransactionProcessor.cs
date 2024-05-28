@@ -135,9 +135,12 @@ namespace Nethermind.Evm.TransactionProcessing
 
             if (commit) WorldState.Commit(spec, tracer.IsTracingState ? tracer : NullTxTracer.Instance);
 
+
             // declare the execution witness to collect witness and also charge gas
             IExecutionWitness executionWitness = spec.IsVerkleTreeEipEnabled ? new VerkleExecWitness(LogManager, WorldState as VerkleWorldState) : new NoExecWitness();
-            executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero);
+            long unspentGas = 1_000_000; // we don't want to charge gas here yet
+            executionWitness.AccessForTransaction(tx.SenderAddress!, tx.To!, !tx.Value.IsZero, ref unspentGas);
+
             ExecutionEnvironment env = BuildExecutionEnvironment(tx, in blCtx, spec, executionWitness, effectiveGasPrice);
 
             long gasAvailable = tx.GasLimit - intrinsicGas;
@@ -470,9 +473,10 @@ namespace Nethermind.Evm.TransactionProcessing
             {
                 if (tx.IsContractCreation)
                 {
-                    var contractCreationInitCost =
-                        env.Witness.AccessForContractCreationInit(env.ExecutingAccount, !tx.Value.IsZero);
-                    if (!UpdateGas(contractCreationInitCost, ref unspentGas)) throw new OutOfGasException();
+                    if (!env.Witness.AccessForContractCreationInit(env.ExecutingAccount, !tx.Value.IsZero, ref unspentGas))
+                    {
+                        ThrowOutOfGasException();
+                    }
 
                     // if transaction is a contract creation then recipient address is the contract deployment address
                     PrepareAccountForContractDeployment(env.ExecutingAccount, spec);
@@ -524,13 +528,12 @@ namespace Nethermind.Evm.TransactionProcessing
                     {
                         if (spec.IsVerkleTreeEipEnabled)
                         {
-                            if(!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true,
-                                   ref unspentGas))
+                            if (!env.Witness.AccessAndChargeForCodeSlice(env.ExecutingAccount, 0, substate.Output.Length, true, ref unspentGas))
                             {
                                 ThrowOutOfGasException();
                             }
                         }
-                        else if(spec.ChargeForTopLevelCreate)
+                        else if (spec.ChargeForTopLevelCreate)
                         {
                             long codeDepositGasCost = CodeDepositHandler.CalculateCost(substate.Output.Length, spec);
                             if (unspentGas < codeDepositGasCost)
@@ -548,8 +551,7 @@ namespace Nethermind.Evm.TransactionProcessing
                         var code = substate.Output.ToArray();
                         VirtualMachine.InsertCode(code, env.ExecutingAccount, spec);
 
-                        long contractCreatedGas = env.Witness.AccessForContractCreated(env.ExecutingAccount);
-                        if (!UpdateGas(contractCreatedGas, ref unspentGas))
+                        if (!env.Witness.AccessForContractCreated(env.ExecutingAccount, ref unspentGas))
                         {
                             ThrowOutOfGasException();
                         }
@@ -629,13 +631,6 @@ namespace Nethermind.Evm.TransactionProcessing
                 // we clean any existing storage (in case of a previously called self destruct)
                 if (!spec.IsVerkleTreeEipEnabled) WorldState.UpdateStorageRoot(contractAddress, Keccak.EmptyTreeHash);
             }
-        }
-
-        private static bool UpdateGas(long gasCost, ref long gasAvailable)
-        {
-            if (gasAvailable < gasCost) return false;
-            gasAvailable -= gasCost;
-            return true;
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
