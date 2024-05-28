@@ -22,7 +22,7 @@ namespace Nethermind.Trie;
 /// </summary>
 [Todo("check if its worth it to change the length to byte, or if it actually make things slower.")]
 [Todo("check if its worth it to not clear byte during TruncateMut, but will need proper comparator, span copy, etc.")]
-public struct TreePath
+public struct TreePath : IEquatable<TreePath>
 {
     public const int MemorySize = 36;
     public ValueHash256 Path;
@@ -259,9 +259,11 @@ public struct TreePath
         return Length == other.Length && Path.Equals(in other.Path);
     }
 
+    public readonly bool Equals(TreePath other) => Equals(in other);
+
     public readonly override bool Equals(object? obj)
     {
-        return obj is TreePath other && Equals(other);
+        return obj is TreePath other && Equals(in other);
     }
 
     public readonly override int GetHashCode()

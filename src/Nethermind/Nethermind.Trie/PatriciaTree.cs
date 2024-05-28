@@ -345,10 +345,10 @@ namespace Nethermind.Trie
             }
         }
 
-        public void UpdateRootHash()
+        public void UpdateRootHash(bool canBeParallel = true)
         {
             TreePath path = TreePath.Empty;
-            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool);
+            RootRef?.ResolveKey(TrieStore, ref path, isRoot: true, bufferPool: _bufferPool, canBeParallel);
             SetRootHash(RootRef?.Keccak ?? EmptyTreeHash, false);
         }
 
@@ -1356,7 +1356,7 @@ namespace Nethermind.Trie
                 ? new TrieNodeResolverWithReadFlags(TrieStore, flags)
                 : TrieStore;
 
-            if (storageAddr != null)
+            if (storageAddr is not null)
             {
                 resolver = resolver.GetStorageTrieNodeResolver(storageAddr);
             }

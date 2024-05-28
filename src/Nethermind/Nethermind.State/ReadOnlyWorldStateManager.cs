@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -14,24 +14,21 @@ namespace Nethermind.State;
 /// </summary>
 public class ReadOnlyWorldStateManager : IWorldStateManager
 {
-    private readonly IReadOnlyDbProvider _readOnlyDbProvider;
-    private readonly IReadOnlyTrieStore? _readOnlyTrieStore;
+    private readonly IReadOnlyTrieStore _readOnlyTrieStore;
     private readonly ILogManager _logManager;
-    private readonly IDbProvider _dbProvider;
     private readonly ReadOnlyDb _codeDb;
 
     public ReadOnlyWorldStateManager(
         IDbProvider dbProvider,
-        IReadOnlyTrieStore? readOnlyTrieStore,
+        IReadOnlyTrieStore readOnlyTrieStore,
         ILogManager logManager
     )
     {
         _readOnlyTrieStore = readOnlyTrieStore;
-        _dbProvider = dbProvider;
         _logManager = logManager;
 
-        _readOnlyDbProvider = _dbProvider.AsReadOnly(false);
-        _codeDb = _readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
+        IReadOnlyDbProvider readOnlyDbProvider = dbProvider.AsReadOnly(false);
+        _codeDb = readOnlyDbProvider.GetDb<IDb>(DbNames.Code).AsReadOnly(true);
         GlobalStateReader = new StateReader(_readOnlyTrieStore, _codeDb, _logManager);
     }
 
@@ -39,10 +36,13 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IStateReader GlobalStateReader { get; }
 
-    public IWorldState CreateResettableWorldState()
-    {
-        return new WorldState(_readOnlyTrieStore, _codeDb, _logManager);
-    }
+    public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null) =>
+        new WorldState(sharedHashes is not null
+                ? new PreCachedTrieStore(_readOnlyTrieStore, sharedHashes.RlpCache)
+                : _readOnlyTrieStore,
+            _codeDb,
+            _logManager,
+            sharedHashes);
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {
