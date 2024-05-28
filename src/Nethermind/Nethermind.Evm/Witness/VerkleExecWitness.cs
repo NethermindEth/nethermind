@@ -266,7 +266,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable, isWrite);
     }
 
-    private bool AccessKey(Hash256 key, ref long gasAvailable, bool isWrite = false, bool leafExist = false)
+    private bool AccessKey(Hash256 key, ref long gasAvailable, bool isWrite = false)
     {
         long requiredGas = 0;
         // TODO: do we need a SpanHashSet so that we can at least use the span to do the `Contains` check?
