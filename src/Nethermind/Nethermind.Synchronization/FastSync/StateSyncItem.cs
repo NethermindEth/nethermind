@@ -3,7 +3,7 @@
 
 using System;
 using System.Diagnostics;
-using Nethermind.Core;
+using System.Numerics;
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -55,8 +55,27 @@ namespace Nethermind.Synchronization.FastSync
         public Hash256? Address => (AccountPathNibbles?.Length ?? 0) != 0 ? (_address ??= new Hash256(Nibbles.ToBytes(AccountPathNibbles))) : null;
 
         private NodeKey? _key = null;
-        public NodeKey Key => _key ??= new(Address, Path, Hash);
+        public NodeKey Key => _key ??= new(Hash, Address, Path);
 
-        public record NodeKey(Hash256? Address, TreePath? Path, Hash256 Hash);
+        internal readonly struct NodeKeyAsKey(NodeKey Key) : IEquatable<NodeKeyAsKey>
+        {
+            private readonly NodeKey _key = Key;
+
+            public static implicit operator NodeKeyAsKey(NodeKey key) => new(key);
+            public bool Equals(NodeKeyAsKey other) => _key == other._key;
+            public override bool Equals(object obj) => obj is NodeKeyAsKey key && Equals(key);
+            public override int GetHashCode() => _key.GetHashCode();
+        }
+
+        public class NodeKey(Hash256 Hash, Hash256? Address, TreePath? Path) : IEquatable<NodeKey>
+        {
+            private readonly Hash256? _address = Address;
+            private readonly TreePath? _path = Path;
+            private readonly Hash256 _hash = Hash;
+
+            public bool Equals(NodeKey? other) => _hash == other._hash && _address == other._address && _path == other._path;
+            public override bool Equals(object obj) => Equals(obj as NodeKey);
+            public override int GetHashCode() => (int)BitOperations.Crc32C((uint)_hash.GetHashCode(), (ulong)(_path?.GetHashCode() ?? 0) << 32 | (uint)(_address?.GetHashCode() ?? 0));
+        }
     }
 }
