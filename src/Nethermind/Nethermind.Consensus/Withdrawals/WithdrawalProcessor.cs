@@ -33,7 +33,7 @@ public class WithdrawalProcessor : IWithdrawalProcessor
         if (_logger.IsTrace) _logger.Trace($"Applying withdrawals for block {block}");
 
         IExecutionWitness witness = blockTracer.IsTracingAccessWitness
-            ? new VerkleExecWitness(NullLogManager.Instance)
+            ? new VerkleExecWitness(NullLogManager.Instance, _stateProvider as VerkleWorldState)
             : new NoExecWitness();
 
         if (block.Withdrawals is not null)

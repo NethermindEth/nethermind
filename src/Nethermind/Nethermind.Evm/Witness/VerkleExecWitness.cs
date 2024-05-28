@@ -12,10 +12,11 @@ using Nethermind.Evm.Precompiles;
 using Nethermind.Int256;
 using Nethermind.Logging;
 using Nethermind.Specs.Forks;
+using Nethermind.State;
 
 namespace Nethermind.Evm.Witness;
 
-public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
+public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleWorldState) : IExecutionWitness
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
@@ -25,6 +26,8 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     private readonly JournalSet<Hash256> _modifiedLeaves = new();
     private readonly JournalSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
 
+    private readonly VerkleWorldState _verkleWorldState =
+        verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
 
     public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer)
     {
@@ -269,12 +272,17 @@ public class VerkleExecWitness(ILogManager logManager) : IExecutionWitness
     {
         long accessCost = 0;
         if (_accessedLeaves.Add(key)) accessCost += GasCostOf.WitnessChunkRead;
-        if (_accessedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += GasCostOf.WitnessBranchRead;;
+        if (_accessedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += GasCostOf.WitnessBranchRead;
 
         if (isWrite)
         {
             if (_modifiedLeaves.Add(key)) accessCost += GasCostOf.WitnessChunkWrite;
             if (_modifiedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += GasCostOf.WitnessBranchWrite;
+
+            if (!_verkleWorldState.ValuePresentInTree(key))
+            {
+                accessCost += GasCostOf.WitnessChunkFill;
+            }
         }
         return accessCost;
     }

@@ -95,6 +95,13 @@ public partial class VerkleTreeStore<TPersistence> : IVerkleTreeStore
         return Storage.GetLeaf(key, out value) ? value : null;
     }
 
+    public bool HasLeaf(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
+    {
+        Hash256 stateRootToUse = stateRoot ?? StateRoot;
+        if (TPersistence.IsUsingCache && BlockCache.HasLeaf(key.ToArray(), stateRootToUse)) return true;
+        return Storage.HasLeaf(key);
+    }
+
     public InternalNode? GetInternalNode(ReadOnlySpan<byte> key, Hash256? stateRoot = null)
     {
         Hash256 stateRootToUse = stateRoot ?? StateRoot;
