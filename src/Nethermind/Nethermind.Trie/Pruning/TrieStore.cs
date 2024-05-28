@@ -795,10 +795,11 @@ namespace Nethermind.Trie.Pruning
                 if (_pastPathHash.TryGet(key, out ValueHash256 prevHash))
                 {
                     TreePath fullPath = key.path.ToTreePath(); // Micro op to reduce double convert
-                    if (CanRemove(key.addr, key.path, fullPath, prevHash, keyValuePair.Value))
+                    Hash256? hash = key.addr == default ? null : key.addr.ToCommitment();
+                    if (CanRemove(hash, key.path, fullPath, prevHash, keyValuePair.Value))
                     {
                         Metrics.RemovedNodeCount++;
-                        writeBatch.Remove(key.addr, fullPath, prevHash);
+                        writeBatch.Remove(hash, fullPath, prevHash);
                     }
                 }
             }
@@ -1322,19 +1323,14 @@ namespace Nethermind.Trie.Pruning
 
         private readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
-            public readonly Hash256? addr = hash;
+            public readonly ValueHash256 addr = hash;
             public readonly TinyTreePath path = path;
 
             public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                Hash256? address = addr;
-                var addressHash = 0;
-                if (address is not null)
-                {
-                    addressHash = address.ValueHash256.GetHashCode();
-                }
+                var addressHash = addr.GetHashCode();
                 return path.GetHashCode() ^ addressHash;
             }
         }
