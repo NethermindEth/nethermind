@@ -1,6 +1,7 @@
 // SPDX-FileCopyrightText: 2022 Demerzel Solutions Limited
 // SPDX-License-Identifier: LGPL-3.0-only
 
+using System.Net;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -16,6 +17,7 @@ namespace Nethermind.Network.Discovery.Lifecycle;
 
 public class NodeLifecycleManager : INodeLifecycleManager
 {
+    private readonly static IPAddress _localhost = IPAddress.Parse("127.0.0.1");
     private readonly IDiscoveryManager _discoveryManager;
     private readonly INodeTable _nodeTable;
     private readonly ILogger _logger;
@@ -190,7 +192,7 @@ public class NodeLifecycleManager : INodeLifecycleManager
 
         foreach (Node node in msg.Nodes)
         {
-            if (node.Address.Address.ToString().Contains("127.0.0.1"))
+            if (node.Address.Address == _localhost)
             {
                 if (_logger.IsTrace)
                     _logger.Trace($"Received localhost as node address from: {msg.FarPublicKey}, node: {node}");
@@ -212,10 +214,16 @@ public class NodeLifecycleManager : INodeLifecycleManager
         NodeStats.AddNodeStatsEvent(NodeStatsEventType.DiscoveryFindNodeIn);
         RefreshNodeContactTime();
 
-        Node[] nodes = _nodeTable
-            .GetClosestNodes(msg.SearchedNodeId)
-            .Take(12) // Otherwise the payload may become too big, which is out of spec.
-            .ToArray();
+        // 12 otherwise the payload may become too big, which is out of spec.
+        var closestNodes = _nodeTable.GetClosestNodes(msg.SearchedNodeId, bucketSize: 12);
+        Node[] nodes = new Node[closestNodes.Count];
+        int count = 0;
+        foreach (Node node in closestNodes)
+        {
+            nodes[count] = node;
+            count++;
+        }
+
         SendNeighbors(nodes);
     }
 

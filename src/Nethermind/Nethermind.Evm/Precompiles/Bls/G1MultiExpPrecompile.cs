@@ -21,7 +21,7 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0e);
+    public static Address Address { get; } = Address.FromNumber(0x0d);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
@@ -41,6 +41,15 @@ public class G1MultiExpPrecompile : IPrecompile<G1MultiExpPrecompile>
         if (inputData.Length % ItemSize > 0 || inputData.Length == 0)
         {
             return (Array.Empty<byte>(), false);
+        }
+
+        for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        {
+            int offset = i * ItemSize;
+            if (!SubgroupChecks.G1IsInSubGroup(inputData.Span[offset..(offset + (2 * BlsParams.LenFp))]))
+            {
+                return (Array.Empty<byte>(), false);
+            }
         }
 
         (byte[], bool) result;

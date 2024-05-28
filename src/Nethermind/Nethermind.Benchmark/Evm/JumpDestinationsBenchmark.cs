@@ -29,7 +29,7 @@ namespace Nethermind.Benchmarks.Evm
         [Benchmark]
         public bool Current()
         {
-            return _codeInfo.ValidateJump(0, false);
+            return _codeInfo.ValidateJump(0);
         }
     }
 }

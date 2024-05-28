@@ -51,6 +51,9 @@ public class DbConfig : IDbConfig
     public int? UseRibbonFilterStartingFromLevel { get; set; }
     public ulong BytesPerSync { get; set; } = 0;
     public double? DataBlockIndexUtilRatio { get; set; }
+    public bool EnableFileWarmer { get; set; } = false;
+
+    public ulong BlobTransactionsDbBlockCacheSize { get; set; } = (ulong)32.MiB();
 
     public ulong ReceiptsDbWriteBufferSize { get; set; } = (ulong)2.MiB();
     public uint ReceiptsDbWriteBufferNumber { get; set; } = 2;
@@ -153,31 +156,6 @@ public class DbConfig : IDbConfig
     public long? BloomDbMaxBytesPerSec { get; set; }
     public IDictionary<string, string>? BloomDbAdditionalRocksDbOptions { get; set; }
 
-    public ulong WitnessDbWriteBufferSize { get; set; } = (ulong)1.KiB();
-    public uint WitnessDbWriteBufferNumber { get; set; } = 4;
-    public ulong WitnessDbBlockCacheSize { get; set; } = 0;
-    public bool WitnessDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? WitnessDbMaxOpenFiles { get; set; }
-    public long? WitnessDbMaxBytesPerSec { get; set; }
-    public int? WitnessDbBlockSize { get; set; }
-    public bool? WitnessUseDirectReads { get; set; }
-    public bool? WitnessUseDirectIoForFlushAndCompactions { get; set; }
-    public ulong? WitnessCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? WitnessDbAdditionalRocksDbOptions { get; set; }
-
-    // TODO - profile and customize
-    public ulong CanonicalHashTrieDbWriteBufferSize { get; set; } = (ulong)2.MB();
-    public uint CanonicalHashTrieDbWriteBufferNumber { get; set; } = 4;
-    public ulong CanonicalHashTrieDbBlockCacheSize { get; set; } = 0;
-    public bool CanonicalHashTrieDbCacheIndexAndFilterBlocks { get; set; } = false;
-    public int? CanonicalHashTrieDbMaxOpenFiles { get; set; }
-    public long? CanonicalHashTrieDbMaxBytesPerSec { get; set; }
-    public int? CanonicalHashTrieDbBlockSize { get; set; }
-    public bool? CanonicalHashTrieUseDirectReads { get; set; }
-    public bool? CanonicalHashTrieUseDirectIoForFlushAndCompactions { get; set; }
-    public ulong? CanonicalHashTrieCompactionReadAhead { get; set; }
-    public IDictionary<string, string>? CanonicalHashTrieDbAdditionalRocksDbOptions { get; set; }
-
     public ulong MetadataDbWriteBufferSize { get; set; } = (ulong)1.KiB();
     public uint MetadataDbWriteBufferNumber { get; set; } = 4;
     public ulong MetadataDbBlockCacheSize { get; set; } = 0;
@@ -223,6 +201,7 @@ public class DbConfig : IDbConfig
     public int? StateDbBloomFilterBitsPerKey { get; set; } = 15;
     public int? StateDbUseRibbonFilterStartingFromLevel { get; set; } = 2;
     public double? StateDbDataBlockIndexUtilRatio { get; set; } = 0.5;
+    public bool StateDbEnableFileWarmer { get; set; } = false;
     public IDictionary<string, string>? StateDbAdditionalRocksDbOptions { get; set; }
 
     public uint RecycleLogFileNum { get; set; } = 0;

@@ -430,7 +430,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
 
         if (!readonlyChain)
         {
-            _stats.UpdateStats(lastProcessed, _blockTree, _recoveryQueue.Count, _blockQueue.Count, _stopwatch.ElapsedMicroseconds());
+            Metrics.RecoveryQueueSize = _recoveryQueue.Count;
+            Metrics.ProcessingQueueSize = _blockQueue.Count;
+            _stats.UpdateStats(lastProcessed, _blockTree, _stopwatch.ElapsedMicroseconds());
         }
 
         return lastProcessed;

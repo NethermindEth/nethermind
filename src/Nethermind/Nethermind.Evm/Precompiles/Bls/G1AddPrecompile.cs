@@ -20,11 +20,11 @@ public class G1AddPrecompile : IPrecompile<G1AddPrecompile>
     {
     }
 
-    public static Address Address { get; } = Address.FromNumber(0x0c);
+    public static Address Address { get; } = Address.FromNumber(0x0b);
 
     public long BaseGasCost(IReleaseSpec releaseSpec)
     {
-        return 600L;
+        return 500L;
     }
 
     public long DataGasCost(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)

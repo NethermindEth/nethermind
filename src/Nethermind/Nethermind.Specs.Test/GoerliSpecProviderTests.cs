@@ -16,7 +16,6 @@ namespace Nethermind.Specs.Test
         [TestCase(4_460_644, true)]
         public void Berlin_eips(long blockNumber, bool isEnabled)
         {
-            _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2315Enabled.Should().Be(false);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2537Enabled.Should().Be(false);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2565Enabled.Should().Be(isEnabled);
             _specProvider.GetSpec((ForkActivation)blockNumber).IsEip2929Enabled.Should().Be(isEnabled);
