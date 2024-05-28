@@ -4,6 +4,8 @@
 using System;
 using System.Diagnostics;
 using System.Numerics;
+using System.Runtime.InteropServices;
+
 using Nethermind.Core.Crypto;
 using Nethermind.Trie;
 
@@ -57,10 +59,11 @@ namespace Nethermind.Synchronization.FastSync
         private NodeKey? _key = null;
         public NodeKey Key => _key ??= new(Address, Path, Hash);
 
+        [StructLayout(LayoutKind.Auto)]
         public readonly struct NodeKey(Hash256? address, TreePath? path, Hash256 hash) : IEquatable<NodeKey>
         {
-            private readonly ValueHash256? Address = address;
-            private readonly TreePath? Path = path;
+            private readonly ValueHash256 Address = address ?? default;
+            private readonly TreePath? Path = path ?? default;
             private readonly ValueHash256 Hash = hash;
 
             public readonly bool Equals(NodeKey other)

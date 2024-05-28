@@ -1321,9 +1321,10 @@ namespace Nethermind.Trie.Pruning
             return true;
         }
 
+        [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPath(Hash256? hash, in TinyTreePath path) : IEquatable<HashAndTinyPath>
         {
-            public readonly ValueHash256 addr = hash;
+            public readonly ValueHash256 addr = hash ?? default;
             public readonly TinyTreePath path = path;
 
             public bool Equals(HashAndTinyPath other) => addr == other.addr && path.Equals(other.path);
@@ -1335,22 +1336,18 @@ namespace Nethermind.Trie.Pruning
             }
         }
 
+        [StructLayout(LayoutKind.Auto)]
         private readonly struct HashAndTinyPathAndHash(Hash256? hash, in TinyTreePath path, in ValueHash256 valueHash) : IEquatable<HashAndTinyPathAndHash>
         {
-            public readonly Hash256? hash = hash;
+            public readonly ValueHash256 hash = hash ?? default;
             public readonly TinyTreePath path = path;
             public readonly ValueHash256 valueHash = valueHash;
 
-            public bool Equals(HashAndTinyPathAndHash other) => hash == other.hash && path.Equals(other.path) && valueHash.Equals(in other.valueHash);
+            public bool Equals(HashAndTinyPathAndHash other) => hash.Equals(in other.hash) && path.Equals(in other.path) && valueHash.Equals(in other.valueHash);
             public override bool Equals(object? obj) => obj is HashAndTinyPath other && Equals(other);
             public override int GetHashCode()
             {
-                var hashHash = 0;
-                if (hash is not null)
-                {
-                    hashHash = hash.ValueHash256.GetHashCode();
-                }
-
+                var hashHash = hash.GetHashCode();
                 return valueHash.GetChainedHashCode((uint)path.GetHashCode()) ^ hashHash;
             }
         }
