@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -20,26 +21,28 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    private readonly JournalSet<Hash256> _accessedLeaves = new();
-    private readonly JournalSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
+    private readonly HashSet<Hash256> _accessedLeaves = new();
+    private readonly HashSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
 
-    private readonly JournalSet<Hash256> _modifiedLeaves = new();
-    private readonly JournalSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
+    private readonly HashSet<Hash256> _modifiedLeaves = new();
+    private readonly HashSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
 
     private readonly VerkleWorldState _verkleWorldState =
         verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
 
-    public long AccessForContractCreationInit(Address contractAddress, bool isValueTransfer)
+    public bool AccessForContractCreationInit(Address contractAddress, bool isValueTransfer, ref long gasAvailable)
     {
-        var gas = AccessVersion(contractAddress, true) + AccessNonce(contractAddress, true);
-        if (isValueTransfer) gas += AccessBalance(contractAddress, true);
+        if (!AccessVersion(contractAddress, ref gasAvailable, true)) return false;
+        if (!AccessNonce(contractAddress, ref gasAvailable, true)) return false;
+        if (isValueTransfer && !AccessBalance(contractAddress, ref gasAvailable, true)) return false;
         // _logger.Info($"AccessForContractCreationInit: {contractAddress.Bytes.ToHexString()} {isValueTransfer} {gas}");
 
-        return gas;    }
+        return true;
+    }
 
-    public long AccessForContractCreated(Address contractAddress)
+    public bool AccessForContractCreated(Address contractAddress, ref long gasAvailable)
     {
-        var gas = AccessCompleteAccount(contractAddress, true);
+        var gas = AccessCompleteAccount(contractAddress, ref gasAvailable, true);
         // _logger.Info($"AccessContractCreated: {contractAddress.Bytes.ToHexString()} {gas}");
         return gas;
     }
@@ -50,66 +53,66 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="originAddress"></param>
     /// <param name="destinationAddress"></param>
     /// <param name="isValueTransfer"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public long AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer)
+    public bool AccessForTransaction(Address originAddress, Address? destinationAddress, bool isValueTransfer, ref long gasAvailable)
     {
         // TODO: does not seem right - not upto spec
-        long gasCost = 0;
-        gasCost += AccessVersion(originAddress);
+        if (!AccessVersion(originAddress, ref gasAvailable)) return false;
         // when you are executing a transaction, you are writing to the nonce of the origin address
-        gasCost += AccessNonce(originAddress, true);
-        gasCost += AccessBalance(originAddress, true);
-        gasCost += AccessCodeHash(originAddress);
-        gasCost += AccessCodeSize(originAddress);
+        if (!AccessNonce(originAddress, ref gasAvailable, true)) return false;
+        if (!AccessBalance(originAddress, ref gasAvailable, true)) return false;
+        if (!AccessCodeHash(originAddress, ref gasAvailable)) return false;
+        if (!AccessCodeSize(originAddress, ref gasAvailable)) return false;
 
         if (destinationAddress is not null)
         {
-            gasCost += AccessVersion(destinationAddress);
-            gasCost += AccessNonce(destinationAddress);
+            if (!AccessVersion(destinationAddress, ref gasAvailable)) return false;
+            if (!AccessNonce(destinationAddress, ref gasAvailable)) return false;
             // when you are executing a transaction with value transfer,
             // you are writing to the balance of the origin and destination address
-            gasCost += AccessBalance(destinationAddress, isValueTransfer);
-            gasCost += AccessCodeHash(destinationAddress);
-            gasCost += AccessCodeSize(destinationAddress);
+            if (!AccessBalance(destinationAddress, ref gasAvailable, isValueTransfer)) return false;
+            if (!AccessCodeHash(destinationAddress, ref gasAvailable)) return false;
+            if (!AccessCodeSize(destinationAddress, ref gasAvailable)) return false;
 
         }
         // _logger.Info($"AccessForTransaction: {originAddress.Bytes.ToHexString()} {destinationAddress?.Bytes.ToHexString()} {isValueTransfer} {gasCost}");
-        return gasCost;
+        return true;
     }
 
     /// <summary>
     ///     Call for the gas beneficiary.
     /// </summary>
     /// <param name="gasBeneficiary"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public long AccessForGasBeneficiary(Address gasBeneficiary)
+    public bool AccessForGasBeneficiary(Address gasBeneficiary, ref long gasAvailable)
     {
-        long gas = 0;
-        gas += AccessVersion(gasBeneficiary);
-        gas += AccessNonce(gasBeneficiary);
-        gas += AccessBalance(gasBeneficiary);
-        gas += AccessCodeHash(gasBeneficiary);
-        gas += AccessCodeSize(gasBeneficiary);
+        if (!AccessVersion(gasBeneficiary, ref gasAvailable)) return false;
+        if (!AccessNonce(gasBeneficiary, ref gasAvailable)) return false;
+        if (!AccessBalance(gasBeneficiary, ref gasAvailable)) return false;
+        if (!AccessCodeHash(gasBeneficiary, ref gasAvailable)) return false;
+        if (!AccessCodeSize(gasBeneficiary, ref gasAvailable)) return false;
         // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
-        return gas;
+        return true;
     }
 
-    public long AccessForCodeOpCodes(Address caller)
+    public bool AccessForCodeOpCodes(Address caller, ref long gasAvailable)
     {
-        var gas = AccessVersion(caller);
-        gas += AccessCodeSize(caller);
+        if (!AccessVersion(caller, ref gasAvailable)) return false;
+        if (!AccessCodeSize(caller, ref gasAvailable)) return false;
         // _logger.Info($"AccessForCodeOpCodes: {caller.Bytes.ToHexString()} {gas}");
-        return gas;
+        return true;
     }
 
-    public long AccessForBalance(Address address, bool isWrite = false)
+    public bool AccessForBalance(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessBalance(address, isWrite);
+        return AccessBalance(address, ref gasAvailable, isWrite);
     }
 
-    public long AccessForCodeHash(Address address)
+    public bool AccessForCodeHash(Address address, ref long gasAvailable)
     {
-        return AccessCodeHash(address);
+        return AccessCodeHash(address, ref gasAvailable);
     }
 
     /// <summary>
@@ -119,35 +122,37 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="address"></param>
     /// <param name="key"></param>
     /// <param name="isWrite"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public long AccessForStorage(Address address, UInt256 key, bool isWrite)
+    public bool AccessForStorage(Address address, UInt256 key, bool isWrite, ref long gasAvailable)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
-        var gas = AccessKey(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), isWrite);
+        if (address.IsPrecompile(Osaka.Instance)) return true;
+        var gas = AccessKey(AccountHeader.GetTreeKeyForStorageSlot(address.Bytes, key), ref gasAvailable, isWrite);
         // _logger.Info($"AccessStorage: {address.Bytes.ToHexString()} {key.ToBigEndian().ToHexString()} {isWrite} {gas}");
         return gas;
     }
 
-    public long AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite)
+    public bool AccessForCodeProgramCounter(Address address, int programCounter, bool isWrite, ref long gasAvailable)
     {
-        return AccessCodeChunk(address, CalculateCodeChunkIdFromPc(programCounter), isWrite);
+        return AccessCodeChunk(address, CalculateCodeChunkIdFromPc(programCounter), isWrite, ref gasAvailable);
     }
 
-    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long unspentGas)
+    public bool AccessAndChargeForCodeSlice(Address address, int startIncluded, int endNotIncluded, bool isWrite, ref long gasAvailable)
     {
         if (startIncluded == endNotIncluded) return true;
 
         UInt256 startChunkId = CalculateCodeChunkIdFromPc(startIncluded);
         UInt256 endChunkId = CalculateCodeChunkIdFromPc(endNotIncluded - 1);
 
-        long accGas = 0;
+        long gasBefore = gasAvailable;
         for (UInt256 ch = startChunkId; ch <= endChunkId; ch++)
         {
-            long gas = AccessCodeChunk(address, ch, isWrite);
-            accGas += gas;
-            if (!UpdateGas(gas, ref unspentGas)) return false;
+            if (!AccessCodeChunk(address, ch, isWrite, ref gasAvailable)) return false;
         }
-        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForCodeSlice: {accGas} {startIncluded} {endNotIncluded} {isWrite} {unspentGas}");
+        long gasAfter = gasAvailable;
+        long accGas = gasBefore - gasAfter;
+
+        if (_logger.IsTrace) _logger.Trace($"AccessAndChargeForCodeSlice: {accGas} {startIncluded} {endNotIncluded} {isWrite} {gasAvailable}");
         return true;
     }
 
@@ -157,21 +162,22 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     /// <param name="address"></param>
     /// <param name="chunkId"></param>
     /// <param name="isWrite"></param>
+    /// <param name="gasAvailable"></param>
     /// <returns></returns>
-    public long AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite)
+    public bool AccessCodeChunk(Address address, UInt256 chunkId, bool isWrite, ref long gasAvailable)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
+        if (address.IsPrecompile(Osaka.Instance)) return true;
         Hash256? key = AccountHeader.GetTreeKeyForCodeChunk(address.Bytes, chunkId);
         // _logger.Info($"AccessCodeChunkKey: {EnumerableExtensions.ToString(key)}");
-        var gas = AccessKey(key, isWrite);
+        var gas = AccessKey(key, ref gasAvailable, isWrite);
         // _logger.Info($"AccessCodeChunk: {address.Bytes.ToHexString()} {chunkId} {isWrite} {gas}");
         return gas;
     }
 
 
-    public long AccessForAbsentAccount(Address address)
+    public bool AccessForAbsentAccount(Address address, ref long gasAvailable)
     {
-        var gas = AccessCompleteAccount(address);
+        var gas = AccessCompleteAccount(address, ref gasAvailable);
         // _logger.Info($"AccessForProofOfAbsence: {address.Bytes.ToHexString()} {gas}");
         return gas;
     }
@@ -180,53 +186,41 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     ///     When you have to access the complete account
     /// </summary>
     /// <param name="address"></param>
+    /// <param name="gasAvailable"></param>
     /// <param name="isWrite"></param>
     /// <returns></returns>
-    public long AccessCompleteAccount(Address address, bool isWrite = false)
+    public bool AccessCompleteAccount(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        long gasCost = 0;
-        gasCost += AccessVersion(address, isWrite);
-        gasCost += AccessNonce(address, isWrite);
-        gasCost += AccessBalance(address, isWrite);
-        gasCost += AccessCodeHash(address, isWrite);
-        gasCost += AccessCodeSize(address, isWrite);
+        if (!AccessVersion(address, ref gasAvailable, isWrite)) return false;
+        if (!AccessNonce(address, ref gasAvailable, isWrite)) return false;
+        if (!AccessBalance(address, ref gasAvailable, isWrite)) return false;
+        if (!AccessCodeHash(address, ref gasAvailable, isWrite)) return false;
+        if (!AccessCodeSize(address, ref gasAvailable, isWrite)) return false;
         // _logger.Info($"AccessCompleteAccount: {address.Bytes.ToHexString()} {isWrite} {gas}");
-        return gasCost;
+        return true;
     }
 
-    public long AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist)
+    public bool AccessForSelfDestruct(Address contract, Address inheritor, bool balanceIsZero, bool inheritorExist, ref long gasAvailable)
     {
         bool contractNotSameAsBeneficiary = contract != inheritor;
-        long gas = 0;
-        gas += AccessVersion(contract);
-        gas += AccessCodeSize(contract);
+        if (!AccessVersion(contract, ref gasAvailable)) return false;
+        if (!AccessCodeSize(contract, ref gasAvailable)) return false;
 
         if (!inheritorExist && !balanceIsZero)
         {
-            gas += AccessVersion(inheritor);
-            gas += AccessNonce(inheritor);
+            if (!AccessVersion(inheritor, ref gasAvailable)) return false;
+            if (!AccessNonce(inheritor, ref gasAvailable)) return false;
         }
         if (balanceIsZero)
         {
-            gas += AccessBalance(contract);
-            if (contractNotSameAsBeneficiary) gas += AccessBalance(inheritor);
+            if (!AccessBalance(contract, ref gasAvailable)) return false;
+            if (contractNotSameAsBeneficiary && !AccessBalance(inheritor, ref gasAvailable)) return false;
         }
         else
         {
-            gas += AccessBalance(contract, true);
-            if (contractNotSameAsBeneficiary) gas += AccessBalance(inheritor, true);
+            if (!AccessBalance(contract, ref gasAvailable, true)) return false;
+            if (contractNotSameAsBeneficiary && !AccessBalance(inheritor, ref gasAvailable, true)) return false;
         }
-        return gas;
-    }
-
-    private static bool UpdateGas(long gasCost, ref long gasAvailable)
-    {
-        if (gasAvailable < gasCost)
-        {
-            gasAvailable = 0;
-            return false;
-        }
-        gasAvailable -= gasCost;
         return true;
     }
 
@@ -241,53 +235,77 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         return _accessedLeaves.Select(x => x.BytesToArray()).ToArray();
     }
 
-    private long AccessVersion(Address address, bool isWrite = false)
+    private bool AccessVersion(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Version, isWrite);
+        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Version, ref gasAvailable, isWrite);
     }
 
-    private long AccessBalance(Address address, bool isWrite = false)
+    private bool AccessBalance(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Balance, isWrite);
+        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Balance, ref gasAvailable, isWrite);
     }
 
-    private long AccessNonce(Address address, bool isWrite = false)
+    private bool AccessNonce(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Nonce, isWrite);
+        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.Nonce, ref gasAvailable, isWrite);
     }
 
-    private long AccessCodeSize(Address address, bool isWrite = false)
+    private bool AccessCodeSize(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.CodeSize, isWrite);
+        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.CodeSize, ref gasAvailable, isWrite);
     }
 
-    private long AccessCodeHash(Address address, bool isWrite = false)
+    private bool AccessCodeHash(Address address, ref long gasAvailable, bool isWrite = false)
     {
-        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.CodeHash, isWrite);
+        return AccessAccountSubTree(address, UInt256.Zero, AccountHeader.CodeHash, ref gasAvailable, isWrite);
     }
 
-    private long AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, bool isWrite = false)
+    private bool AccessAccountSubTree(Address address, UInt256 treeIndex, byte subIndex, ref long gasAvailable, bool isWrite = false)
     {
-        if (address.IsPrecompile(Osaka.Instance)) return 0;
-        return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), isWrite);
+        if (address.IsPrecompile(Osaka.Instance)) return true;
+        return AccessKey(AccountHeader.GetTreeKey(address.Bytes, treeIndex, subIndex), ref gasAvailable, isWrite);
     }
 
-    private long AccessKey(Hash256 key, bool isWrite = false, bool leafExist = false)
+    private bool AccessKey(Hash256 key, ref long gasAvailable, bool isWrite = false)
     {
-        long accessCost = 0;
-        if (_accessedLeaves.Add(key)) accessCost += GasCostOf.WitnessChunkRead;
-        if (_accessedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += GasCostOf.WitnessBranchRead;
-
-        if (isWrite)
+        long requiredGas = 0;
+        // TODO: do we need a SpanHashSet so that we can at least use the span to do the `Contains` check?
+        byte[] subTreeStem = key.Bytes[..31].ToArray();
+        bool wasPreviouslyNotAccessed = !_accessedLeaves.Contains(key);
+        if (wasPreviouslyNotAccessed)
         {
-            if (_modifiedLeaves.Add(key)) accessCost += GasCostOf.WitnessChunkWrite;
-            if (_modifiedSubtrees.Add(key.Bytes[..31].ToArray())) accessCost += GasCostOf.WitnessBranchWrite;
-
-            if (!_verkleWorldState.ValuePresentInTree(key))
-            {
-                accessCost += GasCostOf.WitnessChunkFill;
-            }
+            requiredGas += GasCostOf.WitnessChunkRead;
+            // if key is already in `_accessedLeaves`, then checking `_accessedSubtrees` will be redundant
+            if (!_accessedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchRead;
         }
-        return accessCost;
+
+        if (requiredGas > gasAvailable) return false;
+        gasAvailable -= requiredGas;
+
+        _accessedLeaves.Add(key);
+        _accessedSubtrees.Add(subTreeStem);
+
+        if (!isWrite) return true;
+
+
+        requiredGas = 0;
+        // if `wasPreviouslyNotAccessed = true`, this implies that _modifiedLeaves.Contains(key) = false
+        if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
+        {
+            requiredGas += GasCostOf.WitnessChunkWrite;
+            // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
+            if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
+
+            // if key is already in `_modifiedLeaves`, then checking `_modifiedSubtrees` will be redundant
+            if (!_modifiedSubtrees.Contains(subTreeStem)) requiredGas += GasCostOf.WitnessBranchWrite;
+        }
+
+        if (requiredGas > gasAvailable) return false;
+        gasAvailable -= requiredGas;
+
+        _modifiedLeaves.Add(key);
+        _modifiedSubtrees.Add(subTreeStem);
+
+        return true;
     }
 }
