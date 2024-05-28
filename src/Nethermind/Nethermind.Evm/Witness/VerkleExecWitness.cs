@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Collections.Generic;
 using System.Linq;
 using Nethermind.Core;
 using Nethermind.Core.Collections;
@@ -20,11 +21,11 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 {
     private readonly ILogger _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
 
-    private readonly JournalSet<Hash256> _accessedLeaves = new();
-    private readonly JournalSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
+    private readonly HashSet<Hash256> _accessedLeaves = new();
+    private readonly HashSet<byte[]> _accessedSubtrees = new(Bytes.EqualityComparer);
 
-    private readonly JournalSet<Hash256> _modifiedLeaves = new();
-    private readonly JournalSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
+    private readonly HashSet<Hash256> _modifiedLeaves = new();
+    private readonly HashSet<byte[]> _modifiedSubtrees = new(Bytes.EqualityComparer);
 
     private readonly VerkleWorldState _verkleWorldState =
         verkleWorldState ?? throw new ArgumentNullException(nameof(verkleWorldState));
