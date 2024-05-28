@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using FluentAssertions;
 using Nethermind.Core;
 using Nethermind.Core.Test.Builders;
@@ -15,7 +16,7 @@ namespace Nethermind.Evm.Test.Tracing
     public class BlockReceiptsTracerTests
     {
         [Test]
-        public void Sets_state_root_if_provided_on_success()
+        public async Task Sets_state_root_if_provided_on_success()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
@@ -23,13 +24,13 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0], TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], [], TestItem.KeccakF);
 
-            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
+            Assert.That((await tracer.TxReceipts[0]).PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]
-        public void Sets_tx_type()
+        public async Task Sets_tx_type()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.WithChainId(TestBlockchainIds.ChainId).WithType(TxType.AccessList).TestObject).TestObject;
 
@@ -37,13 +38,13 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, new byte[0], new LogEntry[0]);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], []);
 
-            tracer.TxReceipts[0].TxType.Should().Be(TxType.AccessList);
+            (await tracer.TxReceipts[0]).TxType.Should().Be(TxType.AccessList);
         }
 
         [Test]
-        public void Sets_state_root_if_provided_on_failure()
+        public async Task Sets_state_root_if_provided_on_failure()
         {
             Block block = Build.A.Block.WithTransactions(Build.A.Transaction.TestObject).TestObject;
 
@@ -51,9 +52,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(NullBlockTracer.Instance);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, new byte[0], "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
-            Assert.That(tracer.TxReceipts[0].PostTransactionState, Is.EqualTo(TestItem.KeccakF));
+            Assert.That((await tracer.TxReceipts[0]).PostTransactionState, Is.EqualTo(TestItem.KeccakF));
         }
 
         [Test]
@@ -66,9 +67,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.SetOtherTracer(otherTracer);
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
-            tracer.MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
+            tracer.MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
 
-            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, Array.Empty<byte>(), "error", TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsFailed(TestItem.AddressA, 100, [], "error", TestItem.KeccakF);
         }
 
         [Test]
@@ -82,9 +83,9 @@ namespace Nethermind.Evm.Test.Tracing
             tracer.StartNewBlockTrace(block);
             tracer.StartNewTxTrace(block.Transactions[0]);
             LogEntry[] logEntries = new LogEntry[0];
-            tracer.MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
+            tracer.MarkAsSuccess(TestItem.AddressA, 100, [], logEntries, TestItem.KeccakF);
 
-            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, Array.Empty<byte>(), logEntries, TestItem.KeccakF);
+            (otherTracer as ITxTracer).Received().MarkAsSuccess(TestItem.AddressA, 100, [], logEntries, TestItem.KeccakF);
         }
     }
 }

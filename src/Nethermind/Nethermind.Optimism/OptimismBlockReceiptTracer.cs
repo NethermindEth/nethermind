@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Evm.Tracing;
@@ -44,22 +45,24 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
         return (depositNonce, version);
     }
 
-    protected override TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    protected override Task<TxReceipt> BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         (ulong? depositNonce, ulong? version) = GetDepositReceiptData(Block.Header);
 
         Transaction transaction = CurrentTx!;
-        OptimismTxReceipt txReceipt = new()
+        long blockGasUsed = Block.GasUsed;
+        var currentIndex = _currentIndex;
+        return Task.Run(() => (TxReceipt)new OptimismTxReceipt
         {
             Logs = logEntries,
             TxType = transaction.Type,
             Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
-            GasUsedTotal = Block.GasUsed,
+            GasUsedTotal = blockGasUsed,
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
-            Index = _currentIndex,
+            Index = currentIndex,
             GasUsed = spentGas,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
@@ -67,8 +70,6 @@ public class OptimismBlockReceiptTracer : BlockReceiptsTracer
             PostTransactionState = stateRoot,
             DepositNonce = depositNonce,
             DepositReceiptVersion = version
-        };
-
-        return txReceipt;
+        });
     }
 }

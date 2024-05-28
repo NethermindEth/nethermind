@@ -5,6 +5,7 @@ using System;
 using System.Diagnostics;
 using System.Diagnostics.CodeAnalysis;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Core;
 using Nethermind.Core.Specs;
@@ -36,7 +37,8 @@ namespace Nethermind.Consensus.Processing
 
             public event EventHandler<TxProcessedEventArgs>? TransactionProcessed;
 
-            public TxReceipt[] ProcessTransactions(Block block, ProcessingOptions processingOptions, BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
+            public Task ProcessTransactions(Block block, ProcessingOptions processingOptions,
+                BlockReceiptsTracer receiptsTracer, IReleaseSpec spec)
             {
                 Metrics.ResetBlockStats();
                 BlockExecutionContext blkCtx = new(block.Header);
@@ -45,14 +47,15 @@ namespace Nethermind.Consensus.Processing
                     Transaction currentTx = block.Transactions[i];
                     ProcessTransaction(in blkCtx, currentTx, i, receiptsTracer, processingOptions);
                 }
-                return receiptsTracer.TxReceipts.ToArray();
+
+                return Task.CompletedTask;
             }
 
             private void ProcessTransaction(in BlockExecutionContext blkCtx, Transaction currentTx, int index, BlockReceiptsTracer receiptsTracer, ProcessingOptions processingOptions)
             {
                 TransactionResult result = _transactionProcessor.ProcessTransaction(in blkCtx, currentTx, receiptsTracer, processingOptions, _stateProvider);
                 if (!result) ThrowInvalidBlockException(result, blkCtx.Header, currentTx, index);
-                TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+                receiptsTracer.TxReceipts[index].ContinueWith(async t => TransactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, await t)));
             }
 
             [DoesNotReturn]

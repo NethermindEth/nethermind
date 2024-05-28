@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -43,7 +44,7 @@ public class OptimismBlockProcessor : BlockProcessor
         ReceiptsTracer = new OptimismBlockReceiptTracer(opConfigHelper, stateProvider);
     }
 
-    protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+    protected override Task<TxReceipt[]> ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
     {
         _contractRewriter?.RewriteContract(block.Header, _stateProvider);
         return base.ProcessBlock(block, blockTracer, options);

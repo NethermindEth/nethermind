@@ -11,22 +11,13 @@ using Nethermind.Trie;
 
 namespace Nethermind.Consensus.Tracing
 {
-    public class Tracer : ITracer
+    public class Tracer(
+        IWorldState stateProvider,
+        IBlockchainProcessor traceProcessor,
+        IBlockchainProcessor executeProcessor,
+        ProcessingOptions processingOptions = ProcessingOptions.Trace)
+        : ITracer
     {
-        private readonly IWorldState _stateProvider;
-        private readonly IBlockchainProcessor _traceProcessor;
-        private readonly IBlockchainProcessor _executeProcessor;
-        private readonly ProcessingOptions _processingOptions;
-
-        public Tracer(IWorldState stateProvider, IBlockchainProcessor traceProcessor, IBlockchainProcessor executeProcessor,
-            ProcessingOptions processingOptions = ProcessingOptions.Trace)
-        {
-            _traceProcessor = traceProcessor;
-            _executeProcessor = executeProcessor;
-            _stateProvider = stateProvider;
-            _processingOptions = processingOptions;
-        }
-
         private void Process(Block block, IBlockTracer blockTracer, IBlockchainProcessor processor)
         {
             /* We force process since we want to process a block that has already been processed in the past and normally it would be ignored.
@@ -36,27 +27,27 @@ namespace Nethermind.Consensus.Tracing
 
             try
             {
-                processor.Process(block, _processingOptions, blockTracer);
+                processor.Process(block, processingOptions, blockTracer);
             }
             catch (Exception)
             {
-                _stateProvider.Reset();
+                stateProvider.Reset();
                 throw;
             }
 
             blockTracer.EndBlockTrace();
         }
 
-        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, _traceProcessor);
+        public void Trace(Block block, IBlockTracer tracer) => Process(block, tracer, traceProcessor);
 
-        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, _executeProcessor);
+        public void Execute(Block block, IBlockTracer tracer) => Process(block, tracer, executeProcessor);
 
         public void Accept(ITreeVisitor visitor, Hash256 stateRoot)
         {
             ArgumentNullException.ThrowIfNull(visitor);
             ArgumentNullException.ThrowIfNull(stateRoot);
 
-            _stateProvider.Accept(visitor, stateRoot);
+            stateProvider.Accept(visitor, stateRoot);
         }
     }
 }
