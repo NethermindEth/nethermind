@@ -150,7 +150,7 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         }
 
         // parent is not null - here we can start processing blocks stateless
-        if (_processStateless) block.ExecutionWitness!.StateRoot = parentHeader.StateRoot;
+        block.ExecutionWitness!.StateRoot = parentHeader.StateRoot;
 
         // we need to check if the head is greater than block.Number. In fast sync we could return Valid to CL without this if
         if (_blockTree.IsOnMainChainBehindOrEqualHead(block))
