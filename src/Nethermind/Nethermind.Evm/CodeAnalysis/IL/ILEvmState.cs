@@ -18,16 +18,13 @@ internal ref struct ILEvmState
     public ExecutionEnvironment Env;
     public TxExecutionContext TxCtx;
     public BlockExecutionContext BlkCtx;
-
-    public Span<byte> Stack;
-
     // in case of exceptions
     public EvmExceptionType EvmException;
-
     // in case of jumps crossing section boundaries
     public ushort ProgramCounter;
     public long GasAvailable;
-
     // in case STOP is executed
     public bool StopExecution;
+    public int StackHead;
+    public Span<byte> Stack;
 }
