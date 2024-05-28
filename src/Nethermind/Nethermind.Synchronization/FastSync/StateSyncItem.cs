@@ -75,6 +75,16 @@ namespace Nethermind.Synchronization.FastSync
                 ulong hash1 = ((ulong)(uint)(address?.GetHashCode() ?? 1) << 32) | (ulong)(uint)(Path?.GetHashCode() ?? 2);
                 return (int)BitOperations.Crc32C(hash0, hash1);
             }
+
+            public static bool operator ==(in NodeKey left, in NodeKey right)
+            {
+                return left.Equals(right);
+            }
+
+            public static bool operator !=(in NodeKey left, in NodeKey right)
+            {
+                return !(left == right);
+            }
         }
     }
 }
