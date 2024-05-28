@@ -97,8 +97,8 @@ namespace Nethermind.Consensus.Processing
                 _sstoreOpcodeProcessing = Evm.Metrics.ThreadLocalSStoreOpcode;
                 _callsProcessing = Evm.Metrics.ThreadLocalCalls;
                 _emptyCallsProcessing = Evm.Metrics.ThreadLocalEmptyCalls;
-                _codeDbCacheProcessing =  Db.Metrics.ThreadLocalCodeDbCache;
-                _contractAnalysedProcessing =  Evm.Metrics.ThreadLocalContractsAnalysed;
+                _codeDbCacheProcessing = Db.Metrics.ThreadLocalCodeDbCache;
+                _contractAnalysedProcessing = Evm.Metrics.ThreadLocalContractsAnalysed;
                 _createsProcessing = Evm.Metrics.ThreadLocalCreates;
                 GenerateReport();
             }
