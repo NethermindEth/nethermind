@@ -269,8 +269,13 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
     private bool AccessKey(Hash256 key, ref long gasAvailable, bool isWrite = false, bool leafExist = false)
     {
         long requiredGas = 0;
-        if (!_accessedLeaves.Contains(key)) requiredGas += GasCostOf.WitnessChunkRead;
-        if (!_accessedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchRead;
+        if (!_accessedLeaves.Contains(key))
+        {
+            requiredGas += GasCostOf.WitnessChunkRead;
+            // if key is already in `_accessedLeaves`, then checking `_accessedSubtrees` will be redundant
+            if (!_accessedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchRead;
+        }
+
 
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
@@ -281,12 +286,16 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
         if (!isWrite) return true;
 
         requiredGas = 0;
-        if (!_modifiedLeaves.Contains(key)) requiredGas += GasCostOf.WitnessChunkWrite;
-        if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray()))
+        if (!_modifiedLeaves.Contains(key))
         {
-            requiredGas += GasCostOf.WitnessBranchWrite;
+            requiredGas += GasCostOf.WitnessChunkWrite;
+            // if key is already in `_modifiedLeaves`, then we should not check if key is present in the tree
             if (!_verkleWorldState.ValuePresentInTree(key)) requiredGas += GasCostOf.WitnessChunkFill;
+
+            // if key is already in `_modifiedLeaves`, then checking `_modifiedSubtrees` will be redundant
+            if (!_modifiedSubtrees.Contains(key.Bytes[..31].ToArray())) requiredGas += GasCostOf.WitnessBranchWrite;
         }
+
 
         if (requiredGas > gasAvailable) return false;
         gasAvailable -= requiredGas;
