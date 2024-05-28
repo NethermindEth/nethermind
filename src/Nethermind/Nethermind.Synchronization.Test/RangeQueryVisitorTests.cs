@@ -158,10 +158,10 @@ public class RangeQueryVisitorTests
         ];
 
         var stateTree = new StateTree();
-        var account = TestItem.GenerateRandomAccount();
+        var random = new Random(0);
         foreach (var path in paths)
         {
-            stateTree.Set(new Hash256(path), account);
+            stateTree.Set(new Hash256(path), TestItem.GenerateRandomAccount(random));
         }
         stateTree.Commit(0);
 
@@ -178,15 +178,19 @@ public class RangeQueryVisitorTests
         proofs.Count.Should().Be(6); // Need to make sure `0x11` is included
 
         var proofHashes = proofs.Select((rlp) => Keccak.Compute(rlp)).ToHashSet();
+        foreach (Hash256 proofHash in proofHashes)
+        {
+            Console.Out.WriteLine(proofHash);
+        }
 
         string[] proofHashStrs =
         [
-            "0x848936a86befa6693df03877b266a2ccce7e4a65122ca5740a7f5e9d53a56136",
-            "0xa2b09f843c84c34f2444a2cb0d95ba299af66a18581d8ddea8830fbc5802999e",
-            "0x249e8deef5ac40f1e1280b94b137452cb9ab2f2a0b323c5efafff6b3f07c85e3",
-            "0x9f225ad13194e14cb1c8322ddef63a44ffa442cfda5e911b52632caf98f49e46",
-            "0xe380b3732498e98c998d66d1e848f5c0369841905aa343626d73f41e8a67f053",
-            "0x9f225ad13194e14cb1c8322ddef63a44ffa442cfda5e911b52632caf98f49e46"
+            "0x35811c17fd5e33e75276677e27e3fe39653403a4d0df4a2f94af40ac265a4a6f",
+            "0xfd6d9e748837908d14fca3ddf76d06c3f74196543f3d05d8fa0b6d6726037f51",
+            "0xde44831292ba34a2a31566004549c1681dbe3a4042f265be60a9fff3643a3112",
+            "0x665b6b070a219250b89d36feeb07ae350bae619e8660598f9ec98176b19c5d07",
+            "0x07b17db6a32be868e9940568db8b1011c7679e642c2db0237a5a7ebdaadb0e6e",
+            "0xfbd8c8f3cd78599b87fd3ab0cfe127c5b2d488cb913aeec5b80230668fed45c8"
         ];
 
         foreach (var proofHashStr in proofHashStrs)
