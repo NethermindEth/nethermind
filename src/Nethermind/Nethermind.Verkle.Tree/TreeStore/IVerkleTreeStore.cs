@@ -18,6 +18,7 @@ public interface IVerkleTreeStore : IStoreWithReorgBoundary, IVerkleSyncTreeStor
     bool MoveToStateRoot(Hash256 stateRoot);
 
     byte[]? GetLeaf(ReadOnlySpan<byte> key, Hash256? stateRoot = null);
+    bool HasLeaf(ReadOnlySpan<byte> key, Hash256? stateRoot = null);
     InternalNode? GetInternalNode(ReadOnlySpan<byte> key, Hash256? stateRoot = null);
 
     void InsertBatch(long blockNumber, VerkleMemoryDb memDb, bool skipRoot = false);
