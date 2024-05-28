@@ -8,7 +8,7 @@ using Nethermind.Core.Crypto;
 namespace Nethermind.Serialization.Rlp;
 
 [Rlp.SkipGlobalRegistration]
-public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
+public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStreamDecoder<TxReceipt[]>
 {
     public static readonly ReceiptArrayStorageDecoder Instance = new();
 
@@ -19,12 +19,7 @@ public class ReceiptArrayStorageDecoder : IRlpStreamDecoder<TxReceipt[]>
     private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
-    private readonly bool _useCompactEncoding = true;
-
-    public ReceiptArrayStorageDecoder(bool compactEncoding = true)
-    {
-        _useCompactEncoding = compactEncoding;
-    }
+    private readonly bool _useCompactEncoding = compactEncoding;
 
     public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {

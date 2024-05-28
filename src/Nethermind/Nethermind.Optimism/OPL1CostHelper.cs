@@ -32,11 +32,18 @@ public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
     [SkipLocalsInit]
     public UInt256 ComputeL1Cost(Transaction tx, BlockHeader header, IWorldState worldState)
     {
-        [SkipLocalsInit]
-        UInt256 ComputeL1CostEcotone(IWorldState worldState, UInt256 dataGas)
+        if (tx.IsDeposit())
+            return UInt256.Zero;
+
+        UInt256 dataGas = ComputeDataGas(tx, _opConfigHelper.IsRegolith(header));
+        if (dataGas.IsZero)
+            return UInt256.Zero;
+
+        UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
+
+        if (_opConfigHelper.IsEcotone(header))
         {
             // Ecotone formula: (dataGas) * (16 * l1BaseFee * l1BaseFeeScalar + l1BlobBaseFee*l1BlobBaseFeeScalar) / 16e6
-            UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
             UInt256 blobBaseFee = new(worldState.Get(_blobBaseFeeSlot), true);
 
             ReadOnlySpan<byte> scalarData = worldState.Get(_baseFeeScalarSlot);
@@ -49,39 +56,38 @@ public class OPL1CostHelper(IOPConfigHelper opConfigHelper, Address l1BlockAddr)
             UInt256 l1BaseFeeScalar = new(scalarData[l1BaseFeeScalarStart..l1BaseFeeScalarEnd], true);
             UInt256 l1BlobBaseFeeScalar = new(scalarData[l1BaseFeeScalarEnd..(l1BaseFeeScalarEnd + fieldSize)], true);
 
-            return dataGas * (precisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / precisionDevider;
+            return ComputeL1CostEcotone(dataGas, l1BaseFee, blobBaseFee, l1BaseFeeScalar, l1BlobBaseFeeScalar);
         }
-
-        [SkipLocalsInit]
-        UInt256 ComputeL1CostPreEcotone(IWorldState worldState, UInt256 dataGas)
+        else
         {
             // Pre-Ecotone formula: (dataGas + overhead) * l1BaseFee * scalar / 1e6
-            UInt256 l1BaseFee = new(worldState.Get(_l1BaseFeeSlot), true);
             UInt256 overhead = new(worldState.Get(_overheadSlot), true);
-            UInt256 scalar = new(worldState.Get(_scalarSlot), true);
+            UInt256 feeScalar = new(worldState.Get(_scalarSlot), true);
 
-            return (dataGas + overhead) * l1BaseFee * scalar / basicDevider;
+            return ComputeL1CostPreEcotone(dataGas + overhead, l1BaseFee, feeScalar);
         }
-
-        if (tx.IsDeposit())
-            return UInt256.Zero;
-
-        UInt256 dataGas = ComputeDataGas(tx, header);
-        if (dataGas.IsZero)
-            return UInt256.Zero;
-
-        return _opConfigHelper.IsEcotone(header) ? ComputeL1CostEcotone(worldState, dataGas) : ComputeL1CostPreEcotone(worldState, dataGas);
     }
 
-    private UInt256 ComputeDataGas(Transaction tx, BlockHeader header)
+    [SkipLocalsInit]
+    public static UInt256 ComputeDataGas(Transaction tx, bool isRegolith)
     {
         byte[] encoded = Rlp.Encode(tx, RlpBehaviors.SkipTypedWrapping).Bytes;
 
         long zeroCount = encoded.Count(b => b == 0);
         long nonZeroCount = encoded.Length - zeroCount;
         // Add pre-EIP-3529 overhead
-        nonZeroCount += _opConfigHelper.IsRegolith(header) ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;
+        nonZeroCount += isRegolith ? 0 : OptimismConstants.PreRegolithNonZeroCountOverhead;
 
         return (ulong)(zeroCount * GasCostOf.TxDataZero + nonZeroCount * GasCostOf.TxDataNonZeroEip2028);
+    }
+
+    public static UInt256 ComputeL1CostEcotone(UInt256 dataGas, UInt256 l1BaseFee, UInt256 blobBaseFee, UInt256 l1BaseFeeScalar, UInt256 l1BlobBaseFeeScalar)
+    {
+        return dataGas * (precisionMultiplier * l1BaseFee * l1BaseFeeScalar + blobBaseFee * l1BlobBaseFeeScalar) / precisionDevider;
+    }
+
+    public static UInt256 ComputeL1CostPreEcotone(UInt256 dataGasWithOverhead, UInt256 l1BaseFee, UInt256 feeScalar)
+    {
+        return dataGasWithOverhead * l1BaseFee * feeScalar / basicDevider;
     }
 }

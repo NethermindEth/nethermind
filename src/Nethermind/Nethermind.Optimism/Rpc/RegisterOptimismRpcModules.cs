@@ -3,6 +3,7 @@
 
 using System;
 using Nethermind.Api;
+using Nethermind.Blockchain;
 using Nethermind.Init.Steps;
 using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
@@ -51,7 +52,7 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         TxSealer sealer = new(txSigner, _api.Timestamper);
 
         ModuleFactoryBase<IOptimismEthRpcModule> optimismEthModuleFactory = new OptimismEthModuleFactory(
-            ethModuleFactory, sequencerJsonRpcClient, _api.CreateBlockchainBridge(), _api.WorldState, _api.EthereumEcdsa, sealer);
+            ethModuleFactory, sequencerJsonRpcClient, _api.CreateBlockchainBridge(), _api.WorldState, _api.EthereumEcdsa, sealer, _api.BlockTree?.AsReadOnly(), _api.SpecProvider, _api.ReceiptFinder, _api.SpecHelper);
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
