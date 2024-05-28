@@ -24,7 +24,8 @@ public class ReadOnlyTxProcessingEnvBase
         ISpecProvider? specProvider,
         ILogManager? logManager,
         PreBlockCaches? preBlockCaches = null
-    ) {
+    )
+    {
         ArgumentNullException.ThrowIfNull(specProvider);
         ArgumentNullException.ThrowIfNull(worldStateManager);
         SpecProvider = specProvider;

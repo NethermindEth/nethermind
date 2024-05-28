@@ -53,7 +53,7 @@ public class CodeInfoRepository : ICodeInfoRepository
     }
 
 
-private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles;
+    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles;
     private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     static CodeInfoRepository()
