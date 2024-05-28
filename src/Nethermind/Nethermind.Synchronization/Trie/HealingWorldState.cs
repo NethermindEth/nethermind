@@ -9,13 +9,9 @@ using Nethermind.Trie.Pruning;
 
 namespace Nethermind.Synchronization.Trie;
 
-public class HealingWorldState : WorldState
+public class HealingWorldState(ITrieStore trieStore, IKeyValueStore? codeDb, ILogManager? logManager, PreBlockCaches? preBlockCaches = null)
+    : WorldState(trieStore, codeDb, logManager, new HealingStateTree(trieStore, logManager), new HealingStorageTreeFactory(), preBlockCaches)
 {
-    public HealingWorldState(ITrieStore? trieStore, IKeyValueStore? codeDb, ILogManager? logManager)
-        : base(trieStore, codeDb, logManager, new HealingStateTree(trieStore, logManager), new HealingStorageTreeFactory())
-    {
-    }
-
     public void InitializeNetwork(ITrieNodeRecovery<GetTrieNodesRequest> recovery)
     {
         StateProviderTree.InitializeNetwork(recovery);

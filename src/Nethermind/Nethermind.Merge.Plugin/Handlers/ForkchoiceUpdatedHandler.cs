@@ -98,7 +98,7 @@ public class ForkchoiceUpdatedHandler : IForkchoiceUpdatedHandler
 
     private async Task<ResultWrapper<ForkchoiceUpdatedV1Result>?> ApplyForkchoiceUpdate(Block? newHeadBlock, ForkchoiceStateV1 forkchoiceState, PayloadAttributes? payloadAttributes)
     {
-        using var handle = Thread.CurrentThread.BoostPriority();
+        using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
 
         if (_invalidChainTracker.IsOnKnownInvalidChain(forkchoiceState.HeadBlockHash, out Hash256? lastValidHash))
         {
