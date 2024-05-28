@@ -31,4 +31,9 @@ EXPOSE 8545 8551 30303
 
 COPY --from=build /publish .
 
+RUN apt-get update && apt-get install -y libsnappy-dev libjemalloc-dev && rm -rf /var/lib/apt/lists/*
+RUN ln -s -r /lib/x86_64-linux-gnu/libjemalloc.so.2 /lib/x86_64-linux-gnu/libjemalloc.so.1
+
+ENV LD_PRELOAD=/lib/x86_64-linux-gnu/libjemalloc.so
+
 ENTRYPOINT ["./nethermind"]
