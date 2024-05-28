@@ -307,6 +307,10 @@ public class TestCaseGenerator
             // case TestCase.Modexp10KGasExpHeavy:
             // case TestCase.Modexp135KGasBalanced:
                 return Modexp.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
+            case TestCase.EcAddInfinities:
+            case TestCase.EcAdd12:
+            case TestCase.EcAdd32ByteCoordinates:
+                return EcAdd.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
             // case TestCase.PointEvaluationZeros:
             case TestCase.PointEvaluationOneData:
                 return PointEvaluation.GetTxs(testCase, privateKey, nonce, blockGasConsumptionTarget);
