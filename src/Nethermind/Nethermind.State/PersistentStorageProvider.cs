@@ -68,11 +68,11 @@ namespace Nethermind.State
         /// <summary>
         /// Reset the storage state
         /// </summary>
-        public override void Reset()
+        public override void Reset(bool resizeCollections = true)
         {
             base.Reset();
             _blockCache.Clear();
-            _storages.Reset();
+            _storages.Reset(resizeCollections);
             _originalValues.Clear();
             _committedThisRound.Clear();
             _toUpdateRoots.Clear();

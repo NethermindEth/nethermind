@@ -819,12 +819,12 @@ namespace Nethermind.State
             }
         }
 
-        public void Reset()
+        public void Reset(bool resizeCollections = true)
         {
             if (_logger.IsTrace) _logger.Trace("Clearing state provider caches");
             _blockCache.Clear();
-            _intraTxCache.Reset();
-            _committedThisRound.Reset();
+            _intraTxCache.Reset(resizeCollections);
+            _committedThisRound.Reset(resizeCollections);
             _nullAccountReads.Clear();
             _currentPosition = Resettable.EmptyPosition;
             Array.Clear(_changes, 0, _changes.Length);
