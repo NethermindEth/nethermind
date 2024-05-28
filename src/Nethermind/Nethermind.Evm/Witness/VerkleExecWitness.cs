@@ -287,6 +287,7 @@ public class VerkleExecWitness(ILogManager logManager, VerkleWorldState? verkleW
 
         if (!isWrite) return true;
 
+
         requiredGas = 0;
         // if `wasPreviouslyNotAccessed = true`, this implies that _modifiedLeaves.Contains(key) = false
         if (wasPreviouslyNotAccessed || !_modifiedLeaves.Contains(key))
