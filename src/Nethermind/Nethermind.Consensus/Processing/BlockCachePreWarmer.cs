@@ -86,10 +86,11 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         void WarmupTransactions(ParallelOptions parallelOptions, IReleaseSpec spec, Block block, Hash256 stateRoot)
         {
-            Parallel.For(0, block.Transactions.Length, parallelOptions, i =>
+            Transaction[] blockTransactions = block.Transactions;
+            Parallel.For(0, blockTransactions.Length, parallelOptions, i =>
             {
                 using ThreadExtensions.Disposable handle = Thread.CurrentThread.BoostPriority();
-                Transaction tx = block.Transactions[i];
+                Transaction tx = blockTransactions[i];
                 ReadOnlyTxProcessingEnv env = _envPool.Get();
                 SystemTransaction systemTransaction = _systemTransactionPool.Get();
                 try
@@ -100,6 +101,12 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                     {
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
+
+                    for (int j = 0; j < i; j++)
+                    {
+                        env.StateProvider.IncrementNonce(blockTransactions[j].SenderAddress!);
+                    }
+
                     TransactionResult result = transactionProcessor.Trace(systemTransaction, new BlockExecutionContext(block.Header.Clone()), NullTxTracer.Instance);
                     if (_logger.IsTrace) _logger.Trace($"Finished pre-warming cache for tx {tx.Hash} with {result}");
                 }
