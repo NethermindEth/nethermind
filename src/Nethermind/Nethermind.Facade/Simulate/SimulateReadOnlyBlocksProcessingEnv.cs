@@ -60,7 +60,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         DbProvider = readOnlyDbProvider;
         WorldStateManager = worldStateManager;
         _logManager = logManager;
-        SpecProvider = specProvider;
 
         BlockTree = new BlockTreeOverlay(ReadOnlyBlockTree, blockTree);
         BlockhashProvider = new SimulateBlockhashProvider(new BlockhashProvider(BlockTree, specProvider, StateProvider, logManager), BlockTree);
@@ -73,7 +72,6 @@ public class SimulateReadOnlyBlocksProcessingEnv : ReadOnlyTxProcessingEnvBase, 
         BlockTransactionPicker = new BlockProductionTransactionPicker(specProvider, true);
     }
 
-    public ISpecProvider SpecProvider { get; }
     public IWorldStateManager WorldStateManager { get; }
     public IVirtualMachine VirtualMachine { get; }
     public IReadOnlyDbProvider DbProvider { get; }

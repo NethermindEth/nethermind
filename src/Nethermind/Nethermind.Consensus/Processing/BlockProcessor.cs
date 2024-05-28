@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -42,6 +43,7 @@ public partial class BlockProcessor : IBlockProcessor
     private readonly IRewardCalculator _rewardCalculator;
     private readonly IBlockProcessor.IBlockTransactionsExecutor _blockTransactionsExecutor;
     private readonly IBlockhashStore _blockhashStore;
+    private readonly IBlockCachePreWarmer? _preWarmer;
     private const int MaxUncommittedBlocks = 64;
 
     /// <summary>
@@ -60,7 +62,8 @@ public partial class BlockProcessor : IBlockProcessor
         IBlockhashStore? blockHashStore,
         ILogManager? logManager,
         IWithdrawalProcessor? withdrawalProcessor = null,
-        IReceiptsRootCalculator? receiptsRootCalculator = null)
+        IReceiptsRootCalculator? receiptsRootCalculator = null,
+        IBlockCachePreWarmer? preWarmer = null)
     {
         _logger = logManager?.GetClassLogger() ?? throw new ArgumentNullException(nameof(logManager));
         _specProvider = specProvider ?? throw new ArgumentNullException(nameof(specProvider));
@@ -72,6 +75,7 @@ public partial class BlockProcessor : IBlockProcessor
         _blockTransactionsExecutor = blockTransactionsExecutor ?? throw new ArgumentNullException(nameof(blockTransactionsExecutor));
         _receiptsRootCalculator = receiptsRootCalculator ?? ReceiptsRootCalculator.Instance;
         _blockhashStore = blockHashStore ?? throw new ArgumentNullException(nameof(blockHashStore));
+        _preWarmer = preWarmer;
         _beaconBlockRootHandler = new BeaconBlockRootHandler();
         ReceiptsTracer = new BlockReceiptsTracer();
     }
@@ -97,6 +101,7 @@ public partial class BlockProcessor : IBlockProcessor
            the previous head state.*/
         Hash256 previousBranchStateRoot = CreateCheckpoint();
         InitBranch(newBranchStateRoot);
+        Hash256 preBlockStateRoot = newBranchStateRoot;
 
         bool notReadOnly = !options.ContainsFlag(ProcessingOptions.ReadOnlyChain);
         int blocksCount = suggestedBlocks.Count;
@@ -105,16 +110,23 @@ public partial class BlockProcessor : IBlockProcessor
         {
             for (int i = 0; i < blocksCount; i++)
             {
+                Block suggestedBlock = suggestedBlocks[i];
                 if (blocksCount > 64 && i % 8 == 0)
                 {
-                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlocks[i]}");
+                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlocks[i], options, blockTracer);
+                using CancellationTokenSource cancellationTokenSource = new();
+                Task? preWarmTask = suggestedBlock.Transactions.Length < 3 ?
+                    null :
+                    _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                cancellationTokenSource.Cancel();
+                preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
 
                 // be cautious here as AuRa depends on processing
-                PreCommitBlock(newBranchStateRoot, suggestedBlocks[i].Number);
+                PreCommitBlock(newBranchStateRoot, suggestedBlock.Number);
                 if (notReadOnly)
                 {
                     BlockProcessed?.Invoke(this, new BlockProcessedEventArgs(processedBlock, receipts));
@@ -129,9 +141,11 @@ public partial class BlockProcessor : IBlockProcessor
                 {
                     if (_logger.IsInfo) _logger.Info($"Commit part of a long blocks branch {i}/{blocksCount}");
                     previousBranchStateRoot = CreateCheckpoint();
-                    Hash256? newStateRoot = suggestedBlocks[i].StateRoot;
+                    Hash256? newStateRoot = suggestedBlock.StateRoot;
                     InitBranch(newStateRoot, false);
                 }
+
+                preBlockStateRoot = processedBlock.StateRoot;
             }
 
             if (options.ContainsFlag(ProcessingOptions.DoNotUpdateHead))
@@ -145,6 +159,7 @@ public partial class BlockProcessor : IBlockProcessor
         {
             _logger.Trace($"Encountered exception {ex} while processing blocks.");
             RestoreBranch(previousBranchStateRoot);
+            _preWarmer?.ClearCaches();
             throw;
         }
     }

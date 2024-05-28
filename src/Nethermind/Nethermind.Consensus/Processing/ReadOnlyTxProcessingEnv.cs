@@ -24,8 +24,9 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IBlockTree blockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager)
-            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager)
+            ILogManager? logManager,
+            PreBlockCaches? preBlockCaches = null)
+            : this(worldStateManager, blockTree.AsReadOnly(), specProvider, logManager, preBlockCaches)
         {
         }
 
@@ -33,8 +34,9 @@ namespace Nethermind.Consensus.Processing
             IWorldStateManager worldStateManager,
             IReadOnlyBlockTree readOnlyBlockTree,
             ISpecProvider? specProvider,
-            ILogManager? logManager
-            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager)
+            ILogManager? logManager,
+            PreBlockCaches? preBlockCaches = null
+            ) : base(worldStateManager, readOnlyBlockTree, specProvider, logManager, preBlockCaches)
         {
             CodeInfoRepository = new CodeInfoRepository();
             Machine = new VirtualMachine(BlockhashProvider, specProvider, CodeInfoRepository, logManager);

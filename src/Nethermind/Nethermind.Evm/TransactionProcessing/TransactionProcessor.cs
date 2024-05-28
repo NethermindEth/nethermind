@@ -660,5 +660,6 @@ namespace Nethermind.Evm.TransactionProcessing
         public bool Success => Error is null;
         public static implicit operator TransactionResult(string? error) => new(error);
         public static implicit operator bool(TransactionResult result) => result.Success;
+        public override string ToString() => Error is not null ? $"Fail : {Error}" : "Success";
     }
 }

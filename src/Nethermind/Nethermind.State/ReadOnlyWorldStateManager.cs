@@ -2,9 +2,9 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
-using Nethermind.Core;
 using Nethermind.Db;
 using Nethermind.Logging;
+using Nethermind.Trie;
 using Nethermind.Trie.Pruning;
 
 namespace Nethermind.State;
@@ -38,7 +38,13 @@ public class ReadOnlyWorldStateManager : IWorldStateManager
 
     public IReadOnlyTrieStore TrieStore => _readOnlyTrieStore;
 
-    public IWorldState CreateResettableWorldState() => new WorldState(_readOnlyTrieStore, _codeDb, _logManager);
+    public IWorldState CreateResettableWorldState(PreBlockCaches? sharedHashes = null) =>
+        new WorldState(sharedHashes is not null
+                ? new PreCachedTrieStore(_readOnlyTrieStore, sharedHashes.RlpCache)
+                : _readOnlyTrieStore,
+            _codeDb,
+            _logManager,
+            sharedHashes);
 
     public virtual event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached
     {

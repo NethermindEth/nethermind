@@ -26,9 +26,9 @@ public class OverlayWorldStateManager(
 
     public IReadOnlyTrieStore TrieStore { get; } = overlayTrieStore.AsReadOnly();
 
-    public IWorldState CreateResettableWorldState()
+    public IWorldState CreateResettableWorldState(PreBlockCaches? pbc = null)
     {
-        return new WorldState(overlayTrieStore, _codeDb, logManager);
+        return new WorldState(overlayTrieStore, _codeDb, logManager, pbc);
     }
 
     public event EventHandler<ReorgBoundaryReached>? ReorgBoundaryReached

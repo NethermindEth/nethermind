@@ -225,9 +225,16 @@ namespace Nethermind.Init.Steps
             if (_api.RewardCalculatorSource is null) throw new StepDependencyException(nameof(_api.RewardCalculatorSource));
             if (_api.TransactionProcessor is null) throw new StepDependencyException(nameof(_api.TransactionProcessor));
             if (_api.BlockTree is null) throw new StepDependencyException(nameof(_api.BlockTree));
+            if (_api.WorldStateManager is null) throw new StepDependencyException(nameof(_api.WorldStateManager));
+            if (_api.SpecProvider is null) throw new StepDependencyException(nameof(_api.SpecProvider));
 
+            IBlocksConfig blocksConfig = _api.Config<IBlocksConfig>();
             IWorldState worldState = _api.WorldState!;
 
+            PreBlockCaches? preBlockCaches = (worldState as IPreBlockCaches)?.Caches;
+            BlockCachePreWarmer? preWarmer = blocksConfig.PreWarmStateOnBlockProcessing
+                ? new(new(_api.WorldStateManager, _api.BlockTree, _api.SpecProvider, _api.LogManager, preBlockCaches), _api.SpecProvider, _api.LogManager, preBlockCaches)
+                : null;
             return new BlockProcessor(
                 _api.SpecProvider,
                 _api.BlockValidator,
@@ -236,7 +243,9 @@ namespace Nethermind.Init.Steps
                 worldState,
                 _api.ReceiptStorage,
                 new BlockhashStore(_api.BlockTree, _api.SpecProvider!, worldState),
-                _api.LogManager);
+                _api.LogManager,
+                preWarmer: preWarmer
+            );
         }
 
         // TODO: remove from here - move to consensus?

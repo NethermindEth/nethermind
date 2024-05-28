@@ -21,7 +21,39 @@ namespace Nethermind.Evm;
 
 public class CodeInfoRepository : ICodeInfoRepository
 {
-    private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles;
+    internal sealed class CodeLruCache
+    {
+        private const int CacheCount = 16;
+        private const int CacheMax = CacheCount - 1;
+        private readonly LruCache<ValueHash256, CodeInfo>[] _caches;
+
+        public CodeLruCache()
+        {
+            _caches = new LruCache<ValueHash256, CodeInfo>[CacheCount];
+            for (int i = 0; i < _caches.Length; i++)
+            {
+                // Cache per nibble to reduce contention as TxPool is very parallel
+                _caches[i] = new LruCache<ValueHash256, CodeInfo>(MemoryAllowance.CodeCacheSize / CacheCount, MemoryAllowance.CodeCacheSize / CacheCount, $"VM bytecodes {i}");
+            }
+        }
+
+        public CodeInfo Get(in ValueHash256 codeHash)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Get(codeHash);
+        }
+
+        public bool Set(in ValueHash256 codeHash, CodeInfo codeInfo)
+        {
+            var cache = _caches[GetCacheIndex(codeHash)];
+            return cache.Set(codeHash, codeInfo);
+        }
+
+        private static int GetCacheIndex(in ValueHash256 codeHash) => codeHash.Bytes[^1] & CacheMax;
+    }
+
+
+private static readonly FrozenDictionary<AddressAsKey, CodeInfo> _precompiles;
     private static readonly LruCache<ValueHash256, CodeInfo> _codeCache = new(MemoryAllowance.CodeCacheSize, MemoryAllowance.CodeCacheSize, "VM bytecodes");
 
     static CodeInfoRepository()
