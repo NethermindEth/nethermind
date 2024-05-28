@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Int256;
@@ -65,35 +66,36 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
         }
     }
 
-    protected TxReceipt BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot)
+    protected async Task<TxReceipt> BuildFailedReceipt(Address recipient, long gasSpent, string error, Hash256? stateRoot)
     {
-        TxReceipt receipt = BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
+        TxReceipt receipt = await BuildReceipt(recipient, gasSpent, StatusCode.Failure, Array.Empty<LogEntry>(), stateRoot);
         receipt.Error = error;
         return receipt;
     }
 
-    protected virtual TxReceipt BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
+    protected virtual Task<TxReceipt> BuildReceipt(Address recipient, long spentGas, byte statusCode, LogEntry[] logEntries, Hash256? stateRoot)
     {
         Transaction transaction = CurrentTx!;
-        TxReceipt txReceipt = new()
+        long blockGasUsed = Block.GasUsed;
+        int currentIndex = _currentIndex;
+
+        return Task.Run(() => new TxReceipt
         {
             Logs = logEntries,
             TxType = transaction.Type,
             Bloom = logEntries.Length == 0 ? Bloom.Empty : new Bloom(logEntries),
-            GasUsedTotal = Block.GasUsed,
+            GasUsedTotal = blockGasUsed,
             StatusCode = statusCode,
             Recipient = transaction.IsContractCreation ? null : recipient,
             BlockHash = Block.Hash,
             BlockNumber = Block.Number,
-            Index = _currentIndex,
+            Index = currentIndex,
             GasUsed = spentGas,
             Sender = transaction.SenderAddress,
             ContractAddress = transaction.IsContractCreation ? recipient : null,
             TxHash = transaction.Hash,
             PostTransactionState = stateRoot
-        };
-
-        return txReceipt;
+        });
     }
 
     public void StartOperation(int pc, Instruction opcode, long gas, in ExecutionEnvironment env) =>
@@ -197,10 +199,10 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
 
     private ITxTracer _currentTxTracer = NullTxTracer.Instance;
     protected int _currentIndex { get; private set; }
-    private readonly List<TxReceipt> _txReceipts = new();
+    private readonly List<Task<TxReceipt>> _txReceipts = new();
     protected Transaction? CurrentTx;
-    public IReadOnlyList<TxReceipt> TxReceipts => _txReceipts;
-    public TxReceipt LastReceipt => _txReceipts[^1];
+    public IReadOnlyList<Task<TxReceipt>> TxReceipts => _txReceipts;
+    public Task<TxReceipt> LastReceipt => _txReceipts[^1];
     public bool IsTracingRewards => _otherTracer.IsTracingRewards;
 
     public ITxTracer InnerTracer => _currentTxTracer;
@@ -216,7 +218,7 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
             _txReceipts.RemoveAt(_txReceipts.Count - 1);
         }
 
-        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GasUsedTotal : 0;
+        Block.Header.GasUsed = _txReceipts.Count > 0 ? _txReceipts.Last().GetAwaiter().GetResult().GasUsedTotal : 0;
     }
 
     public void ReportReward(Address author, string rewardType, UInt256 rewardValue) =>
@@ -252,16 +254,6 @@ public class BlockReceiptsTracer : IBlockTracer, ITxTracer, IJournal<int>, ITxTr
     public void EndBlockTrace()
     {
         _otherTracer.EndBlockTrace();
-        if (_txReceipts.Count > 0)
-        {
-            Bloom blockBloom = new();
-            Block.Header.Bloom = blockBloom;
-            for (int index = 0; index < _txReceipts.Count; index++)
-            {
-                TxReceipt? receipt = _txReceipts[index];
-                blockBloom.Accumulate(receipt.Bloom!);
-            }
-        }
     }
 
     public void SetOtherTracer(IBlockTracer blockTracer)

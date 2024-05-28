@@ -153,7 +153,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
         public async Task Can_get_receipt(bool withHeader, string expectedResult)
         {
             Hash256 txHash = _blockTree.FindBlock(1)!.Transactions[0].Hash!;
-            ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+            ReceiptWithProof receiptWithProof = (await _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader)).Data;
             Assert.NotNull(receiptWithProof.Receipt);
             Assert.That(receiptWithProof.ReceiptProof.Length, Is.EqualTo(2));
 
@@ -225,7 +225,7 @@ namespace Nethermind.JsonRpc.Test.Modules.Proof
                 LimboLogs.Instance);
 
             _proofRpcModule = moduleFactory.Create();
-            ReceiptWithProof receiptWithProof = _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader).Data;
+            ReceiptWithProof receiptWithProof = (await _proofRpcModule.proof_getTransactionReceipt(txHash, withHeader)).Data;
 
             if (withHeader)
             {

@@ -4,7 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
-
+using System.Threading.Tasks;
 using Nethermind.Core;
 using Nethermind.Core.Crypto;
 using Nethermind.Core.Extensions;
@@ -58,7 +58,7 @@ public static class BlockTraceDumper
             {
                 fileName = $"receipts_{blockHash}.txt";
                 using FileStream diagnosticFile = GetFileStream(fileName);
-                IReadOnlyList<TxReceipt> receipts = receiptsTracer.TxReceipts;
+                TxReceipt[] receipts = Task.WhenAll(receiptsTracer.TxReceipts).GetAwaiter().GetResult();
                 EthereumJsonSerializer.SerializeToStream(diagnosticFile, receipts, true);
                 if (logger.IsInfo)
                     logger.Info($"Created a Receipts trace of invalid block {blockHash} in file {diagnosticFile.Name}");

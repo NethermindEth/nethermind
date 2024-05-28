@@ -3,6 +3,7 @@
 
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Consensus;
 using Nethermind.Consensus.Processing;
 using Nethermind.Core;
@@ -41,8 +42,7 @@ namespace Nethermind.AccountAbstraction.Executor
             _entryPointAddresses = entryPointAddresses;
         }
 
-        public override TxReceipt[] ProcessTransactions(
-            Block block,
+        public override async Task ProcessTransactions(Block block,
             ProcessingOptions processingOptions,
             BlockReceiptsTracer receiptsTracer,
             IReleaseSpec spec)
@@ -56,7 +56,7 @@ namespace Nethermind.AccountAbstraction.Executor
             {
                 if (IsAccountAbstractionTransaction(transaction))
                 {
-                    BlockProcessor.TxAction action = ProcessAccountAbstractionTransaction(block, in blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
+                    BlockProcessor.TxAction action = await ProcessAccountAbstractionTransaction(block, blkCtx, transaction, i++, receiptsTracer, processingOptions, transactionsInBlock);
                     if (action == BlockProcessor.TxAction.Stop) break;
                 }
                 else
@@ -69,7 +69,6 @@ namespace Nethermind.AccountAbstraction.Executor
             _stateProvider.Commit(spec, receiptsTracer);
 
             SetTransactions(block, transactionsInBlock);
-            return receiptsTracer.TxReceipts.ToArray();
         }
 
         private bool IsAccountAbstractionTransaction(Transaction transaction)
@@ -79,9 +78,9 @@ namespace Nethermind.AccountAbstraction.Executor
             return true;
         }
 
-        private BlockProcessor.TxAction ProcessAccountAbstractionTransaction(
+        private async Task<BlockProcessor.TxAction> ProcessAccountAbstractionTransaction(
             Block block,
-            in BlockExecutionContext blkCtx,
+            BlockExecutionContext blkCtx,
             Transaction currentTx,
             int index,
             BlockReceiptsTracer receiptsTracer,
@@ -96,7 +95,7 @@ namespace Nethermind.AccountAbstraction.Executor
                 return action;
             }
 
-            string? error = receiptsTracer.LastReceipt.Error;
+            string? error = (await receiptsTracer.LastReceipt).Error;
             bool transactionSucceeded = string.IsNullOrEmpty(error);
             if (!transactionSucceeded)
             {
@@ -105,7 +104,7 @@ namespace Nethermind.AccountAbstraction.Executor
             }
 
             transactionsInBlock.Add(currentTx);
-            _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, receiptsTracer.TxReceipts[index]));
+            _transactionProcessed?.Invoke(this, new TxProcessedEventArgs(index, currentTx, await receiptsTracer.TxReceipts[index]));
             return BlockProcessor.TxAction.Add;
         }
 

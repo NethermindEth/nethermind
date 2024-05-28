@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: LGPL-3.0-only
 
 using System;
+using System.Threading.Tasks;
 using Nethermind.Blockchain;
 using Nethermind.Blockchain.Blocks;
 using Nethermind.Blockchain.Find;
@@ -72,19 +73,19 @@ namespace Nethermind.Consensus.AuRa
 
         public IAuRaValidator AuRaValidator { get; }
 
-        protected override TxReceipt[] ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected override async Task<TxReceipt[]> ProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             ValidateAuRa(block);
             _contractRewriter?.RewriteContracts(block.Number, _stateProvider, _specProvider.GetSpec(block.Header));
             AuRaValidator.OnBlockProcessingStart(block, options);
-            TxReceipt[] receipts = base.ProcessBlock(block, blockTracer, options);
+            TxReceipt[] receipts = await base.ProcessBlock(block, blockTracer, options);
             AuRaValidator.OnBlockProcessingEnd(block, receipts, options);
             Metrics.AuRaStep = block.Header?.AuRaStep ?? 0;
             return receipts;
         }
 
         // After PoS switch we need to revert to standard block processing, ignoring AuRa customizations
-        protected TxReceipt[] PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
+        protected Task<TxReceipt[]> PostMergeProcessBlock(Block block, IBlockTracer blockTracer, ProcessingOptions options)
         {
             return base.ProcessBlock(block, blockTracer, options);
         }

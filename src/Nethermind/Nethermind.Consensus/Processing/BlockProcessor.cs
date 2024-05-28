@@ -117,7 +117,7 @@ public partial class BlockProcessor : IBlockProcessor
 
                 using CancellationTokenSource cancellationTokenSource = new();
                 Task? preWarmTask = _preWarmer?.PreWarmCaches(suggestedBlock, preBlockStateRoot!, cancellationTokenSource.Token);
-                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer);
+                (Block processedBlock, TxReceipt[] receipts) = ProcessOne(suggestedBlock, options, blockTracer).GetAwaiter().GetResult();
                 cancellationTokenSource.Cancel();
                 preWarmTask?.GetAwaiter().GetResult();
                 processedBlocks[i] = processedBlock;
@@ -204,13 +204,13 @@ public partial class BlockProcessor : IBlockProcessor
     }
 
     // TODO: block processor pipeline
-    private (Block Block, TxReceipt[] Receipts) ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
+    private async Task<(Block Block, TxReceipt[] Receipts)> ProcessOne(Block suggestedBlock, ProcessingOptions options, IBlockTracer blockTracer)
     {
         if (_logger.IsTrace) _logger.Trace($"Processing block {suggestedBlock.ToString(Block.Format.Short)} ({options})");
 
         ApplyDaoTransition(suggestedBlock);
         Block block = PrepareBlockForProcessing(suggestedBlock);
-        TxReceipt[] receipts = ProcessBlock(block, blockTracer, options);
+        TxReceipt[] receipts = await ProcessBlock(block, blockTracer, options);
         ValidateProcessedBlock(suggestedBlock, options, block, receipts);
         if (options.ContainsFlag(ProcessingOptions.StoreReceipts))
         {
@@ -238,7 +238,7 @@ public partial class BlockProcessor : IBlockProcessor
         !header.IsGenesis || !_specProvider.GenesisStateUnavailable;
 
     // TODO: block processor pipeline
-    protected virtual TxReceipt[] ProcessBlock(
+    protected virtual async Task<TxReceipt[]> ProcessBlock(
         Block block,
         IBlockTracer blockTracer,
         ProcessingOptions options)
@@ -253,17 +253,23 @@ public partial class BlockProcessor : IBlockProcessor
 
         _stateProvider.Commit(spec, commitStorageRoots: false);
 
-        TxReceipt[] receipts = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
+        Task processTransactionsTask = _blockTransactionsExecutor.ProcessTransactions(block, options, ReceiptsTracer, spec);
 
         if (spec.IsEip4844Enabled)
         {
             block.Header.BlobGasUsed = BlobGasCalculator.CalculateBlobGas(block.Transactions);
         }
 
-        block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(receipts, spec, block.ReceiptsRoot);
+        await processTransactionsTask;
+        IReadOnlyList<Task<TxReceipt>> receiptsTasks = ReceiptsTracer.TxReceipts;
+        Task<TxReceipt[]> receiptsTask = Task.WhenAll(receiptsTasks);
+        Task receiptsRootTask = receiptsTask.ContinueWith(async task =>
+            block.Header.ReceiptsRoot = _receiptsRootCalculator.GetReceiptsRoot(await task, spec, block.ReceiptsRoot));
         ApplyMinerRewards(block, blockTracer, spec);
         _withdrawalProcessor.ProcessWithdrawals(block, spec);
         ReceiptsTracer.EndBlockTrace();
+
+        Task<Bloom> blockBloomTask = CalculateBlockBloom(block, receiptsTask, receiptsTasks.Count);
 
         _stateProvider.Commit(spec, commitStorageRoots: true);
 
@@ -275,10 +281,27 @@ public partial class BlockProcessor : IBlockProcessor
             block.Header.StateRoot = _stateProvider.StateRoot;
         }
 
+        block.Header.Bloom = await blockBloomTask;
+        await receiptsRootTask;
         block.Header.Hash = block.Header.CalculateHash();
 
-        return receipts;
+        return await receiptsTask;
     }
+
+    private static Task<Bloom> CalculateBlockBloom(Block block, Task<TxReceipt[]> receiptsTasks, int receiptCount) =>
+        receiptCount > 0
+            ? Task.Run(async () =>
+            {
+                TxReceipt[] receipts = await receiptsTasks;
+                Bloom blockBloom = new();
+                for (int index = 0; index < receipts.Length; index++)
+                {
+                    TxReceipt? receipt = receipts[index];
+                    blockBloom.Accumulate(receipt.Bloom!);
+                }
+                return blockBloom;
+            })
+            : Task.FromResult(block.Bloom);
 
     // TODO: block processor pipeline
     private void StoreTxReceipts(Block block, TxReceipt[] txReceipts)

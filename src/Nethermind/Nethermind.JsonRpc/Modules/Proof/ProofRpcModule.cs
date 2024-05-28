@@ -4,6 +4,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using Nethermind.Blockchain.Find;
 using Nethermind.Blockchain.Receipts;
 using Nethermind.Consensus.Tracing;
@@ -131,7 +132,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             return ResultWrapper<TransactionWithProof>.Success(txWithProof);
         }
 
-        public ResultWrapper<ReceiptWithProof> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
+        public async Task<ResultWrapper<ReceiptWithProof>> proof_getTransactionReceipt(Hash256 txHash, bool includeHeader)
         {
             Hash256 blockHash = _receiptFinder.FindBlockHash(txHash);
             if (blockHash is null)
@@ -151,7 +152,7 @@ namespace Nethermind.JsonRpc.Modules.Proof
             receiptsTracer.SetOtherTracer(NullBlockTracer.Instance);
             _tracer.Trace(block, receiptsTracer);
 
-            TxReceipt[] receipts = receiptsTracer.TxReceipts.ToArray();
+            TxReceipt[] receipts = await Task.WhenAll(receiptsTracer.TxReceipts);
             Transaction[] txs = block.Transactions;
             ReceiptWithProof receiptWithProof = new();
             bool isEip1559Enabled = _specProvider.GetSpec(block.Header).IsEip1559Enabled;

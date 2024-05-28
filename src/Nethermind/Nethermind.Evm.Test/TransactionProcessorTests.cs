@@ -25,6 +25,7 @@ using Nethermind.Trie.Pruning;
 using NUnit.Framework;
 using Nethermind.Config;
 using System.Collections.Generic;
+using System.Threading.Tasks;
 
 namespace Nethermind.Evm.Test;
 
@@ -79,7 +80,7 @@ public class TransactionProcessorTests
     [TestCase(true, false)]
     [TestCase(false, true)]
     [TestCase(false, false)]
-    public void Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
+    public async Task Sets_state_root_on_receipts_before_eip658(bool withStateDiff, bool withTrace)
     {
         Transaction tx = Build.A.Transaction.SignedAndResolved(_ethereumEcdsa, TestItem.PrivateKeyA, _isEip155Enabled).WithGasLimit(100000).TestObject;
 
@@ -93,11 +94,11 @@ public class TransactionProcessorTests
 
         if (_isEip155Enabled) // we use eip155 check just as a proxy on 658
         {
-            Assert.Null(tracer.TxReceipts![0].PostTransactionState);
+            Assert.Null((await tracer.TxReceipts![0]).PostTransactionState);
         }
         else
         {
-            Assert.NotNull(tracer.TxReceipts![0].PostTransactionState);
+            Assert.NotNull((await tracer.TxReceipts![0]).PostTransactionState);
         }
     }
 

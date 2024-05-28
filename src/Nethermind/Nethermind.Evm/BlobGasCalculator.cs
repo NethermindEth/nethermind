@@ -18,8 +18,9 @@ public static class BlobGasCalculator
     public static ulong CalculateBlobGas(Transaction[] transactions)
     {
         int blobCount = 0;
-        foreach (Transaction tx in transactions)
+        for (var i = 0; i < transactions.Length; i++)
         {
+            Transaction tx = transactions[i];
             if (tx.SupportsBlobs)
             {
                 blobCount += tx.BlobVersionedHashes!.Length;
