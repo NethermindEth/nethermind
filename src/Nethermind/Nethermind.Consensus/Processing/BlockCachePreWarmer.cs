@@ -102,7 +102,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                         env.StateProvider.WarmUp(tx.AccessList); // eip-2930
                     }
 
-                    for (int j = 0; j < i; j++)
+                    for (int j = 0; j <= i; j++)
                     {
                         env.StateProvider.IncrementNonce(blockTransactions[j].SenderAddress!);
                     }
