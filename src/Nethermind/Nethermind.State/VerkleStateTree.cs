@@ -27,17 +27,25 @@ public class VerkleStateTree(IVerkleTreeStore stateStore, ILogManager logManager
     public AccountStruct? Get(Address address, Hash256? stateRoot = null)
     {
         Span<byte> key = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
+        
+        byte[]? basicDataLeafVal = Get(key, stateRoot);
 
-        key[31] = AccountHeader.Version;
-        UInt256 version = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
-        key[31] = AccountHeader.Balance;
-        UInt256 balance = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
-        key[31] = AccountHeader.Nonce;
-        UInt256 nonce = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
+        if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
+
+        byte[] versionVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+        UInt256 version = new(versionVal);
+
+        byte[] balanceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+        UInt256 balance = new(balanceVal);
+
+        byte[] nonceVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+        UInt256 nonce = new(nonceVal);
+
         key[31] = AccountHeader.CodeHash;
         byte[]? codeHash = (Get(key, stateRoot) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
-        key[31] = AccountHeader.CodeSize;
-        UInt256 codeSize = new((Get(key, stateRoot) ?? Array.Empty<byte>()).ToArray());
+
+        byte[] codeSizeVal = AccountHeader.BasicDataToValue(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+        UInt256 codeSize = new(codeSizeVal);
 
         return new AccountStruct(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
     }
