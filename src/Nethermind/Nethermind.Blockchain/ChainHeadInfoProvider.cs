@@ -80,6 +80,9 @@ namespace Nethermind.Blockchain
             {
                 _stateReader = stateReader;
                 blockTree.BlockAddedToMain += OnHeadChanged;
+
+                // start with the most recent
+                _reader = _stateReader.ForStateRoot();
             }
 
             private void OnHeadChanged(object? sender, BlockReplacementEventArgs e)
