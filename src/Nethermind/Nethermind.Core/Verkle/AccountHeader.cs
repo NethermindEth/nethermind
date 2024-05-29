@@ -10,7 +10,7 @@ namespace Nethermind.Core.Verkle;
 public readonly struct AccountHeader
 {
     public const int CodeHash = 1;
-    public const int BalanceDataLeafKey = 0;
+    public const int BasicDataLeafKey = 0;
 
     public const int VersionOffset = 0;
     public const int NonceOffset = 4;

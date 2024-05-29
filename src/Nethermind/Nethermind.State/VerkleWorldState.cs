@@ -551,33 +551,33 @@ public class VerkleWorldState : IWorldState
     {
         Db.Metrics.StateTreeReads++;
         byte[] headerTreeKey = AccountHeader.GetTreeKeyPrefix(address.Bytes, 0);
-        headerTreeKey[31] = AccountHeader.BalanceDataLeafKey;
-        byte[]? balanceDataLeafVal = _tree.Get(headerTreeKey);
+        headerTreeKey[31] = AccountHeader.BasicDataLeafKey;
+        byte[]? basicDataLeafVal = _tree.Get(headerTreeKey);
 
-        if (balanceDataLeafVal is null || balanceDataLeafVal.Length != 32) return null;
+        if (basicDataLeafVal is null || basicDataLeafVal.Length != 32) return null;
 
-        byte[] versionVal = GetAccountValueBytes(balanceDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
+        byte[] versionVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.VersionOffset, AccountHeader.VersionBytesLength);
         UInt256 version = new(versionVal);
 
-        byte[] balanceVal = GetAccountValueBytes(balanceDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
+        byte[] balanceVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.BalanceOffset, AccountHeader.BalanceBytesLength);
         UInt256 balance = new(balanceVal);
 
-        byte[] nonceVal = GetAccountValueBytes(balanceDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
+        byte[] nonceVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.NonceOffset, AccountHeader.NonceBytesLength);
         UInt256 nonce = new(nonceVal);
 
         headerTreeKey[31] = AccountHeader.CodeHash;
         byte[]? codeHash = (_tree.Get(headerTreeKey) ?? Keccak.OfAnEmptyString.Bytes).ToArray();
 
-        byte[] codeSizeVal = GetAccountValueBytes(balanceDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
+        byte[] codeSizeVal = GetAccountValueBytes(basicDataLeafVal, AccountHeader.CodeSizeOffset, AccountHeader.CodeSizeBytesLength);
         UInt256 codeSize = new(codeSizeVal);
 
         return new Account(nonce, balance, codeSize, version, Keccak.EmptyTreeHash, new Hash256(codeHash));
     }
 
-    private byte[] GetAccountValueBytes(byte[] balanceDataLeafVal, int offset, int size)
+    private byte[] GetAccountValueBytes(byte[] basicDataLeafVal, int offset, int size)
     {
         byte[] accountValueBytes = new byte[size];
-        Array.Copy(balanceDataLeafVal, offset, accountValueBytes, 0, size);
+        Array.Copy(basicDataLeafVal, offset, accountValueBytes, 0, size);
         return accountValueBytes;
     }
 
