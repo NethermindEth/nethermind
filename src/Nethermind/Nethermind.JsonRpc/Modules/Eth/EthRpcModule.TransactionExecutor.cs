@@ -17,7 +17,7 @@ using Nethermind.Specs.Forks;
 
 namespace Nethermind.JsonRpc.Modules.Eth
 {
-    public partial class EthRpcModule
+    public partial class EthRpcModule<TReceiptForRpc>
     {
         private abstract class TxExecutor<TResult>
         {

@@ -19,7 +19,6 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
     private static readonly IRlpValueDecoder<TxReceipt> CompactValueDecoder = Rlp.GetValueDecoder<TxReceipt>(RlpDecoderKey.Storage);
 
     public const int CompactEncoding = 127;
-    private readonly bool _useCompactEncoding = compactEncoding;
 
     public int GetLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
@@ -29,7 +28,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
         }
 
         int bufferLength = Rlp.LengthOfSequence(GetContentLength(items, rlpBehaviors));
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             bufferLength++;
         }
@@ -38,7 +37,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
 
     private int GetContentLength(TxReceipt[] items, RlpBehaviors rlpBehaviors)
     {
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = 0;
             for (int i = 0; i < items.Length; i++)
@@ -81,7 +80,7 @@ public class ReceiptArrayStorageDecoder(bool compactEncoding = true) : IRlpStrea
             return;
         }
 
-        if (_useCompactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
+        if (compactEncoding && (rlpBehaviors & RlpBehaviors.Storage) != 0)
         {
             int totalLength = GetContentLength(items, rlpBehaviors);
             stream.WriteByte(CompactEncoding);

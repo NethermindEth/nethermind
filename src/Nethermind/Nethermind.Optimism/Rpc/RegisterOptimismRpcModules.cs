@@ -9,6 +9,7 @@ using Nethermind.JsonRpc;
 using Nethermind.JsonRpc.Client;
 using Nethermind.JsonRpc.Modules;
 using Nethermind.JsonRpc.Modules.Eth;
+using Nethermind.JsonRpc.Modules.Eth.FeeHistory;
 using Nethermind.Logging;
 using Nethermind.TxPool;
 using Nethermind.Wallet;
@@ -32,6 +33,14 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
 
     protected override void RegisterEthRpcModule(IRpcModuleProvider rpcModuleProvider)
     {
+        StepDependencyException.ThrowIfNull(_api.BlockTree);
+        StepDependencyException.ThrowIfNull(_api.ReceiptStorage);
+        StepDependencyException.ThrowIfNull(_api.StateReader);
+        StepDependencyException.ThrowIfNull(_api.TxPool);
+        StepDependencyException.ThrowIfNull(_api.TxSender);
+        StepDependencyException.ThrowIfNull(_api.Wallet);
+        StepDependencyException.ThrowIfNull(_api.EthSyncingInfo);
+        StepDependencyException.ThrowIfNull(_api.GasPriceOracle);
         StepDependencyException.ThrowIfNull(_api.SpecHelper);
         StepDependencyException.ThrowIfNull(_api.SpecProvider);
         StepDependencyException.ThrowIfNull(_api.WorldState);
@@ -51,8 +60,29 @@ public class RegisterOptimismRpcModules : RegisterRpcModules
         ITxSigner txSigner = new WalletTxSigner(_api.Wallet, _api.SpecProvider.ChainId);
         TxSealer sealer = new(txSigner, _api.Timestamper);
 
+        var feeHistoryOracle = new FeeHistoryOracle(_api.BlockTree, _api.ReceiptStorage, _api.SpecProvider);
+        _api.DisposeStack.Push(feeHistoryOracle);
+
         ModuleFactoryBase<IOptimismEthRpcModule> optimismEthModuleFactory = new OptimismEthModuleFactory(
-            ethModuleFactory, sequencerJsonRpcClient, _api.CreateBlockchainBridge(), _api.WorldState, _api.EthereumEcdsa, sealer, _api.BlockTree?.AsReadOnly(), _api.SpecProvider, _api.ReceiptFinder, _api.SpecHelper);
+            _jsonRpcConfig,
+            _api,
+            _api.BlockTree.AsReadOnly(),
+            _api.ReceiptStorage,
+            _api.StateReader,
+            _api.TxPool,
+            _api.TxSender,
+            _api.Wallet,
+            _api.LogManager,
+            _api.SpecProvider,
+            _api.GasPriceOracle,
+            _api.EthSyncingInfo,
+            feeHistoryOracle,
+
+            sequencerJsonRpcClient,
+            _api.WorldState,
+            _api.EthereumEcdsa,
+            sealer,
+            _api.SpecHelper);
 
         rpcModuleProvider.RegisterBounded(optimismEthModuleFactory,
             _jsonRpcConfig.EthModuleConcurrentInstances ?? Environment.ProcessorCount, _jsonRpcConfig.Timeout);
