@@ -155,6 +155,24 @@ public enum TestCase
     [TestCaseMetadata("EcAdd with 32-byte coordinates", "EcAdd precompile with both initial points with x and y as 32-byte values")]
     EcAdd32ByteCoordinates,
 
+    [TestCaseMetadata("EcMul with (0, 0) and scalar 2", "EcMul precompile with initial point with x = 0 and y = 0 and scalar equal 2")]
+    EcMulInfinities2Scalar,
+
+    [TestCaseMetadata("EcMul with (0, 0) and 32-byte scalar", "EcMul precompile with initial point with x = 0 and y = 0 and scalar as 32-byte values")]
+    EcMulInfinities32ByteScalar,
+
+    [TestCaseMetadata("EcMul with (1, 2) and scalar 2", "EcMul precompile with initial point x = 1, y = 2 and scalar equal 2")]
+    EcMul122,
+
+    [TestCaseMetadata("EcMul with (1, 2) and 32-byte scalar", "EcMul precompile with initial point x = 1, y = 2 scalar as 32-byte values")]
+    EcMul12And32ByteScalar,
+
+    [TestCaseMetadata("EcMul with 32-byte coordinates and scalar 2", "EcMul precompile with initial point with x and y as 32-byte values and scalar equal 2")]
+    EcMul32ByteCoordinates2Scalar,
+
+    [TestCaseMetadata("EcMul with 32-byte coordinates and 32-byte scalar", "EcMul precompile with initial point with x, y and scalar as 32-byte values")]
+    EcMul32ByteCoordinates32ByteScalar,
+
     // [TestCaseMetadata("Modexp 1k gas, base heavy", "Modexp precompile consuming 1000 gas, with base and modulo byte size equal 440 and exponent equal 3 (0b11 - 2x 1s in binary)")]
     // Modexp1KGasBaseHeavy,
 
