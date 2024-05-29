@@ -113,9 +113,7 @@ public partial class BlockProcessor : IBlockProcessor
                 Block suggestedBlock = suggestedBlocks[i];
                 if (blocksCount > 64 && i % 8 == 0)
                 {
-                    if (_logger.IsInfo)
-                        _logger.Info(
-                            $"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
+                    if (_logger.IsInfo) _logger.Info($"Processing part of a long blocks branch {i}/{blocksCount}. Block: {suggestedBlock}");
                 }
 
                 using CancellationTokenSource cancellationTokenSource = new();

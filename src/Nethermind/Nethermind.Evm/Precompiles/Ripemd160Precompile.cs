@@ -32,7 +32,7 @@ namespace Nethermind.Evm.Precompiles
         public (ReadOnlyMemory<byte>, bool) Run(in ReadOnlyMemory<byte> inputData, IReleaseSpec releaseSpec)
         {
             Metrics.Ripemd160Precompile++;
-            
+
             return (Ripemd.Compute(inputData.ToArray()).PadLeft(32), true);
         }
     }
