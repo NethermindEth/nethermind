@@ -34,8 +34,6 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             return IPrecompile.Failure;
         }
 
-        Span<byte> output = stackalloc byte[32];
-
         for (int i = 0; i < (inputData.Length / PairSize); i++)
         {
             int offset = i * PairSize;
@@ -52,6 +50,7 @@ public class PairingPrecompile : IPrecompile<PairingPrecompile>
             }
         }
 
+        Span<byte> output = stackalloc byte[32];
         return Pairings.BlsPairing(inputData.Span, output) ? (output.ToArray(), true) : IPrecompile.Failure;
     }
 }

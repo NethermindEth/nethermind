@@ -40,7 +40,7 @@ public class G2MultiExpPrecompile : IPrecompile<G2MultiExpPrecompile>
             return IPrecompile.Failure;
         }
 
-        for (int i = 0; i < (inputData.Length / ItemSize); i++)
+        for (int i = 0; i < inputData.Length / ItemSize; i++)
         {
             int offset = i * ItemSize;
             if (!SubgroupChecks.G2IsInSubGroup(inputData.Span[offset..(offset + (4 * BlsParams.LenFp))]))
