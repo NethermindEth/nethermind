@@ -144,7 +144,7 @@ internal struct Word
     public static readonly FieldInfo Ulong3Field = typeof(Word).GetField(nameof(Ulong3));
 
     public static readonly MethodInfo GetIsZero = typeof(Word).GetProperty(nameof(IsZero))!.GetMethod;
-    public static readonly MethodInfo SetToZero = typeof(Word).GetProperty(nameof(ToZero))!.GetMethod;
+    public static readonly MethodInfo SetToZero = typeof(Word).GetMethod(nameof(ToZero))!;
 
     public static readonly MethodInfo GetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.GetMethod;
     public static readonly MethodInfo SetUInt256 = typeof(Word).GetProperty(nameof(UInt256))!.SetMethod;
