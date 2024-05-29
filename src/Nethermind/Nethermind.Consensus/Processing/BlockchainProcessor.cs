@@ -107,6 +107,9 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
             options |= ProcessingOptions.StoreReceipts;
         }
 
+        if (_blockProcessor.CanProcessStatelessBlock)
+            options |= ProcessingOptions.StatelessProcessing;
+
         if (blockEventArgs.Block is not null)
         {
             Enqueue(blockEventArgs.Block, options);
@@ -730,7 +733,7 @@ public sealed class BlockchainProcessor : IBlockchainProcessor, IBlockProcessing
     private bool RunSimpleChecksAheadOfProcessing(Block suggestedBlock, ProcessingOptions options)
     {
         /* a bit hacky way to get the invalid branch out of the processing loop */
-        if (suggestedBlock.Number != 0 &&
+        if (!options.ContainsFlag(ProcessingOptions.StatelessProcessing) && suggestedBlock.Number != 0 &&
             !_blockTree.IsKnownBlock(suggestedBlock.Number - 1, suggestedBlock.ParentHash))
         {
             if (_logger.IsDebug)
