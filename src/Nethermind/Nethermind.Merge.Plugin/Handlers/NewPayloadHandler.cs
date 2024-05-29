@@ -77,7 +77,8 @@ public class NewPayloadHandler : IAsyncHandler<ExecutionPayload, PayloadStatusV1
         _logger = logManager.GetClassLogger();
         _defaultProcessingOptions = storeReceipts ? ProcessingOptions.EthereumMerge | ProcessingOptions.StoreReceipts : ProcessingOptions.EthereumMerge;
         _processStateless = processStateless;
-        if (_processStateless) _defaultProcessingOptions |= ProcessingOptions.StatelessProcessing;
+        if (_processStateless)
+            _defaultProcessingOptions |= ProcessingOptions.StatelessProcessing | ProcessingOptions.ForceProcessing;
         _timeout = timeout ?? TimeSpan.FromSeconds(7);
         if (cacheSize > 0)
             _latestBlocks = new(cacheSize, 0, "LatestBlocks");
