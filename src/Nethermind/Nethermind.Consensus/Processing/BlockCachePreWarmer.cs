@@ -25,7 +25,6 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
     public Task PreWarmCaches(Block suggestedBlock, Hash256? parentStateRoot, CancellationToken cancellationToken = default)
     {
-        // Parent state root is null for genesis block
         if (preBlockCaches is not null && parentStateRoot is not null)
         {
             if (preBlockCaches.IsDirty)
@@ -34,7 +33,7 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
                 preBlockCaches.Clear();
             }
 
-            if (Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
+            if (!IsGenesisBlock(parentStateRoot) && Environment.ProcessorCount > 2 && !cancellationToken.IsCancellationRequested)
             {
                 // Do not pass cancellation token to the task, we don't want exceptions to be thrown in main processing thread
                 return Task.Run(() => PreWarmCachesParallel(suggestedBlock, parentStateRoot, cancellationToken));
@@ -43,6 +42,9 @@ public class BlockCachePreWarmer(ReadOnlyTxProcessingEnvFactory envFactory, ISpe
 
         return Task.CompletedTask;
     }
+
+    // Parent state root is null for genesis block
+    private bool IsGenesisBlock(Hash256? parentStateRoot) => parentStateRoot is null;
 
     public void ClearCaches() => preBlockCaches?.Clear();
 
