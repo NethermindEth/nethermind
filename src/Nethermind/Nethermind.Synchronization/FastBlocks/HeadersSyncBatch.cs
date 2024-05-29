@@ -14,7 +14,9 @@ namespace Nethermind.Synchronization.FastBlocks
         public long ResponseSizeEstimate { get; private set; }
 
         private IOwnedReadOnlyList<BlockHeader?>? _response;
-        public IOwnedReadOnlyList<BlockHeader?>? Response { get => _response;
+        public IOwnedReadOnlyList<BlockHeader?>? Response
+        {
+            get => _response;
             set
             {
                 ResponseSizeEstimate = 0;
@@ -25,7 +27,7 @@ namespace Nethermind.Synchronization.FastBlocks
                     {
                         size += MemorySizeEstimator.EstimateSize(response);
                     }
-                    ResponseSizeEstimate = size;    
+                    ResponseSizeEstimate = size;
                 }
                 _response = value;
             }
