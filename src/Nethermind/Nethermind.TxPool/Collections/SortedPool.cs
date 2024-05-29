@@ -442,13 +442,21 @@ namespace Nethermind.TxPool.Collections
         protected virtual bool Remove(TKey key, TValue value)
         {
             // Always remove from worst values; as may have been where it came from and dangling item
-            _worstSortedValues.Remove(value);
+            bool removed = _worstSortedValues.Remove(value);
             // Now remove from cache
             if (_cacheMap.Remove(key))
             {
                 UpdateIsFull();
                 _snapshot = null;
                 return true;
+            }
+            else if (removed)
+            {
+                TGroupKey groupMapping = MapToGroup(value);
+                if (_buckets.TryGetValue(groupMapping, out EnhancedSortedSet<TValue>? bucket))
+                {
+                    UpdateSortedValues(bucket, previousLast: default);
+                }
             }
 
             return false;
